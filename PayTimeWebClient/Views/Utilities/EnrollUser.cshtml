@@ -1,0 +1,1705 @@
+﻿@using System.Configuration;
+@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@{
+    ViewBag.Title = "EnrollUser";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _compcode = HttpContext.Current.Session["cmpcode"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    int _ChunkSize = Convert.ToInt32(HttpContext.Current.Session["DataDropDownThreShold"]);
+    string _companyid = string.Empty;
+    int _empid = 0;
+    if (_RoleId == 6805)
+    {
+        _companyid = HttpContext.Current.Session["ClientCompanyId"].ToString();
+    }
+    string _branchid = string.Empty;
+    if (_RoleId == 6806)
+    {
+        _companyid = HttpContext.Current.Session["ClientCompanyId"].ToString();
+        _branchid = HttpContext.Current.Session["BranchId"].ToString();
+        _empid = Convert.ToInt32(HttpContext.Current.Session["EmpId"].ToString());
+    }
+    if (_RoleId > 1 && _RoleId != 6805 && _RoleId != 6806)
+    {
+        _companyid = HttpContext.Current.Session["ClientCompanyId"].ToString();
+        _branchid = HttpContext.Current.Session["BranchId"].ToString();
+    }
+    string _dbName = HttpContext.Current.Session["DbName"].ToString();
+    string _isdateformat = HttpContext.Current.Session["IsDateFormat"].ToString();
+    Int64 _DatagridThsold = 0;
+
+    _DatagridThsold = Convert.ToInt64(HttpContext.Current.Session["DataGridThresold"]);
+    string isClientDBMatchFlag = HttpContext.Current.Session["IsClientDBMatch"] != null
+    ? HttpContext.Current.Session["IsClientDBMatch"].ToString()
+    : "false"; // Default to "false" if the session is null
+}
+
+<style>
+    #export-button {
+        display: none;
+    }
+</style>
+
+<script src="~/Pages_JS/VirtuallScroll/NormalDropDownVirtualClientServer.js"></script>
+<script src="~/Pages_JS/VirtuallScroll/ServerSideMultiSelectDropDown.js"></script>
+<script src="~/Scripts/timeme.js"></script>
+<script src="~/AssetsNew/js/CommonValidation.js"></script>
+<script src="~/Scripts/Helpers/noDataHandler.js"></script>
+<script>
+    webapiurl = '@_webapiurl';
+    tokan = '@_tokan';
+    DataGridThreSold = '@_DatagridThsold';
+    var checkboxStates = {};
+      var cmpid = '@_companyid';
+  var branchid = '@_branchid';
+  var emprole = '@_RoleId';
+  var DeviceFlags = [];
+  var allEmp = [];
+  var allBranches = [];
+  var isflagstep2 = false;
+    var isflagstep3 = false;
+    var $select = false;
+    var simpleBranchDropdown = null;
+</script>
+<script src="~/Pages_JS/Utilities/EnrollUserDataGrid.js?v=1.0"></script>
+<script type="text/javascript">
+    $(document).ready(function () {
+
+         $select = new ServerVirtualDropdown({
+            apiUrl: '@_webapiurl' + "DataDropDownOptimize/GetDepartmentSimpleDropDownData",
+            tokan: '@_tokan',
+            chunkSize : Number('@_ChunkSize'),
+            dropdownId: "ddlDepartmentID",
+            selectAll: true,
+            dataKey: "DepartmentId",
+            labelKey: "DepartmentName",
+        });
+
+
+        function formatDate(date) {
+            var year = date.getFullYear();
+            var month = (date.getMonth() + 1).toString().padStart(2, '0');
+            var day = date.getDate().toString().padStart(2, '0');
+            return year + '-' + month + '-' + day;
+        }
+        $("#device_status").val("0");
+
+        var currentDate = new Date();
+        var CurrentMonth = currentDate.getMonth();
+        var CurrentYear = currentDate.getFullYear();
+
+        var fromDate = new Date(CurrentYear, CurrentMonth, 1);
+        var formattedFromDate = formatDate(fromDate);
+
+        //$('#from_date').val(formattedFromDate);
+        //$('#to_date').val(formattedFromDate);
+
+        $("#btnclose").on('click', function () {
+            $("#dataTables_tbl_header").show();
+            $('#frmpopup').modal('toggle');
+            $(".dataTables_filter").removeClass("active");
+            frmClear();
+        });
+        $("#NotificationGrid-empty1").show();
+
+        $('#ddlBranch').change(function ()
+        {
+            var branchid = $('#ddlBranch').val();
+            var cmpid = $('#ddlcompany').val();
+
+            // Check if both cmpid and branchid are '-1'
+            if (cmpid === '-1' || (branchid === '-1' || branchid === '0' || branchid == null))
+            {
+                $("#ddlDepartmentIDContainer").css("display", "none");
+            }
+            else
+            {
+                $("#ddlDepartmentIDContainer").css("display", "block");
+            }
+            if ($('#ddlBranch').val() > 0)
+            {
+                var B = $('#ddlBranch').val();
+                fillDeptTable(B, "");
+            }
+            else if ($('#ddlBranch').val() == -1)
+            {
+                var B = 0;
+                fillDeptTable(B, "");
+            }
+        });
+
+        fillDeviceSerailNo();
+        //fillEmpPunchID();
+        var obj =
+        {
+            "DeviceSerialNumber": 0,
+            "DeviceStatus": "",
+            "FromDate": "",
+            "ToDate": "",
+            "PunchID": 0,
+            "flag": 0
+        }
+        //tableGet(obj);
+
+        $("#Add").on('click', function () {
+            Step1ShowHide();
+            filldevice(0);
+            //fillemp(0);
+            fillcompany(0);
+          /*  $('#ddlBranch').val(0);*/
+            $("#ddlDepartmentID").empty();
+
+            $("#selectall").prop('checked', false);
+            $("#selectallD").prop('checked', false);
+            if ($.fn.DataTable.isDataTable('#tblempmaster')) {
+                $('#tblempmaster').DataTable().destroy();
+                $("#tblempmaster").destroy;
+            }
+            //$("#tblempmaster .ClsChkEmp").each(function () {
+            //    $(this).prop('checked', false);
+            //});
+            $("#tbldevice .ClsChkDevice").each(function () {
+                $(this).prop('checked', false);
+            });
+            //var nextStepWizard = $('div.setup-panel div a[href="#s-1"]').parent().children("a");
+            //var nextStepWizard2 = $('div.setup-panel div a[href="#s-2"]').parent().children("a");
+            //var nextStepWizard3 = $('div.setup-panel div a[href="#s-3"]').parent().children("a");
+            //nextStepWizard.removeAttr('disabled').trigger('click');
+            //nextStepWizard2.attr('disabled', 'disabled');
+            //nextStepWizard3.attr('disabled', 'disabled');
+            allEmp = [];
+            checkboxStates = {};
+            //$('#tblempmaster .ClsChkEmp').prop('checked', false);
+
+            $(this).prop('checked', false);
+
+            $("#Add").attr("data-toggle", "modal");
+            $("#Add").attr("data-target", "#frmpopup");
+        });
+
+        $("#tblEnrollUsers").on('click', '.verifyEnroll', function () {            
+            const table = $('#tblEnrollUsers').DataTable();
+            const rowData = table.row($(this).closest('tr')).data();            
+            const punchId = rowData.EmpId;
+            const deviceSrNo = rowData.DeviceSrNo;
+            $.ajax({
+                type : "GET",
+                url: '@_webapiurl' + "DeviceDemo/VerifyDeviceForEnroll",
+                headers: { 'Authorization': '@_tokan' },
+                data: { PunchID: punchId, DeviceSerialNumber: deviceSrNo },
+                dataType: "json",
+                success: function (res) {
+                    if (res == "VerifyEnroll command successfully.") {
+                        toastr.remove();
+                        toastr.success("VerifyEnroll command successfully.");
+                    } else if (res == "Employee already Verified.") {
+                        toastr.remove();
+                        toastr.success(res)
+                    } else {
+                        toastr.remove();
+                        toastr.error(res)
+                    }
+                },
+                error: function () {
+                    toastr.error("something wrong occures.");
+                }
+            })
+        });
+
+        $("#clear_opration").click(function () {
+            $("#device_serail_no").val("0").trigger('change');
+            $("#device_status").val("0");
+
+            var currentDate = new Date();
+            var CurrentMonth = currentDate.getMonth();
+            var CurrentYear = currentDate.getFullYear();
+
+            var fromDate = new Date(CurrentYear, CurrentMonth, 1);
+            var formattedFromDate = formatDate(fromDate);
+
+            $('#from_date').val(formattedFromDate);
+            $('#to_date').val(formattedFromDate);
+
+            //tableGet(obj);
+            $("#NotificationGrid-empty").hide();
+            $("#NotificationGrid-empty1").show();
+            $("#divtblEnrollUsers").hide();
+        });
+        $("#device_status").change(function () {
+            $("#device_status").removeClass('field_error');
+        });
+        $("#from_date").change(function () {
+            $("#from_date").removeClass('field_error');
+        });
+        $("#to_date").change(function () {
+            $("#to_date").removeClass('field_error');
+        });
+        function renderDownloadButton() {
+            const visibleTable = $("#yourTableId").attr("id");
+            $("#buttons").empty();
+            $("#buttons").append(`
+                <div id="export-button" class="export-button tooltips" data-placement="bottom" data-original-title="Download" data-table-id="${visibleTable}">
+                    <img src="../Newlayout/images/download_icon.svg" alt="Download icon">
+                </div>
+            `);
+        }
+        $("#search_btn").click(function (event) {
+            if ($("#device_serail_no").val() == "0") {
+                toastr.remove();
+                toastr.error("Please select device.");
+                event.preventDefault();
+                return false;
+            }
+            if ($("#device_status").val() == "") {
+                $("#device_status").addClass('field_error');
+                event.preventDefault();
+                return false;
+            }
+            if ($("#from_date").val() == "") {
+                $("#from_date").addClass('field_error');
+                event.preventDefault();//or return false
+                return false;
+            }
+            if ($("#to_date").val() == "") {
+                $("#to_date").addClass('field_error');
+                event.preventDefault();//or return false
+                return false;
+            }
+            var filFrmDate = $("#from_date").val();
+            var filToDate = $("#to_date").val();
+
+            var isDateFormat = "@_isdateformat";
+
+            if ("@_isdateformat" == "dd-mm-yyyy") {
+                isDateFormat = "DD-MM-YYYY"
+            }
+            else if ("@_isdateformat" == "mm-dd-yyyy") {
+                isDateFormat = "MM-DD-YYYY"
+            }
+            else if ("@_isdateformat" == "yyyy-mm-dd") {
+                isDateFormat = "YYYY-MM-DD"
+            }
+            else if ("@_isdateformat" == "yyyy-M-dd") {
+                isDateFormat = "YYYY-MMM-DD"
+            }
+            else if ("@_isdateformat" == "M-dd-yyyy") {
+                isDateFormat = "MMM-DD-YYYY"
+            }
+            else if ("@_isdateformat" == "dd-M-yyyy") {
+                isDateFormat = "DD-MMM-YYYY"
+            }
+
+            var frmDateMoment =moment(filFrmDate,isDateFormat);
+            var toDateMoment =moment(filToDate,isDateFormat);
+
+
+            if (frmDateMoment > toDateMoment) {
+                toastr.remove("");
+                toastr.error("From date should be greater than to date.");
+                return false;
+            }
+            var FromDate = moment(filFrmDate,isDateFormat).format("YYYY-MM-DD");;
+            var ToDate = moment(filToDate,isDateFormat).format("YYYY-MM-DD");;
+            var obj =
+            {
+                "DeviceSerialNumber": $("#device_serail_no").val(),
+                "DeviceStatus": $("#device_status").val(),
+                "FromDate": FromDate,
+                "ToDate": ToDate,
+                "PunchID": 0,
+                "flag":1
+            }
+            $("#NotificationGrid-empty1").hide();
+            var screenWidth = $(window).width();
+            if (screenWidth >= 300 && screenWidth <= 600) {
+                $(".filter_portlet_tbl").show();
+            }
+            const wrapper = $(".filter_portlet_wrapper");
+            wrapper.addClass("full-width");
+            tableGet(obj);
+            renderDownloadButton();
+        });
+
+        function filldevice(selectedDept) {
+            $.ajax({
+                type: "GET",
+                headers: { 'Authorization': '@_tokan' },
+                url: '@_webapiurl' + "Master/DeviceGetAllGrid?compCode='" + '@_compcode' + "'",
+                contentType: "application/json; charset=utf-8",
+                datatype: "json",
+                async: "false",
+                success: function (response) {
+
+                    if (response != null) {
+                        var table = "";
+                        var tbl = "";
+                        $('#s-3 #dataTables_tbl_header').remove();
+
+                        for (var i = 0; i < response.length; i++)
+                        {
+
+                            var flag = response[i].DeviceTypeCode == 39 ? 1 : 0;
+
+                            DeviceFlags.push(
+                            {
+                                DeviceTypeCode: response[i].DeviceTypeCode,
+                                Flag: flag,
+                                deviceSrno:response[i].DeviceSrNo
+                            });
+
+                            if (response[i].DeviceTypeCode == 34 && response[i].DeviceStatus == 'Online')
+                            {
+
+                                tbl = tbl + "<tr class='odd gradeX'>";
+                                tbl = tbl + "<td  hidden>" + response[i].DeviceId + "</td>";
+                                tbl = tbl + "<td>" + response[i].DeviceName + "</td>";
+                                tbl = tbl + "<td>" + response[i].DeviceSrNo + "</td>";
+                                if (selectedDept.length != 0) {
+                                    var re = new RegExp("(^|,)" + response[i].DeviceId + "($|,)");
+                                    if (re.test(selectedDept) == true) {
+                                        tbl = tbl + "<td><input type='checkbox' class='ClsChkDevice' id='chk_" + response[i].DeviceId + "' checked/></td>";
+                                    }
+                                    else {
+                                        tbl = tbl + "<td><input type='checkbox' class='ClsChkDevice' id='chk_" + response[i].DeviceId + "'/></td>";
+                                    }
+                                }
+                                else {
+                                    tbl = tbl + "<td><input type='checkbox' class='ClsChkDevice' id='chk_" + response[i].DeviceId + "'/></td>";
+                                }
+                                tbl = tbl + "</tr>";
+
+                            }
+                            else if (response[i].DeviceTypeCode == 37) {
+
+                                tbl = tbl + "<tr class='odd gradeX'>";
+                                tbl = tbl + "<td  hidden>" + response[i].DeviceId + "</td>";
+                                tbl = tbl + "<td>" + response[i].DeviceName + "</td>";
+                                tbl = tbl + "<td>" + response[i].DeviceSrNo + "</td>";
+                                if (selectedDept.length != 0) {
+                                    var re = new RegExp("(^|,)" + response[i].DeviceId + "($|,)");
+                                    if (re.test(selectedDept) == true) {
+                                        tbl = tbl + "<td><input type='checkbox' class='ClsChkDevice' id='chk_" + response[i].DeviceId + "' checked/></td>";
+                                    }
+                                    else {
+                                        tbl = tbl + "<td><input type='checkbox' class='ClsChkDevice' id='chk_" + response[i].DeviceId + "'/></td>";
+                                    }
+                                }
+                                else {
+                                    tbl = tbl + "<td><input type='checkbox' class='ClsChkDevice' id='chk_" + response[i].DeviceId + "'/></td>";
+                                }
+                                tbl = tbl + "</tr>";
+                            }
+                            else if (response[i].DeviceTypeCode == 39) {
+
+                                tbl = tbl + "<tr class='odd gradeX'>";
+                                tbl = tbl + "<td  hidden>" + response[i].DeviceId + "</td>";
+                                tbl = tbl + "<td>" + response[i].DeviceName + "</td>";
+                                tbl = tbl + "<td>" + response[i].DeviceSrNo + "</td>";
+                                if (selectedDept.length != 0) {
+                                    var re = new RegExp("(^|,)" + response[i].DeviceId + "($|,)");
+                                    if (re.test(selectedDept) == true) {
+                                        tbl = tbl + "<td><input type='checkbox' class='ClsChkDevice' id='chk_" + response[i].DeviceId + "' checked/></td>";
+                                    }
+                                    else {
+                                        tbl = tbl + "<td><input type='checkbox' class='ClsChkDevice' id='chk_" + response[i].DeviceId + "'/></td>";
+                                    }
+                                }
+                                else {
+                                    tbl = tbl + "<td><input type='checkbox' class='ClsChkDevice' id='chk_" + response[i].DeviceId + "'/></td>";
+                                }
+                                tbl = tbl + "</tr>";
+                            }
+                        }
+                        table += tbl;
+                        $("#tbldevice").destroy;
+                        $('#tbldevice').append(table);
+
+                        $('#tbldevice').dataTable({
+                            dom: _domCommon,
+                            language: _languageCommon,
+                            searching: true,
+                            paging: false,
+                            "columnDefs": [
+                                {
+                                    "targets": [0],
+                                    "visible": false,
+                                    "searchable": false,
+                                },
+                                {
+                                    "targets": 3,
+                                    orderable: false,
+                                }
+
+
+                            ],
+                            "fnDrawCallback": function (oSettings) {
+                                $("#selectallD").prop('checked', false)
+                            },
+                            "destroy": true,
+                            "bInfo": false,
+                            "bPaginate": false,
+                            "bLengthChange": false,
+                            "columns": [
+                                { "data": "DeviceId" },
+                                { "data": "DeviceName" },
+                                { "data": "DeviceSrNo" },
+                            ],
+                            "order": [[1, 'asc']],
+                        });
+                        setTimeout(function () {
+                            $("#" + "tbldevice" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive2"));
+                            $('.tooltips').tooltip();
+                        }, 100);
+                    }
+                },
+
+                beforeSend: function () {
+                    //$(".loading").show();
+                },
+                error: function () {
+                    $(".loading").hide();
+                }
+            });
+        }
+        function fillemp() {
+            var branchid = $('#ddlBranch').val();
+            var cmpid = $('#ddlcompany').val();
+            var statusid = $('#ddlStatus').val();
+            var SelectedDepartmentID = [];
+
+            $('#ddlDepartmentID :selected').each(function ()
+            {
+                if (SelectedDepartmentID == "") {
+                    SelectedDepartmentID = $(this).val();
+                }
+                else {
+                    SelectedDepartmentID += "," + $(this).val();
+                }
+            });
+            if (SelectedDepartmentID.length == 0)
+            {
+                SelectedDepartmentID = "";
+            }
+            let isSelectedAll = $("#ddlDepartmentIDContainer li").hasClass("multiselect-item multiselect-all active") == true ? 1 : 0;
+
+            let searchTerm = "";
+            if ($("#ddlDepartmentIDContainer li input").hasClass("multiselect-search")) {
+                searchTerm = $("#ddlDepartmentIDContainer li .multiselect-search").val().trim();
+            }
+            if (isSelectedAll) {
+                SelectedDepartmentID = "";
+                if (searchTerm.length > 0) {
+                    SelectedDepartmentID = "0"
+                }
+            }
+            var mainObj =
+            {
+                "SelectAll": isSelectedAll,
+                "SelectAllSearchTerm": searchTerm,
+                "BranchId": branchid,
+                "CmpId": cmpid,
+                "StatusId": statusid,
+                "DptId": SelectedDepartmentID,
+                "DataGridValues": DataGridThreSold,
+                "webapiurl" : '@_webapiurl',
+                "tokan": '@_tokan',
+                "pageSize": "10",
+                "page" : "1"
+            };
+            LoadEnrollUserGridData(1,mainObj)
+        }
+
+        $("#selectall").on("change", function (e) {
+            if ($(this).is(":checked")) {
+                $("#tblempmaster .ClsChkEmp").each(function () {
+                    $(this).prop('checked', true);
+                });
+            } else {
+                $("#tblempmaster .ClsChkEmp").each(function () {
+                    $(this).prop('checked', false);
+                });
+            }
+        });
+
+        $("#selectallD").on("change", function (e) {
+
+            if ($(this).is(":checked")) {
+
+                $("#tbldevice .ClsChkDevice").each(function () {
+                    $(this).prop('checked', true);
+                });
+            } else {
+                $("#tbldevice .ClsChkDevice").each(function () {
+                    $(this).prop('checked', false);
+                });
+            }
+        });
+
+
+        //Step-Wizard-------------
+
+
+
+        var navListItems = $('#frmpopup div.setup-panel div a'),
+            allWells = $('#frmpopup .setup-content'),
+            allNextBtn = $('#frmpopup .nextBtn'),
+            allPrevBtb = $('#frmpopup .prevbtn');
+        allWells.hide();
+        navListItems.click(function (e) {
+            e.preventDefault();
+            var $target = $($(this).attr('href')),
+                $item = $(this);
+            if (!$item.hasClass('disabled')) {
+                navListItems.removeClass('btn-primary').addClass('btn-default');
+                $item.addClass('btn-primary');
+                allWells.hide();
+                $target.show();
+            }
+        });
+
+        $("#s1").click(function (event) {
+            Step1ShowHide();
+            if (isflagstep2 && isflagstep3) {
+                $("#s2").removeClass("disabled");
+                $("#s3").removeClass("disabled");
+            } else if(isflagstep2) {
+                $("#s2").removeClass("disabled");
+            }
+        });
+
+        $("#s2").click(function (event) {
+            Step2ShowHide();
+            if(isflagstep3) {
+                $("#s3").removeClass("disabled");
+            }
+        });
+
+        $("#s3").click(function (event) {
+            Step3ShowHide();
+        });
+
+        $("#frstNext").click(function (event) {
+            $("#dataTables_tbl_header").show();
+            isflagstep2 = true;
+            $('#SecondTabBtnDiv').css("display","block");
+            event.stopPropagation();
+            event.preventDefault();
+            var el = $(this);
+            el.prop('disabled', true);
+            setTimeout(function () { el.prop('disabled', false); }, 1500);
+            if ($('#ddlcompany').val() == 0 || $('#ddlcompany').val() == null) {
+                $("#ddlcompany").addClass('field_error');
+                $('#ddlcompany').focus();
+                event.preventDefault();
+                return false;
+            }
+            else {
+                $("#ddlcompany").removeClass('field_error');
+            }
+            if ($('#ddlBranch').val() == 0 || $('#ddlBranch').val() == null) {
+                $("#ddlBranch").addClass('field_error');
+                $('#ddlBranch').focus();
+                event.preventDefault();
+                return false;
+            }
+            else {
+                $("#ddlBranch").removeClass('field_error');
+            }
+            fillemp();
+            var curStep1 = $("#frstNext").closest(".setup-content"),
+                curStepBtn1 = curStep1.attr("id"),
+                nextStepWizard1 = $('div.setup-panel div a[href="#' + curStepBtn1 + '"]').parent().next().children("a"),
+                curInputs1 = curStep1.find("input[type='text'],input[type='url'],select"),
+                isValid1 = true;
+            //$("#step2").removeClass("disabled");
+            if (isValid1)
+            {
+                //nextStepWizard1.removeAttr('disabled').trigger('click');
+                Step2ShowHide();
+            }
+        });
+
+
+        $("#SecondNext").click(function (event) {
+            isflagstep3 = true;
+            $('#SecondTabBtnDiv').css("display","block");
+            var el = $(this);
+            el.prop('disabled', true);
+            setTimeout(function () { el.prop('disabled', false); }, 1500);
+            if (Employeeselect()) {
+                //var curStep1 = $("#SecondNext").closest(".setup-content"),
+                //    curStepBtn1 = curStep1.attr("id"),
+                //    nextStepWizard1 = $('div.setup-panel div a[href="#' + curStepBtn1 + '"]').parent().next().children("a"),
+                //    curInputs1 = curStep1.find("input[type='text'],input[type='url'],select"),
+                isValid1 = true;
+                //$("#step3").removeClass("disabled");
+                if (isValid1)
+                    //nextStepWizard1.removeAttr('disabled').trigger('click');
+                    Step3ShowHide();
+            }
+            else {
+                toastr.remove();
+                toastr.error("Please select employee.");
+                return false;
+            }
+        });
+        $("#btnEnrollsubmit").click(function (event) {
+            $("#dataTables_tbl_header").show();
+            checkSession();
+            var el = $(this);
+            el.prop('disabled', true);
+            setTimeout(function () { el.prop('disabled', false); }, 1500);
+            Deviceselect();
+            checkboxStates = {};
+            $('#tblempmaster .ClsChkEmp').prop('checked', false);
+            $(this).prop('checked', false);
+            renderDownloadButton();
+            $("#NotificationGrid-empty1").hide();
+        });
+        //allPrevBtb.click(function () {
+        //    var curStep1 = $(this).closest(".setup-content"),
+        //        curStepBtn1 = curStep1.attr("id"),
+        //        nextStepWizard1 = $('div.setup-panel div a[href="#' + curStepBtn1 + '"]').parent().prev().children("a"),
+        //        curInputs1 = curStep1.find("input[type='text'],input[type='url']"),
+        //        isValid1 = true;
+
+        //    $(".form-group").removeClass("has-error");
+        //    if (isValid1)
+        //    {
+        //        //nextStepWizard1.removeAttr('disabled').trigger('click');
+        //        //Step1ShowHide();
+        //    }
+        //});
+
+        $("#Secondprev").click(function (event) {
+            isflagstep2 = true;
+            Step1ShowHide();
+            if (isflagstep2 && isflagstep3) {
+                $("#s2").removeClass("disabled");
+                $("#s3").removeClass("disabled");
+            } else if(isflagstep2) {
+                $("#s2").removeClass("disabled");
+            }
+        });
+
+        $("#Thirdprev").click(function (event) {
+            Step2ShowHide();
+            $("#s2").removeClass("disabled");
+            $("#s3").removeClass("disabled");
+        });
+
+        //***********************************frmattndpopup Model Steps Show/Hide with BtnTab for Fixed Footer***********************************//
+        function Step1ShowHide() {
+
+            //*****show/Hide setup-content perticular step*****//
+            $("#s-1").css("display", "block");
+            $("#s-2").css("display", "none");
+            $("#s-3").css("display", "none");
+
+            //For Highlight pericualr stepwizard-step
+            $("#s1").addClass("btn-primary");
+            $("#s2").removeClass("btn-primary");
+            $("#s3").removeClass("btn-primary");
+
+            //For click perticular stepwizard-step
+            $("#s1").removeClass("disabled");
+            $("#s2").addClass("disabled");
+            $("#s3").addClass("disabled");
+
+            //*****Show/Hide Step perticular step Btntab*****//
+            $("#FrstTabBtnDiv").css("display", "block");
+            $("#SecondTabBtnDiv").css("display", "none");
+            $("#ThirdTabBtnDiv").css("display", "none");
+        }
+
+        function Step2ShowHide() {
+
+            //*****show/Hide setup-content perticular step*****//
+            $("#s-2").css("display", "block");
+            $("#s-1").css("display", "none");
+            $("#s-3").css("display", "none");
+
+            //For Highlight pericualr stepwizard-step
+            $("#s2").addClass("btn-primary");
+            $("#s1").removeClass("btn-primary");
+            $("#s3").removeClass("btn-primary");
+
+            //For click perticular stepwizard-step
+            $("#s2").removeClass("disabled");
+            $("#s1").removeClass("disabled");
+            $("#s3").addClass("disabled");
+
+            //*****Show/Hide Step perticular step Btntab*****//
+            $("#SecondTabBtnDiv").css("display", "block");
+            $("#FrstTabBtnDiv").css("display", "none");
+            $("#ThirdTabBtnDiv").css("display", "none");
+        }
+
+        function Step3ShowHide() {
+
+            //*****show/Hide setup-content perticular step*****//
+            $("#s-3").css("display", "block");
+            $("#s-1").css("display", "none");
+            $("#s-2").css("display", "none");
+
+            //For Highlight pericualr stepwizard-step
+            $("#s3").addClass("btn-primary");
+            $("#s1").removeClass("btn-primary");
+            $("#s2").removeClass("btn-primary");
+
+            //For click perticular stepwizard-step
+            $("#s3").removeClass("disabled");
+            $("#s1").removeClass("disabled");
+            $("#s2").removeClass("disabled");
+
+            //*****Show/Hide Step perticular step Btntab*****//
+            $("#ThirdTabBtnDiv").css("display", "block");
+            $("#FrstTabBtnDiv").css("display", "none");
+            $("#SecondTabBtnDiv").css("display", "none");
+        }
+        //******************************END********************************//
+
+        function Deviceselect()
+        {
+            var device = [];
+            $("#tbldevice .ClsChkDevice").each(function (key, value)
+            {
+                if ($(this).is(':checked') == true)
+                {
+                    device.push($(this).parent('td').parent('tr').children(key)[1].innerText);
+                }
+            });
+            if (device.length == 0) {
+                toastr.remove();
+                toastr.error("Please select device.");
+                return false;
+            }
+
+
+            var Emp = [];
+            for (d = 0; d < device.length; d++)
+            {
+                for (i = 0; i < allEmp.length; i++)
+                {
+                    var FinallEmp = {};
+                    FinallEmp.EmpId = allEmp[i].EmpPunchID;
+                    FinallEmp.EmpName = allEmp[i].EmpName;
+                    FinallEmp.Email = allEmp[i].Email;
+                    //FinallEmp.EmpPhoto = allEmp[i].EmpPhoto;
+                    FinallEmp.DeviceId = device[d];
+
+                    var matchedDevice = DeviceFlags.find(function(dev)
+                    {
+                        return dev.deviceSrno === device[d];
+                    });
+                    if (matchedDevice)
+                    {
+                        FinallEmp.FlageDeviceCodeTypeCheck = matchedDevice.DeviceTypeCode;
+                    }
+                    else
+                    {
+                        FinallEmp.FlageDeviceCodeTypeCheck = 0; // Default flag value if no match found
+                    }
+                    Emp.push(FinallEmp);
+                }
+            }
+            var reqobj =
+            {
+                ObjEmp: Emp
+            }
+            $.ajax({
+                type: "POST",
+                headers: { 'Authorization': '@_tokan' },
+                url: '@_webapiurl' + 'DeviceDemo/EmmployeeEnrollment',
+                data: JSON.stringify(reqobj),
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                beforeSend: function () {
+                    $(".loading").show();
+                },
+                success: function (response) {
+                    if (response != null) {
+                        toastr.remove();
+                        toastr.success(response.Msg);
+                        //$('#tblEnrollUsers').DataTable().ajax.reload();
+                        $('#frmpopup').modal('toggle');
+                        tableGet(obj);
+                    } else {
+                        toastr.remove();
+                        toastr.success("Enrollment sucessfully.");
+                        //$('#tblEnrollUsers').DataTable().ajax.reload();
+                        $('#frmpopup').modal('toggle');
+                        tableGet(obj);
+                    }
+                },
+                complete: function () {
+                    $(".loading").hide();
+                },
+                error: function (response) {
+                    if (response != null) {
+                        var obj = JSON.parse(response.responseText);
+
+                        if (obj.MsgSts == 'error') {
+                            toastr.remove();
+                            toastr.error(obj.Msg);
+                            //$('#tblEnrollUsers').DataTable().ajax.reload();
+                            $('#frmpopup').modal('toggle');
+                        }
+                    }
+                }
+            });
+        }
+        function fillcompany(selectedcompanyid) {
+            @*var _urlcmp = '@_webapiurl' + "Master/CompanyGetAll";
+            $('#ddlcompany').empty();
+            $('#ddlBranch').empty();
+
+            if (emprole == 6805 || emprole == 6806 || emprole > 1) {
+                _urlcmp = '@_webapiurl' + 'Master/CompanyGetById?id=' + cmpid;
+            }*@
+            $('#ddlcompany').empty();
+            CompanyDropdown = new Select2Dropdown({
+                    dropdownId: "ddlcompany", // ID of the dropdown
+                    apiUrl: '@_webapiurl' + 'DataDropDownOptimize/GetCompanyDropDownPaginated', // API URL for fetching data
+                    dataKey: "Id", // Key for value
+                    labelKey: "Name", // Key for text
+                    token: '@_tokan', // Optional auth token
+                    chunkSize : Number('@_ChunkSize'),
+                    extraParams: { RoleId: '@_RoleId', CompanyID: '@_companyid' }
+            });
+
+            var selectedCompanyID = $("#ddlcompany").val();
+
+                simpleBranchDropdown = new Select2Dropdown({
+                dropdownId: "ddlBranch", // ID of the dropdown
+                apiUrl: '@_webapiurl' + 'DataDropDownOptimize/GetBranchDropDownPaginated', // API URL for fetching data
+                dataKey: "Id", // Key for value
+                labelKey: "Name", // Key for text
+                token: '@_tokan', // Optional auth token
+                chunkSize : Number('@_ChunkSize'),
+                extraParams: { CompanyID: selectedCompanyID, BranchID: '@_branchid', RoleId: '@_RoleId' }
+                });
+
+            var newOption1 = new Option("All Company", -1, true, true);
+            var newOption2 = new Option("All Branch", -1, true, true);
+            $('#ddlBranch').append(newOption2)
+            $('#ddlcompany').append(newOption1).trigger('change');
+            //simpleBranchDropdown.data = { key: -1, val: "All Branch" }
+            //$('#ddlBranch').trigger('change');
+
+        }
+        @*function fillbranch(selectedcompanyid) {
+            $('#ddlBranch').empty();
+            $.ajax(
+                {
+                    type: "GET",
+                    headers: { 'Authorization': '@_tokan' },
+                    url: '@_webapiurl' + "Master/BranchGetAll",
+                    dataType: "json",
+                    beforeSend: function () {
+                    },
+                    success: function (data) {
+                        if (data.isRedirect) {
+                            window.location.href = data.redirectUrl;
+                        }
+                        $("#ddlBranch").append("<option value='0'>Select Branch</option>");
+                        data.sort(function (a, b) {
+                            return a.branchname.localeCompare(b.branchname);
+                        });
+                        $("#ddlBranch").append("<option value='-1'>All Branch</option>"); // Add "All Branch" option at the top
+                        var _cmpid = 0;
+                        for (var x = 0; x < data.length; x++) {
+                            if (selectedcompanyid == '0') {
+                                $("#ddlBranch").append("<option value=" + data[x].BranchId + ">" + data[x].branchname + "</option>");
+                            }
+                            else {
+                                if (data[x].CompanyID == selectedcompanyid) {
+                                    _cmpid = data[x].CompanyID;
+                                    $("#ddlBranch").append("<option value=" + data[x].BranchId + ">" + data[x].branchname + "</option>");
+                                }
+                            }
+                        }
+                        if (_cmpid == selectedcompanyid || selectedcompanyid == '-1') {
+                            $("#ddlBranch option[value='-1']").prop('selected', true);
+                        } else if (_cmpid == '0') {
+                            $("#ddlBranch option[value='-1']").hide();
+                        }
+                    },
+
+                    error: function (jqXHR, ajaxOptions, thrownError) {
+                        if (jqXHR.status == 500) { //InternalServerError = 500,
+                            toastr.error("InternalServerError");
+                        } else if (jqXHR.status == 400) { //BadRequest = 400,
+                            toastr.error("BadRequest");
+                        } else if (jqXHR.status == 401) {
+                            window.location.href = "/PayTime/LoginPage";
+                        }
+                    }
+                });
+        }*@
+        function fillbranch(selectedcompanyid) {
+
+            $('#ddlBranch').empty();
+            var empid = '@_empid';
+
+            if (emprole !=  6806) {
+                var _url = '@_webapiurl' + "Master/BranchGetAll";
+            }
+            else{
+                if (empid != 0)
+                {
+                    var  _url =  "/MasterData/GetBranchlist?CompanyID=" + selectedcompanyid + "&Empid=" + empid;
+                }
+                else{
+                    var  _url =  "/MasterData/FillBranchbyChange?id=" + selectedcompanyid ;
+                }
+            }
+            $.ajax(
+                {
+                    type: "GET",
+                    headers: { 'Authorization': '@_tokan' },
+
+                    // url: '@_webapiurl' + "Master/BranchGetAll",
+                    // url :  "/MasterData/GetBranchlist?CompanyID=" + companyid + "&Empid=" + empid,
+                    url : _url,
+                    dataType: "json",
+                    beforeSend: function () {
+                    },
+                    success: function (data) {
+
+                        if (data.isRedirect) {
+                            window.location.href = data.redirectUrl;
+                            return; // Stop further execution if redirected
+                        }
+                        $("#ddlBranch").append("<option value='0'>Select Branch</option>");
+
+                        // Sort the branches alphabetically by BranchName
+                        //data.sort(function (a, b) {
+                        //    return a.BranchName.localeCompare(b.BranchName); // Correct sorting based on BranchName
+                        //});
+
+                        $("#ddlBranch").append("<option value='-1'>All Branch</option>");
+                        var _cmpid = 0;
+
+                        for (var x = 0; x < data.length; x++) {
+                            if (selectedcompanyid != '0') { // Only append branches if a specific company is selected
+                                if('@_RoleId' == 1 || '@_RoleId' == 6805 )
+                                {
+                                    $("#ddlBranch").append("<option value='" + data[x].BranchId + "'>" + data[x].branchname + "</option>");
+                                }
+                                else if( '@_RoleId' == 6806 ){
+                                    $("#ddlBranch").append("<option value='" + data[x].BranchId + "'>" + data[x].BranchName + "</option>");
+                                }
+                                else
+                                {
+                                    $("#ddlBranch").append("<option value='" + data[x].BranchId + "'>" + data[x].BranchName + "</option>");
+                                }
+                                _cmpid = data[x].CompanyID; // Track the matching company ID
+                            }
+                        }
+                        if (_cmpid == selectedcompanyid || selectedcompanyid == '-1') {
+                            $("#ddlBranch option[value='-1']").prop('selected', true);
+                        } else if (_cmpid == '0') {
+                            // Hide "All Branch" option if no matching company was found
+                            $("#ddlBranch option[value='-1']").hide();
+                        }
+                    },
+
+                    error: function (jqXHR, ajaxOptions, thrownError) {
+                        if (jqXHR.status == 500) { //InternalServerError = 500,
+                            toastr.error("InternalServerError");
+                        } else if (jqXHR.status == 400) { //BadRequest = 400,
+                            toastr.error("BadRequest");
+                        } else if (jqXHR.status == 401) {
+                            window.location.href = "/PayTime/LoginPage";
+                        }
+                    }
+                });
+        }
+
+        $("#ddlcompany").change(function () {
+            $("#ddlcompany").removeClass('field_error');
+            $("#ddlBranch").empty();
+            var cmpid = $("#ddlcompany").val();
+            var branchid = $('#ddlBranch').val();
+            if (cmpid === '-1' || (branchid === '-1' || branchid === '0'||branchid == null))
+            {
+                $("#ddlDepartmentIDContainer").css("display", "none");
+            }
+
+            else
+            {
+                $("#ddlDepartmentIDContainer").css("display", "none");
+            }
+            simpleBranchDropdown.extraParams = { CompanyID: cmpid, BranchID: '@_branchid', RoleId: '@_RoleId',EmpID : '@_empid' }
+            if ($("#ddlcompany").val() == null) {
+                $('#ddlBranch').val(null).trigger('change');
+            }
+            else {
+                var newOption2 = new Option("All Branch", -1, true, true);
+                $('#ddlBranch').append(newOption2).trigger('change');
+            }
+            //var newOption = new Option("All Branch", -1, true, true);
+            //$('#ddlBranch').append(newOption).trigger('change');
+
+
+
+
+                //var data = {
+                //    id: -1,
+                //    text: 'All branch'
+                //};
+                //var newOption = new Option(data.text, data.id, true, true);
+                //$("#ddlBranch").append(newOption).trigger("change");
+
+
+
+            /*fillbranch(cmpid);*/
+        });
+        //$("#ddlBranch").change(function () {
+        //    $("#ddlBranch").removeClass('field_error');
+        //    var brid = $("#ddlBranch").val();
+        //    fillemp();
+        //});
+
+        window.onload = function () {
+            timeSpentOnPage();
+        }
+        $(window).on("beforeunload", function () {
+            if (operation == "" || operation == null || operation == '') {
+                operation = "View EnrollUser";
+            }
+            var url = '@_webapiurl' + '/DashBoard/AddAnalyticsUser';
+            var timeSpent = timeSpentOnPage();
+            analyticsDataUsage(url, '@_dbName', form, '@_tokan', count, operation, timeSpent)
+        });
+        function checkSession() {
+            $.ajax({
+                type: "GET",
+                async: false,
+                url: "/ESS/checkSession",
+                contentType: "application/json; charset=utf-8",
+                success: function (data) {
+                    if (data.isRedirect) {
+                        window.location.href = data.redirectUrl;
+                    }
+                },
+                error: function (data) {
+                    window.location.href = data;
+                }
+            });
+        }
+        function tableGet(obj) {
+            $('#tblEnrollUsers').DataTable().destroy();
+            $("#tblEnrollUsers tbody").empty();
+            //$('#tblEnrollUsers').hide();
+            $("#dataTables_tbl_header").remove();
+            var t = $('#tblEnrollUsers').DataTable(
+            {
+                 dom: _domCommon,
+                 language: _languageCommon,
+                "processing": true,
+                "ajax": {
+                    url: '@_webapiurl' + 'DeviceDemo/GetEnrolluser',
+                    data: obj,
+                    type: "POST",
+                    headers: { 'Authorization': '@_tokan' },
+                    dataSrc: '',
+                },
+                "columns": [
+                    { "data": null, visible:false },
+                    { "data": "EmpId" },
+                    { "data": "EmpName" },
+                    { "data": "DeviceSrNo" },
+                    { "data": "email" },
+                    { "data": "DevId" },
+                    { "data": "DeviceUserId" },
+                    { "data": "PhotoPath" },
+                    { "data": "status" },
+                ],
+                "columnDefs": [
+                    {
+                        "targets": [5, 6, 7],
+                        "visible": false
+                    },
+                    {
+                        "targets": 9,
+                        "data": "status",
+                        //"defaultContent": '<a class="editclass btn btn-xs blue tooltips" title="Edit"><i class="fa-regular fa-pen-to-square"> </i></a>  <a class="uploadclass btn btn-xs blue tooltips" title="upload"><i class="fa-regular fa-upload"> </i></a>'
+                        "render": function (data, type, row, meta) {
+                            if (row.status && row.status.toLowerCase() === "success") {
+                                return '<a class="verifyEnroll btn btn-xs seagreen_btnnew tooltips" title="" data-placement="top" data-original-title="VerifyEnroll"><i class="fa-regular fa-check-to-slot" style="font-size: 15px;"></i></i></a>';
+                            }
+                            return '';
+                        }
+                    },
+                    {
+                        "targets": 4,
+                        render: function (data, type, full, meta) {
+                            if (type === 'display' && data != null && data.trim() !== '') {
+                                return obfuscateEmail(data);
+                            }
+                            return data;
+                        }
+                    },
+                    {
+                        "searchable": false,
+                        "orderable": false,
+                        "targets": 0
+                    }],
+                "order": [[3, 'asc']],
+                // Check if the table is empty after the data is loaded
+
+                    "initComplete": function (settings, json) {
+                        let hasSuccess = json.some(item => item.status && item.status.toLowerCase() === "success");
+
+                        if (!hasSuccess) {
+                            t.column(9).visible(false);
+                        } else {
+                            t.column(9).visible(true);
+                        }
+                        if (json != null) {
+                            const user = json;
+                            handleGridVisibility("divtblEnrollUsers", "NotificationGrid-empty", user, {
+                                imageUrl: "emptyscreen_3.png",
+                                subText: "No matching records found for the selected filters."
+                            });
+                        }
+                        if (json.length == 0) {
+                            const wrapper = $(".filter_portlet_wrapper");
+                            wrapper.removeClass("full-width");
+                        }
+                        //alert("DataTable is empty after loading data.");
+                        //$('#divtblEnrollUsers').hide();  // Example: Show an empty message
+                        //$('#no_data').show();
+
+
+                    //    else {
+                    //    //alert("DataTable has data.");
+                    //    $('#divtblEnrollUsers').show();  // Hide the empty message
+                    //    $('#no_data').hide();
+                    //}
+                    //const visibleTable = $('table:visible').attr('id');
+                    //    $("#buttons").append(`
+                    //        <div id="export-button" class="export-button tooltips" data-placement="bottom" data-original-title="Download" data-table-id="${visibleTable}">
+                    //            <img src="../Newlayout/images/download_icon.svg" alt="Download icon">
+                    //        </div>
+                    //     `);
+                }
+            }
+
+
+            );
+            setTimeout(function () {
+                $("#" + "tblEnrollUsers" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+                $('.tooltips').tooltip();
+            }, 100);
+            t.on('order.dt search.dt', function () {
+                t.column(0, { search: 'applied', order: 'applied' }).nodes().each(function (cell, i) {
+                    cell.innerHTML = i + 1;
+                });
+            }).draw();
+        }
+
+        //$("#Filter_search").click(function () {
+        //    $("#filter_open_div").toggle();
+        //});
+
+        $("#Filter_search").click(function () {
+            const wrapper = $(".filter_portlet_wrapper");
+            wrapper.toggleClass("full-width");
+
+            var screenWidth = $(window).width();
+            if (screenWidth >= 300 && screenWidth <= 600) {
+                $('.filter_portlet_tbl').toggle();
+                $('.filter_portlet_wrapper .filter_boxModal').css('width', '100%');
+            }
+        });
+
+        // Close filter panel on close button click
+        $(".filterclose_btn").click(function () {
+            const wrapper = $(".filter_portlet_wrapper");
+            wrapper.addClass("full-width");
+
+            var screenWidth = $(window).width();
+            if (screenWidth >= 300 && screenWidth <= 600) {
+                $(".filter_portlet_tbl").css("display", "block");
+            }
+        });
+    });
+    function fillDeptTable(BranchId, selectedDept) {
+
+        $("#ddlDepartmentID").empty();
+        $select.data = { BranchID: $("#ddlBranch").val() };
+        $select.loadInitialData();
+        //$.ajax({
+        //    type: "GET",
+        //    //url: "/MasterData/GetDeptbyBranchstrOnboarding?BranchId=" + BranchId,
+        //    url: "/MasterData/GetDeptbyBranch?BranchId=" + BranchId,
+        //    data: { BranchId: BranchId },
+        //    contentType: "application/json; charset=utf-8",
+        //    datatype: "json",
+        //    async: "false",
+        //    success: function (response) {
+        //        if (response != null) {
+        //            for (var i = 0; i < response.length; i++) {
+        //                $('#ddlDepartmentID').append('<option value="' + response[i].Value + '">' + response[i].Text + '</option>');
+        //            }
+        //            $selectDepart.multiselect('rebuild');
+
+        //            if (selectedDept) {
+        //                var selectedOptions = selectedDept.split(",");
+        //                for (var i in selectedOptions) {
+        //                    var optionVal = selectedOptions[i];
+        //                    $("#ddlDepartmentID").find("option[value='" + optionVal + "']").prop("selected", true);
+        //                }
+        //                $("#ddlDepartmentID").multiselect("refresh");
+        //            }
+
+        //            //$(document.body).on('change', '#DeptIds', function () {
+        //            //    $("#spvalidation").hide();
+        //            //    var deptid = $('#ddlDepartmentID option:selected');
+        //            //    var DeptArray = [];
+        //            //    $(deptid).each(function (index, deptid) {
+        //            //        DeptArray.push([$(this).val()]);
+        //            //    });
+        //            //    if (DeptArray == "") {
+        //            //        $("#txt2").val(0);
+        //            //    }
+        //            //    else {
+        //            //        $("#txt2").val(DeptArray);
+        //            //        $("#spValidation").hide();
+        //            //    }
+        //            //    var ArrDept = $("#txt2").val();
+        //            //    DeptIdlst = ArrDept;
+        //            //    $("#ddlDepartmentID").val(DeptIdlst);
+        //            //});
+        //        }
+        //        $(".loading").hide();
+        //    },
+        //    beforeSend: function () {
+        //        $(".loading").show();
+        //    },
+        //    error: function () {
+        //        $(".loading").hide();
+        //    }
+        //});
+    }
+    function fillDeviceSerailNo() {
+        $.ajax({
+            type: "GET",
+            headers: { 'Authorization': '@_tokan' },
+            url: '@_webapiurl' + "Master/DeviceGetAllGrid?compCode='" + '@_compcode' + "'",
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            beforeSend: function () {
+                $(".loading").show();
+            },
+            success: function (response)
+            {
+
+                if (response != null) {
+                    if (response.isRedirect) {
+                        window.location.href = response.redirectUrl;
+                    }
+                    $(".loading").hide();
+                    var markup = '';
+                    for (var x = 0; x < response.length; x++)
+                    {
+                        markup += "<option value='" + response[x].DeviceSrNo + "'>" + response[x].DeviceName + " (" + response[x].DeviceSrNo +")"+ "</option>";
+                    }
+                    var newOption = '<option selected="selected" value="0">Select Device</option>';
+                    $('#device_serail_no').html(newOption).append(markup);
+                }
+            },
+            error: function (jqXHR, ajaxOptions, thrownError) {
+                $(".loading").hide(); // Hide the loading indicator on error
+                switch (jqXHR.status) {
+                    case 500: // InternalServerError
+                        toastr.error("Internal Server Error");
+                        break;
+                    case 400: // BadRequest
+                        toastr.error("Bad Request");
+                        break;
+                    case 401: // Unauthorized
+                        window.location.href = "/PayTime/LoginPage";
+                        break;
+                    default:
+                        toastr.error("An unexpected error occurred");
+                }
+            }
+        });
+    }
+    function fillEmpPunchID() {
+        $.ajax({
+            type: "GET",
+            headers: { 'Authorization': '@_tokan' },
+            url: '@_webapiurl' + "Master/EmployeeGetAllEnroll",
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            beforeSend: function () {
+                $(".loading").show();
+            },
+            success: function (response) {
+                if (response != null) {
+                    if (response.isRedirect) {
+                        window.location.href = response.redirectUrl;
+                    }
+                    $(".loading").hide();
+
+                    var markup = '';
+                    for (var x = 0; x < response.length; x++) {
+                        markup += "<option value='" + response[x].EmpPunchID + "'>" + response[x].EmpPunchID + "</option>";
+                    }
+
+                    var newOption = '<option selected="selected" value="0">Select EmpPunchid</option>';
+                    $('#punch_id').html(newOption).append(markup);
+                }
+            },
+            error: function (jqXHR, ajaxOptions, thrownError) {
+                $(".loading").hide(); // Hide the loading indicator on error
+                switch (jqXHR.status) {
+                    case 500: // InternalServerError
+                        toastr.error("Internal Server Error");
+                        break;
+                    case 400: // BadRequest
+                        toastr.error("Bad Request");
+                        break;
+                    case 401: // Unauthorized
+                        window.location.href = "/PayTime/LoginPage";
+                        break;
+                    default:
+                        toastr.error("An unexpected error occurred");
+                }
+            }
+        });
+    }
+    function frmClear()
+    {
+        isflagstep2 = false;
+        isflagstep3 = false;
+        $("#ddlDepartmentIDContainer").css("display", "none");
+        $('#ddlStatus').val(1);
+    }
+</script>
+
+<div class="page-bar">
+    @if (_RoleId == 1 || _RoleId == 6805 || _RoleId == 6806)
+    {
+        <ul class="page-breadcrumb">
+            <li>
+                <a href="@(isClientDBMatchFlag == "True" ? "/Admin/AdminDashboard" : "/Dashboard/AdminDashboard")"><i class="fa-regular fa-house"></i></a>
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> Enroll User</span>
+            </li>
+        </ul>
+    }
+    else
+    {
+        <ul class="page-breadcrumb">
+            <li>
+                <a href="/Dashboard/EmployeeDashboard"><i class="fa-regular fa-house"></i></a>
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> Enroll User</span>
+            </li>
+        </ul>
+    }
+    <div class="page-toolbar text-right">
+        <a href="javascript:;" class="btn icon_transparent_btn tooltips" id="Filter_search" data-placement="left" data-original-title="Filter" data-toggle="tooltip"><i class="fa-light fa-filter" aria-hidden="true"></i> </a>
+    </div>
+</div>
+
+<div id='ajax_loader' class="modal_bg loading" aria-hidden="true">
+    <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading" />
+</div>
+
+
+
+
+
+<div class="filter_portlet_wrapper full-width">
+    <!-- Datatable Block : Begin -->
+    <div class="portlet filter_portlet_tbl">
+        <div class="portlet-body">
+            <div id="divtblEnrollUsers" style="display:none;">
+                <div class="table-responsive" id="tableResponsive">
+                    <table id="tblEnrollUsers" class="table new_datatbl table-striped table-bordered table-hover table-checkable order-column">
+                        <thead>
+                            <tr>
+                                <th style="display:none;">Sr. No</th>
+                                <th>Punch ID</th>
+                                <th>Employee Name</th>
+                                <th>Serial No</th>
+                                <th>Email</th>
+                                <th hidden>DevId</th>
+                                <th hidden>DeviceUserId</th>
+                                <th hidden>PhotoPath</th>
+                                <th>Status</th>
+                                <th>@PayTimeWebClient.Resource.Resource.Action</th>
+                            </tr>
+                        </thead>
+                    </table>
+                </div>
+
+            </div>
+            <div id="NotificationGrid-empty" style="display: none">
+                <div class="datanotfound">
+                    <img src="" height="148" width="280" alt="Nodata Found Icon">
+                    <p class="datanotfound_title"></p> <!-- titleText -->
+                    <p class=""></p><!-- subText -->
+                </div>
+            </div>
+            <div id="NotificationGrid-empty1" style="display: none">
+                <div class="datanotfound">
+                    <img src="~/assets/images/emptyscreen_3.png" height="148" width="280" alt="No Data Found Icon">
+                    <p class="datanotfound_title">No data show</p>
+                    <p class="datanotfound_subtitle">Start by applying a filter to view relevant data.</p>
+                </div>
+            </div>
+            <div id="frmpopup" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+                <div class="modal-dialog">
+                    <!-- Modal content-->
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <button type="button" class="close" data-dismiss="modal" id="btnclose">&times;</button>
+                            <h4 class="modal-title">Users</h4>
+                        </div>
+                        <div class="modal-body">
+                            <div class=" stepwizard">
+                                <div class=" stepwizard-row setup-panel">
+                                    <div class="stepwizard-step">
+                                        <a href="#s-1" id="s1" type="button" class="btn btn-primary btn-circle disabled"><i class="fa-light fa-code-fork"></i>Select Branch</a>
+                                    </div>
+                                    <div class="stepwizard-step">
+                                        <a href="#s-2" id="s2" type="button" class="btn btn-default btn-circle disabled"><i class="fa-light fa-user-tie"></i>Select Employee</a>
+                                    </div>
+                                    <div class="stepwizard-step">
+                                        <a href="#s-3" id="s3" type="button" class="btn btn-default btn-circle disabled"><i class="fa-light fa-fax"></i>Select Devices</a>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="setup-content" id="s-1">
+                                <div class="modal-card">
+                                    <div class="row margin-top-15">
+                                        <div class="col-md-6">
+                                            <div class="form-group">
+                                                <label class="control-label">Company</label>
+                                                <select class="form-control input-sm" id="ddlcompany" name="ddlcompany">
+                                                    <option value="0" selected>Select Company</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <div class="form-group">
+                                                <label class="control-label">Branch</label>
+                                                <select class="form-control input-sm" id="ddlBranch" name="ddlBranch">
+                                                    <option value="0" selected>Select Branch</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-6" id="ddlDepartmentIDContainer" style="display:none;">
+                                            <div class="form-group " id="field_errorDepartmentID">
+                                                <label class="control-label">Department</label>
+                                                <input type="text" id="txt2" value="0" hidden />
+                                                <select id="ddlDepartmentID" class="mt-multiselect btn-sm btn blue btn-outline" aria-haspopup="true" aria-expanded="false" multiple="multiple" data-width="100%"></select>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <div class="form-group">
+                                                <label class="control-label">Status</label>
+                                                <select class="form-control input-sm" id="ddlStatus" name="ddlStatus">
+                                                    <option value="1" selected>Active</option>
+                                                    <option value="0">InActive</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        @*<div class="editor-field form-group  col-md-12 control-label text-right">
+                                        <hr />
+                                        <button class="btn blue btn-sm nextBtn pull-right" type="button" id="frstNext">Next <i class="fa-light fa-angle-right"></i></button>
+                                    </div>*@
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="setup-content" id="s-2">
+                                <div class="row">
+                                    <div class="col-md-12">
+                                        <div class="form-group">
+                                            <div class="table-responsive" id="tableResponsive1">
+                                                <table id="tblempmaster" class="table new_datatbl table-striped table-bordered table-hover table-checkable order-column">
+                                                    <thead>
+                                                        <tr>
+                                                            <th>Punch ID</th>
+                                                            <th>Employee Name</th>
+                                                            <th>Email</th>
+                                                            <th hidden>EmpPhoto</th>
+                                                            <th style="align-content:center"><input type="checkbox" id="selectall"> </th>
+                                                        </tr>
+                                                    </thead>
+                                                </table>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                @*<div class="row">
+                                <div class="col-md-12 control-label text-right">
+                                    <hr />
+                                    <button class="btn blue btn-sm prevbtn" type="button"><i class="fa-regular fa-angle-left"></i> Prev</button>&nbsp;
+                                    <button class="btn blue btn-sm nextBtn pull-right" type="button" id="SecondNext">Next<i class="fa-light fa-angle-right"></i></button>
+                                </div>
+                            </div>*@
+                            </div>
+                            <div class="setup-content" id="s-3">
+                                <div class="row">
+                                    <div class="col-md-12">
+                                        <div class="table-responsive" id="tableResponsive2">
+                                            <table class="table new_datatbl table-striped table-bordered table-hover order-column" id="tbldevice">
+                                                <thead>
+                                                    <tr>
+                                                        <th hidden>Device ID</th>
+                                                        <th>Device Name</th>
+                                                        <th>Device SrNo</th>
+                                                        <th style="align-content:center"><input type="checkbox" id="selectallD"> </th>
+                                                    </tr>
+                                                </thead>
+                                            </table>
+                                            @*<div class="row">
+                                            <div class="col-md-12 control-label text-right">
+                                                <hr />
+                                                <button class="btn blue btn-sm prevbtn" type="button"><i class="fa-regular fa-angle-left"></i> Prev</button>
+                                                <button type="submit" class=" btn btn-sm blue" id="btnEnrollsubmit"> <i class="fa-solid fa-check"></i> Enroll</button>
+                                            </div>
+                                        </div>*@
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="modal-footer">
+
+                            <!-- First Tab Button -->
+                            <div class="row" id="FrstTabBtnDiv" style="display:none;">
+                                <div class="editor-field form-group  col-md-12 control-label text-right">
+                                    <button class="btn blue btn-sm nextBtn pull-right" type="button" id="frstNext">Next <i class="fa-light fa-angle-right"></i></button>
+                                </div>
+                            </div>
+
+                            <!-- Second Tab Button -->
+                            <div class="row" id="SecondTabBtnDiv" style="display:none;">
+                                <div class="col-md-12 control-label text-right">
+                                    <button class="btn prev_btn prevbtn" type="button" id="Secondprev"><i class="fa-regular fa-angle-left"></i> Prev</button>&nbsp;
+                                    <button class="btn blue btn-sm nextBtn pull-right" type="button" id="SecondNext">Next <i class="fa-light fa-angle-right"></i></button>
+                                </div>
+                            </div>
+
+                            <!-- Third Tab Button -->
+                            <div class="row" id="ThirdTabBtnDiv" style="display:none;">
+                                <div class="col-md-12 control-label text-right">
+                                    <button class="btn prev_btn prevbtn" type="button" id="Thirdprev"> <i class="fa-regular fa-angle-left"></i> Prev</button>
+                                    <button type="submit" class=" btn btn-sm blue" id="btnEnrollsubmit"> <i class="fa-solid fa-check"></i> Enroll</button>
+                                </div>
+                            </div>
+
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Datatable Block : End -->
+    <!-- Filter Block : Begin -->
+    <div class="portlet filter_boxModal">
+        <div class="filterbox_header">
+            <div class="d-flex align-items-center justify-content-between">
+                <h4 class="filter-title">Filters</h4>
+                <button type="button" class="filterclose_btn"><i class="fa-light fa-xmark"></i></button>
+            </div>
+        </div>
+        <div class="filterbox_body">
+            <div class="col-lg-12">
+                <div class="form-group">
+                    <label for="deviceSrNo" class="control-label">Device Sr No.<span class="required" aria-required="true"> * </span></label>
+                    <!-- Add an input field if necessary -->
+                    <select id="device_serail_no" class="form-control input-sm select2"></select>
+                </div>
+            </div>
+            <!--<div class="col-lg-12">
+            <div class="form-group">
+                <label for="punch_id" class="control-label">PunchID<span class="required" aria-required="true"> * </span></label>-->
+            <!-- Add an input field if necessary -->
+            <!--<select id="punch_id" class="form-control input-sm select2">
+                    </select>
+                </div>
+            </div>-->
+            <div class="col-lg-12">
+                <div class="form-group">
+                    <label for="deviceStatus" class="control-label">Status<span class="required" aria-required="true"> * </span></label>
+                    <!-- Add a dropdown or input field if necessary -->
+                    <select id="device_status" class="form-control">
+                        <option value="">Select status</option>
+                        <option value="0">Pending</option>
+                        <option value="1">Success</option>
+                    </select>
+                </div>
+            </div>
+            <div class="col-lg-12">
+                <div class="form-group data_picker_box">
+                    <label class="control-label">From Date<span class="required" aria-required="true"> * </span></label>
+                    <div class="input-group input-group-sm date date-picker" data-date="@DateTime.Now" data-date-format="@_isdateformat" data-date-end-date="0d" data-date-viewmode="years">
+                        <span class="input-group-btn">
+                            <button class="btn default btn-sm" type="button">
+                                <i class="fa-light fa-calendar-days"></i>
+                            </button>
+                        </span>
+                        @if (@_isdateformat == "dd-M-yyyy" || @_isdateformat == "M-dd-yyyy" || @_isdateformat == "yyyy-M-dd")
+                        {
+                            <input class="form-control" id="from_date" name="from_date" type="text" placeholder="@_isdateformat.Replace("M", "MMM")" autocomplete="off">
+                        }
+                        else
+                        {
+                            <input class="form-control" id="from_date" name="from_date" type="text" placeholder="@_isdateformat" autocomplete="off">
+                        }
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-12">
+                <div class="form-group data_picker_box">
+                    <label class="control-label">To Date<span class="required" aria-required="true"> * </span></label>
+                    <div class="input-group input-group-sm date date-picker" data-date="@DateTime.Now" data-date-format="@_isdateformat" data-date-end-date="0d" data-date-viewmode="years">
+                        <span class="input-group-btn">
+                            <button class="btn default btn-sm" type="button">
+                                <i class="fa-light fa-calendar-days"></i>
+                            </button>
+                        </span>
+                        @if (@_isdateformat == "dd-M-yyyy" || @_isdateformat == "M-dd-yyyy" || @_isdateformat == "yyyy-M-dd")
+                        {
+                            <input class="form-control" id="to_date" name="to_date" type="text" placeholder="@_isdateformat.Replace("M", "MMM")" autocomplete="off">
+                        }
+                        else
+                        {
+                            <input class="form-control" id="to_date" name="to_date" type="text" placeholder="@_isdateformat" autocomplete="off">
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="filterbox_footer">
+            <div class="text-right">
+                <button type="button" id="clear_opration" class="clear_btn tooltips" data-placement="top" data-original-title="Clear Filters" style="display: inline-block;"><i class="fa-regular fa-eraser"></i></button>
+                <a href="javascript:void(0)" id="Add" class="btn icon_btn margin-left-5 tooltips" data-placement="top" data-original-title="Assign User"><i class="fa-regular fa-download"></i></a>
+                <button type="button" id="search_btn" class="icon_btn margin-left-5 tooltips" data-placement="top" data-original-title="Search Filters" style="display: inline-block;"><i class="fa-solid fa-magnifying-glass"></i></button>
+            </div>
+        </div>
+    </div>
+    <!-- Filter Block : End -->
+</div>
+
+<script>
+    $('.overlay').fadeIn('fast').delay(5000).fadeOut('slow');
+</script>

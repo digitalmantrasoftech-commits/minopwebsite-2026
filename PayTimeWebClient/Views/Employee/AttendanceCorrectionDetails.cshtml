@@ -1,0 +1,1563 @@
+﻿@using System.Configuration;
+@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@{
+    ViewBag.Title = "AttendanceCorrectionDetails";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    string _Message = ViewBag.msg;
+    string _error = ViewBag.error;
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    int _EmpId = Convert.ToInt32(HttpContext.Current.Session["EmpId"]);
+    string Actcode = HttpContext.Current.Session["cmpcode"].ToString();
+    int _hierchywis = Convert.ToInt32(HttpContext.Current.Session["Ishierchy"]);
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+    string _isdateformat = HttpContext.Current.Session["IsDateFormat"].ToString();
+    string _dbName = HttpContext.Current.Session["DbName"].ToString();
+    string _PlanId = HttpContext.Current.Session["planId"].ToString();
+    string _lockAttendanceDay = HttpContext.Current.Session["lockAttendanceDay"].ToString();
+    //int _lockAttendance_Day = Convert.ToInt32(HttpContext.Current.Session["lockAttendanceDay"]);
+
+    string isClientDBMatchFlag = HttpContext.Current.Session["IsClientDBMatch"] != null
+    ? HttpContext.Current.Session["IsClientDBMatch"].ToString()
+    : "false"; // Default to "false" if the session is null
+}
+<script src="~/Scripts/timeme.js"></script>
+<script src="~/AssetsNew/js/CommonValidation.js"></script>
+<script src="~/AssetsNew/js/exportexcel.js"></script>
+<script src="~/Scripts/Helpers/noDataHandler.js"></script>
+<style>
+    #Export {
+        background-color: #fff;
+        color: #3aa03e;
+        border: 1px solid #3aa03e;
+        text-decoration: none;
+        outline: 0;
+        height: 30px;
+        width: 35px;
+        border-radius: 3px !important;
+    }
+</style>
+
+<script>
+        var count = 0;
+        var form = "Attendance Details";
+        var operation = "";
+        var pkloginemployeeid = '@_EmpId';
+        var emprole = '@_RoleId';
+        var tblAttndancelist = "";
+
+        $(document).ready(function () {
+            fillEmplist();
+            /*timeMeInitialize function is  a javascript library which displays a timer to display how long you are actively viewing the current webpage.*/
+            timeMeInitialize();
+            var $SelectEmployee = $("#Select_Employee").multiselect({
+                selectAllValue: 'multiselect-all',
+                enableCaseInsensitiveFiltering: true,
+                includeSelectAllOption: true,
+                allSelectedText: 'All Select',
+                enableFiltering: true,
+                maxHeight: '300',
+                buttonWidth: '100%',
+                enableClickableOptGroups: true,
+                nonSelectedText: 'Select Employee',
+            });
+
+            window.onload = function () {
+                timeSpentOnPage();
+            }
+            $(window).on("beforeunload", function () {
+                if (operation == "" || operation == null || operation == '') {
+                    operation = "View Attendance Details";
+                }
+                var url = '@_webapiurl' + '/DashBoard/AddAnalyticsUser';
+                var timeSpent = timeSpentOnPage();
+                analyticsDataUsage(url, '@_dbName', form, '@_tokan', count, operation, timeSpent)
+            })
+            var t = "";
+            var dateyear = new Date().getFullYear();
+            var lastyear = dateyear - 1;
+            for (var i = lastyear; i <= dateyear; i++) {
+                if (i != dateyear) {
+                    $('#Select_year').append("<option value=" + i + ">" + i + "</option>");
+                }
+                else {
+                    $('#Select_year').append('<option value="' + i + '" selected>' + i + '</option>');
+                }
+            }
+            var datemonth = new Date().getMonth() + 1;
+            $('#Select_month').val(datemonth);
+
+            $("#tblAttndancelist").on('click', '.attlock', function () {
+                toastr.remove();
+                toastr.error("Attendance is locked.");
+            });
+
+            $("#closedatten").click(function () {
+                $("#tblAttendanceSummarylst").show();
+              /*  $("#ApplyReason").val("");*/
+                $("#tblAttndancelist").hide();
+                $("#tblAttendanceSummary").show();
+                $('#dataTables_tbl_header').remove();
+
+
+
+                if (tblAttndancelist && $.fn.dataTable.isDataTable('#tblAttndancelist')) {
+                    tblAttndancelist.clear().destroy();
+                }
+                $("#tblAttndancelist").empty();
+
+              //  window.location.reload();
+                GetAttendenceSummary();
+
+                //$("#tblAttndancelist_wrapper").hide();
+            });
+
+
+            $("#closedcorr").click(function () {
+                $("#tblAttendanceSummary").hide();
+                $("#tblAttndancelist").show();
+                $("#tblAttndancelist_wrapper").show();
+            });
+
+            //$('#ApplyReason').on('paste', function (e) {
+            //    e.preventDefault();
+            //});
+
+
+
+            function GetAttendenceSummary() {
+                if ($.fn.dataTable.isDataTable('#tblAttendanceSummary')) {
+                    $('#tblAttendanceSummary').DataTable().clear().destroy();
+                    $('#dataTables_tbl_header').show();
+                    //$('#dataTables_tbl_header').remove();
+                }
+                $("#tblAttndancelist").empty();
+
+                $("#tblAttendanceSummary").show();
+
+
+                var totalOptions = $('#Select_Employee option').length;
+                var selectedOptions = $('#Select_Employee :selected').length;
+                var _arrstatus = '0';
+                var _status = $("#Select_status").val();
+                if (_status == "" || _status == null) {
+                    _status = '0';
+                }
+
+                var _arrEmployee = ['0'];
+                var _Employee = $("#Select_Employee").val();
+                if (('@_RoleId' == '1') || ('@_RoleId' == '6806') || ('@_RoleId' == '6805')) {
+                    if (selectedOptions === totalOptions) {
+                        _Employee = ['0'];
+                    } else {
+                        if (_Employee === "" || _Employee === null) {
+                            _Employee = ['0'];
+                        } else {
+                            _Employee = _Employee;
+                        }
+                    }
+                } else {
+                    if (_Employee === "" || _Employee === null) {
+                        _Employee = ['0'];
+                    } else {
+                        _Employee = _Employee;
+                    }
+                }
+                _arrEmployee = _Employee.join(",");
+                var Employeeid = _arrEmployee;
+                 _arrstatus = _status;
+
+
+                $('#no_data').hide();
+                $.ajax({
+                    type: "POST",
+                    url: "/Utilities/GetAttendencesummary",
+                    data: {
+                        RoleID: emprole,
+                        loginemployeeid: pkloginemployeeid,
+                        Month: $("#Select_month").val(),
+                        Year: $("#Select_year").val(),
+                        status: _arrstatus,
+                        Employee: Employeeid
+                    },
+                    headers: { 'Authorization': '@_tokan' },
+                    dataType: "json",
+                    async: "false",
+                    beforeSend: function (xhr) {
+                        $(".loading").show();
+                    },
+
+                    success: function (data) {                        
+                        $('#NotificationGrid-empty').hide();
+                        $("#tblempty").show();
+                        //if (data != null) {
+                        //    const list = data;
+                        //    handleGridVisibility("tblempty", "NotificationGrid-empty", list, {
+                        //        imageUrl: "emptyscreen_3.png",
+                        //        subText: "No matching records found for the selected filters."
+                        //    });
+                        //}
+                        if (data == "") {
+                            window.setTimeout(function () {
+                                toastr.remove();
+                                toastr.error("No entry! This is a restricted area, even for ninjas like you.");
+                                window.setTimeout(function () {
+                                    window.location.href = "/PayTime/LoginPage";
+                                }, 2000);
+                                return false;
+                            }, 1000);
+
+                        } else if (data.isRedirect) {
+                            window.location.href = data.redirectUrl;
+                        }
+                        else if (data == "[]" || data == "") {
+                            $('#NotificationGrid-empty').show();
+                            $("#tblempty").hide();
+                            const wrapper = $(".filter_portlet_wrapper");
+                            wrapper.removeClass("full-width");
+                            $("#tblAttendanceSummary").hide();
+                            $("#tblAttndancelist").hide();
+                            //$("#tblAttendanceSummarylst").hide();
+                        }
+
+                        var convertdata = JSON.parse(data);
+                        $(".loading").show();
+                        $(".loading").hide();
+
+                        // Define columns array
+                        var columns = [
+                            { "title": "Sr. No", "data": null , "orderable":false,"visible":false},
+                            { "title": "Name", "data": "EmpName" },
+                            { "title": "Empcode", "data": "Empcode" },
+                            { "title": "Shift", "data": "ShiftName" },
+                            { "title": "Present", "data": "PresentCount" },
+                            { "title": "Absent", "data": "AbsentCount" },
+                            { "title": "W", "data": "WeekoffCount" },
+                            { "title": "H", "data": "HolidayCount" },
+                            { "title": "Leave", "data": "ODCount" },
+                            { "title": "Total Hrs", "data": "TotalHours" },
+                            { "title": "OT Hrs", "data": "OTHr" },
+                            {
+                                title: "Details",
+                                render: function (data, type, row) {
+                                    return '<a href="javascript:;" style="cursor: pointer;" class="btn seagreen_btnnew tooltips" data-placement="top" data-original-title="View" onclick="GetAttndancelist('+row.EmpID+')"><i class="fa-regular fa-eye"></i></span>';
+                                }
+                            },
+                        ];
+
+                        // Initialize DataTable
+                        var attendencesummary = $("#tblAttendanceSummary").DataTable({
+                            "deferRender": true,
+                            "processing": true,
+                            "destroy": true,
+                            dom: _domCommon,
+                            language: _languageCommon,
+                            buttons: [
+                                {
+                                    extend: 'excelHtml5',
+                                    exportOptions: {
+                                        columns: '@Actcode' === "MAN5F0F" ? [1, 2, 3, 4, 5, 6, 7, 8, 9, 10,11,12] : [1, 2, 3, 4, 5, 6, 7, 8, 9,10,11]
+                                    }
+                                }
+                            ],
+                            lengthMenu: [
+                                [10,25,50,100],
+                                [10, 25, 50, 100],
+                            ],
+                            "data": convertdata,
+                            "columns": columns,  // Use the dynamic columns array
+
+
+                            "columnDefs": [
+                                {
+                                    //"targets": [12],  // Adjust the target based on actual index
+                                    //"visible": false
+                                },
+                            ],
+                            //"rowCallback": function (row, data, index) {
+                            //    var table = $('#tblAttendanceSummary').DataTable();
+                            //    var pageInfo = table.page.info();
+                            //    $('td:eq(0)', row).html(pageInfo.start + index + 1);  // Sr. No or row numbering
+                            //}
+                        });
+                        $('.tooltips').tooltip();
+
+                        if ($('#no_data').is(':visible')) {
+                            $('#dataTables_tbl_header').remove();
+                        }
+
+
+
+                        setTimeout(function () {
+                            // Move the header
+                            $("#" + "tblAttendanceSummary" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive_AC"));
+                            $('.tooltips').tooltip();
+
+                            // Inject export buttons with a callback to trigger the DataTables export button
+                            injectExportButtonsForDataTables(false, function () {
+
+                            });
+                            $('.tooltips').tooltip();
+                        }, 100);
+                        $(".loading").hide();
+                    },
+                    error: function (xhr, ajaxOptions, thrownError) {
+                        swal(thrownError + ' - GetAttendecesummary');
+                        $(".loading").hide();
+                    }
+                });
+        }
+
+            $("#Search_OPration").click(function () {
+
+                //$("#tblAttendanceSummary").empty();
+                //$("#tblAttendanceSummary").hide();
+                //$("#tblAttendanceSummary").show();
+                //$("#tblAttndancelist").hide();
+                if ($("#Select_month").val() == 0) {
+                    $("#Select_month").addClass('field_error');
+                    toastr.remove();
+                    toastr.error("Please select month.");
+                } else if ($("#Select_year").val() == 0) {
+                    $("#Select_month").removeClass('field_error');
+                    $("#Select_year").addClass('field_error');
+                    toastr.remove();
+                    toastr.error("Please select year.");
+                }
+                else {
+                    $("#Select_year").removeClass('field_error');
+                    $("#Select_month").removeClass('field_error');
+                    /* GetAttndancelist();*/
+                    $('#tblAttendanceSummary').DataTable().clear().destroy();
+                    $('#dataTables_tbl_header').remove();
+                    const wrapper = $(".filter_portlet_wrapper");
+                    wrapper.addClass("full-width");
+                    var screenWidth = $(window).width();
+                    if (screenWidth >= 300 && screenWidth <= 600) {
+                        $(".filter_portlet_tbl").show();
+                    }
+                    GetAttendenceSummary();
+                }
+            });
+
+            $("#tblAttndancelist").on('click', '.ChangeReq', function ()
+            {
+                var datetime = new Date();
+                var hours = datetime.getHours(); //returns 0-23
+                var minutes = datetime.getMinutes(); //returns 0-59
+                if (minutes < 10)
+                    minutesString = 0 + "" + minutes + ""; //+""casts minutes to a string.
+                else
+                    minutesString = minutes;
+
+                //var Enpid = jQuery(this).closest('tr').attr('ID');
+                var Enpid = tblAttndancelist.row($(this).parent('td').parent('tr')).data()["EmpID"]
+                //tblAttndancelist
+                var currentRow = $(this).closest("tr");
+
+                $("#fromdate").val(currentRow.find("td:eq(0)").text());
+                var _InTime = currentRow.find("td:eq(3)").text();
+                if (_InTime == "" || _InTime == null || _InTime == "00:00")
+                {
+                    $("#InPunchTime").val(hours + ":" + minutesString);
+                }
+                else
+                {
+                    $("#InPunchTime").val(_InTime.substring(0, _InTime.length - 3));
+                }
+                var _OutTime = currentRow.find("td:eq(4)").text();
+                if (_OutTime == "" || _OutTime == null || _OutTime == '<span style="color: red;">MISS PUNCH</span>' || _OutTime == 'MISS PUNCH' || _OutTime == "00:00")
+                {
+                    $("#OutPunchTime").val(hours + ":" + minutesString);
+                }
+                else
+                {
+                    $("#OutPunchTime").val(_OutTime.substring(0, _OutTime.length - 3));
+                }
+                $("#EmpID").val(Enpid);
+                $("#isNight").val(currentRow.find("td:eq(9)").text());
+
+              /*  $("#ApplyReason").val('');*/
+
+                var _CardNo = tblAttndancelist.row($(this).parent('td').parent('tr')).data()["CardNo"];
+                $("#PunchIDReq").val(_CardNo);
+
+                ShiftGetAll(0);
+                $(".ChangeReq").attr("data-toggle", "modal");
+                $(".ChangeReq").attr("data-target", "#frmpopup");
+
+            });
+            $("#Clear_OPration").click(function () {
+                $("#Select_month").val('0');
+                $("#Select_year").val('0');
+                $("#Select_status").val('0');
+                $("#Select_Employee").val('0');
+                $SelectEmployee.multiselect('rebuild');
+
+                if ($.fn.dataTable.isDataTable('#tblAttndancelist')) {
+                    $('#tblAttndancelist').DataTable().clear().destroy();
+                }
+                if ($.fn.dataTable.isDataTable('#tblAttendanceSummary')) {
+                   /* $('#tblAttendanceSummary').DataTable().clear().destroy();*/
+                }
+                //$("#tblAttendanceSummary").empty();
+                $("#tblAttndancelist").empty();
+            });
+            $("#btnSave").click(function ()
+            {
+                var _shiftName = $("#ShiftId").val();
+                if (_shiftName == 'Select Shift'|| $("#ShiftId").val() == "" || $("#ShiftId").val() == "0")
+                {
+                    toastr.remove();
+                    toastr.error("Please select the Shift.");
+                    $("#ShiftId").addClass('field_error');
+                    $("#ShiftId").focus();
+                    event.preventDefault();
+                    return false;
+                }
+                else
+                {
+                    $("#ShiftId").removeClass('field_error');
+                }
+                if ($("#InPunchTime").val() == "")
+                {
+                    toastr.remove();
+                    toastr.error("Please enter in time.");
+                    $("#InPunchTime").addClass('field_error');
+                    $("#InPunchTime").focus();
+                    event.preventDefault();
+                    return false;
+                }
+                else
+                {
+                    $("#InPunchTime").removeClass('field_error');
+                }
+                if ($("#OutPunchTime").val() == "") {
+                    toastr.remove();
+                    toastr.error("Please enter out time.");
+                    $("#OutPunchTime").addClass('field_error');
+                    $("#OutPunchTime").focus();
+                    event.preventDefault();
+                    return false;
+                }
+                else
+                {
+                    $("#OutPunchTime").removeClass('field_error');
+                }
+                if ("@_isdateformat" == "dd-mm-yyyy") {
+                    var _inpunchdate = $("#fromdate").val().split("-");
+                    var inpunchdates = _inpunchdate[2] + "-" + _inpunchdate[1] + "-" + _inpunchdate[0];
+                    var Inpunchdate = inpunchdates + " " + $("#InPunchTime").val();
+                    var Outpunchdate = inpunchdates + " " + $("#OutPunchTime").val();
+                }
+                else if ("@_isdateformat" == "mm-dd-yyyy") {
+                    var _inpunchdate = $("#fromdate").val().split("-");
+                    var inpunchdates = _inpunchdate[2] + "-" + _inpunchdate[0] + "-" + _inpunchdate[1];
+                    var Inpunchdate = inpunchdates + " " + $("#InPunchTime").val();
+                    var Outpunchdate = inpunchdates + " " + $("#OutPunchTime").val();
+                }
+                else if ("@_isdateformat" == "yyyy-mm-dd") {
+                    var _inpunchdate = $("#fromdate").val().split("-");
+                    var inpunchdates = _inpunchdate[0] + "-" + _inpunchdate[1] + "-" + _inpunchdate[2];
+                    var Inpunchdate = inpunchdates + " " + $("#InPunchTime").val();
+                    var Outpunchdate = inpunchdates + " " + $("#OutPunchTime").val();
+                }
+                else if ("@_isdateformat" == "yyyy-M-dd") {
+                    var _inpunchdate = $("#fromdate").val().split("-");
+                    var inpunchdates = _inpunchdate[0] + "-" + _inpunchdate[1] + "-" + _inpunchdate[2];
+                    var Inpunchdate = inpunchdates + " " + $("#InPunchTime").val();
+                    var Outpunchdate = inpunchdates + " " + $("#OutPunchTime").val();
+                }
+                else if ("@_isdateformat" == "M-dd-yyyy") {
+                    var _inpunchdate = $("#fromdate").val().split("-");
+                    var inpunchdates = _inpunchdate[2] + "-" + _inpunchdate[0] + "-" + _inpunchdate[1];
+                    var Inpunchdate = inpunchdates + " " + $("#InPunchTime").val();
+                    var Outpunchdate = inpunchdates + " " + $("#OutPunchTime").val();
+                }
+                else if ("@_isdateformat" == "dd-M-yyyy")
+                {
+                    var _inpunchdate = $("#fromdate").val().split("-");
+                    var inpunchdates = _inpunchdate[2] + "-" + _inpunchdate[1] + "-" + _inpunchdate[0];
+                    var Inpunchdate = inpunchdates + " " + $("#InPunchTime").val();
+                    var Outpunchdate = inpunchdates + " " + $("#OutPunchTime").val();
+                }
+                 var CorrectionDetails =
+                {
+                    "EmpId": $("#EmpID").val(),
+                    "InPunchTime": Inpunchdate,
+                    "OutPunchTime": Outpunchdate,
+                     "ApplyReason": 'Admin Direct Approved',
+                    "Status": 3
+                }
+            $("#ajax_loader").show();
+            $.post("/Employee/AttendanceCorrectionAdd?CorrectionDetails=" + JSON.stringify(CorrectionDetails), function (response) {
+                $("#ajax_loader").hide();
+                if (response != null)
+                {
+                    if (response.isRedirect) {
+                        window.location.href = response.redirectUrl;
+                    }
+                    else {
+                        var objResponse = jQuery.parseJSON(response);
+                        if (objResponse.MegSts == "ok")
+                        {
+
+                            var Des =
+                            {
+                                'AttCorrectionId': parseInt(objResponse.OnCorrectionID),
+                                'EmpId': parseInt($("#EmpID").val()),
+                                'PunchID': parseInt($("#PunchIDReq").val()),
+                                'attn_dt': Inpunchdate,
+                                'InPunchTime': Inpunchdate,
+                                'OutPunchTime': Outpunchdate,
+                                'StatusID': parseInt($('#StatusMode').val()),
+                                'TotHour': document.getElementById("txthours").innerText,
+                                'ShiftID': parseInt($("#ShiftId").val()),
+                                'ApplyReason': 'Admin Direct Approved',
+                                'OThours': $("#txtOverTimehours").val()
+                            }
+                            //var objCorrection = [];
+                            //var obj =
+                            //{
+                            //    AttCorrectionId: parseInt(objResponse.OnCorrectionID),
+                            //    EmpId: parseInt($("#EmpID").val()),
+                            //    PunchID: parseInt($("#PunchIDReq").val()),
+                            //    attn_dt: Inpunchdate,
+                            //    InPunchTime: Inpunchdate,
+                            //    OutPunchTime: Outpunchdate,
+                            //    StatusID: parseInt($('#StatusMode').val()),
+                            //    TotHour: $("#txthours").val(),
+                            //    ShiftID: parseInt($("#ShiftId").val()),
+                            //    ApplyReason: 'Admin Direct Approved',
+                            //    OThours: $("#txtOverTimehours").val() // Ensure it's string or int based on API requirement
+                            //};
+
+
+                            //objCorrection.push(obj);
+                            //console.log("Final List:", objCorrection); // Debugging
+                            $.ajax(
+                                {
+                                type: 'POST',
+                                url: '@_webapiurl' + 'Employee/AttendanceCorrectionUpdatereqFastrack',
+                                headers: { 'Authorization': '@_tokan' },
+                                contentType: "application/json",
+                                //data: JSON.stringify({ 'Des': objCorrection }),
+                                data: JSON.stringify(Des),
+                                beforeSend: function ()
+                                {
+                                    $('#ajax_loader').show();
+                                },
+                                complete: function ()
+                                {
+                                    $('#ajax_loader').hide();
+                                },
+                                success: function (data)
+                                {
+
+                                    if (data.isRedirect)
+                                    {
+                                        window.location.href = data.redirectUrl;
+                                    }
+                                    else if (data.MegSts === "ok")
+                                    {  // Use strict equality operator ===
+                                        var Status = 1;
+                                        if (Status == 1)
+                                        {
+                                            toastr.remove();
+                                            toastr.success(data.Meg);
+                                        }
+                                        else if (Status == 2)
+                                        {
+                                            toastr.remove();
+                                            toastr.success("Attendance rejected successfully.");
+                                        }
+                                        window.setTimeout(function ()
+                                        {
+                                            //window.location.href = "/employee/AttendanceCorrectionDetails";
+                                            GetAttndancelist($("#EmpID").val());
+                                        }, 1000);
+                                        $('#list1').modal('show');
+                                        $("#tblAttndancelist").show();
+                                    }
+                                    else
+                                    {
+                                        $("<div class='alert alert-danger overlay'><label>Error in approving Attendance.</label></div>").insertBefore(".portlet-body").fadeOut(3000);
+                                    }
+                                }
+                                });
+                        }
+                        else
+                        {
+                            toastr.remove();
+                            toastr.error(objResponse.Meg);
+                        }
+                        $('#frmpopup').modal('toggle');
+
+
+                    }
+                }
+              });
+            });
+
+
+            $("#StatusMode").change(function ()
+            {
+                var selectedValue = $(this).val();
+                if (selectedValue == "2")
+                {
+                    $("#InPunchTime").val("00:00");
+                    $("#OutPunchTime").val("00:00");
+                    document.getElementById("txthours").innerText = "00:00";
+                }
+             });
+
+            function fillEmplist(BranchId, selectedDept) {
+
+                $("#Select_Employee").empty();
+                $.ajax({
+                    type: "GET",
+                    url: "/MasterData/GetEmpByreporting?hierarchyState=" + '@_hierchywis' + "&EmpId=" + pkloginemployeeid,
+                    contentType: "application/json; charset=utf-8",
+                    datatype: "json",
+                    async: "false",
+                    success: function (response) {
+
+                        if (response != null) {
+                            response.sort(function (a, b) {
+                                return a.EmpName.localeCompare(b.EmpName);
+                            });
+                            for (var i = 0; i < response.length; i++) {
+                                $('#Select_Employee').append('<option value="' + response[i].EmpId + '">' + response[i].EmpName + ' ( ' + response[i].Empcode + ')</option>');
+                            }
+                            if (emprole > 1 && emprole != 6805 && emprole != 6806) {
+                                $("#Select_Employee option[value = '" + pkloginemployeeid + "' ]").prop('selected', true);
+                            }
+                            $SelectEmployee.multiselect('rebuild');
+                        }
+                        $(".loading").hide();
+                        /*GetAttndancelist();*/
+                        GetAttendenceSummary();
+                    },
+                    beforeSend: function () {
+                        $(".loading").show();
+                    },
+                    error: function () {
+                        $(".loading").hide();
+                    }
+                });
+            }
+            $("#Export").click(function () {
+                 $(this).prop('disabled', true);
+                $(".loading1").show();
+                var progress = 0;
+                var progressInterval = setInterval(function () {
+                    progress += 10;
+                    $(".progress-bar").css("width", progress + "%").attr("aria-valuenow", progress);
+
+
+                    if (progress >= 100) {
+                        clearInterval(progressInterval);
+                    }
+                }, 500);
+
+                generateExcelFile();
+            });
+
+
+
+            function generateExcelFile() {
+                var totalOptions = $('#Select_Employee option').length;
+                var selectedOptions = $('#Select_Employee :selected').length;
+                var _arrstatus = '0';
+                var _status = $("#Select_status").val();
+                if (_status == "" || _status == null) {
+                    _status = '0';
+                }
+                var _arrEmployee = ['0'];
+                var _Employee = $("#Select_Employee").val();
+
+               if (('@_RoleId' == '1') || ('@_RoleId' == '6806') || ('@_RoleId' == '6805')) {
+
+                    if (selectedOptions === totalOptions) {
+                        _Employee = ['0'];
+                    } else {
+
+                        if (_Employee === "" || _Employee === null) {
+                            _Employee = ['0'];
+                        } else {
+                            _Employee = _Employee;
+                        }
+                    }
+                } else {
+                    if (_Employee === "" || _Employee === null) {
+                        _Employee = ['0'];
+                    } else {
+                        _Employee = _Employee;
+                    }
+                }
+                _arrEmployee = _Employee.join(",");
+                var Employeeid = _arrEmployee;
+                _arrstatus = _status;
+
+
+                $.ajax({
+                    type: "POST",
+                    url: "/Utilities/GetAttendanceDetails",
+                    data: {
+                        RoleID: emprole,
+                        loginemployeeid: pkloginemployeeid,
+                        Month: $("#Select_month").val(),
+                        Year: $("#Select_year").val(),
+                        status: _arrstatus,
+                        Employee: Employeeid
+                    },
+                    headers: { 'Authorization': '@_tokan' },
+                    dataType: "json",
+                    success: function (data) {
+
+
+                        if (typeof data === "string") {
+                            try {
+                                data = JSON.parse(data);
+                            } catch (error) {
+                                toastr.error("Failed to parse data.");
+                                $("#Export").prop('disabled', false);
+                                $(".loading1").hide();
+                                return;
+                            }
+                        }
+
+                        if (!Array.isArray(data)) {
+                            toastr.error("Unexpected data format received.");
+                            $("#Export").prop('disabled', false);
+                            $(".loading1").hide();
+                            return;
+                        }
+
+                        if (data.length === 0) {
+                            toastr.error("No entry! This is a restricted area.");
+                            window.setTimeout(function () {
+                                window.location.href = "/PayTime/LoginPage";
+                            }, 2000);
+                            $(".loading1").hide();
+                        } else if (data.isRedirect) {
+                            window.location.href = data.redirectUrl;
+                            $(".loading1").hide();
+                        } else {
+                            try {
+                                function stripHtmlTags(input) {
+                                    if (typeof input === 'string') {
+                                        return input.replace(/<[^>]+>/g, '').trim();
+                                    }
+                                    return input;
+                                }
+
+                                const formattedData = data.map(item => ({
+                                    Date: item.Att_dt,
+                                    Shift: item.Shift,
+                                    Name: item.EmpName,
+                                    'In Time':  item.InTime || '00:00',
+                                    'Out Time': stripHtmlTags(item.OutTime) || '00:00',
+                                    'Total Hrs': stripHtmlTags(item.TotHour) || '00:00',
+                                    Status: item.Status,
+                                    isNight: item.isNight,
+                                    Day: item.Day,
+                                    Emppunchid: item.CardNo,
+                                    Regularization: 'Correction'
+                                }));
+
+
+                                var worksheet = XLSX.utils.json_to_sheet(formattedData);
+                                var workbook = XLSX.utils.book_new();
+                                XLSX.utils.book_append_sheet(workbook, worksheet, "AttendanceDetails");
+
+
+                                XLSX.writeFile(workbook, 'AttendanceDetails.xlsx');
+                                $("#Export").prop('disabled', false);
+
+                                $(".loading1").hide();
+                            } catch (error) {
+                                toastr.error("Error in processing the data.");
+                                $("#Export").prop('disabled', false);
+                                $(".loading1").hide();
+                            }
+                        }
+                    },
+                    error: function (xhr, ajaxOptions, thrownError) {
+
+                        $(".loading1").hide();
+                        swal(thrownError + ' - GetAttendanceDetails');
+                        $("#Export").prop('disabled', false);
+                    }
+                });
+            }
+
+            $("#Filter_search").click(function () {
+                const wrapper = $(".filter_portlet_wrapper");
+                wrapper.toggleClass("full-width");
+
+                var screenWidth = $(window).width();
+                if (screenWidth >= 300 && screenWidth <= 600) {
+                    $('.filter_portlet_tbl').toggle();
+                    $('.filter_portlet_wrapper .filter_boxModal').css('width', '100%');
+                }
+            });
+
+            // Close filter panel on close button click
+            $(".filterclose_btn").click(function () {
+                const wrapper = $(".filter_portlet_wrapper");
+                wrapper.addClass("full-width");
+
+                var screenWidth = $(window).width();
+                if (screenWidth >= 300 && screenWidth <= 600) {
+                    $(".filter_portlet_tbl").css("display", "block");
+                }
+            });
+
+        });
+
+        function GetAttndancelist(empid)
+        {
+            $("#tblAttendanceSummary").hide();
+            $("#tblAttndancelist").empty();
+            $("#tblAttendanceSummarylst").hide();
+            $('#dataTables_tbl_header').remove();
+
+            if ($.fn.dataTable.isDataTable('#tblAttndancelist')) {
+                $('#tblAttndancelist').DataTable().clear().destroy();
+
+
+            }
+
+
+                var totalOptions = $('#Select_Employee option').length;
+                var selectedOptions = $('#Select_Employee :selected').length;
+                var _arrstatus = '0';
+                var _status = $("#Select_status").val();
+                if (_status == "" || _status == null) {
+                    _status = '0';
+                }
+
+                var _arrEmployee = ['0'];
+                var _Employee = $("#Select_Employee").val();
+
+
+
+                    if (_Employee === "" || _Employee === null) {
+                        _Employee = ['0'];
+                    } else {
+                        _Employee = _Employee;
+                    }
+
+                _arrEmployee = _Employee.join(",");
+                var Employeeid = _arrEmployee;
+                _arrstatus = _status;
+
+
+
+
+                $.ajax({
+                    type: "POST",
+                    url: "/Utilities/GetAttendanceDetails",
+                    data: {
+                        RoleID: emprole,
+                        loginemployeeid: pkloginemployeeid,
+                        Month: $("#Select_month").val(),
+                        Year: $("#Select_year").val(),
+                        status: _arrstatus,
+                        Employee: empid
+                    },
+                    headers: { 'Authorization': '@_tokan' },
+                    dataType: "json",
+                    async: "false",
+                    beforeSend: function (xhr) {
+
+                    },
+                    success: function (data) {
+
+
+                        if (data == "") {
+                            window.setTimeout(function () {
+                                toastr.remove();
+                                toastr.error("No entry! This is a restricted area, even for ninjas like you.");
+                                window.setTimeout(function () {
+                                    window.location.href = "/PayTime/LoginPage";
+                                }, 2000);
+                                return false;
+                            }, 1000);
+                        }
+                        else if (data.isRedirect) {
+                            window.location.href = data.redirectUrl;
+                        }
+
+
+
+                        var convertdata = JSON.parse(data);
+                        if ($.fn.dataTable.isDataTable('#tblAttndancelist')) {
+
+                            $('#tblAttndancelist').DataTable().clear().destroy();
+
+
+
+                        }
+
+                        tblAttndancelist = "";
+
+
+                        tblAttndancelist = $("#tblAttndancelist").DataTable({
+                            "deferRender": true,
+                            "processing": true,
+                            "destroy": true,
+                            /* dom: 'lBfrtip',*/
+                            dom: _domCommon,
+                            language: _languageCommon,
+                            buttons: [
+                                {
+                                    extend: 'excelHtml5',
+                                    exportOptions: {
+                                        columns: [0, 1, 2, 3, 4, 5, 6, 7,8]  // Adjust these indices to match your visible columns
+                                    }
+                                }
+                            ],
+                            //initComplete: function () {
+                            //    const visibleTable = $('table:visible').attr('id');
+                            //    $("#buttons").append(`
+                            //        <div id="export-button" class="export-button tooltips" data-placement="top" data-original-title="Download" data-table-id="${visibleTable}">
+                            //            <img src="../Newlayout/images/download_icon.svg" alt="Download icon">
+                            //        </div>
+                            //     `);
+
+                            //},
+                            lengthMenu: [
+                                    [10, 25, 50, 100],
+                                [10, 25, 50, 100],
+                            ],
+                            "data": convertdata,
+                            "columns": [
+
+                                   { "title": "Date", "data": "Att_dt" },
+                                   { "title": "Shift", "data": "Shift" },
+                                   { "title": "Name", "data": "EmpName" },
+                                   {
+                                       "title": "In Time", "data": "InTime",
+                                       "render": function (data, type, row) {
+                                           if (data != null) {
+                                               return data;
+                                           }
+                                           else {
+                                               return "00:00";
+                                           }
+                                       }
+
+
+                                   },
+                                   {
+                                       "title": "Out Time", "data": "OutTime",
+                                       "render": function (data, type, row) {
+                                           if (data != null) {
+                                               return data;
+                                           }
+                                           else {
+                                               return "00:00";
+                                           }
+                                       }
+                                   },
+                                   {
+                                       "title": "Total Hrs", "data": "TotHour",
+
+                                   },
+                                    {
+                                        "title": "Status", "data": "Status",
+                                        "render": function (data, type, row) {
+
+                                            if (data == "P" ) {
+                                                return "<td><i style='color:#28a745'>" + data + "<i></td>";
+                                            }
+                                            else if (data == "H" || data == "PH" ) {
+                                                return "<td><i style='color:#6f42c1'>" + data + "<i></td>";
+                                            }
+                                            else if (data == "W" || data == "PW")  {
+                                                return "<td><i style='color:#007bff'>" + data + "<i></td>";
+                                            }
+                                            else if (data == "A" || data == "AB" || data == "XX") {
+                                                return "<td><i style='color:blue'>" + data + "<i></td>";
+                                            }
+                                            else if (data == "HD" ) {
+                                                return "<td><i style='color:#ffc107'>" + data + "<i></td>";
+                                            }
+                                            else if (data == "LH") {
+                                                return "<td><i style='color:#fd7e14'>" + data + "<i></td>";
+                                            }
+                                            else if (data == "OD") {
+                                                return "<td><i style='color:#dc3545'>" + data + "<i></td>";
+                                            }
+                                            else if (data == "E") {
+                                                return "<td><i style='color:Red'>" + data + "<i></td>";
+                                            }
+                                            else {
+                                                return "<td><i style='color:Red'>" + data + "<i></td>";
+                                            }
+                                        }
+                                },
+                                { "title": "EmpPunchId", "data": "CardNo" },
+                                { "title": "Day", "data": "Day" },
+
+                                   {
+                                       "title": "Regularization",
+                                       "data": "ChangeReq",
+                                       "render": function (data, type, row)
+                                       {
+                                           if (('@_PlanId' == '6' || '@_PlanId' == '5' || '@_PlanId' == '3'))
+                                           {
+                                               var _data = row.Att_dt;
+                                               var date = _data.split('-');
+                                               if ("@_isdateformat" == "dd-mm-yyyy") {
+                                                   var firstValue = date[2] + "-" + date[1] + "-" + date[0] //yyyy-mm-dd
+                                               }
+                                               else if ("@_isdateformat" == "yyyy-mm-dd") {
+                                                   var firstValue = date[0] + "-" + date[1] + "-" + date[2] //yyyy-mm-dd
+                                               }
+                                               else if ("@_isdateformat" == "mm-dd-yyyy") {
+                                                   var firstValue = date[2] + "-" + date[1] + "-" + date[0] //yyyy-mm-dd
+                                               }
+                                               else if ("@_isdateformat" == "yyyy-M-dd") {
+                                                   var _date = new Date(date[2] + " " + date[1] + " " + date[0]);
+                                                   var locale = "en-us";
+                                                   var month = _date.toLocaleString(locale, { month: "numeric" });
+                                                   var firstValue = date[0] + "-" + month + "-" + date[2] //yyyy-mm-dd
+                                               }
+                                               else if ("@_isdateformat" == "M-dd-yyyy") {
+                                                   var _date = new Date(date[1] + " " + date[0] + " " + date[2]);
+                                                   var locale = "en-us";
+                                                   var month = _date.toLocaleString(locale, { month: "numeric" });
+                                                   var firstValue = date[2] + "-" + month + "-" + date[1] //yyyy-mm-dd
+                                               }
+                                               else if ("@_isdateformat" == "dd-M-yyyy") {
+                                                   var _date = new Date(date[0] + " " + date[1] + " " + date[2]);
+                                                   var locale = "en-us";
+                                                   var month = _date.toLocaleString(locale, { month: "numeric" });
+                                                   var firstValue = date[2] + "-" + month + "-" + date[0] //yyyy-mm-dd
+                                               }
+                                               firstValue = firstValue.split('-');
+                                               var s_date = new Date();
+                                               var secondValue = (s_date.getFullYear() + "-" + (s_date.getMonth() + 1) + "-" + '@_lockAttendanceDay').split('-');
+                                               var firstDate = new Date();
+                                               firstDate.setFullYear(firstValue[0], (firstValue[1] - 1), firstValue[2]);
+                                               var secondDate = new Date();
+                                               secondDate.setFullYear(secondValue[0], (secondValue[1] - 1), 1);
+                                               var secondDate_pev_month = new Date();
+                                               secondDate_pev_month.setFullYear(secondValue[0], (secondValue[1] - 2), 1);
+                                               var Current_date = new Date();
+                                               var Lock_date_day = new Date();
+                                               Lock_date_day.setFullYear(secondValue[0], (secondValue[1] - 1), '@_lockAttendanceDay');
+
+
+
+                                               var formattedDate = String(Current_date.getDate()).padStart(2, '0') + "-" +
+                                                   String(Current_date.getMonth() + 1).padStart(2, '0') + "-" +
+                                                   Current_date.getFullYear();
+
+
+                                               if (_data != formattedDate)
+                                               {
+                                                   return "<a class='ChangeReq  btn btn-xs tooltips'>Correction</a>";
+                                               }
+                                               else
+                                               {
+                                                   return "<a class='btn btn-xs tooltips'>NA</a>";
+                                               }
+
+
+                                               //if (firstDate < secondDate)
+                                               //{
+                                               //    if (firstDate >= secondDate_pev_month && Current_date <= Lock_date_day)
+                                               //    {
+                                               //        if (_data != formattedDate)
+                                               //        {
+                                               //            return "<a class='ChangeReq  btn btn-xs tooltips'>Correction</a>";
+                                               //        }
+                                               //        else
+                                               //        {
+                                               //            return " <a class='attlock btn btn-xs tooltips'>NA</a>";
+                                               //        }
+                                               //    }
+                                               //    else
+                                               //    {
+                                               //        return " <a class='attlock btn btn-xs tooltips'>NA</a>";
+                                               //    }
+                                               //}
+                                               //else
+                                               //{
+                                               //    if (_data != formattedDate)
+                                               //    {
+                                               //        return "<a class='ChangeReq  btn btn-xs tooltips'>Correction</a>";
+                                               //    }
+                                               //    else
+                                               //    {
+                                               //        return "<a class='btn btn-xs tooltips'>NA</a>";
+                                               //    }
+                                               //}
+                                           }
+
+
+                                           else
+                                           {
+                                               if (data == "ChangeReq")
+                                               {
+                                                   var _data = row.Att_dt;
+                                                   var Current_date = new Date();
+
+                                                   var formattedDate = Current_date.getFullYear() + "-" +
+                                                       String(Current_date.getMonth() + 1).padStart(2, '0') + "-" +
+                                                       String(Current_date.getDate()).padStart(2, '0');
+
+                                                   if (_data != formattedDate)
+                                                   {
+                                                       return "<a class='ChangeReq  btn btn-xs tooltips'>Correction</a>";
+                                                   }
+                                                   else {
+                                                       return "<a class='btn btn-xs tooltips'>NA</a>";
+                                                   }
+                                               }
+                                               else {
+                                                   return "<a class='btn btn-xs tooltips'>NA</a>";
+                                               }
+                                           }
+                                       }
+                                   }
+                            ],
+                              "columnDefs": [
+                                {
+                                    //"targets": [8, 9],
+                                    "targets": [7],
+                                    "visible": false
+                                },
+                            ],
+                            "rowCallback": function (row, data, index) {
+                                var table = $('#tblAttndancelist').DataTable();
+                                var pageInfo = table.page.info();
+                                $('td:eq(9)', row).html(pageInfo.start + index + 1);
+                            },
+
+
+                        });
+                        $('#list1').modal('show');
+                        $("#tblAttndancelist").show();
+                        setTimeout(function () {
+                            $("#tblAttndancelist_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive_Model"));
+                            $('.tooltips').tooltip();
+
+                            injectExportButtonsForDataTables(false, function () {
+
+                            });
+                            $('.tooltips').tooltip();
+
+                        }, 100);
+                    },
+
+
+
+                    error: function (xhr, ajaxOptions, thrownError) {
+                        swal(thrownError + ' - GetAttndancedetails');
+
+                    }
+                });
+
+
+
+
+
+        }
+        function ShiftGetAll(shftId)
+            {
+            $('#ShiftId').empty();
+            var SId = 0;
+            if (shftId != null) {
+                SId = shftId;
+            }
+            $.ajax({
+                type: "GET",
+                url: '@_webapiurl' + 'Master/ShiftMasterGetAll',
+                headers: { 'Authorization': '@_tokan' },
+                contentType: "application/json; charset=utf-8",
+                datatype: "json",
+                async: "false",
+                beforeSend: function () {
+                    $(".loading").show();
+                },
+                success: function (response) {
+                    if (response.isRedirect) {
+                        window.location.href = response.redirectUrl;
+                    }
+                    if (response != null) {
+                        $("#ShiftId").append("<option value='0' selected>Select Shift</option>");
+                        response.sort(function (a, b) {
+                            return a.ShiftName.localeCompare(b.ShiftName);
+                        });
+                        for (var i = 0; i < response.length; i++) {
+                            $("#ShiftId").append("<option value='" + response[i].ShiftId + "'>" + response[i].ShiftName + "</option>");
+                        }
+                    }
+                    if (SId != null & SId != 0) {
+                        $("#ShiftId option[value ='" + SId + "']").prop('selected', true);
+                        $('#ShiftId').trigger('change.select2');
+                    }
+                    $(".loading").hide();
+                },
+                error: function () {
+                    $(".loading").hide();
+                }
+            });
+    }
+        function calculateTotalHours()
+        {
+            let inTime = document.getElementById("InPunchTime").value;
+            let outTime = document.getElementById("OutPunchTime").value;
+
+            if (inTime && outTime) {
+                // Parse the input time (HH:MM format)
+                let [inHours, inMinutes] = inTime.split(":").map(Number);
+                let [outHours, outMinutes] = outTime.split(":").map(Number);
+
+                // Create Date objects for both
+                let inDate = new Date();
+                inDate.setHours(inHours, inMinutes, 0, 0);
+
+                let outDate = new Date();
+                outDate.setHours(outHours, outMinutes, 0, 0);
+
+                // Handle overnight shifts (e.g., 20:10 - 08:30)
+                if (outDate < inDate) {
+                    outDate.setDate(outDate.getDate() + 1);
+                }
+
+                // Calculate total difference
+                let diffMs = outDate - inDate;
+                let totalHours = Math.floor(diffMs / (1000 * 60 * 60));
+                let totalMinutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+
+                // Format as HH:MM
+                let totalTime = `${String(totalHours).padStart(2, '0')}:${String(totalMinutes).padStart(2, '0')}`;
+                document.getElementById("txthours").innerText = totalTime;
+                //$("#TotalHoursReq").val() = totalTime;
+            }
+    }
+        function validateOvertime(input)
+    {
+
+            input.value = input.value.replace(/\D/g, '');
+            let num = parseInt(input.value, 12);
+        if (isNaN(num) || num < 0)
+        {
+                input.value = '';
+            } else if (num > 12) {
+                input.value = '12';
+            }
+        }
+
+
+</script>
+
+<!-- Page Bar : Begin -->
+<div class="page-bar">
+    @if (_RoleId == 1 || _RoleId == 6805 || _RoleId == 6806)
+    {
+        <ul class="page-breadcrumb">
+            <li>
+                <a href="@(isClientDBMatchFlag == "True" ? "/Admin/AdminDashboard" : "/Dashboard/AdminDashboard")"><i class="fa-regular fa-house"></i></a>
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> Attendance Details</span>
+            </li>
+
+        </ul>
+    }
+    else
+    {
+        <ul class="page-breadcrumb">
+            <li>
+                <a href="/Dashboard/EmployeeDashboard"><i class="fa-regular fa-house"></i></a>
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> Attendance Correction Details</span>
+            </li>
+        </ul>
+    }
+    <div class="page-toolbar text-right">
+        <a href="javascript:;" class="btn icon_transparent_btn tooltips" id="Filter_search" data-placement="left" data-original-title="Filter" data-toggle="tooltip"><i class="fa-light fa-filter" aria-hidden="true"></i> </a>
+    </div>
+</div>
+<!-- Page Bar : End -->
+
+<div id='ajax_loader' class="modal_bg loading" aria-hidden="true">
+    <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading" />
+</div>
+
+<div class="filter_portlet_wrapper full-width">
+
+    <!-- Datatable Block : Begin -->
+    <div class="portlet filter_portlet_tbl">
+        <div class="portlet-body">
+            <div id="tblempty">
+                <div class="table-responsive" id="tableResponsive_AC">
+                    <div id="tblAttendanceSummarylst">
+                        <table id="tblAttendanceSummary" class="table new_datatbl table-striped table-bordered table-hover table-checkable order-column"
+                               role="grid" aria-describedby="" style="width: 1041px;"></table>
+                    </div>
+                    <div class="nodata_block no_recoed" style="display: none; text-align: center;" id="no_data">
+                        <img src="/assets/images/Data_not_found.jpg" height="200" width="200" alt="No Data Icon">
+                    </div>
+                </div>
+            </div>
+            <div id="NotificationGrid-empty" style="display: none">
+                <div class="datanotfound">
+                    <img src="/assets/images/emptyscreen_3.png" width="280" height="148" alt="Nodata Found Icon">
+                    <p class="datanotfound_title">No data found</p> <!-- titleText -->
+                    <p class="">No matching records found for the selected filters.</p><!-- subText -->
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Datatable Block : End -->
+    <!-- Filter Block : Begin -->
+    <div class="portlet filter_boxModal">
+        <div class="filterbox_header">
+            <div class="d-flex align-items-center justify-content-between">
+                <h4 class="filter-title">Filters</h4>
+                <button type="button" class="filterclose_btn"><i class="fa-light fa-xmark"></i></button>
+            </div>
+        </div>
+        <div class="filterbox_body">
+            <div class="col-lg-12">
+                <div class="form-group">
+                    <label class="control-label">Month <span style="color:red"> *</span></label>
+                    <select class="form-control" id="Select_month">
+                        <option value="0">Select Month </option>
+                        <option value="1">Jan</option>
+                        <option value="2">Feb</option>
+                        <option value="3">Mar</option>
+                        <option value="4">Apr</option>
+                        <option value="5">May</option>
+                        <option value="6">Jun</option>
+                        <option value="7">Jul</option>
+                        <option value="8">Aug</option>
+                        <option value="9">Sep</option>
+                        <option value="10">Oct</option>
+                        <option value="11">Nov</option>
+                        <option value="12">Dec</option>
+                    </select>
+                </div>
+            </div>
+            <div class="col-lg-12">
+                <div class="form-group">
+                    <label class="control-label">Year <span style="color:red"> *</span></label>
+                    <select class="form-control" id="Select_year">
+                        <option value="0">select Year</option>
+                    </select>
+                </div>
+            </div>
+            <div class="col-lg-12">
+                <div class="form-group">
+                    <label class="control-label">Employee</label>
+                    <input type="text" id="txt2" value="0" hidden />
+                    <select id="Select_Employee" class="mt-multiselect btn-sm btn blue btn-outline" aria-haspopup="true" aria-expanded="false" multiple="multiple" data-width="100%"></select>
+                </div>
+            </div>
+            <div class="col-lg-12" style="display:none;">
+                <div class="form-group">
+                    <label class="control-label">Status</label>
+                    <select id="Select_status" class="form-control">
+                        <option value="0">ALL</option>
+                        <option value="2">Absent</option>
+                        <option value="3">Holiday</option>
+                        <option value="5">Miss Punch</option>
+                        <option value="1">Present</option>
+                        <option value="4">Week Off</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+        <div class="filterbox_footer">
+            <div class="text-right">
+                <button type="button" id="Clear_OPration" class="clear_btn tooltips" data-placement="top" data-original-title="Clear Filters" data-toggle="tooltip"><i class="fa-regular fa-eraser"></i></button>
+                <button type="button" id="Search_OPration" class="icon_btn margin-left-5 tooltips" data-placement="top" data-original-title="Search Filters" data-toggle="tooltip"><i class="fa-solid fa-magnifying-glass"></i></button>
+                <button type="button" id="Export" class="dwicon_btn margin-left-5 tooltips" data-placement="top" data-original-title="Download Excel" data-toggle="tooltip"><i class="fa-regular fa-download" aria-hidden="true"></i></button>
+            </div>
+        </div>
+    </div>
+    <!-- Filter Block : End -->
+
+</div>
+
+<!-- Attendance List model : Begin-->
+<div id="list1" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+    <div class="modal-dialog w-1080">
+        <!-- Change 'modal-dialog' to 'modal-lg' for larger width -->
+        <!-- Modal content-->
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" id="closedatten" data-dismiss="modal">×</button>
+                <h4 class="modal-title">Attendance List</h4>
+            </div>
+            <div class="modal-body nomodalfooter">
+                <fieldset>
+                    <div class="table-responsive" id="tableResponsive_Model">
+                        <table id="tblAttndancelist" class="table new_datatbl table-striped table-bordered table-hover table-checkable order-column"
+                               role="grid" aria-describedby="tblAttndancelist_info" style="width: 100%;"></table>
+                    </div>
+                </fieldset>
+                <div class="row">
+                    <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                        <hr class="save_hr_line" />
+                        <u style="color:maroon;">Status color code</u> : <span style="color: #28a745; "> P = Green </span>,<span style="color: #6f42c1; "> H/PH = Purple </span>,<span style="color: #022344; ">
+                            A/AB/XX = Black
+                        </span>,<span style="color: #007bff;"> W/PW = Skyblue </span>,<span style="color: #fd7e14;"> LH = Orange </span>,
+                        <span style="color: #dc3545;"> Leave = Red </span>,<span style="color: #ffc107;"> HD = Yellow </span>,<span style="color: red;"> E = Red </span>,
+                        <span style="color: Black;"> Others = Black </span>,<span style="color: Black;">
+                            <a class="tooltips" data-placement="top" title="Display data till the current date.">
+                                <i class="fa-regular fa-circle-info"></i>
+                            </a>
+                        </span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Attendance List model : End-->
+<!-- Attendance Correction model : Begin-->
+<div id="frmpopup" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+    <div class="modal-dialog w-500">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close closecorrection" id="closedcorr" data-dismiss="modal">&times;</button>
+                <h4 class="modal-title">Attendance Correction</h4>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-danger popMsg" hidden>
+                    <a href="#" class="close" data-dismiss="alert">&times;</a>
+                    <strong id="strstg">Error ! </strong> @_error
+                </div>
+                <div class="modal-card">
+                    <div class="row setup-content" id="step-1">
+                        <fieldset>
+                            <input type="hidden" id="EmpId" value="@Convert.ToInt32(Session["EmpId"])">
+                            <input type="hidden" id="PunchIDReq" value="0">
+                            <div class="col-md-12">
+                                <div class="row">
+                                    <div class="col-lg-12">
+                                        <div class="form-group">
+                                            <label>Shift <span class="required" id="spanshift" aria-required="true">*</span></label>
+                                            <select class="form-control input-sm select2" id="ShiftId" name="ShiftId">
+                                            </select>
+                                            <span class="help-block error_help_block" hidden id="spShiftId"></span>
+                                        </div>
+                                    </div>
+                                    <div class="col-lg-12" style="display:none;">
+                                        <div class="form-group data_picker_box">
+                                            <label>Select Date<span class="required" aria-required="true"> * </span></label>
+                                            <div class="input-group input-group-sm  date date-picker1" data-date="@DateTime.Now" data-date-format="@_isdateformat" data-date-viewmode="years">
+                                                <span class="input-group-btn">
+                                                    <button class="btn default" type="button">
+                                                        <i class="fa-light fa-calendar-days"></i>
+                                                    </button>
+                                                </span>
+                                                <input type="text" class="form-control" id="fromdate" name="fromdate" placeholder="@_isdateformat" readonly="readonly">
+                                                <input type="hidden" id="EmpID" name="EmpID" />
+                                                <input type="hidden" id="isNight" name="isNight" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-sm-6">
+                                        <div class="form-group">
+                                            <label>IN Time <span class="required" aria-required="true"> *(24 Hr) </span></label>
+                                            <a class="tooltips" data-placement="bottom" title="Set in time in 24hr format">
+                                                <i class="fa-regular fa-circle-info"></i>
+                                            </a>
+                                            <div class="input-group input-group-sm" id="OutDiv">
+                                                <input type="text" class="form-control timepicker timepicker-24" data-minute-step="1" id="InPunchTime" name="InPunchTime" placeholder="00:00"
+                                                       onchange="calculateTotalHours()">
+                                                <span class="input-group-btn">
+                                                    <button class="btn default" type="button" id="btnouttime">
+                                                        <i class="fa-regular fa-clock"></i>
+                                                    </button>
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-sm-6">
+                                        <div class="form-group">
+                                            <label>OUT Time <span class="required" aria-required="true"> *(24 Hr)</span></label>
+                                            <a class="tooltips" data-placement="bottom" title="Set out time in 24hr format">
+                                                <i class="fa-regular fa-circle-info"></i>
+                                            </a>
+                                            <div class="input-group input-group-sm" id="OutDiv">
+                                                <input type="text" class="form-control timepicker timepicker-24" data-minute-step="1" id="OutPunchTime" name="OutPunchTime" placeholder="00:00"
+                                                       onchange="calculateTotalHours()">
+                                                <span class="input-group-btn">
+                                                    <button class="btn default" type="button" id="btnouttime">
+                                                        <i class="fa-regular fa-clock"></i>
+                                                    </button>
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-lg-12">
+                                        <div class="form-group">
+                                            <label class="control-label">Total Hours</label>
+                                            <div>
+                                                <div style="pointer-events: none; opacity: 1.2; font-weight: bold;">
+                                                    <label class="control-label" id="txthours">00:00</label>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-lg-12">
+                                        <div class="form-group">
+                                            <label class="control-label">Status<span class="required" aria-required="true">*</span></label>
+                                            <select class="form-control input-sm select2" id="StatusMode" name="StatusMode">
+                                                <option value="1">P</option>
+                                                <option value="2">HD</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="col-lg-12">
+                                        <div class="form-group">
+                                            <label class="control-label">Overtime Hours</label>
+                                            <input type="number" oninput="validateOvertime(this)" id="txtOverTimehours" placeholder="Please Enter" class="form-control" name=""
+                                                   maxlength="2">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </fieldset>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <div class="row">
+                    <div class="col-lg-12 form-actions text-right">
+                        <button type="button" id="btnSave" class="btn btn-sm blue"><i class="fa-light fa-floppy-disk"></i> Save</button>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+<!-- Attendance Correction model : End-->
+<script>
+    $('.overlay').fadeIn('fast').delay(5000).fadeOut('slow');
+</script>

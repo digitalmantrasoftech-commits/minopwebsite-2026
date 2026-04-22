@@ -1,0 +1,419 @@
+@using System.Configuration;
+@{
+    ViewBag.Title = "Visitor Type";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    string _webapiVMSURL = ConfigurationManager.AppSettings["WebApiVMS"].ToString();
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+}
+
+<link href="/Newlayout/css/payrollstructure.css" rel="stylesheet">
+<script src="~/Scripts/Helpers/noDataHandler.js"></script>
+
+<style type="text/css">
+    .bootstrap-switch .bootstrap-switch-handle-on.bootstrap-switch-primary {
+        background: var(--navyblue_color);
+    }
+
+    .bootstrap-switch .bootstrap-switch-handle-on.bootstrap-switch-primary,
+    .bootstrap-switch .bootstrap-switch-handle-off.bootstrap-switch-default {
+        width: 26px !important;
+        padding: 3px 7px;
+    }
+
+    .bootstrap-switch.bootstrap-switch-small .bootstrap-switch-label {
+        width: 24px !important;
+        padding: 3px 10px;
+    }
+
+    .bootstrap-switch {
+        width: 52px !important;
+    }
+</style>
+
+<script>
+    //var BASE_URL = "https://localhost:44369/";
+    var _VisitorTypeData = [];
+    var isEdit = false;
+
+    $(document).ready(function () {
+
+        GetAllVisitorTypes();
+
+        // ── Add Button ───────────────────────────────────────────────────
+        $("#AddVisitorType_btn").click(function () {
+            isEdit = false;
+            frmClear();
+            $("#modalTitle").text("Add Visitor Type");
+            $("#VisitorTypeModal").modal("show");
+        });
+
+        // ── Cancel / Close ───────────────────────────────────────────────
+        $("#btnClear, #btnClose").click(function () {
+            frmClear();
+        });
+
+        // ── Edit Button (delegated on table) ─────────────────────────────
+        $("#tblvisitortype").on('click', '.editBtn', function () {
+            var id = parseInt($(this).data('id'));
+            var selectedData = _VisitorTypeData.find(x => x.TypeId == id);
+
+            if (!selectedData) {
+                toastr.error("Data not found!");
+                return;
+            }
+
+            isEdit = true;
+            frmClear();
+
+            $("#VisitorTypeId").val(selectedData.TypeId);
+            $("#TypeName").val(selectedData.TypeName);
+
+            // Set modal switch to match what is currently in the cache
+            // silent = true so it does NOT fire switchChange on the modal switch
+            $("#IsActive").bootstrapSwitch('state', selectedData.IsActive == true);
+
+            $("#modalTitle").text("Edit Visitor Type");
+            $("#VisitorTypeModal").modal("show");
+        });
+
+
+
+        // ── Save (modal) ─────────────────────────────────────────────────
+        $("#btnSave").click(function () {
+           debugger
+            if ($("#TypeName").val().trim() === "") {
+                $("#TypeName").addClass('field_error').focus();
+                return false;
+            }
+
+            var model = {
+                TypeId: isEdit ? parseInt($("#VisitorTypeId").val()) : 0,
+                TypeName: $("#TypeName").val().trim(),
+                Status: $("#IsActive").is(':checked') ? 1 : 0,
+                IsActive: $("#IsActive").is(':checked') ? 1 : 0
+            };
+
+            var url = isEdit
+                ? '@_webapiVMSURL' + 'Visitor/UpdateVisitorType'
+                : '@_webapiVMSURL' +  'Visitor/CreateVisitorType';
+
+            $.ajax({
+                type: "POST",
+                headers: { 'Authorization':'@_tokan'},
+                url: url,
+                data: JSON.stringify(model),
+                contentType: "application/json",
+                beforeSend: function () { $("#ajax_loader").show(); },
+                success: function (res) {
+                    if (res.success) {
+                        toastr.success(res.message);
+                        GetAllVisitorTypes();       // full reload → row switch reflects saved state
+                        $("#VisitorTypeModal").modal("hide");
+                    } else {
+                        toastr.error(res.message);
+                    }
+                },
+                error: function () {
+                    toastr.error("An error occurred. Please try again.");
+                },
+                complete: function () { $("#ajax_loader").hide(); }
+            });
+        });
+
+    }); // end document.ready
+
+    // ── Load All Visitor Types ───────────────────────────────────────────
+    function GetAllVisitorTypes() {
+        debugger
+        $.ajax({
+            type: "GET",
+            headers: { 'Authorization':'@_tokan'},
+            url: '@_webapiVMSURL' + 'Visitor/GetVisitorTypes',
+            beforeSend: function () { $("#ajax_loader").show(); },
+
+            success: function (response) {
+
+                if (response != null) {
+                    handleGridVisibility("tblempty", "NotificationGrid-empty", response, {
+                        imageUrl: "emptyscreen_1.png",
+                        subText: "No entries found."
+                    });
+                }
+
+                if ($.fn.DataTable.isDataTable('#tblvisitortype')) {
+                    $('#tblvisitortype').DataTable().clear().destroy();
+                    $("#dataTables_tbl_header").remove()
+                }
+
+                _VisitorTypeData = response;
+
+                var html = "";
+                $.each(response, function (i, item) {
+                    var switchChecked = item.IsActive == 1 ? "checked" : "";
+
+                    // NOTE: No event binding inline here.
+                    // switchChange is bound AFTER bootstrapSwitch() initialisation below,
+                    // using a flag to skip the init-time fire.
+                    var switchHtml = '<input type="checkbox"'
+                        + ' data-size="small"'
+                        + ' class="make-switch row-switch"'
+                        + ' ' + switchChecked
+                        + ' data-on-text="<i class=\'fa-solid fa-check\'></i>"'
+                        + ' data-off-text="<i class=\'fa-solid fa-xmark\'></i>"'
+                        + ' data-id="' + item.TypeId + '">';
+
+                    html += "<tr>";
+                    html += "<td>" + item.TypeName + "</td>";
+                    html += "<td><div class='form-group margin-bottom-0'>" + switchHtml + "</div></td>";
+                    html += "<td>";
+                    html += "  <a class='editBtn btn btn-xs seagreen_btnnew tooltips' data-id='" + item.TypeId + "' title='Edit'>";
+                    html += "    <i class='fa-regular fa-pen-to-square'></i></a> ";
+                    html += "</td>";
+                    html += "</tr>";
+                });
+
+                $("#tblvisitortype tbody").html(html);
+
+                // Step 1: Initialise bootstrap-switch on all row switches.
+                // bootstrapSwitch fires switchChange once during init — we suppress it
+                // by binding the real handler AFTER init using a per-element flag.
+                $(".row-switch").each(function () {
+                    var $sw = $(this);
+                    $sw.bootstrapSwitch();          // init — fires switchChange internally
+
+                    // Step 2: Now bind the real user-interaction handler.
+                    // We use 'switchChange.bootstrapSwitch' scoped to this element.
+                    $sw.on('switchChange.bootstrapSwitch', function (e, newState) {
+                        var id = parseInt($(this).data('id'));
+                        UpdateVisitorTypeStatus(id, newState, $(this));
+                    });
+                });
+
+                // DataTable init
+                $("#tblvisitortype").DataTable({
+                    destroy: true,
+                    dom: _domCommon,
+                    language: _languageCommon,
+                    ordering: true,
+                    order: [],
+                    columnDefs: [
+                        { targets: [1, 2], orderable: false }
+                    ]
+                });
+
+                setTimeout(function () {
+                    $("#tblvisitortype_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+                    $('.tooltips').tooltip();
+                }, 100);
+
+                injectExportButtonsForDataTables(false, function () { });
+                $('.tooltips').tooltip();
+            },
+
+            error: function () {
+                toastr.error("Error loading visitor types.");
+            },
+
+            complete: function () { $("#ajax_loader").hide(); }
+        });
+    }
+
+    // ── Row Switch: Update IsActive on backend ───────────────────────────
+    // Called only on real user toggle — NOT during initialisation.
+    function UpdateVisitorTypeStatus(id, newState, $switchEl) {
+        debugger
+        var record = _VisitorTypeData.find(x => x.TypeId == id);
+        if (!record) return;
+
+        // Optimistically update cache so Edit modal shows correct state immediately
+        record.IsActive = newState ? 1 : 0;
+
+        var model = {
+            TypeId: record.TypeId,
+            TypeName: record.TypeName,
+            Status: newState ? 1 : 0,
+            IsActive: newState ? 1 : 0
+        };
+
+        $.ajax({
+            type: "POST",
+            headers: { 'Authorization':'@_tokan'},
+            url: '@_webapiVMSURL' + 'Visitor/UpdateVisitorType',
+            data: JSON.stringify(model),
+            contentType: "application/json",
+            beforeSend: function () { $("#ajax_loader").show(); },
+
+            success: function (res) {
+                if (res.success) {
+                    toastr.success(res.message);
+                    // Cache already updated — no full reload needed.
+                    // Row switch already flipped visually by bootstrap-switch.
+                } else {
+                    toastr.error(res.message);
+                    // Revert: update cache back and set switch silently (true = no re-fire)
+                    record.IsActive = (!newState) ? 1 : 0;
+                    $switchEl.bootstrapSwitch('state', !newState, true);
+                }
+            },
+
+            error: function () {
+                toastr.error("Failed to update status. Please try again.");
+                // Revert
+                record.IsActive = (!newState) ? 1 : 0;
+                $switchEl.bootstrapSwitch('state', !newState, true);
+            },
+
+            complete: function () { $("#ajax_loader").hide(); }
+        });
+    }
+
+    // ── Clear Modal Form ─────────────────────────────────────────────────
+    function frmClear() {
+        $("#VisitorTypeId").val("0");
+        $("#TypeName").val("").removeClass('field_error');
+        // Reset to Active by default, silent so switchChange does not fire
+        if ($("#IsActive").data('bootstrapSwitch')) {
+            $("#IsActive").bootstrapSwitch('state', true, true);
+        }
+    }
+</script>
+
+<!-- Page Bar : Begin -->
+<div class="page-bar">
+    <ul class="page-breadcrumb">
+        <li>
+            <a href="/Admin/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+        </li>
+        <li>
+            <span><i class="fa-light fa-angle-right"></i> Visitor Type</span>
+        </li>
+    </ul>
+    <div class="emptotalcount">
+        <div class="page-toolbar page-toolbar_payroll">
+            <div class="emp_btn_block">
+                <div class="text-right">
+                    <a href="javascript:;" class="btn icon_transparent_btn tooltips"
+                       id="AddVisitorType_btn"
+                       data-placement="left"
+                       data-original-title="Add Visitor Type">
+                        <i class="fa-solid fa-plus"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Page Bar : End -->
+<!-- Ajax Loader : Begin -->
+<div id="ajax_loader" class="modal_bg loading" aria-hidden="true">
+    <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading" />
+</div>
+<!-- Ajax Loader : End -->
+<!-- Body Block : Begin -->
+<div class="row">
+    <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+        <div class="portlet">
+            <div class="portlet-body">
+
+                <div id="tblempty">
+                    <div class="table-responsive" id="tableResponsive">
+                        <table class="new_datatbl table table-striped table-bordered table-hover table-checkable order-column"
+                               id="tblvisitortype">
+                            <thead>
+                                <tr>
+                                    <th>Type Name</th>
+                                    <th>Status</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- NoDataFound Block : Begin -->
+                <div id="NotificationGrid-empty">
+                    <div class="datanotfound">
+                        <img src="" height="148" width="280" alt="Nodata Found Icon" />
+                        <p class="datanotfound_title"></p>
+                        <p class=""></p>
+                    </div>
+                </div>
+                <!-- NoDataFound Block : End -->
+                <!-- Add / Edit Visitor Type Modal : Begin -->
+                <div id="VisitorTypeModal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+                    <div class="modal-dialog" style="width: 450px;">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <button type="button" class="close" data-dismiss="modal" id="btnClose">&times;</button>
+                                <h4 class="modal-title" id="modalTitle">Add Visitor Type</h4>
+                            </div>
+                            <div class="modal-body">
+                                <div class="modal-card">
+                                    <fieldset>
+                                        <div class="head_box">
+                                            <div class="row">
+                                                <div class="af_modal_box">
+
+                                                    <!-- Type Name -->
+                                                    <div class="col-xs-12">
+                                                        <div class="form-group">
+                                                            <label>Type Name <span class="required" aria-required="true">*</span></label>
+                                                            <input type="text" class="form-control input-sm"
+                                                                   id="TypeName"
+                                                                   placeholder="Enter Visitor Type Name"
+                                                                   maxlength="100" />
+                                                        </div>
+                                                    </div>
+
+                                                    <!-- Status Toggle -->
+                                                    <div class="col-xs-12">
+                                                        <div class="form-group">
+                                                            <label>Status &nbsp;</label>
+                                                            <div>
+                                                                <input type="checkbox"
+                                                                       id="IsActive"
+                                                                       data-size="small"
+                                                                       class="make-switch"
+                                                                       checked
+                                                                       data-on-text="<i class='fa-solid fa-check'></i>"
+                                                                       data-off-text="<i class='fa-solid fa-xmark'></i>" />
+                                                                &nbsp;<span class="text-muted" style="font-size:12px;">Active / Inactive</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </fieldset>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <div class="row">
+                                    <div class="col-lg-12 text-right">
+                                        <input type="hidden" id="VisitorTypeId" value="0" />
+                                        <input type="button" class="btn clear_btn" data-dismiss="modal" value="Cancel" id="btnClear" />
+                                        <button class="btn save_btn" type="button" id="btnSave">
+                                            <i class="fa-light fa-floppy-disk"></i> Save
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Add / Edit Visitor Type Modal : End -->
+
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Body Block : End -->
+
+<script>
+    // Initialise modal IsActive switch once after DOM ready
+    $(function () {
+        $("#IsActive").bootstrapSwitch();
+    });
+</script>

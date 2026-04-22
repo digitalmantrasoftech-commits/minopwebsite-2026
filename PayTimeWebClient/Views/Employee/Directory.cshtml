@@ -1,0 +1,1919 @@
+﻿@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@using System.Configuration;
+@{
+    ViewBag.Title = "Directory";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    string _Message = ViewBag.msg;
+    string _error = ViewBag.error;
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+    string _dbName = HttpContext.Current.Session["DbName"].ToString();
+    //int _islimit = ViewBag.Islimit;
+    string _accountcd = HttpContext.Current.Session["cmpcode"].ToString();
+    string _companyid = "0";
+    string _empid = "0";
+    string _empName = "0";
+
+    if (_RoleId != 1 && _RoleId != 6805 && _RoleId != 6806)
+    {
+        _empid = HttpContext.Current.Session["EmpId"].ToString();
+        _empName = HttpContext.Current.Session["EmpName"].ToString();
+
+    }
+    string _branchid = "0";
+    if (_RoleId == 6805)
+    {
+        _companyid = HttpContext.Current.Session["ClientCompanyId"].ToString();
+    }
+    else if (_RoleId == 6806)
+    {
+        _companyid = HttpContext.Current.Session["ClientCompanyId"].ToString();
+        _branchid = HttpContext.Current.Session["BranchId"].ToString();
+    }
+    else if (_RoleId > 1)
+    {
+        _companyid = HttpContext.Current.Session["ClientCompanyId"].ToString();
+        _branchid = HttpContext.Current.Session["BranchId"].ToString();
+    }
+    string _isdateformat = HttpContext.Current.Session["IsDateFormat"].ToString();
+    Int64 _DatagridThsold = 0;
+
+    _DatagridThsold = Convert.ToInt64(HttpContext.Current.Session["DataGridThresold"]);
+
+    string isClientDBMatchFlag = HttpContext.Current.Session["IsClientDBMatch"] != null
+   ? HttpContext.Current.Session["IsClientDBMatch"].ToString()
+   : "false"; // Default to "false" if the session is null
+}
+<script src="~/Scripts/Helpers/noDataHandler.js"></script>
+<link href="/Newlayout/css/payrollstructure.css" rel="stylesheet">
+
+<style type="text/css">
+    .btn.red {
+        border-radius: 3px !important;
+    }
+
+    .fixed-column {
+        width: 100px !important;
+        min-width: 100px !important;
+        right: 1px;
+        position: sticky !important;
+        background-color: #fff !important;
+    }
+
+    .fixed-column-1 {
+        width: 80px !important;
+        min-width: 80px !important;
+        right: 113px;
+        position: sticky !important;
+        background-color: #fff !important;
+        box-shadow: -2px 2px 4px 0px rgba(0, 0, 0, 0.20);
+    }
+
+    .zoom-image {
+        border-radius: 50%;
+        width: 54px;
+        height: 54px;
+        transition: transform 0.5s; /* Smooth zoom transition */
+    }
+
+        /* Style for the image when hovered */
+        .zoom-image:hover {
+            transform: scale(2.5); /* Increase the size to zoom in */
+        }
+</style>
+
+<script>
+ var webapiurl = '@_webapiurl';
+ var tokan = '@_tokan';
+ var DataGridThreSold = '@_DatagridThsold';
+    var _isdateformat = '@_isdateformat';
+ var RoleId = '@_RoleId';
+ var _companyid = '@_companyid';
+ var _branchid = '@_branchid';
+ var accountcode = '@_accountcd';
+ var _empid = '@_empid';
+ var Directory_table = "";
+ var $Branchselect = "";
+ var $selectDepart = "";
+ var $MulBranchselect = "";
+ var CompanyID = 0;
+ var BranchID = 0;
+ var DepartmentID = 0;
+ var DesignationID = 0;
+ var DeactivateID = 0;
+ var checkedCount = 0;
+ var EmpId = 0;
+ var IsDeactivate = 0;
+ var StatusID = 0;
+ var inactivedate = "";
+    var onboardingid = 0;
+    var _isServerSide = false;
+    var checkedColumnsList = [];
+    var checkboxStates = {};
+    var delay = 1000;
+    GlobalObjData = {}
+</script>
+<script src="~/Pages_JS/employee/DirectoryDataGridDataPagination.js"></script>
+<script>
+
+    $(document).ready(function () {
+        checkSession();
+        // Create search inputs in footer
+        CompanyGetAllFilter();
+        DesignationGetAllFilter();
+        $Branchselect = $("#ddlBranchID").multiselect({
+            selectAllValue: 'multiselect-all',
+            enableCaseInsensitiveFiltering: true,
+            includeSelectAllOption: true,
+            allSelectedText: 'All Select',
+            enableFiltering: true,
+            maxHeight: '300',
+            buttonWidth: '100%',
+            enableClickableOptGroups: true,
+            nonSelectedText: 'Select Branch',
+        });
+
+        $selectDepart = $("#ddlDepartmentID").multiselect({
+            selectAllValue: 'multiselect-all',
+            enableCaseInsensitiveFiltering: true,
+            includeSelectAllOption: true,
+            allSelectedText: 'All Select',
+            enableFiltering: true,
+            maxHeight: '300',
+            buttonWidth: '100%',
+            enableClickableOptGroups: true,
+            nonSelectedText: 'Select Department',
+
+        });
+
+        if (localStorage.getItem('applyFilter') === null) {
+            localStorage.setItem('applyFilter', 'false');
+        }
+        if (localStorage.getItem('applyFilter') === 'false') {
+            getDirectory(CompanyID, BranchID, DepartmentID, DesignationID, DeactivateID);
+        }
+        $("#Remark").keypress(function (e) {
+            $("#Remark").removeClass('field_error');
+            if (((e.which >= '65') && (e.which <= '90')) ||
+                ((e.which >= '97') && (e.which <= '122')) ||
+                (e.which == '46') ||
+                (e.which == '32') ||
+                e.which == '45' ||
+                e.which == '8') {
+                return true;
+            } else {
+                return false;
+            }
+        });
+        $("#Remark").on('paste', function (event) {
+            event.preventDefault();
+        });
+        $("#Remark").blur(function () {
+            var _Remark = removeTags($("#Remark").val());
+            $("#Remark").val(_Remark);
+        });
+        $("#Remark").change(function () {
+            $("#Remark").removeClass('field_error');
+        });
+        $("#Remark").keypress(function () {
+            $("#Remark").removeClass('field_error');
+        });
+
+
+        // Filter Click Hid/Show Div
+        $("#Filter_search").click(function () {
+            const wrapper = $(".filter_portlet_wrapper");
+            wrapper.toggleClass("full-width");
+
+            var screenWidth = $(window).width();
+            if (screenWidth >= 300 && screenWidth <= 600) {
+                $('.filter_portlet_tbl').toggle();
+                $('.filter_portlet_wrapper .filter_boxModal').css('width', '100%');
+            }
+        });
+
+        // Close filter panel on close button click
+        $(".filterclose_btn").click(function () {
+            const wrapper = $(".filter_portlet_wrapper");
+            wrapper.addClass("full-width");
+
+            var screenWidth = $(window).width();
+            if (screenWidth >= 300 && screenWidth <= 600) {
+                $(".filter_portlet_tbl").css("display", "block");
+            }
+        });
+
+        $('#ddlCompanyID').change(function () {
+            var s = $('#ddlCompanyID').val();
+            fillBranchbycompnyid(s, "");
+        });
+
+        $('#ddlBranchID').change(function () {
+            var B = $('#ddlBranchID').val();
+            fillDeptTable(B, "");
+        });
+
+        $("#btnClose").on('click', function () {
+            frmClear();
+        });
+
+        $(document).on('click', '.selectall', function () {
+            $('input:checkbox').not(this).prop('checked', this.checked);
+            $('#tbldirectorydetails').find('.ClsChkEmp').each(function () {
+                var empPunchID = $(this).val();
+                checkboxStates[empPunchID] = $(this).prop('checked');
+            });
+            //if ($('.selectall:checked').length > 0) {
+            //    $('#btnResignAll').removeClass('disabled');
+            //} else {
+            //    $('#btnResignAll').prop('disabled', true);
+            //}
+        });
+        $(".ClsChkEmp").click(function () {
+            $('input:checkbox').not(this).prop('checked', this.checked);
+            //if ($('.ClsChkEmp:checked').length > 0) {
+            //    $('#btnResignAll').prop('disabled', false);
+            //} else {
+            //    $('#btnResignAll').prop('disabled', true);
+            //}
+        });
+
+        $("#btnSubmit").click(function () {            
+            checkSession();
+            var SelectedBranchID = [];
+            var SelectedDepartmentID = [];
+            CompanyID = parseInt($("#ddlCompanyID option:selected").val());
+            DeactivateID = parseInt($("#ddlDeactivateID option:selected").val());
+            $('#ddlBranchID :selected').each(function () {
+                if (SelectedBranchID == "") {
+                    SelectedBranchID = $(this).val();
+                }
+                else {
+                    SelectedBranchID += "," + $(this).val();
+                }
+            });
+            $('#ddlDepartmentID :selected').each(function () {
+                if (SelectedDepartmentID == "") {
+                    SelectedDepartmentID = $(this).val();
+                }
+                else {
+                    SelectedDepartmentID += "," + $(this).val();
+                }
+            });
+            DesignationID = parseInt($("#ddlDesignationID option:selected").val());
+
+            if (CompanyID == 0 || CompanyID == "") {
+                $("#ddlCompanyID").next('.select2-container').find('.select2-selection').focus();
+                $("#ddlCompanyID").next('.select2-container').find('.select2-selection').addClass('field_error');
+                toastr.remove();
+                toastr.error("Please select Company");
+                return false;
+            }
+            else {
+                $("#ddlCompanyID").next('.select2-container').find('.select2-selection').removeClass('field_error');
+            }
+            _BranchID = $("#ddlBranchID option:selected").text();
+            if (_BranchID == "Select Branch" || _BranchID == "") {
+                //$("#ddlBranchID").next('.select2-container').find('.select2-selection').focus();
+                $("#ddlBranchID").focus();
+                $("#field_errorBranchID .btn-group .multiselect ").addClass('field_error');
+                toastr.remove();
+                toastr.error("Please select Branch");
+                return false;
+            }
+            else {
+                $("#field_errorBranchID .btn-group .multiselect ").removeClass('field_error');
+            }
+            _DepartmentID = $("#ddlDepartmentID option:selected").text();
+            if (_DepartmentID == "Select Department" || _DepartmentID == "") {
+                $("#ddlDepartmentID").focus();
+                $("#field_errorDepartmentID .btn-group .multiselect ").addClass('field_error');
+                toastr.remove();
+                toastr.error("Please select Department");
+                return false;
+            }
+            else {
+                $("#field_errorDepartmentID .btn-group .multiselect ").removeClass('field_error');
+            }
+
+            //if (DesignationID == 0 || DesignationID == "")
+            //{
+            //    $("#ddlDesignationID").next('.select2-container').find('.select2-selection').focus();
+            //    $("#ddlDesignationID").next('.select2-container').find('.select2-selection').addClass('field_error');
+            //    toastr.remove();
+            //    toastr.error("Please select Designation");
+            //    return false;
+            //}
+            //else
+            //{
+            //    $("#ddlDesignationID").next('.select2-container').find('.select2-selection').removeClass('field_error');
+            //}
+            // Storing filter values in local storage
+            localStorage.setItem('selectedCompanyID', CompanyID);
+            localStorage.setItem('selectedBranchID', SelectedBranchID);
+            localStorage.setItem('selectedDepartmentID', SelectedDepartmentID);
+            localStorage.setItem('selectedDesignationID', DesignationID);
+            localStorage.setItem('selectedDeactivateID', DeactivateID);
+            localStorage.setItem('applyFilter', 'true');
+            $('#dataTables_tbl_header').remove();
+            var screenWidth = $(window).width();
+            if (screenWidth >= 300 && screenWidth <= 600) {
+                $(".filter_portlet_tbl").show();
+            }
+            if (DeactivateID == 0 || DeactivateID == "") {
+                getDirectory(CompanyID, SelectedBranchID, SelectedDepartmentID, DesignationID, DeactivateID);
+            }
+            else {
+                getDirectory(CompanyID, SelectedBranchID, SelectedDepartmentID, DesignationID, DeactivateID);
+            }
+        });
+
+        $('#BtnClear').click(function () {
+            $('#dataTables_tbl_header').remove();
+
+            checkSession();
+            CompanyID = 0;
+            BranchID = 0;
+            DepartmentID = 0;
+            DesignationID = 0;
+            StatusID = 0;
+            DeactivateID = 0;
+            checkedColumnsList = [];
+            $("#spvalidation").hide();
+            $("#ddlCompanyID").val(0);
+            $('#ddlCompanyID').trigger('change.select2');
+            $("#ddlDepartmentID option:selected").prop("selected", false);
+            $("#ddlDepartmentID").multiselect('refresh');
+            $("#ddlDepartmentID").empty();
+            $("#ddlDepartmentID").multiselect('disable');
+            $('#ddlBranchID').empty();
+            $("#ddlBranchID").val("");
+            $("#ddlBranchID option:selected").prop("selected", false);
+            $("#ddlBranchID").multiselect('refresh');
+            $("#ddlBranchID").empty();
+            $("#ddlBranchID").multiselect('disable');
+            $('#ddlDesignationID').val(0);
+            $('#ddlDesignationID').trigger('change.select2');
+            $("#ddlDeactivateID").val(0);
+            //BranchIds
+            $("#txt2").val(0);
+            $("#txt3").val(0);
+            getDirectory(CompanyID, BranchID, DepartmentID, DesignationID, DeactivateID);
+            const wrapper = $(".filter_portlet_wrapper");
+            wrapper.removeClass("full-width");
+            $(".loading").hide();
+            $("#filtercolumn_block").toggle();
+        });
+        //$("#btnApply").click(function (event) {
+        //    var checkedColumnIds = 0;
+        //    $('#fieldlst :input').each(function () {
+        //        var fieldId = $(this).attr("id");
+        //        var column = Directory_table.column($(this).attr('data-column'));
+        //        column.visible(false);
+        //        $.each($("input[id='" + fieldId + "']:checked"), function () {
+        //            var checkedId = fieldId;
+        //            column.visible(true);
+        //            var removedPrefixId = fieldId.replace("chk_", "");
+        //            checkedColumnIds += "," + removedPrefixId;
+        //        });
+        //    });
+        //    $('#frmpopupCustomfld').modal('toggle');
+        //});
+
+        $("#btnApply").click(function (event) {
+            var checkedColumnIds = [];
+            $('#fieldlst :input').each(function () {
+                var fieldId = $(this).attr("id");
+                var column = Directory_table.column($(this).attr('data-column'));
+                if ($(this).is(':checked')) {
+                    column.visible(true);
+                    var removedPrefixId = fieldId.replace("chk_", "");
+                    checkedColumnIds.push(removedPrefixId);
+                } else {
+                    column.visible(false);
+                }
+            });
+            checkedColumnsList = checkedColumnIds.join(",");
+
+            // Remove existing footer
+            $("#tbldirectorydetails thead tr:eq(1)").remove();
+
+            // Add new footer based on visible columns with search inputs
+            var visibleColumns = Directory_table.columns(':visible').indexes().toArray();
+            var footer = '<tr class="footer">';
+            $("#tbldirectorydetails thead th").each(function (index) {
+                var headerText = $(this).text().trim();
+                if (index == 0) {
+                    footer += '<th><input type="checkbox" class="selectall" id="selectall"></th>';
+                } else if (headerText === "Status") {
+                    // If the header text is "Status", don't add the search input box
+                    footer += '<th class="fixed-column-1"></th>';
+                }
+                else if (_isServerSide && ["Emp Name", "Joining Date", "Emp Code", "Punch ID", "Branch", "Department", "Designation", "Mobile", "Email", "Bank Account Number", "IFSCCode", "Aadhar Card Number", "EmpRFIDCard", "IDCardNumber"].includes(headerText)) {
+                    footer += `<th><input type="text" class="search_input" data-column="${headerText}" placeholder="Search" /><i class="clm-search" id=""></i></th>`;
+                }
+                else if (!_isServerSide) {
+                    footer += `<th><input type="text" class="search_input" data-column="${headerText}" placeholder="Search" /><i class="clm-search" id=""></i></th>`;
+                }
+                else {
+                    footer += '<th></th>';
+                }
+            });
+            footer += '</tr>';
+
+            $("#tbldirectorydetails thead").append(footer);
+            $('#frmpopupCustomfld').modal('toggle');
+            $('#tbldirectorydetails thead tr:eq(1) th:last').addClass('fixed-column');
+        });
+
+        //$("#btnchkSelectAll").click(function (event) {
+        //    var checkedColumnIds = 0;
+        //    $('#fieldlst :input').each(function () {
+        //        var fieldId = $(this).attr("id");
+        //        $("#" + fieldId).prop('checked', true);
+        //        var removedPrefixId = fieldId.replace("chk_", "");
+        //        checkedColumnIds += "," + removedPrefixId;
+        //    });
+        //});
+
+        $("#btnchkSelectAll").click(function (event) {
+            var checkedColumnIds = [];
+            $('#fieldlst :input').each(function () {
+                var fieldId = $(this).attr("id");
+                $("#" + fieldId).prop('checked', true);
+                var removedPrefixId = fieldId.replace("chk_", "");
+                checkedColumnIds.push(removedPrefixId);
+            });
+
+            //checkedColumnsList = checkedColumnIds.join(",");
+        });
+
+        $("#btnchkSelectnone").click(function (event) {
+            var checkedColumnIds = 0;
+            $('#fieldlst :input').each(function () {
+                var fieldId = $(this).attr("id");
+                $("#" + fieldId).prop('checked', false);
+                var removedPrefixId = fieldId.replace("chk_", "");
+                checkedColumnIds += "," + removedPrefixId;
+            });
+
+            checkedColumnsList = checkedColumnIds.join(",");
+        });
+        $("#tbldirectorydetails").on('click', '.activeclass', function () {
+            checkSession();
+            var $row = $(this).closest("tr");
+            var rowIdx = Directory_table.row($row).index();
+            var rowData = Directory_table.row(rowIdx).data();
+            EmpId = rowData.EmpId;
+
+            var isactive = true;
+            StatusID = 4;
+            var ObjData = {
+                EmpId: EmpId,
+                Isactive: isactive,
+                ResignDate: inactivedate,
+                Acode: accountcode,
+                StatusID: StatusID,
+                IsDeactivate: IsDeactivate
+            };
+
+            $.ajax({
+                type: "POST",
+                url: '@_webapiurl' + 'Employee/ActiveInactiveOnBoardingEmployee',
+                headers: { 'Authorization': '@_tokan' },
+                contentType: 'application/json',
+                dataType: 'json',
+                data: JSON.stringify(ObjData),
+                success: function (data) {
+                    if (data != null) {
+                        //iseLimit = data.Meg;
+                    }
+                    if (data = "OK") {
+                        toastr.remove();
+                        toastr.success("Inactive employee.");
+                        $('#frmInactiveEmp').modal('toggle');
+                        //t.ajax.reload();
+                        //Employeegetall()
+                        //setTimeout(function () {
+                        //    $(".dataTables_wrapper > .dataTables_info").before('<div class="customforms_table"></div>');
+                        //    $("#tbldirectorydetails").appendTo(".customforms_table");
+                        //}, 3000);
+                    } else {
+                        toastr.remove();
+                        toastr.error("Error in deactivating Employee.");
+                    }
+                },
+                //statusCode: {
+                //    404: function(content) { alert('cannot find resource'); },
+                //    500: function(content) { alert('internal server error'); }
+                //},
+                error: function (req, status, errorObj) {
+                    toastr.remove();
+                    toastr.error("Resign date must be greater than join date.");
+                }
+            });
+        });
+
+        $("#tbldirectorydetails").on('click', '.Inactiveclass', function () {
+            checkSession();
+            $("#EmpInactiveResignDate").val("");
+            $(".Inactiveclass").attr("data-toggle", "modal");
+            $(".Inactiveclass").attr("data-target", "#frmInactiveEmp");
+            checkedCount = $('.ClsChkEmp:checked').length;
+
+            var $row = $(this).closest("tr");
+            var rowIdx = Directory_table.row($row).index();
+            var rowData = Directory_table.row(rowIdx).data();
+            EmpId = rowData.EmpId;
+
+            $('#empdeactivationID').change(function () {
+                var empdeactivationID = $('#empdeactivationID').val();
+                if (empdeactivationID == 1) {
+                    $("#ResignDate").css("display", "block");
+                    $("#SuspendDate").css("display", "none");
+                    $('#btninactiveresigndate').prop('disabled', false);
+                    $("#inactiveresigndate").prop('disabled', false);
+                    $("#EmpInactiveResignDate").prop('disabled', false);
+                } else if (empdeactivationID == 2) {
+                    $("#SuspendDate").css("display", "block");
+                    $("#ResignDate").css("display", "none");
+                } else {
+                    $("#ResignDate").css("display", "block");
+                    $('#btninactiveresigndate').prop('disabled', true);
+                    $("#inactiveresigndate").prop('disabled', true);
+                    $("#EmpInactiveResignDate").prop('disabled', true);
+                    $("#SuspendDate").css("display", "none");
+                    $("#EmpInactiveSuspendDate").val("");
+                    $("#EmpInactiveResignDate").val("");
+                }
+            });
+        });
+
+        $(document).on("click", "#btnResignAll", function () {
+            checkSession();
+            checkedCount = $('.ClsChkEmp:checked').length;
+            var isactive = false;
+            StatusID = 5;
+            var newinactivedate = "";
+            IsDeactivate = 3;
+            if (checkedCount > 0 || $('.selectall').prop('checked')) {
+
+                Swal.fire({
+                    html: '<div class="swal_subtitle"><b>Deactivation</b></div><div class="swal_subtitle"><p>Are you sure you want to deactivate the selected employee?</p></div>',
+                    title: "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_info.svg' alt=''>Info",
+                    closeOnConfirm: true,
+                    showCloseButton: true,
+                    showCancelButton: true,
+                    focusConfirm: false,
+                    cancelButtonText: 'No',
+                    confirmButtonText: 'Yes',
+                    allowOutsideClick: false,
+                    allowEscapeKey: false,
+                    customClass: {
+                        confirmButton: 'swal-confirm-button-class',
+                        cancelButton: 'swal-cancel-button-class'
+                    }
+                 }).then(function (isConfirmed) {
+                    if (isConfirmed.dismiss == "cancel" || isConfirmed.dismiss == "close") {
+
+                    }
+                    else {
+
+                        // Function to convert month name to month number
+
+                        $('#btnResignAll').prop('disabled', false);
+                        //$('.ClsChkEmp:checked').each(function () {
+
+
+                        $("#tbldirectorydetails").DataTable().$('input[type="checkbox"]').each(function (key, value) {
+                            if ($(this).is(':checked')) {
+                                EmpId = $(this).val();
+
+                                var ObjData = {
+                                    EmpId: EmpId,
+                                    Isactive: isactive,
+                                    Acode: accountcode,
+                                    IsDeactivate: IsDeactivate,
+                                    StatusID: StatusID
+                                };
+
+                                $.ajax({
+                                    type: "POST",
+                                    url: '@_webapiurl' + 'Employee/ActiveInactiveOnBoardingEmployee',
+                                    headers: { 'Authorization': '@_tokan' },
+                                    contentType: 'application/json',
+                                    dataType: 'json',
+                                    data: JSON.stringify(ObjData),
+                                    beforeSend: function () {
+                                        $(".loading").show();
+                                    },
+                                    success: function (data) {
+                                        if (data != null) {
+                                            //iseLimit = data.Meg;
+                                        }
+                                        if (data = "OK") {
+                                            toastr.remove();
+                                            toastr.success("The employees you selected have been successfully deactivated.");
+                                            setTimeout(function () {
+                                                window.location.reload(true);
+                                            }, delay);
+                                        } else {
+                                            toastr.remove();
+                                            toastr.error("Error in deactivating Employee.");
+                                        }
+                                    },
+                                    //statusCode: {
+                                    //    404: function(content) { alert('cannot find resource'); },
+                                    //    500: function(content) { alert('internal server error'); }
+                                    //},
+                                    error: function (req, status, errorObj) {
+                                        toastr.remove();
+                                        toastr.error("Error in deactivating Employee.");
+                                    },
+                                    complete: function () {
+                                        $(".loading").hide();
+                                    }
+                                });
+                            }
+                        });
+                    }
+                 });
+                $('img[src="/assets/images/icons/swal_icon/icon_info.svg"]').parent().parent().parent().addClass('swal_info');
+            } else {
+                toastr.remove();
+                toastr.error("No employee selected.");
+            }
+        });
+
+        $("#btnIactivesubmit").click(function (event) {
+            checkSession();
+            var empdeactivationID = $("#empdeactivationID option:selected").text();
+            var inactivedate = "";
+            var resigndate = "";
+            var suspenddate = "";
+            var errormsg = "";
+            if (empdeactivationID == "Select deactivation" || empdeactivationID == "") {
+                toastr.remove();
+                toastr.error("Please Select deactivation.");
+                $("#empdeactivationID").addClass('field_error');
+                event.preventDefault();//or return false
+                $(".loading").hide();
+                return false;
+            } else {
+                $("#empdeactivationID").removeClass('field_error');
+            }
+
+            if ($("#empdeactivationID").val() == 1) {
+                if ($("#EmpInactiveResignDate").val() == "") {
+                    $("#EmpInactiveResignDate").attr('required', true);
+                    toastr.remove();
+                    toastr.error("Please enter Resign Date.");
+                    $("#EmpInactiveResignDate").addClass('field_error');
+                    event.preventDefault(); //or return false
+                    return false;
+                } else {
+                    $("#EmpInactiveResignDate").removeClass('field_error');
+
+                    if ("@_isdateformat" == "dd-mm-yyyy") {
+                        var resignEmp = $("#EmpInactiveResignDate").val().split("-");
+                        resigndate = resignEmp[2] + "-" + resignEmp[1] + "-" + resignEmp[0];
+                    }
+                    else if ("@_isdateformat" == "mm-dd-yyyy") {
+                        var resignEmp = $("#EmpInactiveResignDate").val().split("-");
+                        resigndate = resignEmp[2] + "-" + resignEmp[0] + "-" + resignEmp[1];
+                    }
+                    else if ("@_isdateformat" == "yyyy-mm-dd") {
+                        var resignEmp = $("#EmpInactiveResignDate").val().split("-");
+                        resigndate = resignEmp[0] + "-" + resignEmp[1] + "-" + resignEmp[2];
+                    }
+                    else if ("@_isdateformat" == "yyyy-M-dd") {
+                        var resignEmp = $("#EmpInactiveResignDate").val().split("-");
+                        var getMonth = resignEmp[1];
+                        resigndate = resignEmp[0] + "-" + (GetMonthNumber(getMonth).toString().length > 1 ? GetMonthNumber(getMonth) : "0" + GetMonthNumber(getMonth)) + "-" + resignEmp[2];
+                    }
+                    else if ("@_isdateformat" == "M-dd-yyyy") {
+                        var resignEmp = $("#EmpInactiveResignDate").val().split("-");
+                        var getMonth = resignEmp[0];
+                        resigndate = resignEmp[2] + "-" + (GetMonthNumber(getMonth).toString().length > 1 ? GetMonthNumber(getMonth) : "0" + GetMonthNumber(getMonth)) + "-" + resignEmp[1];
+                    }
+                    else if ("@_isdateformat" == "dd-M-yyyy") {
+                        var resignEmp = $("#EmpInactiveResignDate").val().split("-");
+                        var getMonth = resignEmp[1];
+                        resigndate = resignEmp[2] + "-" + (GetMonthNumber(getMonth).toString().length > 1 ? GetMonthNumber(getMonth) : "0" + GetMonthNumber(getMonth)) + "-" + resignEmp[0];
+                    }
+                }
+            } else if ($("#empdeactivationID").val() == 2) {
+                if ($("#EmpInactiveSuspendDate").val() == "") {
+                    $("#EmpInactiveSuspendDate").attr('required', true);
+                    toastr.remove();
+                    toastr.error("Please enter Suspend Date.");
+                    $("#EmpInactiveSuspendDate").addClass('field_error');
+                    event.preventDefault(); //or return false
+                    return false;
+                } else {
+                    $("#EmpInactiveSuspendDate").removeClass('field_error');
+
+                    if ("@_isdateformat" == "dd-mm-yyyy") {
+                        var suspendEmp = $("#EmpInactiveSuspendDate").val().split("-");
+                        suspenddate = suspendEmp[2] + "-" + suspendEmp[1] + "-" + suspendEmp[0];
+                    }
+                    else if ("@_isdateformat" == "mm-dd-yyyy") {
+                        var suspendEmp = $("#EmpInactiveSuspendDate").val().split("-");
+                        suspenddate = suspendEmp[2] + "-" + suspendEmp[0] + "-" + suspendEmp[1];
+                    }
+                    else if ("@_isdateformat" == "yyyy-mm-dd") {
+                        var suspendEmp = $("#EmpInactiveSuspendDate").val().split("-");
+                        suspenddate = suspendEmp[0] + "-" + suspendEmp[1] + "-" + suspendEmp[2];
+                    }
+                    else if ("@_isdateformat" == "yyyy-M-dd") {
+                        var suspendEmp = $("#EmpInactiveSuspendDate").val().split("-");
+                        var getMonth = suspendEmp[1];
+                        suspenddate = suspendEmp[0] + "-" + (GetMonthNumber(getMonth).toString().length > 1 ? GetMonthNumber(getMonth) : "0" + GetMonthNumber(getMonth)) + "-" + suspendEmp[2];
+                    }
+                    else if ("@_isdateformat" == "M-dd-yyyy") {
+                        var suspendEmp = $("#EmpInactiveSuspendDate").val().split("-");
+                        var getMonth = suspendEmp[0];
+                        suspenddate = suspendEmp[2] + "-" + (GetMonthNumber(getMonth).toString().length > 1 ? GetMonthNumber(getMonth) : "0" + GetMonthNumber(getMonth)) + "-" + suspendEmp[1];
+                    }
+                    else if ("@_isdateformat" == "dd-M-yyyy") {
+                        var suspendEmp = $("#EmpInactiveSuspendDate").val().split("-");
+                        var getMonth = suspendEmp[1];
+                        suspenddate = suspendEmp[2] + "-" + (GetMonthNumber(getMonth).toString().length > 1 ? GetMonthNumber(getMonth) : "0" + GetMonthNumber(getMonth)) + "-" + suspendEmp[0];
+                    }
+                }
+            }
+
+            if (resigndate == "" && suspenddate != "") {
+                inactivedate = suspenddate;
+                IsDeactivate = 2;
+                StatusID = 7;
+                errormsg = "Suspend date must be greater than join date.";
+            } else if (suspenddate == "" && resigndate != "") {
+                inactivedate = resigndate;
+                IsDeactivate = 1;
+                StatusID = 6;
+                errormsg = "Resign date must be greater than join date.";
+            } else {
+                return false;
+            }
+            if ($("#Remark").val() == null || $("#Remark").val() == "") {
+                $("#Remark").addClass('field_error');
+                toastr.remove();
+                toastr.error("Enter Remark.");
+                return false;
+            } else {
+                $("#Remark").removeClass('field_error');
+            }
+            var isactive = false;
+
+            var ObjData = {
+                EmpId: EmpId,
+                Isactive: isactive,
+                ResignDate: inactivedate,
+                Acode: accountcode,
+                IsDeactivate: IsDeactivate,
+                StatusID: StatusID,
+                RejectReason: $("#Remark").val()
+            };
+            $.ajax({
+                type: "POST",
+                url: '@_webapiurl' + 'Employee/ActiveInactiveOnBoardingEmployee',
+                headers: { 'Authorization': '@_tokan' },
+                contentType: 'application/json',
+                dataType: 'json',
+                data: JSON.stringify(ObjData),
+                success: function (data) {
+                    if (data != null) {
+                        //iseLimit = data.Meg;
+                    }
+                    if (data = "OK") {
+                        toastr.remove();
+                        toastr.success("Inactive employee.");
+                        $('#frmInactiveEmp').modal('toggle');
+                        setTimeout(function () {
+                            window.location.reload(true);
+                        }, delay);
+                        //t.ajax.reload();
+                        //Employeegetall()
+                        //setTimeout(function () {
+                        //    $(".dataTables_wrapper > .dataTables_info").before('<div class="customforms_table"></div>');
+                        //    $("#tbldirectorydetails").appendTo(".customforms_table");
+                        //}, 3000);
+                    } else {
+                        toastr.remove();
+                        toastr.error("Error in deactivating Employee.");
+                    }
+                },
+                //statusCode: {
+                //    404: function(content) { alert('cannot find resource'); },
+                //    500: function(content) { alert('internal server error'); }
+                //},
+                error: function (req, status, errorObj) {
+                    toastr.error(errormsg);
+                }
+            });
+        });
+
+
+        //edit button model onboarding
+        //$("#tbldirectorydetails").on('click', '.editclass', function () {
+
+        //});
+
+        if (localStorage.getItem('applyFilter') === 'true') {
+            var _CmpID = localStorage.getItem('selectedCompanyID');
+            var _BID = localStorage.getItem('selectedBranchID');
+            var _DeptID = localStorage.getItem('selectedDepartmentID');
+            var _DesigID = localStorage.getItem('selectedDesignationID');
+            var _DeactivateID = localStorage.getItem('selectedDeactivateID');
+
+            CompanyID = _CmpID;
+            BranchID = _BID;
+            DepartmentID = _DeptID;
+            DesignationID = _DesigID;
+            DeactivateID = _DeactivateID;
+
+            if (_CmpID) {
+                setTimeout(function () {
+                    $("#ddlCompanyID").val(_CmpID);
+                    $('#ddlCompanyID').trigger('change.select2');
+                }, 700);
+            }
+            if (_BID) {
+                fillBranchbycompnyid(_CmpID, _BID);
+            }
+            if (_DeptID) {
+                fillDeptTable(_BID, _DeptID);
+            }
+            if (_DesigID) {
+                setTimeout(function () {
+                    $("#ddlDesignationID").val(_DesigID);
+                    $('#ddlDesignationID').trigger('change.select2');
+                }, 700);
+            }
+            if (_DeactivateID) {
+                setTimeout(function () {
+                    $("#ddlDeactivateID").val(_DeactivateID);
+                }, 700);
+            }
+            getDirectory(CompanyID, BranchID, DepartmentID, DesignationID, DeactivateID);
+            localStorage.setItem('applyFilter', 'false');
+        }
+    });
+
+
+    @*function getDirectory(companyIDNew, BranchIDNew, DepartmentIDNew, DesignationIDNew, DeactivateID) {
+        if ($.fn.DataTable.isDataTable('#tbldirectorydetails')) {
+            Directory_table.destroy();
+        }
+        checkSession();
+
+        var OnBordingID = 0;
+        var roleid = "@_RoleId";
+        var loginempid = "@_empid";
+        CompanyID = companyIDNew;
+        BranchID = BranchIDNew;
+        DepartmentID = DepartmentIDNew;
+        DesignationID = DesignationIDNew;
+
+        var headerCount = 0;
+        var countTd = 0;
+        var columns = [];
+        var rowCount = 1;
+        var ObjData = {
+            OnBoardingID: OnBordingID,
+            RoleId: roleid,
+            CompanyId: CompanyID,
+            BranchId: BranchID,
+            LoginEmpId: loginempid,
+            DepartmentID: DepartmentID,
+            DesignationID: DesignationID,
+            DeactivateID: parseInt(DeactivateID)
+        };
+
+        $.ajax({
+            type: "POST",
+            url: '@_webapiurl' + 'Employee/DirectoryDataGetAll',
+            headers: { 'Authorization': '@_tokan' },
+            contentType: 'application/json',
+            dataType: 'json',
+            data: JSON.stringify(ObjData),
+            beforeSend: function () {
+                $(".loading").show();
+            },
+            success: function (response) {
+                $('#tbldirectorydetails').destroy;
+                if (response.Table.length == 0) {
+                    // No data handling
+                } else {
+                    $("#fieldlst tr td").remove();
+                    _chkarrylst = 0;
+                    columnNames = Object.keys(response.Table[0]);
+                    var _CheckcolumnNames = Object.keys(response.Table[0]);
+                    $('#fieldlst').append('<tr id="tr_' + rowCount + '"></tr>');
+
+                    // List of column indices to hide
+                    _num = "1,3,4,7,8,9,11,13,15,16,17,18,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,96,97,98,99,100,101,102,103,104,105,106,107,108,109,111,113,114,115";
+                    var _numArray = _num.split(',').map(Number);
+
+                    for (var i in _CheckcolumnNames) {
+                        var columnClass = "";
+                        if (countTd == 4) {
+                            countTd = 0;
+                            rowCount++;
+                            $('#fieldlst').append('<tr id="tr_' + rowCount + '"></tr>');
+                        }
+                        if (_numArray.includes(parseInt(i))) {
+                            continue;
+                        } else {
+                            if (i == "2" || i == "112" || i == "94" || i == "5" || i == "95" || i == "6" || i == "10" || i == "12" || i == "14" || i == "19" || i == "20" || i == "110") {
+                                checkedColumnsList += "," + i;
+                                $('#tr_' + rowCount + '').append("<td  ID=" + headerCount + "  class='" + columnClass + "'><label class='toggle-vis' data-column=" + headerCount + "><input type='checkbox' name=" + columnNames[i] + " class='toggle-vis' data-column=" + headerCount + " ID=chk_" + headerCount + " checked><span> " + columnNames[i] + " </span></label></td>");
+                            } else {
+                                $('#tr_' + rowCount + '').append("<td  ID=" + headerCount + " class='" + columnClass + "'><label class='toggle-vis' data-column=" + headerCount + "><input type='checkbox' name=" + columnNames[i] + " class='toggle-vis' data-column=" + headerCount + " ID=chk_" + headerCount + "><span> " + columnNames[i] + " </span></label></td>");
+                            }
+                        }
+                        countTd = countTd + 1;
+                        headerCount = headerCount + 1;
+                        columns.push({
+                            data: columnNames[i],
+                            title: columnNames[i]
+                        });
+                    }
+                }
+
+
+                $('#tbldirectorydetails').destroy;
+
+                var footer = '<tr>';
+                columnNames.forEach(function (columnName, index) {
+                    if (!_numArray.includes(index)) {
+                        footer += '<th>${columnName}</th>';
+                    }
+                });
+                footer += '</tr>';
+
+                $("#tbldirectorydetails thead").append(footer);
+
+                Directory_table = $("#tbldirectorydetails").DataTable({
+                    dom: "<'row'<'col-lg-3 col-sm-5 col-xs-12'<'record_btn_main'l,><'dt-buttons'Bf>><'col-lg-9 col-sm-7 col-xs-12 mb_margin_bottom_15'<'resignblock text-right'>>>" +
+                          "<'row'<'col-sm-12 margin-bottom-10'<'customforms_table EmpNew_tbl_scroll'tr'>>>" +
+                          "<'row'<'col-md-5 col-sm-5'i><'col-md-7 col-sm-7'p>>",
+                    paging: true,
+                    autoWidth: true,
+                    ordering: false,
+                    buttons: [
+                        {
+                            extend: 'excelHtml5',
+                            text: 'Excel',
+                            titleAttr: 'Excel',
+                            exportOptions: {
+                                columns: ':visible:not(:last-child,:first-child)'
+                            }
+                        }
+
+                    ],
+                    "columnDefs": [
+                          {
+                              "defaultContent": "-",
+                              "targets": "_all"
+                          },
+                        {
+                            "targets": [0, 112, 116],
+                            "orderable": false,
+                        },
+                        {
+                            "targets": [columnNames.length],
+                            'orderable': false,
+                            sTitle: "Action",
+                            "data": null
+                        },
+                        {
+                            "targets": [columnNames.length],
+                            render: function (data, type, row) {
+                                var html = '';
+                                if (data.Status == 'Active') {
+                                    html = "<a class='editclass btn seagreen_btnnew tooltips' id='btnEdit' data-placement='left' data-original-title='Edit' ><i class='fa-regular fa-pen-to-square'></i></a>";
+                                    html += "<a class='Inactiveclass btn red_btnnew tooltips' id='' data-placement='left' data-original-title='Active' style='margin-left: 0 !important;'><i class='fa-solid fa-xmark'></i></a>";
+                                } else if (data.Status == 'InActive') {
+                                    html = "<a class='editclass btn seagreen_btnnew tooltips' id='btnEdit' data-placement='left' data-original-title='Edit'  disabled><i class='fa-regular fa-pen-to-square'></i></a>";
+                                    html += "<a class='activeclass btn btn-xs btn_size green-dark tooltips' title='InActive' id=''><i class='fa-solid fa-check'></i></a>";
+                                }
+                                return html;
+                            }
+                        },
+                        {
+                            "targets": 0,
+                            render: function (data, type, row) {
+                                var html = '';
+                                if (row.Status == 'Active') {
+                                    html = "<td> <input type='checkbox' class='ClsChkEmp nosearch' value='" + row.EmpId + "'></td>";
+                                } else if (row.ActiveStatus == 'InActive') {
+                                    html = '';
+                                }
+                                return html;
+                            }
+
+                        },
+                        {
+                            "targets": 3,
+                            render: function (data, type, row) {
+                                if (data != null) {
+
+                                    var date1 = data.split(' ')[0];
+                                    var date = date1.split('-');
+                                    if ("@_isdateformat" == "dd-mm-yyyy") {
+                                        var firstValue = date[2] + "-" + date[1] + "-" + date[0] //yyyy-mm-dd
+                                    }
+                                    else if ("@_isdateformat" == "yyyy-mm-dd") {
+                                        var firstValue = date[0] + "-" + date[1] + "-" + date[2] //yyyy-mm-dd
+                                    }
+                                    else if ("@_isdateformat" == "mm-dd-yyyy") {
+                                        var firstValue = date[1] + "-" + date[2] + "-" + date[0] //yyyy-mm-dd
+                                    }
+                                    else if ("@_isdateformat" == "yyyy-M-dd") {
+                                        var _date = new Date(date[1] + "-" + date[2] + "-" + date[0]);
+                                        var locale = "en-us";
+                                        var month = _date.toLocaleString(locale, { month: "short" });
+                                        var firstValue = date[0] + "-" + month + "-" + date[2] //yyyy-mm-dd
+                                    }
+                                    else if ("@_isdateformat" == "M-dd-yyyy") { //done
+                                        var _date = new Date(date[1] + "-" + date[2] + "-" + date[0]);
+                                        var locale = "en-us";
+                                        var month = _date.toLocaleString(locale, { month: "short" });
+                                        var firstValue = month + "-" + date[2] + "-" + date[0] //yyyy-mm-dd
+                                    }
+                                    else if ("@_isdateformat" == "dd-M-yyyy") {
+                                        var _date = new Date(date[1] + "-" + date[2] + "-" + date[0]);
+                                        var locale = "en-us";
+                                        var month = _date.toLocaleString(locale, { month: "short" });
+                                        var firstValue = date[2] + "-" + month + "-" + date[0]  //yyyy-mm-dd
+                                    }
+                                }
+                                return firstValue;
+                            }
+                        },
+                        {
+                            "targets": 3,
+                            render: function (data, type, row) {
+                                if (data != null) {
+                                    var date1 = data.split(' ')[0];
+                                    var date = date1.split('-');
+                                    if ("@_isdateformat" == "dd-mm-yyyy") {
+                                        var firstValue = date[2] + "-" + date[1] + "-" + date[0] //yyyy-mm-dd
+                                    }
+                                    else if ("@_isdateformat" == "yyyy-mm-dd") {
+                                        var firstValue = date[0] + "-" + date[1] + "-" + date[2] //yyyy-mm-dd
+                                    }
+                                    else if ("@_isdateformat" == "mm-dd-yyyy") {
+                                        var firstValue = date[1] + "-" + date[2] + "-" + date[0] //yyyy-mm-dd
+                                    }
+                                    else if ("@_isdateformat" == "yyyy-M-dd") {
+                                        var _date = new Date(date[1] + "-" + date[2] + "-" + date[0]);
+                                        var locale = "en-us";
+                                        var month = _date.toLocaleString(locale, { month: "short" });
+                                        var firstValue = date[0] + "-" + month + "-" + date[2] //yyyy-mm-dd
+                                    }
+                                    else if ("@_isdateformat" == "M-dd-yyyy") { //done
+                                        var _date = new Date(date[1] + "-" + date[2] + "-" + date[0]);
+                                        var locale = "en-us";
+                                        var month = _date.toLocaleString(locale, { month: "short" });
+                                        var firstValue = month + "-" + date[2] + "-" + date[0] //yyyy-mm-dd
+                                    }
+                                    else if ("@_isdateformat" == "dd-M-yyyy") {
+                                        var _date = new Date(date[1] + "-" + date[2] + "-" + date[0]);
+                                        var locale = "en-us";
+                                        var month = _date.toLocaleString(locale, { month: "short" });
+                                        var firstValue = date[2] + "-" + month + "-" + date[0]  //yyyy-mm-dd
+                                    }
+                                }
+                                return firstValue;
+                            }
+                        },
+                        {
+                            "targets": 39,
+                            render: function (data, type, row) {
+                                if (data != null) {
+                                    var date1 = data.split(' ')[0];
+                                    var date = date1.split('-');
+                                    if ("@_isdateformat" == "dd-mm-yyyy") {
+                                        var firstValue = date[2] + "-" + date[1] + "-" + date[0] //yyyy-mm-dd
+                                    }
+                                    else if ("@_isdateformat" == "yyyy-mm-dd") {
+                                        var firstValue = date[0] + "-" + date[1] + "-" + date[2] //yyyy-mm-dd
+                                    }
+                                    else if ("@_isdateformat" == "mm-dd-yyyy") {
+                                        var firstValue = date[1] + "-" + date[2] + "-" + date[0] //yyyy-mm-dd
+                                    }
+                                    else if ("@_isdateformat" == "yyyy-M-dd") {
+                                        var _date = new Date(date[1] + "-" + date[2] + "-" + date[0]);
+                                        var locale = "en-us";
+                                        var month = _date.toLocaleString(locale, { month: "short" });
+                                        var firstValue = date[0] + "-" + month + "-" + date[2] //yyyy-mm-dd
+                                    }
+                                    else if ("@_isdateformat" == "M-dd-yyyy") { //done
+                                        var _date = new Date(date[1] + "-" + date[2] + "-" + date[0]);
+                                        var locale = "en-us";
+                                        var month = _date.toLocaleString(locale, { month: "short" });
+                                        var firstValue = month + "-" + date[2] + "-" + date[0] //yyyy-mm-dd
+                                    }
+                                    else if ("@_isdateformat" == "dd-M-yyyy") {
+                                        var _date = new Date(date[1] + "-" + date[2] + "-" + date[0]);
+                                        var locale = "en-us";
+                                        var month = _date.toLocaleString(locale, { month: "short" });
+                                        var firstValue = date[2] + "-" + month + "-" + date[0]  //yyyy-mm-dd
+                                    }
+                                }
+                                return firstValue;
+                            }
+                        },
+                        {
+                            "targets": 45,
+                            render: function (data, type, row) {
+                                if (data != null) {
+                                    var date1 = data.split(' ')[0];
+                                    var date = date1.split('-');
+                                    if ("@_isdateformat" == "dd-mm-yyyy") {
+                                        var firstValue = date[2] + "-" + date[1] + "-" + date[0] //yyyy-mm-dd
+                                    }
+                                    else if ("@_isdateformat" == "yyyy-mm-dd") {
+                                        var firstValue = date[0] + "-" + date[1] + "-" + date[2] //yyyy-mm-dd
+                                    }
+                                    else if ("@_isdateformat" == "mm-dd-yyyy") {
+                                        var firstValue = date[1] + "-" + date[2] + "-" + date[0] //yyyy-mm-dd
+                                    }
+                                    else if ("@_isdateformat" == "yyyy-M-dd") {
+                                        var _date = new Date(date[1] + "-" + date[2] + "-" + date[0]);
+                                        var locale = "en-us";
+                                        var month = _date.toLocaleString(locale, { month: "short" });
+                                        var firstValue = date[0] + "-" + month + "-" + date[2] //yyyy-mm-dd
+                                    }
+                                    else if ("@_isdateformat" == "M-dd-yyyy") { //done
+                                        var _date = new Date(date[1] + "-" + date[2] + "-" + date[0]);
+                                        var locale = "en-us";
+                                        var month = _date.toLocaleString(locale, { month: "short" });
+                                        var firstValue = month + "-" + date[2] + "-" + date[0] //yyyy-mm-dd
+                                    }
+                                    else if ("@_isdateformat" == "dd-M-yyyy") {
+                                        var _date = new Date(date[1] + "-" + date[2] + "-" + date[0]);
+                                        var locale = "en-us";
+                                        var month = _date.toLocaleString(locale, { month: "short" });
+                                        var firstValue = date[2] + "-" + month + "-" + date[0]  //yyyy-mm-dd
+                                    }
+                                }
+                                return firstValue;
+                            }
+                        },
+                         {
+                             "targets": 112,
+                             "createdCell": function (td, cellData, rowData, row, col) {
+                                 var statusClass = ''; // Initialize the variable for the status class
+                                 if (rowData.Status == 'Active') {
+                                     statusClass = 'green_font';
+                                 } else if (rowData.Status == 'InActive') {
+                                     statusClass = 'red_font';
+                                 }
+                                 $(td).addClass(statusClass); // Add the class to the cell
+                                 $(td).addClass('fixed-column-1');
+                             }
+                         },
+                         {
+                             "targets": 116,
+                             "createdCell": function (td, cellData, rowData, row, col) {
+                                 $(td).addClass('fixed-column');
+                                 $(td).css('min-width', '80px');
+                             }
+                         },
+                         {
+                             "targets": 0,
+                             "createdCell": function (td, cellData, rowData, row, col) {
+                                 $(td).css('min-width', '50px');
+                             }
+                         },
+                         {
+                             "targets": 2,
+                             "createdCell": function (td, cellData, rowData, row, col) {
+                                 $(td).css('min-width', '150px');
+                             }
+                         },
+                         {
+                             "targets": 110,
+                             "createdCell": function (td, cellData, rowData, row, col) {
+                                 $(td).css('min-width', '160px');
+                             }
+                         },
+                         {
+                             "targets": 95,
+                             "createdCell": function (td, cellData, rowData, row, col) {
+                                 $(td).css('min-width', '100px');
+                             }
+                         },
+                         {
+                             "targets": 5,
+                             "createdCell": function (td, cellData, rowData, row, col) {
+                                 $(td).css('min-width', '100px');
+                             }
+                         },
+                         {
+                             "targets": 94,
+                             "createdCell": function (td, cellData, rowData, row, col) {
+                                 $(td).css('min-width', '100px');
+                             }
+                         },
+                         {
+                             "targets": 6,
+                             "createdCell": function (td, cellData, rowData, row, col) {
+                                 $(td).css('min-width', '80px');
+                             }
+                         },
+                         {
+                             "targets": 10,
+                             "createdCell": function (td, cellData, rowData, row, col) {
+                                 $(td).css('min-width', '80px');
+                             }
+                         },
+                         {
+                             "targets": 12,
+                             "createdCell": function (td, cellData, rowData, row, col) {
+                                 $(td).css('min-width', '100px');
+                             }
+                         },
+                          {
+                              "targets": 14,
+                              "createdCell": function (td, cellData, rowData, row, col) {
+                                  $(td).css('min-width', '100px');
+                              }
+                          },
+                        {
+                            "targets": 20,
+                            "createdCell": function (td, cellData, rowData, row, col) {
+                                $(td).css('min-width', '120px');
+                            }
+                        },
+                        {
+                            "targets": 19,
+                            "createdCell": function (td, cellData, rowData, row, col) {
+                                $(td).css('min-width', '80px');
+                            }
+                        },
+
+                    ],
+                    "data": response.Table,
+                    "columns": columns,
+                    initComplete: function (settings, json) {
+
+                        $('#tbldirectorydetails thead th').eq(112).addClass('fixed-column-1');
+                        $('#tbldirectorydetails thead th').eq(116).addClass('fixed-column');
+
+                        $("#tbldirectorydetails thead tr:eq(1) th").each(function (index) {
+                            var title = $(this).text();
+                            if (index == 0) {
+                                $(this).html('');
+                                $(this).html('<input type="checkbox" class="selectall" id="selectall">');
+                                $(this).css('text-align', 'center');
+                            } else {
+                                $(this).html('<input type="text" class="search_input" placeholder="Search" /><i class="clm-search" id=""></i>');
+                            }
+                        });
+
+                        $('.nosearch').parents('th').each(function () {
+                            Directory_table.column($(this).index()).search('');
+                        });
+                    }
+                });
+                $('#tbldirectorydetails tr:eq(0) th:eq(0)').html("<a class='btn btn-xs tooltips' title='Columns' onclick='showvisibilityColumn();' id='btnColumnvisibility'><i class='fa-regular fa-columns' style='font-size: 14px; color: #3598dc;'></i></a>All");
+                $('.resignblock').html('<a id="btnResignAll" class="btn add_btn">Deactivate All</a>');
+                $('#tbldirectorydetails').DataTable().columns([_num]).visible(false);
+
+                // Apply the Search
+                $("#tbldirectorydetails thead").on("keyup", "input", function () {
+                    var columnIndex = $(this).parent().index();
+                    if ($(this).closest('tr').index() === 1 && columnIndex === 0) {
+                        return;
+                    }
+                    Directory_table.column(columnIndex).search(this.value).draw();
+                });
+            }
+        });
+    }*@
+
+
+
+    function getDirectory(companyIDNew, BranchIDNew, DepartmentIDNew, DesignationIDNew, DeactivateID) {
+        if ($.fn.DataTable.isDataTable('#tbldirectorydetails')) {
+            $('#tbldirectorydetails').DataTable().destroy();
+            $('#tbldirectorydetails').empty();
+        }
+        checkSession();
+        var OnBordingID = 0;
+        var roleid = "@_RoleId";
+        var loginempid = "@_empid";
+        CompanyID = companyIDNew;
+        BranchID = BranchIDNew;
+        DepartmentID = DepartmentIDNew;
+        DesignationID = DesignationIDNew;
+
+
+        var ObjData =
+        {
+            OnBoardingID: OnBordingID,
+            RoleId: roleid,
+            CompanyId: CompanyID,
+            BranchId: BranchID,
+            LoginEmpId: loginempid,
+            DepartmentID: DepartmentID,
+            DesignationID: DesignationID,
+            DeactivateID: parseInt(DeactivateID),
+            DataGridThreSold: DataGridThreSold
+        };
+        const wrapper = $(".filter_portlet_wrapper");
+        wrapper.addClass("full-width");
+        //var _urlcmp = '/Employee/DirectoryGetCompressData';
+        //var response = "";
+        loadDirectoryData(1, ObjData);
+    }
+
+
+
+    //home page filter//
+    function CompanyGetAllFilter() {
+        $('#ddlCompanyID').empty();
+        $.ajax({
+            type: "GET",
+            url: '@_webapiurl' + 'Master/CompanyGetAll',
+            headers: { 'Authorization': '@_tokan' },
+            contentType: "application/json; charset=utf-8",
+            datatype: "json",
+            async: "false",
+            beforeSend: function () {
+                //$(".loading").show();
+            },
+            success: function (response) {
+                if (response.isRedirect) {
+                    window.location.href = response.redirectUrl;
+                }
+                if (response != null) {
+                    response.sort(function (a, b) {
+                        return a.CompanyName.localeCompare(b.CompanyName); // Sort company names in ascending order
+                    });
+                    $("#ddlCompanyID").append("<option value='0' selected>Select Company</option>");
+                    for (var i = 0; i < response.length; i++) {
+                        if (RoleId != 6805 && RoleId != 6806 && RoleId == 1) {
+
+                            $("#ddlCompanyID").append("<option value='" + response[i].CompanyID + "'>" + response[i].CompanyName + "</option>");
+                        }
+                        else if (RoleId == 6805 || RoleId == 6806) {
+                            if (response[i].CompanyID == _companyid) {
+                                $("#ddlCompanyID").append("<option value='" + response[i].CompanyID + "'>" + response[i].CompanyName + "</option>");
+                            }
+                        }
+                        else if (RoleId > 1) {
+                            if (response[i].CompanyID == _companyid) {
+                                $("#ddlCompanyID").append("<option value='" + response[i].CompanyID + "'>" + response[i].CompanyName + "</option>");
+                            }
+                        }
+                    }
+                }
+                //$(".loading").hide();
+            },
+            error: function () {
+                //$(".loading").hide();
+            }
+        });
+    }
+
+    function fillBranchbycompnyid(companyid, selectedBranch) {
+        $('#ddlBranchID').empty();
+        $.ajax(
+         {
+             type: "GET",
+             url: "/MasterData/GetBranchbycomapnyid?CompanyID=" + companyid,
+             contentType: "application/json; charset=utf-8",
+             dataType: "json",
+             beforeSend: function () {
+                 $(".loading").show();
+             },
+             success: function (data) {
+                 $(".loading").hide();
+                 var markup = '';
+                 for (var x = 0; x < data.length; x++) {
+                     //$('#ddlBranchID').append('<option value="' + data[x].BranchId + '">' + data[x].BranchName + '</option>');
+                     markup += "<option value=" + data[x].BranchId + ">" + data[x].BranchName + "</option>";
+                 }
+                 $('#ddlBranchID').append(markup);
+                 $Branchselect.multiselect('rebuild');
+
+                 if (selectedBranch) {
+                     var selectedOptions = selectedBranch.split(",");
+                     for (var i in selectedOptions) {
+                         var optionVal = selectedOptions[i];
+                         $("#ddlBranchID").find("option[value='" + optionVal + "']").prop("selected", true);
+                     }
+                     $("#ddlBranchID").multiselect("refresh");
+                 }
+
+                 //$(document.body).on('change', '#ddlBranchID', function () {
+                 //    $("#spvalidation").hide();
+                 //    var branid = $('#BranchIds option:selected');
+                 //    var BranchArray = [];
+                 //    $(branid).each(function (index, branid) {
+                 //        BranchArray.push([$(this).val()]);
+                 //    });
+                 //    if (BranchArray == "") {
+                 //        $("#txt3").val(0);
+                 //    }
+                 //    else {
+                 //        $("#txt3").val(BranchArray);
+                 //        $("#spValidation").hide();
+                 //    }
+                 //    var Arrbranch = $("#txt3").val();
+                 //    BranchIdlst = Arrbranch;
+                 //    $("#ddlBranchID").val(BranchIdlst);
+                 //});
+
+             },
+             error: function (jqXHR, ajaxOptions, thrownError) {
+                 $('.loading').hide();
+
+                 if (jqXHR.status == 500) {
+                     toastr.error("InternalServerError");
+                 } else if (jqXHR.status == 400) { //BadRequest = 400,
+                     toastr.error("BadRequest");
+                 } else if (jqXHR.status == 401) {
+                     window.location.href = "/PayTime/LoginPage";
+                 }
+             },
+         });
+    }
+
+    function fillDeptTable(BranchId, selectedDept) {
+        $("#ddlDepartmentID").empty();
+        $.ajax({
+            type: "GET",
+            url: "/MasterData/GetDeptbyBranchstrOnboarding?BranchId=" + BranchId,
+            contentType: "application/json; charset=utf-8",
+            datatype: "json",
+            async: "false",
+            success: function (response) {
+                if (response != null) {
+                    for (var i = 0; i < response.length; i++) {
+                        $('#ddlDepartmentID').append('<option value="' + response[i].Value + '">' + response[i].Text + '</option>');
+                    }
+                    $selectDepart.multiselect('rebuild');
+
+                    if (selectedDept) {
+                        var selectedOptions = selectedDept.split(",");
+                        for (var i in selectedOptions) {
+                            var optionVal = selectedOptions[i];
+                            $("#ddlDepartmentID").find("option[value='" + optionVal + "']").prop("selected", true);
+                        }
+                        $("#ddlDepartmentID").multiselect("refresh");
+                    }
+
+                    //$(document.body).on('change', '#DeptIds', function () {
+                    //    $("#spvalidation").hide();
+                    //    var deptid = $('#ddlDepartmentID option:selected');
+                    //    var DeptArray = [];
+                    //    $(deptid).each(function (index, deptid) {
+                    //        DeptArray.push([$(this).val()]);
+                    //    });
+                    //    if (DeptArray == "") {
+                    //        $("#txt2").val(0);
+                    //    }
+                    //    else {
+                    //        $("#txt2").val(DeptArray);
+                    //        $("#spValidation").hide();
+                    //    }
+                    //    var ArrDept = $("#txt2").val();
+                    //    DeptIdlst = ArrDept;
+                    //    $("#ddlDepartmentID").val(DeptIdlst);
+                    //});
+                }
+                $(".loading").hide();
+            },
+            beforeSend: function () {
+                $(".loading").show();
+            },
+            error: function () {
+                $(".loading").hide();
+            }
+        });
+    }
+
+    function DesignationGetAllFilter() {
+        $('#ddlDesignationID').empty();
+        var DId = 0;
+        $.ajax({
+            type: "GET",
+            url: '@_webapiurl' + 'Master/DesignationGetAll',
+            headers: { 'Authorization': '@_tokan' },
+            contentType: "application/json; charset=utf-8",
+            datatype: "json",
+            async: "false",
+            beforeSend: function () {
+                $(".loading").show();
+            },
+            success: function (response) {
+                if (response.isRedirect) {
+                    window.location.href = response.redirectUrl;
+                }
+                if (response != null) {
+                    $("#ddlDesignationID").append("<option value='0' selected>Select Designation</option>");
+                    for (var i = 0; i < response.length; i++) {
+                        $("#ddlDesignationID").append("<option value='" + response[i].DesignationId + "'>" + response[i].DesignationName + "</option>");
+                    }
+                }
+            },
+            error: function () {
+                $(".loading").hide();
+            }
+        });
+    }
+    //home page filter : end//
+
+    function showvisibilityColumn() {
+        var previousCheckedColumns = checkedColumnsList;
+        checkedColumnsList = "";
+        var newCheckedColumns = "";
+        var inputFieldId = "";
+        $('#fieldlst :input').each(function () {
+            $('#fieldlst').val('');
+            inputFieldId = $(this).attr("id");
+            var columnId = inputFieldId.replace("chk_", "");
+            $("#" + inputFieldId).prop('checked', false);
+
+            var previousCheckedArray = previousCheckedColumns.split(",");
+            for (var i = 0; i <= previousCheckedArray.length; i++) {
+                if (previousCheckedArray[i] == columnId) {
+                    if (previousCheckedArray[i] == 0) {
+                        $("#" + inputFieldId).prop('checked', true);
+                        $("#" + inputFieldId).attr('disabled', true);
+                    }
+                    else {
+                        $("#" + inputFieldId).prop('checked', true);
+                    }
+                    newCheckedColumns += "," + columnId;
+                }
+            }
+        });
+        checkedColumnsList = newCheckedColumns;
+
+        $("#btnColumnvisibility").attr("data-toggle", "modal");
+        $("#btnColumnvisibility").attr("data-target", "#frmpopupCustomfld");
+    }
+
+    //function showvisibilityColumn() {
+    //    var previousCheckedColumns = checkedColumnsList.split(",");
+    //    var newCheckedColumns = "";
+
+    //    $('#fieldlst :input').each(function () {
+    //        var inputFieldId = $(this).attr("id");
+    //        var columnId = inputFieldId.replace("chk_", "");
+
+    //        $(this).prop('checked', false); // Uncheck all checkboxes
+
+    //        for (var i = 0; i < previousCheckedColumns.length; i++) {
+    //            if (previousCheckedColumns[i] === columnId) {
+    //                $("#" + inputFieldId).prop('checked', true); // Check the previously selected checkbox
+    //                newCheckedColumns += "," + columnId;
+    //                break; // No need to check further once found
+    //            }
+    //        }
+    //    });
+
+    //    checkedColumnsList = newCheckedColumns;
+
+    //    $("#btnColumnvisibility").attr("data-toggle", "modal");
+    //    $("#btnColumnvisibility").attr("data-target", "#frmpopupCustomfld");
+    //}
+
+
+    function frmClear() {
+        $("#empdeactivationID").removeClass('field_error');
+        $("#EmpInactiveResignDate").removeClass('field_error');
+        $("#EmpInactiveSuspendDate").removeClass('field_error');
+        $("#empdeactivationID").val("0");
+        $("#empdeactivationID").trigger('change');
+        $("#EmpInactiveResignDate").val("");
+        $("#EmpInactiveSuspendDate").val("");
+        $("#ResignDate").css("display", "block");
+        $("#Remark").val("");
+        localStorage.removeItem('selectedCompanyID');
+        localStorage.removeItem('selectedBranchID');
+        localStorage.removeItem('selectedDepartmentID');
+        localStorage.removeItem('selectedDesignationID');
+        localStorage.removeItem('selectedDeactivateID');
+        localStorage.setItem('applyFilter', 'false');
+    }
+
+    function checkSession() {
+        $.ajax({
+            type: "GET",
+            async: false,
+            url: "/ESS/checkSession",
+            contentType: "application/json; charset=utf-8",
+            success: function (data) {
+                if (data.isRedirect) {
+                    window.location.href = data.redirectUrl;
+                }
+            },
+            error: function (data) {
+                window.location.href = data;
+            }
+        });
+    }
+
+</script>
+
+<!-- Page Bar : Begin -->
+<div class="page-bar">
+    @if (_RoleId == 1 || _RoleId == 6805 || _RoleId == 6806)
+    {
+        <ul class="page-breadcrumb" style="float: none">
+            <li>
+                <a href="@(isClientDBMatchFlag == "True" ? "/Admin/AdminDashboard" : "/Dashboard/AdminDashboard")"><i class="fa-regular fa-house"></i></a>
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> Directory</span>
+            </li>
+        </ul>
+    }
+    else
+    {
+        <ul class="page-breadcrumb" style="float: none">
+            <li>
+                <a href="/Dashboard/EmployeeDashboard"><i class="fa-regular fa-house"></i></a>
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> Directory</span>
+            </li>
+        </ul>
+    }
+    <div class="page-toolbar">
+
+        <div class="text-right">
+            <a href="javascript:void(0)" id="Filter_search" class="btn icon_transparent_btn tooltips" data-placement="left" data-original-title="Filter"><i class="fa-light fa-filter" aria-hidden="true"></i></a>
+        </div>
+    </div>
+</div>
+<!-- Page Bar : End -->
+
+<div class="filter_portlet_wrapper full-width">
+
+    <!-- Datatable Block : Begin -->
+    <div class="portlet filter_portlet_tbl">
+        <div class="portlet-body">
+            <div class="resignblock deactivate_all"><a id="btnResignAll" class="btn add_btn">Deactivate All</a></div>
+            <div id="tblempty">
+                <div class="table-responsive" id="tableResponsive">
+                    <div id='ajax_loader' class="modal_bg loading" aria-hidden="true">
+                        <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading" />
+                    </div>
+                    <div class="Directory_details_table">
+                        <table id="tbldirectorydetails" class="table new_datatbl table-striped table-bordered tbl_middle table-hover tbl_newdatatbl serch_datatable table-checkable order-column">
+                            <thead>
+                                @*<tr>*@
+                                @*<th style="min-width: 80px">Sr No</th>
+                                    <th style="min-width: 100px">Employee ID</th>
+                                    <th style="min-width: 80px">Punch ID</th>
+                                    <th style="min-width: 150px">Emp Name</th>
+                                    <th style="min-width: 80px">Branch</th>
+                                    <th style="min-width: 100px">Department</th>
+                                    <th style="min-width: 100px">Designation</th>
+                                    <th style="min-width: 120px">Email</th>
+                                    <th style="min-width: 80px">Mobile</th>
+                                    <th style="min-width: 80px" class="fixed-column-1">Status</th>
+                                    <th style="min-width: 100px" class="fixed-column">Action</th>*@
+                                @*<th style="min-width: 50px"><a class="btn btn-xs tooltips" title="Columns" onclick="showvisibilityColumn();" id="btnColumnvisibility"><i class="fa-regular fa-columns" style="font-size: 14px; color: #3598dc;"></i></a>All</th>
+                                    <th style="min-width: 50px">Sr No</th>
+                                    <th style="min-width: 80px" hidden>OnBording ID</th>
+                                    <th style="min-width: 150px">Emp Name</th>
+                                    <th style="min-width: 160px">Aadhar Card Number</th>
+                                    <th style="min-width: 100px">Emp Type</th>
+                                    <th style="min-width: 100px">Emp Code</th>
+                                    <th style="min-width: 100px">Emp Category</th>
+                                    <th style="min-width: 80px">Punch ID</th>
+                                    <th style="min-width: 80px">Branch</th>
+                                    <th style="min-width: 100px">Department</th>
+                                    <th style="min-width: 100px">Designation</th>
+                                    <th style="min-width: 120px">Email</th>
+                                    <th style="min-width: 80px">Mobile</th>
+                                    <th style="min-width: 80px" class="fixed-column-1">Status</th>
+                                    <th style="min-width: 100px" class="fixed-column">Action</th>
+                                    <th style="min-width: 80px" hidden>EmpId</th>*@
+
+                                @*</tr>*@
+                            </thead>
+                            <tbody></tbody>
+                            <tfoot>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div id="NotificationGrid-empty" style="display: none">
+                <div class="datanotfound">
+                    <img src="" height="148" width="280" alt="Nodata Found Icon">
+                    <p class="datanotfound_title"></p> <!-- titleText -->
+                    <p class=""></p><!-- subText -->
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Datatable Block : End -->
+    <!-- Filter Block : Begin -->
+    <div class="portlet filter_boxModal">
+        <div class="filterbox_header">
+            <div class="d-flex align-items-center justify-content-between">
+                <h4 class="filter-title">Filters</h4>
+                <button type="button" class="filterclose_btn"><i class="fa-light fa-xmark"></i></button>
+            </div>
+        </div>
+        <div class="filterbox_body">
+            <div class="col-lg-12">
+                <div class="form-group">
+                    <label class="control-label">Company<span class="required" aria-required="true">*</span></label>
+                    <select class="form-control input-sm select2" id="ddlCompanyID"></select>
+                </div>
+            </div>
+            <div class="col-lg-12">
+                <div class="form-group" id="field_errorBranchID">
+                    <label class="control-label">Branch<span class="required" aria-required="true">*</span></label>
+                    <input type="text" id="txt3" value="0" hidden />
+                    <select id="ddlBranchID" class="mt-multiselect btn-sm btn blue btn-outline" aria-haspopup="true" aria-expanded="false" multiple="multiple" data-width="100%"></select>
+                </div>
+            </div>
+            <div class="col-lg-12">
+                <div class="form-group" id="field_errorDepartmentID">
+                    <label class="control-label">Department<span class="required" aria-required="true">*</span></label>
+                    <input type="text" id="txt2" value="0" hidden />
+                    <select id="ddlDepartmentID" class="mt-multiselect btn-sm btn blue btn-outline" aria-haspopup="true" aria-expanded="false" multiple="multiple" data-width="100%"></select>
+                </div>
+            </div>
+            <div class="col-lg-12">
+                <div class="form-group">
+                    <label class="control-label">Designation</label>
+                    <input type="text" id="txt1" value="0" hidden />
+                    <select class="form-control input-sm select2" id="ddlDesignationID">
+                        <option value="0">Select Designation</option>
+                    </select>
+                </div>
+            </div>
+            <div class="col-lg-12">
+                <div class="form-group">
+                    <label class="control-label">Deactivate</label>
+                    <select class="form-control input-sm" id="ddlDeactivateID">
+                        <option value="0" selected>Select Deactivate</option>
+                        <option value="1">Absent of 30 days</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+        <div class="filterbox_footer">
+            <div class="text-right">
+                <button type="submit" id="BtnClear" class="btn clear_btn tooltips" data-placement="top" data-original-title="Clear"><i class="fa-regular fa-eraser"></i></button>
+                <button type="submit" id="btnSubmit" class="btn icon_btn margin-left-5 tooltips" data-placement="top" data-original-title="Search Filters"><i class="fa-solid fa-magnifying-glass"></i></button>
+            </div>
+        </div>
+    </div>
+    <!-- Filter Block : End -->
+
+</div>
+
+<!-- InActive Employee model : Begin-->
+<div id="frmInactiveEmp" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+    <div class="modal-dialog  ">
+        <!-- Modal content-->
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" id="btnClose" class="close" data-dismiss="modal">&times;</button>
+                <h4 class="modal-title">Inactive Employee</h4>
+            </div>
+            <div class="modal-body">
+                <div class="modal-card">
+                    <fieldset>
+                        <div class="row">
+                            <div class="col-lg-6 col-md-6 col-sm-12">
+                                <div class="form-group">
+                                    <label class="control-label">Deactivation<span class="required" aria-required="true">*</span></label>
+                                    <select class="form-control input-sm" id="empdeactivationID">
+                                        <option value="0" selected>Select deactivation</option>
+                                        <option value="1">Resign</option>
+                                        <option value="2">Suspend</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="col-lg-6 col-md-6 col-sm-12" id="ResignDate">
+                                <div class="form-group data_picker_box">
+                                    <label>Resign Date<span class="required" aria-required="true">*</span></label>
+                                    <div class="input-group input-group-sm date date-picker" data-date="@DateTime.Now" data-date-format="@_isdateformat" data-date-viewmode="years" id="inactiveresigndate">
+                                        <span class="input-group-btn">
+                                            <button class="btn default" type="button" id="btninactiveresigndate" disabled>
+                                                <i class="fa-light fa-calendar-days"></i>
+                                            </button>
+                                        </span>
+                                        @if (_isdateformat == "dd-M-yyyy" || _isdateformat == "M-dd-yyyy" || _isdateformat == "yyyy-M-dd")
+                                        {
+                                            @*<input type="text" placeholder="@_isdateformat.Replace("M", "MMM")" class="form-control" id="EmpInactiveResignDate" name="EmpInactiveResignDate">*@
+                                            <input type="text" placeholder="@_isdateformat.Replace("M", "MMM")" class="form-control" id="EmpInactiveResignDate" name="EmpInactiveResignDate" readonly="readonly" disabled>
+                                        }
+                                        else
+                                        {
+                                            <input type="text" placeholder="@_isdateformat" class="form-control" id="EmpInactiveResignDate" name="EmpInactiveResignDate" readonly="readonly" disabled>
+                                        }
+                                        @*<span class="input-group-addon"><i style="padding:10px;"></i></span>*@
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="col-lg-6 col-md-6 col-sm-12" id="SuspendDate" style="display:none;">
+                                <div class="form-group data_picker_box">
+                                    <label>Suspend Date<span class="required" aria-required="true">*</span></label>
+                                    <div class="input-group input-group-sm date date-picker" data-date="@DateTime.Now" data-date-format="@_isdateformat" data-date-viewmode="years" id="inactivesuspenddate">
+                                        <span class="input-group-btn">
+                                            <button class="btn default" type="button" id="btninactivesuspenddate">
+                                                <i class="fa-light fa-calendar-days"></i>
+                                            </button>
+                                        </span>
+                                        @if (_isdateformat == "dd-M-yyyy" || _isdateformat == "M-dd-yyyy" || _isdateformat == "yyyy-M-dd")
+                                        {
+                                            @*<input type="text" placeholder="@_isdateformat.Replace("M", "MMM")" class="form-control" id="EmpInactiveResignDate" name="EmpInactiveResignDate">*@
+                                            <input type="text" placeholder="@_isdateformat.Replace("M", "MMM")" class="form-control" id="EmpInactiveSuspendDate" name="EmpInactiveSuspendDate" readonly="readonly">
+                                        }
+                                        else
+                                        {
+                                            <input type="text" placeholder="@_isdateformat" class="form-control" id="EmpInactiveSuspendDate" name="EmpInactiveSuspendDate" readonly="readonly">
+                                        }
+                                        @*<span class="input-group-addon"><i style="padding:10px;"></i></span>*@
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-sm-6 col-xs-12">
+                                <div class="form-group">
+                                    <label class="control-label">Remark<span class="required" aria-required="true">*</span></label>
+                                    <textarea id="Remark" name="" class="form-control input-sm" maxlength="100"></textarea>
+                                </div>
+                            </div>
+                        </div>
+                    </fieldset>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <div class="row">
+                    <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                        <button type="submit" class="btn save_btn" id="btnIactivesubmit"> <i class="fa-light fa-floppy-disk"></i> Save</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="frmpopupCustomfld" class="modal fade custome_filter_box" role="dialog" data-keyboard="false" data-backdrop="static">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title"><i class="fa-light fa-filter" aria-hidden="true"></i> Filter Column</h4>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                        <a class='btn btn-xs tooltips select_all_btn tooltips' data-placement="bottom" title='Select all' id='btnchkSelectAll' href="javascript:void(0)">Select all</a>
+                        <a class='btn btn-xs tooltips select_none_btn tooltips' data-placement="bottom" title='Select none' id='btnchkSelectnone' href="javascript:void(0)">Select none</a>
+                    </div>
+                    <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                        <div class="table-responsive">
+                            <table id="fieldlst" class="table filter_table_box"></table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <div class="row">
+                    <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                        <button type="button" data-dismiss="modal" id="btnCancel" class="btn cancel_filter_btn_emp"> <i class="fa-solid fa-xmark"></i> Close</button>
+                        <button type="button" id="btnApply" class="btn apply_filter_btn_emp"> <i class="fa-solid fa-check"></i> Apply</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- InActive Employee model : end-->
+<div>
+    @Html.Partial("_OnBoardingPartial")
+</div>

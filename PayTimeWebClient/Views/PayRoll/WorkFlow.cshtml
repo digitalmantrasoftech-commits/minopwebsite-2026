@@ -1,0 +1,2014 @@
+﻿@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@using System.Configuration;
+@using System.Data
+@using System
+@model DataTable
+@{
+    ViewBag.Title = "WorkFlow";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiurlpayroll = ConfigurationManager.AppSettings["webapipaytimePayroll"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+    string _lockAttendanceDay = HttpContext.Current.Session["lockAttendanceDay"].ToString();
+    string _CheckCustomClientDBName = ConfigurationManager.AppSettings["CheckCustomClientDBName"].ToString();
+    string _dbName = HttpContext.Current.Session["DbName"].ToString();
+    int _CheckFastrackdb = 0;
+    if (_CheckCustomClientDBName.Contains(_dbName))
+    {
+        _CheckFastrackdb = 1;
+    }
+}
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="~/Newlayout/js/sweet_alert_payroll.js"></script>
+<script src="~/Scripts/Helpers/noDataHandler.js"></script>
+<link href="/Newlayout/css/payrollstructure.css" rel="stylesheet">
+
+<style type="text/css">
+    .dataTables_wrapper .dataTables_filter, .buttons-columns {
+        display: none !important;
+    }
+
+    .dataTables_wrapper {
+        padding: 0px 0 0px 0;
+    }
+
+    #workflow_tbl_wrapper {
+        display: none;
+    }
+</style>
+
+<script type="text/javascript">
+
+    var BranchIdlst = "";
+    var DeptIdlst = "";
+    var EmpIdlst = "";
+    var rowCount = 1;
+    var WorkFlowId = 0;
+    var totalrowCount = 0;
+    var ApprovalAuthorityId = 0;
+    var WorkFlowChecklistId = 0;
+    var approvaltype_val = 1;
+    const groupedChecklistDetails = {};
+    var flag = 0;
+    var Status = 1;
+
+    $(document).ready(function () {
+        $('#workflow_tbl').on('draw.dt', function () {
+            const table = $('#workflow_tbl').DataTable();
+            const rowCount = table.rows({ filter: 'applied' }).data().length;
+
+            if (rowCount === 0) {
+                $("#dataTables_tbl_header").hide();
+                $("#tableResponsive").hide();
+                $(".dataTables_paginate").hide();
+                $(".dataTables_info").hide();
+                $(".dataTables_length").hide();
+                $(".dataTables_filter").hide();
+                $("#export-button").hide();
+            } else {
+                $("#dataTables_tbl_header").show();
+                $("#tableResponsive").show();
+                $(".dataTables_paginate").show();
+                $(".dataTables_info").show();
+                $(".dataTables_length").show();
+                $(".dataTables_filter").show();
+                $("#export-button").show();
+            }
+        });
+        //Validation for WorkFlow name
+        $("#workflow").keypress(function (e) {
+            var keyCode = e.which;
+            var Responce = validateKeyPress(keyCode);
+            if (Responce == true) {
+            }
+            else { e.preventDefault(); }
+        });
+
+
+        //Show the Work Flow Grid and Create button of workflow
+        $("#workflow_tbl").show();
+        $("#workflow_tbl_wrapper").show();
+        $("#create_newworkflowbtn").show();
+
+
+        // Back button click code
+        $("#Back_btn").on('click', function () {
+            $("#tableResponsive").show();
+            checkSession();
+            frmclear();
+            if (flag == 0) {
+                $("#create_workflow").show();
+                $("#workflow_tbl").hide();
+                $("#workflow_tbl_wrapper").hide();
+                $("#create_newworkflowbtn").hide();
+            }
+            else {
+                $("#workflow_tbl").show();
+                $("#workflow_tbl_wrapper").show();
+                $("#create_newworkflowbtn").show();
+            }
+
+            $("#Back_btn").hide();
+            $("#workflow_form").hide();
+            $("#approve_info").hide();
+            $("#dataTables_tbl_header").show()
+
+        });
+
+        //Click on create workflow
+        $("#create_workflow_btn").on('click', function () {
+
+            checkSession();
+            $("#tableResponsive").hide();
+            $("#create_newworkflowbtn").hide();
+            $("#Back_btn").show();
+            $("#create_workflow").hide();
+            $("#workflow_form").show();
+            $("#approve_info").show();
+            $("#Level_table1").empty();
+            var newRow = $('<tr>');
+            var input = $('<td class="calculate_td_250">').html('<div class="col-xs-12 margin-bottom-5"><input type="text" class="form-control input-sm inp" name="" id="inpid' + rowCount + '" pattern="[0-9]+" placeholder="" style="width: 300px;"></div>');
+            var btn = $('<td class="calculate_td_120">').html('<div class="col-xs-12 d-flex margin-bottom-5"><a href="javascript:void(0)" class="btn add_fields_btn tooltips" title="Add new fields" ><i class="fa-solid fa-plus"></i></a><a href="javascript:void(0)" class="btn btn-xs red disreject tooltips" title="Remove fields"><i class="fa-solid fa-xmark"></i></a></div>');
+            newRow.append(input);
+            newRow.append(btn);
+            $("#Level_table1").append(newRow);
+
+            // Bind the keypress event using event delegation
+            $("#Level_table1").on('keypress', 'input[id^="inpid"]', function (e) {
+                var keyCode = e.which;
+                var response = validateKeyPress(keyCode);
+                var inputLength = $(this).val().length;
+
+                if (inputLength >= 50) {
+                    e.preventDefault();
+                    toastr.remove();
+                    toastr.error("Maximum 50 characters allowed.");
+                } else {
+                    if (response === false) {
+                        e.preventDefault();
+                    }
+                }
+            });
+        });
+
+
+        $("#create_newworkflowbtn").on('click', function () {
+            checkSession();
+            $("#tableResponsive").hide();
+            $("#workflow_tbl").hide();
+            $("#workflow_tbl_wrapper").hide();
+            $("#workflow_form").show();
+            $("#approve_info").show();
+            $("#Level_table1").empty();
+            $("#create_newworkflowbtn").hide();
+            $("#Back_btn").show();
+            $("#dataTables_tbl_header").hide();
+            var newRow = $('<tr>');
+            var input = $('<td class="calculate_td_250">').html('<div class="col-xs-12 margin-bottom-5"><input type="text" class="form-control input-sm inp" name="" id="inpid' + rowCount + '" pattern="[0-9]+" placeholder="" style="width: 300px;"></div>');
+            var btn = $('<td class="calculate_td_120">').html('<div class="col-xs-12 d-flex margin-bottom-5"><a href="javascript:void(0)" class="btn add_fields_btn tooltips" title="Add new fields" ><i class="fa-solid fa-plus"></i></a><a href="javascript:void(0)" class="btn btn-xs red disreject tooltips" title="Remove fields"><i class="fa-solid fa-xmark"></i></a></div>');
+            newRow.append(input);
+            newRow.append(btn);
+            $("#Level_table1").append(newRow);
+
+            // Bind the keypress event using event delegation
+            $("#Level_table1").on('keypress', 'input[id^="inpid"]', function (e) {
+                var keyCode = e.which;
+                var response = validateKeyPress(keyCode);
+                var inputLength = $(this).val().length;
+
+                if (inputLength >= 50) {
+                    e.preventDefault();
+                    toastr.remove();
+                    toastr.error("Maximum 50 characters allowed.");
+                } else {
+                    if (response === false) {
+                        e.preventDefault();
+                    }
+                }
+            });
+        });
+
+
+        //Change a dropdown of Approval Type
+        $("#approvaltype").change(function () {
+            checkSession();
+            approvaltype_val = parseInt($("#approvaltype").val());
+            var maxRowCount = 5;
+
+            if (approvaltype_val == 1) {
+                $("#approve_info1").show();
+                $("#approve_info2").hide();
+                $("#approve_info3").hide();
+                $("#approve_info4").hide();
+                $("#approve_info5").hide();
+                $("#approve_info6").hide();
+                $("#approve_info7").hide();
+                $("#divlevel1").show();
+                $("#divlevel2").hide();
+                $("#divlevel3").hide();
+                $("#divlevel4").hide();
+                $("#divlevel5").hide();
+                $("#divlevel6").hide();
+                $("#divlevel7").hide();
+            }
+
+            if (approvaltype_val >= 2 && approvaltype_val <= 7) {
+                for (let i = 1; i <= 7; i++) {
+                    if (i <= approvaltype_val) {
+                        $("#approve_info" + i).show();
+                        $("#divlevel" + i).show();
+                    } else {
+                        $("#approve_info" + i).hide();
+                        $("#divlevel" + i).hide();
+                    }
+                }
+
+                // Add rows dynamically
+                for (let i = 2; i <= approvaltype_val; i++) {
+                    var $levelTable = $("#Level_table" + i);
+
+                    if ($levelTable.find("tr").length === 0) {
+                        var newRow = $('<tr>');
+                        var input = $('<td class="calculate_td_250">').html('<div class="col-xs-12 margin-bottom-5"><input type="text" class="form-control input-sm inp" name="" id="inpid' + rowCount + '" pattern="[0-9]+" placeholder="" style="width: 300px;"></div>');
+                        var btn = $('<td class="calculate_td_120">'    ).html('<div class="col-xs-12 d-flex margin-bottom-5"><a href="javascript:void(0)" class="btn add_fields_btn tooltips" title="Add new fields"><i class="fa-solid fa-plus"></i></a><a href="javascript:void(0)" class="btn btn-xs red disreject tooltips" title="Remove fields"><i class="fa-solid fa-xmark"></i></a></div>');
+                        newRow.append(input).append(btn);
+                        $levelTable.append(newRow);
+                    }
+                }
+
+                // Bind the keypress event using event delegation
+                $levelTable.on('keypress', 'input[id^="inpid"]', function (e) {
+                    var keyCode = e.which;
+                    var response = validateKeyPress(keyCode);
+                    var inputLength = $(this).val().length;
+
+                    if (inputLength >= 50) {
+                        e.preventDefault();
+                        toastr.remove();
+                        toastr.error("Maximum 50 characters allowed.");
+                    } else {
+                        if (response === false) {
+                            e.preventDefault();
+                        }
+                    }
+                });
+            }
+
+            if (approvaltype_val >= 2) {
+                for (let i = approvaltype_val + 1; i <= 7; i++) {
+                    $("#approve_info" + i).hide();
+                    $("#divlevel" + i).hide();
+                }
+            }
+
+        });
+
+
+        //Jquery to add a row
+        $("body").on('click', '.add_fields_btn', function () {
+            checkSession();
+            var $levelTable = $(this).closest("table");
+            rowCount = $levelTable.find("tr").length;
+
+            // Limit to 5 rows
+            if (rowCount < 5) {
+                $levelTable.find("tr:last .add_fields_btn").hide();
+                var newRow = $('<tr>');
+                var input = $('<td class="calculate_td_250">').html('<div class="col-xs-12 margin-bottom-5"><input type="text" class="form-control input-sm inp" name="" id="inpid' + (rowCount+1) + '" pattern="[0-9]+" placeholder="" style="width: 300px;"></div>');
+                var btn = $('<td class="calculate_td_120">').html('<div class="col-xs-12 d-flex margin-bottom-5"><a href="javascript:void(0)" class="btn add_fields_btn tooltips" title="Add new fields" ><i class="fa-solid fa-plus"></i></a><a href="javascript:void(0)" class="btn btn-xs red disreject tooltips" title="Remove fields"><i class="fa-solid fa-xmark"></i></a></div>');
+                newRow.append(input);
+                newRow.append(btn);
+                $levelTable.append(newRow);
+            }
+        });
+
+
+        //Jquery to remove a row
+        $("body").on('click', '.disreject', function () {
+            checkSession();
+            var $currentRow = $(this).closest("tr");
+            var $levelTable = $(this).closest("table");
+            rowCount = $levelTable.find("tr").length;
+
+            // Allow removal only if more than 1 row exists
+            if (rowCount > 1) {
+                $currentRow.remove();
+                $levelTable.find("tr:last .add_fields_btn").show();
+            }
+        });
+
+
+        //Add on 06-06-2025 by Damini -  This is corrrectly working code
+        $("#workflow_tbl").on('click', '.edit_clm_btn', function () {
+
+            checkSession();
+            $("#tableResponsive").hide();
+            rowCount = 1;
+            // Hide the table and show the form
+            $("#workflow_tbl").hide();
+            $("#workflow_tbl_wrapper").hide();
+            $("#create_newworkflowbtn").hide();
+            $("#Back_btn").show();
+            $("#workflow_form").show();
+            $("#approve_info").show();
+            $("#approvaltype").prop("disabled", true);
+            $("#dataTables_tbl_header").hide();
+            //Bind the level 1 bydefault
+            $("#Level_table1").empty();
+            var newRow = $('<tr>');
+            var input = $('<td class="calculate_td_250">').html('<div class="col-xs-12 margin-bottom-5"><input type="text" class="form-control input-sm inp" name="" id="inpid' + rowCount + '" pattern="[0-9]+" placeholder="" style="width: 300px;"></div>');
+            var btn = $('<td class="calculate_td_120">').html('<div class="col-xs-12 d-flex margin-bottom-5"><a href="javascript:void(0)" class="btn add_fields_btn tooltips" title="Add new fields" ><i class="fa-solid fa-plus"></i></a><a href="javascript:void(0)" class="btn btn-xs red disreject tooltips" title="Remove fields"><i class="fa-solid fa-xmark"></i></a></div>');
+            newRow.append(input);
+            newRow.append(btn);
+            $("#Level_table1").append(newRow);
+
+            var rowData = workflowtable.row($(this).closest('tr')).data();
+            if (!rowData) return;
+
+            WorkFlowId = rowData["WorkFlowId"] || '';
+            var WorkFlowName = rowData["WorkFlowName"] || '';
+            var WorkFlowFor = rowData["WorkFlowFor"] || '';
+            var ApprovalType = rowData["ApprovalType"] || '';
+             Status = rowData["Status"];
+
+            // Set form field values
+            $("#workflow").val(WorkFlowName);
+
+            if ($("#workflowfor option[value='" + WorkFlowFor + "']").length > 0) {
+                $("#workflowfor").val(WorkFlowFor).trigger('change');
+            } else {
+                $("#workflowfor").val("").trigger('change');
+            }
+
+            if ($("#approvaltype option[value='" + ApprovalType + "']").length > 0) {
+                $("#approvaltype").val(ApprovalType).trigger('change');
+            } else {
+                $("#approvaltype").val("").trigger('change');
+            }
+
+            $.ajax({
+                type: "GET",
+                headers: { 'Authorization': '@_tokan' },
+                url: '@_webapiurlpayroll' + 'Full_FinalSettlement/GetWorkFlowid',
+                data: { WorkFlowId: WorkFlowId },
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                beforeSend: function () {
+                    $("#ajax_loader").show();
+                },
+                success: function (response) {
+
+                    if (response && response.length > 0) {
+                        let rowCount = 0;
+                         WorkFlowChecklistId = response.map(data => {
+                            return data.WorkFlowChecklistId ? data.WorkFlowChecklistId.toString().split(',') : [];
+                        });
+/*                        const groupedChecklistDetails = {};*/
+
+                        response.forEach(data => {
+                            const levelId = data.LevelId;
+                            const checklistIds = data.WorkFlowChecklistId
+                                ? data.WorkFlowChecklistId.toString().split(',')
+                                : [];
+
+                            if (!groupedChecklistDetails[levelId]) {
+                                groupedChecklistDetails[levelId] = [];
+                            }
+
+                            groupedChecklistDetails[levelId].push(checklistIds);
+                        });
+                        //const workflowchecklistdetails = response.map(data => {
+                        //    return {
+                        //        workflowchecklistid: data.workflowchecklistid ? data.workflowchecklistid.tostring().split(',') : [],
+                        //        levelid: data.levelid
+                        //    };
+                        //});
+                        ApprovalAuthorityId = response.map(data => {
+                            return data.ApprovalAuthorityId ? data.ApprovalAuthorityId.toString().split(',') : [];
+                        });
+                        //ChecklistTitles = response.map(data => {
+                        //    return data.ChecklistTitle ? data.ChecklistTitle.toString().split(',') : [];
+                        //});
+                        const ChecklistDetails = response.map(data => {
+                            return {
+                                ChecklistTitles: data.ChecklistTitle ? data.ChecklistTitle.toString().split(',') : [],
+                                LevelId: data.LevelId
+                            };
+                        });
+                        response.forEach((data, index) => {
+                            var BranchIds = data.BranchId ? data.BranchId.toString().split(',') : [];
+                            var DepartmentIds = data.DepartmentId ? data.DepartmentId.toString().split(',') : [];
+                            var EmpIds = data.EmpId ? data.EmpId.toString().split(',') : [];
+                            //var ChecklistTitles = data.ChecklistTitle ? data.ChecklistTitle.split(',').map(title => title.trim()) : [];
+                            var LevelId = data.LevelId;
+                            WorkFlowId = data.WorkFlowId;
+                            //ApprovalAuthorityId = data.ApprovalAuthorityId ? data.ApprovalAuthorityId.toString().split(',') : [];
+                            var ChecklistRowCount = data.ChecklistRowCount;
+                            var ChecklistLevelId = data.ChecklistLevelId;
+
+                            var i = 1;
+                            var j = index + 1;
+
+                            //Bind the branch, department and authority person on the field
+                            setTimeout(function () {
+                                if (BranchIds.length > 0) {
+                                    $('#BranchIds' + j).val(BranchIds).trigger('change');
+                                } else {
+                                    $('#BranchIds' + j).val("").trigger('change');
+                                }
+                            }, 10);
+                            //10
+
+                            setTimeout(function () {
+                                if (DepartmentIds.length > 0) {
+                                    $('#DeptIds' + j).val(DepartmentIds).trigger('change');
+                                } else {
+                                    $('#DeptIds' + j).val("").trigger('change');
+                                }
+                            }, 2800);
+                            //600
+
+                            setTimeout(function () {
+                                if (EmpIds.length > 0) {
+                                    $('#EmpIds' + j).val(EmpIds).trigger('change');
+                                } else {
+                                    $('#EmpIds' + j).val("").trigger('change');
+                                }
+                            }, 3200);
+                            //1200
+
+                            //Bind the row on level table when add more than 1 row
+                            rowCount = 1;
+                            var $levelTable = $("#Level_table" + j);
+                            var $list = $("#list" + j);
+                            $list.collapse('show');
+
+                            if ($levelTable.find("tr").length === 1) {
+
+                                // Loop to add rows based on LevelId
+                                for (let k = 0; k < ChecklistRowCount - 1; k++) {
+                                    var newRow = $('<tr>');
+                                    var input = $('<td class="calculate_td_250">')
+                                        .html('<div class="col-xs-12 margin-bottom-5"><input type="text" class="form-control input-sm inp" id="inpid' + ((rowCount + 1)) + '" pattern="[0-9]+" placeholder="" style="width: 300px;"></div>');
+                                    var btn = $('<td class="calculate_td_120">')
+                                        .html('<div class="col-xs-12 d-flex margin-bottom-5"><a href="javascript:void(0)" class="btn add_fields_btn tooltips" title="Add new fields"><i class="fa-solid fa-plus"></i></a><a href="javascript:void(0)" class="btn btn-xs red disreject tooltips" title="Remove fields"><i class="fa-solid fa-xmark"></i></a></div>');
+
+                                    newRow.append(input).append(btn);
+                                    $levelTable.append(newRow);
+                                    rowCount++;
+                                }
+                                $levelTable.find(".add_fields_btn").hide();
+                                $levelTable.find("tbody tr:last .add_fields_btn").show();
+                            }
+
+
+                            // Assign ChecklistTitles to input fields
+                            let counters = {};
+                            ChecklistDetails.forEach(details => {
+                                let levelId = details.LevelId;
+
+                                if (!counters[levelId]) {
+                                    counters[levelId] = 1;
+                                }
+                                details.ChecklistTitles.forEach(title => {
+                                    $("#Level_table" + levelId)
+                                        .find("#inpid" + counters[levelId])
+                                        .val(title);
+                                    counters[levelId]++;
+                                });
+                            });
+
+
+                            //for (let i = 1; i <= ApprovalType; i++) {
+                                //debugger;
+                                //for (let l = 0; l < ChecklistTitles.length; l++) {
+                                   // $("#Level_table" + j).find("tr").find("td").find("#inpid" + i).val(ChecklistTitles[l]);
+                                   // i++;
+                                //}
+                            //}
+                        });
+                    }
+                },
+                complete: function () {
+                    $("#ajax_loader").hide();
+                }
+            });
+        });
+
+
+
+        //Add on 06-06-2025 by Damini
+        @*$("#workflow_tbl").on('click', '.edit_clm_btn', function () {
+
+            checkSession();
+            $("#tableResponsive").hide();
+            let rowCount = 1;
+
+            // Hide the table and show the form
+            $("#workflow_tbl").hide();
+            $("#workflow_tbl_wrapper").hide();
+            $("#create_newworkflowbtn").hide();
+            $("#Back_btn").show();
+            $("#workflow_form").show();
+            $("#approve_info").show();
+            $("#approvaltype").prop("disabled", true);
+            $("#dataTables_tbl_header").hide();
+
+            // Bind the level 1 by default
+            $("#Level_table1").empty();
+            var newRow = $('<tr>');
+            var input = $('<td class="calculate_td_250">').html('<div class="col-xs-12 margin-bottom-5"><input type="text" class="form-control input-sm inp" id="inpid' + rowCount + '" pattern="[0-9]+" placeholder="" style="width: 300px;"></div>');
+            var btn = $('<td class="calculate_td_120">').html('<div class="col-xs-12 d-flex margin-bottom-5"><a href="javascript:void(0)" class="btn add_fields_btn tooltips" title="Add new fields"><i class="fa-solid fa-plus"></i></a><a href="javascript:void(0)" class="btn btn-xs red disreject tooltips" title="Remove fields"><i class="fa-solid fa-xmark"></i></a></div>');
+            newRow.append(input);
+            newRow.append(btn);
+            $("#Level_table1").append(newRow);
+
+            var rowData = workflowtable.row($(this).closest('tr')).data();
+            if (!rowData) return;
+
+            WorkFlowId = rowData["WorkFlowId"] || '';
+            let WorkFlowName = rowData["WorkFlowName"] || '';
+            let WorkFlowFor = rowData["WorkFlowFor"] || '';
+            let ApprovalType = rowData["ApprovalType"] || '';
+            let Status = rowData["Status"];
+
+            // Set form field values
+            $("#workflow").val(WorkFlowName);
+
+            if ($("#workflowfor option[value='" + WorkFlowFor + "']").length > 0) {
+                $("#workflowfor").val(WorkFlowFor).trigger('change');
+            } else {
+                $("#workflowfor").val("").trigger('change');
+            }
+
+            if ($("#approvaltype option[value='" + ApprovalType + "']").length > 0) {
+                $("#approvaltype").val(ApprovalType).trigger('change');
+            } else {
+                $("#approvaltype").val("").trigger('change');
+            }
+
+            $.ajax({
+                type: "GET",
+                headers: { 'Authorization': '@_tokan' },
+                url: '@_webapiurlpayroll' + 'Full_FinalSettlement/GetWorkFlowid',
+                data: { WorkFlowId: WorkFlowId },
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                beforeSend: function () {
+                    $("#ajax_loader").show();
+                },
+                success: function (response) {
+                    if (response && response.length > 0) {
+                        // Prepare grouped checklist details by LevelId
+                        const groupedChecklistDetails = {};
+                        response.forEach(data => {
+                            const levelId = data.LevelId;
+                            const checklistIds = data.WorkFlowChecklistId ? data.WorkFlowChecklistId.toString().split(',') : [];
+
+                            if (!groupedChecklistDetails[levelId]) {
+                                groupedChecklistDetails[levelId] = [];
+                            }
+                            groupedChecklistDetails[levelId].push(...checklistIds);
+                        });
+
+                        // Prepare checklist titles and approval authority ids
+                        const ChecklistDetails = response.map(data => {
+                            return {
+                                ChecklistTitles: data.ChecklistTitle ? data.ChecklistTitle.toString().split(',') : [],
+                                LevelId: data.LevelId
+                            };
+                        });
+
+                        // Start binding data asynchronously with setTimeout calls
+                        const maxTimeoutDelay = 3200; // Max delay for your async binding
+
+                        response.forEach((data, index) => {
+                            const BranchIds = data.BranchId ? data.BranchId.toString().split(',') : [];
+                            const DepartmentIds = data.DepartmentId ? data.DepartmentId.toString().split(',') : [];
+                            const EmpIds = data.EmpId ? data.EmpId.toString().split(',') : [];
+                            const ChecklistRowCount = data.ChecklistRowCount;
+                            var ChecklistLevelId = data.ChecklistLevelId;
+                            var LevelId = data.LevelId;
+                            WorkFlowId = data.WorkFlowId;
+                            const j = index + 1;
+
+                            // BranchIds binding after 10ms
+                            setTimeout(() => {
+                                if (BranchIds.length > 0) {
+                                    $('#BranchIds' + j).val(BranchIds).trigger('change');
+                                } else {
+                                    $('#BranchIds' + j).val("").trigger('change');
+                                }
+                            }, 10);
+
+                            // DepartmentIds binding after 2800ms
+                            setTimeout(() => {
+                                if (DepartmentIds.length > 0) {
+                                    $('#DeptIds' + j).val(DepartmentIds).trigger('change');
+                                } else {
+                                    $('#DeptIds' + j).val("").trigger('change');
+                                }
+                            }, 2800);
+
+                            // EmpIds binding after 3200ms
+                            setTimeout(() => {
+                                if (EmpIds.length > 0) {
+                                    $('#EmpIds' + j).val(EmpIds).trigger('change');
+                                } else {
+                                    $('#EmpIds' + j).val("").trigger('change');
+                                }
+                            }, 3200);
+
+                            // Bind rows dynamically based on ChecklistRowCount
+                            const $levelTable = $("#Level_table" + j);
+                            const $list = $("#list" + j);
+                            $list.collapse('show');
+
+                            if ($levelTable.find("tr").length === 1) {
+                                for (let k = 0; k < ChecklistRowCount - 1; k++) {
+                                    const newRow = $('<tr>');
+                                    const input = $('<td class="calculate_td_250">').html('<div class="col-xs-12 margin-bottom-5"><input type="text" class="form-control input-sm inp" id="inpid' + (rowCount + 1) + '" pattern="[0-9]+" placeholder="" style="width: 300px;"></div>');
+                                    const btn = $('<td class="calculate_td_120">').html('<div class="col-xs-12 d-flex margin-bottom-5"><a href="javascript:void(0)" class="btn add_fields_btn tooltips" title="Add new fields"><i class="fa-solid fa-plus"></i></a><a href="javascript:void(0)" class="btn btn-xs red disreject tooltips" title="Remove fields"><i class="fa-solid fa-xmark"></i></a></div>');
+
+                                    newRow.append(input).append(btn);
+                                    $levelTable.append(newRow);
+                                    rowCount++;
+                                }
+                                $levelTable.find(".add_fields_btn").hide();
+                                $levelTable.find("tbody tr:last .add_fields_btn").show();
+                            }
+                        });
+
+                        // After all async bindings are supposed to be complete, bind ChecklistTitles to inputs
+                        setTimeout(() => {
+                            // Counters to track input index per LevelId
+                            let counters = {};
+
+                            ChecklistDetails.forEach(details => {
+                                let levelId = details.LevelId;
+                                if (!counters[levelId]) {
+                                    counters[levelId] = 1;
+                                }
+                                details.ChecklistTitles.forEach(title => {
+                                    // Find the input by id and set the value
+                                    $("#Level_table" + levelId)
+                                        .find("#inpid" + counters[levelId])
+                                        .val(title);
+                                    counters[levelId]++;
+                                });
+                            });
+
+                            // Now all binding done, hide loader
+                            $("#ajax_loader").hide();
+                        }, maxTimeoutDelay + 100); // 100ms buffer after last timeout
+
+                    } else {
+                        // No data, just hide loader
+                        $("#ajax_loader").hide();
+                    }
+                },
+                error: function () {
+                    $("#ajax_loader").hide();
+                }
+            });
+        });*@
+
+
+        //Click on submit button to save the data
+        $("#assign_workflow").on('click', function () {
+
+            checkSession();
+            if ($("#workflow").val().trim() == "") {
+                $("#workflow").focus();
+                toastr.remove();
+                toastr.error("Please enter work flow.");
+                $("#workflow").addClass('field_error');
+                event.preventDefault();
+                return false;
+            } else {
+                $("#workflow").removeClass('field_error');
+            }
+            if ($("#workflowfor").val() == "0" || $("#workflowfor").val() == null) {
+                toastr.remove();
+                toastr.error("Please select workflowfor.");
+                $("#workflowfor").addClass('field_error');
+                event.preventDefault();
+                return false;
+            } else {
+                $("#workflowfor").removeClass('field_error');
+            }
+
+            let approvalType = parseInt($("#approvaltype").val());
+            if (!approvalType || approvalType <= 0) {
+                toastr.error("ApprovalType is required and must be greater than 0.");
+                return;
+            }
+
+            for (var i = 1; i <= approvalType; i++) {
+                var $branchid = $("#BranchIds" + i);
+                var $departmentid = $("#DeptIds" + i);
+                var $empid = $("#EmpIds" + i);
+
+                if ($branchid.val() == "" || $branchid.val() == null) {
+                    toastr.remove();
+                    toastr.error("Please select branch.");
+                    $branchid.addClass('field_error');
+                    event.preventDefault();
+                    return false;
+                } else {
+                    $branchid.removeClass('field_error');
+                }
+
+                if ($departmentid.val() == "" || $departmentid.val() == null) {
+                    toastr.remove();
+                    toastr.error("Please select department.");
+                    $departmentid.addClass('field_error');
+                    event.preventDefault();
+                    return false;
+                } else {
+                    $departmentid.removeClass('field_error');
+                }
+
+                if ($empid.val() == "" || $empid.val() == null) {
+                    toastr.remove();
+                    toastr.error("Please select authority person.");
+                    $empid.addClass('field_error');
+                    event.preventDefault();
+                    return false;
+                } else {
+                    $empid.removeClass('field_error');
+                }
+            }
+
+
+            let requestObj = {
+                "WorkFlowId": WorkFlowId,
+                "WorkFlowName": $("#workflow").val().trim(),
+                "WorkFlowFor": parseInt($("#workflowfor").val()),
+                "ApprovalType": parseInt($("#approvaltype").val()),
+                "Status": Status,
+                "Levels": [],
+                "Checklists": []
+            };
+
+            // Generate Levels dynamically based on ApprovalType
+            for (let i = 1; i <= approvalType; i++) {
+                let branchVal = $(`#BranchIds${i}`).val();
+                let deptVal = $(`#DeptIds${i}`).val();
+                let empVal = $(`#EmpIds${i}`).val();
+                let approvalAuthorityId = ApprovalAuthorityId[i - 1] || 0;
+
+                if ((!branchVal || branchVal.length === 0) && (!deptVal || deptVal.length === 0) && (!empVal || empVal.length === 0)) {
+                    toastr.error(`Level ${i} must have at least one valid value for Branch, Department, or Employee.`);
+                    return;
+                }
+
+                requestObj.Levels.push({
+                    "LevelId": i,
+                    "BranchId": Array.isArray(branchVal) ? branchVal.join(",") : (branchVal || ""),
+                    "DepartmentId": Array.isArray(deptVal) ? deptVal.join(",") : (deptVal || ""),
+                    "EmpId": Array.isArray(empVal) ? empVal.join(",") : (empVal || ""),
+                    "ApprovalAuthorityId": Array.isArray(approvalAuthorityId)? (approvalAuthorityId.length > 0 ? Number(approvalAuthorityId[0]) : 0)
+                        : (approvalAuthorityId ? Number(approvalAuthorityId) : 0),
+                    "WorkFlowId": WorkFlowId,
+                });
+            }
+
+            //Generate Checklists dynamically
+            for (let i = 1; i <= approvalType; i++) {
+
+                var $levelTable = $("#Level_table" + i);
+                 totalrowCount = $levelTable.find("tbody tr").length;
+
+                for (let j = 1; j <= totalrowCount; j++) {
+                    let checklistInput = $levelTable.find(`tbody tr:nth-child(${j}) #inpid${j}`);
+                    let checklistTitle = checklistInput.val()?.trim();
+
+                    if (checklistTitle === "") {
+                        checklistInput.addClass('field_error');
+                        toastr.error(`Checklist Title for Level ${i}, Row ${j} cannot be empty.`);
+                        return;
+                    }
+
+                    //WorkFlowChecklistId = WorkFlowChecklistId[i - 1] ? WorkFlowChecklistId[i - 1][j - 1] : 0;
+
+                    //let extractedValue = (Array.isArray(WorkFlowChecklistId) && WorkFlowChecklistId[i - 1] && Array.isArray(WorkFlowChecklistId[i - 1]) &&
+                    //    WorkFlowChecklistId[i - 1][j - 1]) ? WorkFlowChecklistId[i - 1][j - 1] : 0;
+
+                    let extractedValue = (
+                        groupedChecklistDetails[i] &&
+                        Array.isArray(groupedChecklistDetails[i]) &&
+                        groupedChecklistDetails[i][j - 1]
+                    ) ? groupedChecklistDetails[i][j - 1] : 0;
+
+
+                    requestObj.Checklists.push({
+                        "WorkFlowId": WorkFlowId,
+                        "LevelId": i,
+                        "ChecklistLevelId": j,
+                        "ChecklistTitle": checklistTitle,
+                        "ChecklistRowCount": totalrowCount,
+                       // "WorkFlowChecklistId": WorkFlowChecklistId
+                        /* "WorkFlowChecklistId": (extractedValue === 0) ? String(extractedValue) : extractedValue*/
+                        "WorkFlowChecklistId": (extractedValue === 0) ? "0" : String(extractedValue)
+                    });
+                }
+            }
+
+            @*if (requestObj.WorkFlowId === 0) {
+                $.ajax({
+                    type: "POST",
+                    headers: { 'Authorization': '@_tokan' },
+                    url: '@_webapiurlpayroll' + 'Full_FinalSettlement/CreateWorkFlow',
+                    data: JSON.stringify(requestObj),
+                    contentType: "application/json; charset=utf-8",
+                    dataType: "json",
+                    beforeSend: function () {
+                        $("#ajax_loader").show();
+                    },
+                    success: function (response) {
+                        checkSession();
+                        toastr.remove();
+                        if (response.success && response.responseCode === 201) {
+                            toastr.success("WorkFlow added successfully.");
+                            frmclear();
+                            $('#workflow_tbl').DataTable().ajax.reload();
+                            $("#workflow_form").hide();
+                            $("#workflow_tbl").show();
+                            $("#workflow_tbl_wrapper").show();
+                            $("#create_newworkflowbtn").show();
+                            setTimeout(function () {
+                                window.location.reload(true);
+                            }, 10);
+                        } else {
+                            toastr.error(response.message || "An error occurred while adding the workflow.");
+                        }
+                    },
+                    error: function (xhr) {
+                        toastr.error(xhr.responseJSON?.title || "An unexpected error occurred. Please try again.");
+                    },
+                    complete: function () {
+                        $("#ajax_loader").hide();
+                    }
+                });
+            }
+            else {
+                $.ajax({
+                    type: "POST",
+                    headers: { 'Authorization': '@_tokan' },
+                    url: '@_webapiurlpayroll' + 'Full_FinalSettlement/UpdateWorkFlow',
+                    data: JSON.stringify(requestObj),
+                    contentType: "application/json; charset=utf-8",
+                    dataType: "json",
+                    beforeSend: function () {
+                        $("#ajax_loader").show();
+                    },
+                    success: function (response) {
+                        checkSession();
+                        if (response.success == true && response.responseCode == 206) {
+                            toastr.remove();
+                            toastr.success("WorkFlow updated successfully.");
+                            $('#workflow_tbl').DataTable().ajax.reload();
+                            $("#workflow_form").hide();
+                            $("#workflow_tbl").show();
+                            $("#workflow_tbl_wrapper").show();
+                            $("#create_newworkflowbtn").show();
+                            setTimeout(function () {
+                                window.location.reload(true);
+                            }, 10);
+                        }
+                        else if (response.success == false && response.responseCode == 210) {
+                            toastr.remove();
+                            toastr.error(response.message);
+                        } else if (response.success == false && response.responseCode == 205) {
+                            toastr.remove();
+                            toastr.error(response.message);
+                        }
+                        else if (response.success == false && response.responseCode == 207) {
+                            toastr.remove();
+                            toastr.error(response.message);
+                        }
+                    },
+                    complete: function () {
+                        $("#ajax_loader").hide();
+                    }
+                });
+            }*@
+
+            if (requestObj.WorkFlowId > 0) {
+                $.ajax({
+                    type: "POST",
+                    headers: { 'Authorization': '@_tokan' },
+                    url: '@_webapiurlpayroll' + 'Full_FinalSettlement/UpdateWorkFlow',
+                    data: JSON.stringify(requestObj),
+                    contentType: "application/json; charset=utf-8",
+                    dataType: "json",
+                    beforeSend: function () {
+                        $("#ajax_loader").show();
+                    },
+                    success: function (response) {
+                        checkSession();
+                        if (response.success == true && response.responseCode == 206) {
+                            toastr.remove();
+                            toastr.success("WorkFlow updated successfully.");
+                            $('#workflow_tbl').DataTable().ajax.reload();
+                            $("#workflow_form").hide();
+                            $("#workflow_tbl").show();
+                            $("#workflow_tbl_wrapper").show();
+                            $("#create_newworkflowbtn").show();
+                            setTimeout(function () {
+                                window.location.reload(true);
+                            }, 10);
+                        }
+                        else if (response.success == false && response.responseCode == 210) {
+                            toastr.remove();
+                            toastr.error(response.message);
+                        } else if (response.success == false && response.responseCode == 205) {
+                            toastr.remove();
+                            toastr.error(response.message);
+                        }
+                        else if (response.success == false && response.responseCode == 207) {
+                            toastr.remove();
+                            toastr.error(response.message);
+                        }
+                    },
+                    complete: function () {
+                        $("#ajax_loader").hide();
+                    }
+                });
+            } else {
+                $.ajax({
+                    type: "POST",
+                    headers: { 'Authorization': '@_tokan' },
+                    url: '@_webapiurlpayroll' + 'Full_FinalSettlement/CreateWorkFlow',
+                    data: JSON.stringify(requestObj),
+                    contentType: "application/json; charset=utf-8",
+                    dataType: "json",
+                    beforeSend: function () {
+                        $("#ajax_loader").show();
+                    },
+                    success: function (response) {
+                        checkSession();
+                        toastr.remove();
+                        if (response.success && response.responseCode === 201) {
+                            toastr.success("WorkFlow added successfully.");
+                            frmclear();
+                            $('#workflow_tbl').DataTable().ajax.reload();
+                            $("#workflow_form").hide();
+                            $("#workflow_tbl").show();
+                            $("#workflow_tbl_wrapper").show();
+                            $("#create_newworkflowbtn").show();
+                            setTimeout(function () {
+                                window.location.reload(true);
+                            }, 10);
+                        } else {
+                            toastr.error(response.message || "An error occurred while adding the workflow.");
+                        }
+                    },
+                    error: function (xhr) {
+                        toastr.error(xhr.responseJSON?.title || "An unexpected error occurred. Please try again.");
+                    },
+                    complete: function () {
+                        $("#ajax_loader").hide();
+                    }
+                });
+            }
+
+        });
+
+
+        //Inactive the workflow
+        $("#workflow_tbl").on('click', '.red_btnnew', function () {
+            checkSession();
+            var rowData = workflowtable.row($(this).closest('tr')).data();
+            WorkFlowId = rowData["WorkFlowId"];
+            $.ajax({
+                type: "GET",
+                headers: { 'Authorization': '@_tokan' },
+                url: '@_webapiurlpayroll' + 'Full_FinalSettlement/activeinactive?WorkFlowId=' + WorkFlowId + "&Status=0",
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                beforeSend: function () {
+                    $("#ajax_loader").show();
+                },
+                success: function (response) {
+                    if (response.success == true) {
+                        toastr.remove();
+                        toastr.success("WorkFlow inactivated successfully");
+                        $('#workflow_tbl').DataTable().ajax.reload();
+                    } else {
+                        toastr.remove();
+                        toastr.error(response.message);
+                    }
+                },
+                complete: function () {
+                    $("#ajax_loader").hide();
+                }
+            });
+        });
+
+
+        //Active the workflow
+        $("#workflow_tbl").on('click', '.green_btnnew', function () {
+            checkSession();
+            var rowData = workflowtable.row($(this).closest('tr')).data();
+            WorkFlowId = rowData["WorkFlowId"];
+            $.ajax({
+                type: "GET",
+                headers: { 'Authorization': '@_tokan' },
+                url: '@_webapiurlpayroll' + 'Full_FinalSettlement/activeinactive?WorkFlowId=' + WorkFlowId + "&Status=1",
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                beforeSend: function () {
+                    $("#ajax_loader").show();
+                },
+                success: function (response) {
+                    if (response.success == true) {
+                        toastr.remove();
+                        toastr.success("WorkFlow activated successfully");
+                        $('#workflow_tbl').DataTable().ajax.reload();
+                    } else {
+                        toastr.remove();
+                        toastr.error(response.message);
+                    }
+                },
+                complete: function () {
+                    $("#ajax_loader").hide();
+                }
+            });
+        });
+
+
+
+
+        //Click on cancel button to cancel the data
+        //$("#cancel_btn").on('click', function () {
+        //    checkSession();
+        //    frmclear();
+        //    $("#workflow_tbl").show();
+        //    $("#workflow_tbl_wrapper").show();
+        //    $("#create_newworkflowbtn").show();
+        //    $("#workflow_form").hide();
+        //    $("#approve_info").hide();
+        //});
+
+
+
+        // Create search inputs in footer, skipping column 0
+        $("#workflow_tbl tfoot th").each(function (index) {
+            checkSession();
+            if (index === 4) {
+                $(this).html('');
+            } else {
+                $(this).html('<input type="text" class="search_input" placeholder="Search" /><i class="clm-search" id=""></i>');
+            }
+        });
+
+        // DataTable initialisation
+        $.ajax({
+            type: "GET",
+            headers: { 'Authorization': '@_tokan' },
+            url: '@_webapiurlpayroll' + 'Full_FinalSettlement/GetAllWorkFlow',
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            beforeSend: function () {
+                $("#ajax_loader").show();
+            },
+            success: function (response) {
+                if (response == null ) {
+                    const wf = response;
+                    handleGridVisibility("tblempty", "NotificationGrid-empty", wf, {
+                        imageUrl: "emptyscreen_1.png",
+                        subText: "No entries found. Please add a record to get started."
+                    });
+                }
+                checkSession();
+                if (response.length > 0) {
+                    flag = 1;
+                    $("#workflow_tbl").show();
+                    $("#workflow_tbl_wrapper").show();
+                    $("#create_workflow").hide();
+                } else {
+                    flag = 0;
+                    $("#create_workflow").show();
+                    $("#workflow_form").hide();
+                    $("#create_newworkflowbtn").hide();
+                }
+            },
+            complete: function () {
+                $("#ajax_loader").hide();
+            }
+        });
+
+        // DataTable initialisation
+
+        var workflowtable = $("#workflow_tbl").DataTable({
+                //dom: "<'row'<'col-lg-3 col-sm-5 col-xs-12'<'record_btn_main'l,><'dt-buttons'Bf>><'col-lg-9 col-sm-7 col-xs-12'<'selected_emp_main'>>>" +
+                //    "<'row'<'col-sm-12 margin-bottom-10'<'customforms_table'tr'>>>" +
+            //    "<'row'<'col-md-5 col-sm-5'i><'col-md-7 col-sm-7'p>>",
+            dom: _domCommon,
+            language: _languageCommon,
+                paging: true,
+                destroy: false,
+                "processing": true,
+                "ajax": {
+                    url: '@_webapiurlpayroll' + 'Full_FinalSettlement/GetAllWorkFlow',
+                    type: "GET",
+                    headers: { 'Authorization': '@_tokan' },
+                    dataSrc: '',
+                },
+                columns: [
+                  /*  { data: "Sr No." },*/
+                    { data: "WorkFlowName" },
+                    { data: "WorkFlowFor" },
+                    { data: "ApprovalType" },
+                    { data: "Status" },
+                    { data: "Action" },
+                    { data: "WorkFlowId" },
+                    { data: null }
+            ],
+            drawCallback: function () {
+                $('.tooltips').tooltip();
+            },
+                autoWidth: true,
+               /* ordering: true,*/
+                buttons: [
+                    {
+                        extend: 'excelHtml5',
+                        exportOptions: {
+                            columns: [0, 1, 2, 3]
+                        }
+                    },
+                ],
+                initComplete: function (settings, json) {
+                    $(".search_input").on("keyup change", function () {
+                        var columnIndex = $(this).closest("th").index();
+                        if (columnIndex !== undefined) {
+                            workflowtable.column(columnIndex).search(this.value).draw();
+                        }
+                    });
+
+                    var footer = $("#workflow_tbl tfoot tr");
+                    $("#workflow_tbl thead").append(footer);
+                },
+            "columnDefs": [
+                    { orderable: false, targets: [4] },
+                    //{
+                    //    "targets": [0],
+                    //    "render": function (data, type, row, meta) {
+                    //        return meta.row + 1;
+                    //    }
+                    //},
+                    {
+                        "targets": [0],
+                        "render": function (data, type, row) {
+                            return row.WorkFlowName;
+                        }
+                    },
+                    {
+                        "targets": [1],
+                        "render": function (data, type, row) {
+                            if (row.WorkFlowFor == 1) {
+                                data = "Full & Final Settlement";
+                            }
+                            else if (row.WorkFlowFor == 2) {
+                                data = "Increment Process";
+                            }
+                            else if (row.WorkFlowFor == 3) {
+                                data = "Advance Salary";
+                            }
+                            return data;
+                        }
+                    },
+                    {
+                        "targets": [2],
+                        "render": function (data, type, row) {
+                            if (row.ApprovalType == 1) {
+                                data = "One Level";
+                            } else if (row.ApprovalType == 2) {
+                                data = "Two Level";
+                            } else if (row.ApprovalType == 3) {
+                                data = "Three Level";
+                            }
+                            else if (row.ApprovalType == 4) {
+                                data = "Four Level";
+                            }
+                            else if (row.ApprovalType == 5) {
+                                data = "Five Level";
+                            }
+                            else if (row.ApprovalType == 6) {
+                                data = "Six Level";
+                            }
+                            else if (row.ApprovalType == 7) {
+                                data = "Seven Level";
+                            }
+                            return data;
+                        }
+                    },
+                    {
+                        "targets": [3],
+                        "render": function (data, type, row) {
+                            if (row.Status == 1) {
+                                return '<span class="green_font">Active</span>';
+                            }
+                            else {
+                                return '<span class="red_font">Inactive</span>';
+                            }
+                        }
+                    },
+                    {
+                        "targets": [4],
+                        "render": function (data, type, row) {
+                            if ('@obj.CanEdit' == 'True') {
+                                if (row.Status) {
+                                    return '<a class="btn btn-xs tooltips edit_clm_btn seagreen_btnnew tooltips" id="edit_workflow_data" data-placement="top" data-original-title="Edit"><i class="fa-regular fa-pen-to-square"></i></a> <span></span><a class="Inactiveclass btn btn-xs red_btnnew tooltips" title="Inactive"><i class="fa-solid fa-xmark"></i></a>';
+                                } else {
+                                    return '<a class="btn btn-xs tooltips edit_clm_btn seagreen_btnnew tooltips" id="edit_workflow_data" data-placement="top" data-original-title="Edit"><i class="fa-regular fa-pen-to-square"></i></a> <span> </span><a class="Activeclass btn btn-xs green_btnnew tooltips" title="Active"><i class="fa-solid fa-check"></i></a>';
+                                }
+                            } else {
+                                return '';
+                            }
+                        }
+                    },
+                {
+                    targets: [5],
+                    visible: false
+                },
+                {
+                    targets: [6],
+                    visible: false
+                }
+                ],
+            });
+
+        setTimeout(function () {
+            $("#" + "workflow_tbl" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+            $('.tooltips').tooltip();
+        }, 100);
+        // Apply the Search
+        //$("#workflow_tbl thead").on("keyup", "input", function () {
+        //    var columnIndex = $(this).parent().index();
+        //    workflowtable.column(columnIndex).search(this.value).draw();
+        //});
+
+
+        //Call the branch function
+        fillBranch("BranchIds1");
+        fillBranch("BranchIds2");
+        fillBranch("BranchIds3");
+        fillBranch("BranchIds4");
+        fillBranch("BranchIds5");
+        fillBranch("BranchIds6");
+        fillBranch("BranchIds7");
+
+        // Initialize for each set of cascading dropdowns
+        setupCascadingDropdowns("BranchIds1", "DeptIds1", "EmpIds1");
+        setupCascadingDropdowns("BranchIds2", "DeptIds2", "EmpIds2");
+        setupCascadingDropdowns("BranchIds3", "DeptIds3", "EmpIds3");
+        setupCascadingDropdowns("BranchIds4", "DeptIds4", "EmpIds4");
+        setupCascadingDropdowns("BranchIds5", "DeptIds5", "EmpIds5");
+        setupCascadingDropdowns("BranchIds6", "DeptIds6", "EmpIds6");
+        setupCascadingDropdowns("BranchIds7", "DeptIds7", "EmpIds7");
+
+
+        function fillBranch(dropdownId) {
+            $.ajax({
+                type: "GET",
+                url: '@_webapiurl' + "Master/BranchGetAll",
+                headers: { 'Authorization': '@_tokan' },
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                success: function (data) {
+                    // Get the specific select element by ID
+                    var $branchSelect = $("#" + dropdownId);
+
+                    // Clear existing options
+                    $branchSelect.empty();
+
+                    // Add the default "Select Branch" option
+                    $branchSelect.append("<option value='' selected>Select Branch</option>");
+
+                    if (data && data.length > 0) {
+                        // Sort the data alphabetically by branch name
+                        data.sort(function (a, b) {
+                            return a.branchname.localeCompare(b.branchname);
+                        });
+
+                        // Append the branch options to the select element
+                        data.forEach(function (branch) {
+                            var option = `<option value="${branch.BranchId}">${branch.branchname}</option>`;
+                            $branchSelect.append(option);
+                        });
+                    } else {
+                        // Add an option to indicate no branches are available
+                        $branchSelect.append("<option value='' disabled>No branches available</option>");
+                    }
+
+                    // Initialize or reinitialize Select2 for the dropdown
+                    $branchSelect.select2({
+                        placeholder: "Select Branch",
+                        allowClear: false,
+                        width: '100%'
+                    });
+                },
+                error: function (xhr, ajaxOptions, thrownError) {
+                    // Handling different types of error responses
+                    if (xhr.status == 404) { // NotFound = 404
+                        toastr.error("Branch data not found.");
+                    } else if (xhr.status == 500) { // InternalServerError = 500
+                        toastr.error("Internal server error.");
+                    } else if (xhr.status == 400) { // BadRequest = 400
+                        toastr.error("Bad request.");
+                    } else if (xhr.status == 419) { // Session expired or unauthorized
+                        window.location.href = "/PayTime/LoginPage";
+                    } else {
+                        toastr.error(thrownError);
+                    }
+                }
+            });
+        }
+
+
+        function fillDeptTable(BranchId, dropdownId, selectedDept) {
+            var $deptSelect = $("#" + dropdownId);
+
+            $deptSelect.empty();
+            $.ajax({
+                type: "POST",
+                url: "/MasterData/GetDeptbyBranchstrnew?BranchId=" + BranchId,
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                success: function (response) {
+                    $deptSelect.append("<option value='' selected>Select Department</option>");
+
+                    if (response && response.length > 0) {
+                        response.forEach(dept => {
+                           // var isSelected = selectedDept && selectedDept.split(',').includes(dept.Value) ? "selected" : "";
+                            //$deptSelect.append(`<option value="${dept.Value}" ${isSelected}>${dept.Text}</option>`);
+
+                            var isSelected = selectedDept && selectedDept.includes(dept.Value.toString());
+                            //alert(isSelected);
+                            $deptSelect.append(`<option value="${dept.Value}" ${isSelected ? "selected" : ""}>${dept.Text}</option>`);
+                        });
+
+
+                        $deptSelect.select2({
+                            placeholder: "Select Department",
+                            allowClear: false,
+                            width: '100%'
+                        });
+
+                        if (selectedDept) {
+                            $deptSelect.val(selectedDept.split(',')).trigger('change');
+                        }
+                    } else {
+                        $deptSelect.append("<option value='' disabled>No departments available</option>");
+                    }
+                },
+                error: function () {
+                    toastr.error("Error loading departments. Please try again.");
+                }
+            });
+        }
+
+
+        function fillEmpTable(branchId, deptId, empDropdownId, selectedEmp) {
+            var ajaxData = {
+                departmentid: deptId,
+                branchid: branchId,
+                isActiveEmployee: 1
+            };
+
+            $.ajax({
+                type: "GET",
+                url: "/MasterData/GetEmpByBranchDept",
+                data: ajaxData,
+                contentType: "application/json; charset=utf-8",
+                datatype: "json",
+                async: false,
+                success: function (response) {
+                    var $empSelect = $("#" + empDropdownId);
+                    $empSelect.empty();
+                    $empSelect.append("<option value='' selected>Select Authority Person</option>");
+
+                    if (response && response.length > 0) {
+                        response.forEach(emp => {
+                            //var isSelected = selectedEmp && selectedEmp.split(',').includes(emp.EmpId) ? "selected" : "";
+                            //$empSelect.append(`<option value="${emp.EmpId}" ${isSelected}>${emp.EmpName}</option>`);
+
+                            var isSelected = selectedEmp && selectedEmp.split(',').includes(emp.EmpId.toString());
+                            $empSelect.append(`<option value="${emp.EmpId}" ${isSelected ? "selected" : ""}>${emp.EmpName} (${emp.Empcode})</option>`); //soumya 22-07-20225 add Empcode
+                        });
+
+                        $empSelect.select2({
+                            placeholder: "Select Authority Person",
+                            allowClear: false,
+                            width: '100%'
+                        });
+
+                        if (selectedEmp) {
+                            $empSelect.val(selectedEmp.split(',')).trigger('change');
+                        }
+                    } else {
+                        $empSelect.append("<option value='' disabled>No employees available</option>");
+                    }
+                },
+                error: function () {
+                    toastr.error("Error loading employees. Please try again.");
+                }
+            });
+        }
+
+        // Handling dropdown cascading
+        function setupCascadingDropdowns(branchDropdownId, deptDropdownId, empDropdownId) {
+            $("#" + branchDropdownId).on("change", function () {
+                //var branchId = $(this).val();
+                var branchId = $("#" + branchDropdownId).val();
+                if (branchId) {
+                    fillDeptTable(branchId, deptDropdownId, null);
+                } else {
+                    $("#" + deptDropdownId).empty().append("<option value='' selected>Select Department</option>");
+                    $("#" + empDropdownId).empty().append("<option value='' selected>Select Authority Person</option>");
+                }
+            });
+
+            $("#" + deptDropdownId).on("change", function () {
+                var branchId = $("#" + branchDropdownId).val();
+                var deptId = $("#" + deptDropdownId).val();
+                if (deptId) {
+                    fillEmpTable(branchId, deptId, empDropdownId, null);
+                } else {
+                    $("#" + empDropdownId).empty().append("<option value='' selected>Select Authority Person</option>");
+                }
+            });
+        }
+
+
+        function frmclear() {
+            $("#workflow").val("");
+            $("#inpid1").val("");
+            $("#inpid2").val("");
+            $("#inpid3").val("");
+            $("#inpid4").val("");
+            $("#inpid5").val("");
+            $("#inpid6").val("");
+            $("#inpid7").val("");
+            $("#workflowfor").val(0).trigger('change');
+            $("#approvaltype").val(1).trigger('change').prop('disabled', false);
+            $("#BranchIds1").val(0).trigger('change');
+            $("#DeptIds1").val(0).trigger('change');
+            $("#EmpIds1").val(0).trigger('change');
+            $("#BranchIds2").val(0).trigger('change');
+            $("#DeptIds2").val(0).trigger('change');
+            $("#EmpIds2").val(0).trigger('change');
+            $("#BranchIds3").val(0).trigger('change');
+            $("#DeptIds3").val(0).trigger('change');
+            $("#EmpIds3").val(0).trigger('change');
+            $("#BranchIds4").val(0).trigger('change');
+            $("#DeptIds4").val(0).trigger('change');
+            $("#EmpIds4").val(0).trigger('change');
+            $("#BranchIds5").val(0).trigger('change');
+            $("#DeptIds5").val(0).trigger('change');
+            $("#EmpIds5").val(0).trigger('change');
+            $("#BranchIds6").val(0).trigger('change');
+            $("#DeptIds6").val(0).trigger('change');
+            $("#EmpIds6").val(0).trigger('change');
+            $("#BranchIds7").val(0).trigger('change');
+            $("#DeptIds7").val(0).trigger('change');
+            $("#EmpIds7").val(0).trigger('change');
+
+            // Clear other fields based on the number of approval types
+            for (var i = 1; i <= 7; i++) {
+                // Find the level table based on the dynamic level id
+                var $levelTable = $("#Level_table" + i);
+                $levelTable.find('tr').each(function () {
+                    var $inpid = $(this).find('input[id^="inpid"]');
+                    $inpid.val("");
+                });
+            }
+        }
+
+        function checkSession() {
+            $.ajax({
+                type: "GET",
+                async: false,
+                url: "/ESS/checkSession",
+                contentType: "application/json; charset=utf-8",
+                success: function (data) {
+                    if (data.isRedirect) {
+                        window.location.href = data.redirectUrl;
+                    }
+                },
+                error: function (data) {
+                    window.location.href = data;
+                }
+            });
+        }
+});
+
+
+</script>
+
+<div class="page-bar">
+    <ul class="page-breadcrumb">
+        <li>
+            @*<a href="/PayTime/AdminDashboard"><i class="fa-regular fa-house"></i></a>*@
+            <a href="@(_CheckFastrackdb == 1 ? "/Admin/AdminDashboard" : "/Dashboard/AdminDashboard")"><i class="fa-regular fa-house"></i></a>
+        </li>
+        <li>
+            <span><i class="fa-light fa-angle-right"></i> Work Flow</span>
+        </li>
+    </ul>
+    <div class="page-toolbar">
+        <a href="javascript:;" class="btn icon_transparent_btn tooltips" id="create_newworkflowbtn" data-placement="left" data-original-title="Create New Work Flow" style="display: none;"><i class="fa-solid fa-plus"></i></a>
+        <a href="javascript:;" id="Back_btn" class="btn icon_transparent_btn tooltips" data-placement="left" data-original-title="Back" style="display:none"><i class="fa-regular fa-arrow-left"></i></a>
+    </div>
+</div>
+
+<div class="row">
+    <div id="ajax_loader" class="modal_bg loading" aria-hidden="true" style="display: none;">
+        <img src="/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading">
+    </div>
+</div>
+
+<div class="portlet" style="margin-bottom:0;">
+    <div class="portlet-body">
+        <div class="row">
+            <!-- No WorkFlow to Show : Begin -->
+            <div class="payroll_mainblock" id="create_workflow" style="display:none">
+                <div class="col-sm-6 col-xs-12 payroll_emptyscreen">
+                    <div class="text-center">
+                        <img src="/assets/images/empty_screen.svg" class="empty_screen" alt="empty screen" />
+                        <p class="pay_title">No Work Flow Data to Show</p>
+                        <p class="pay_subtitle">There is no Data available to show</p>
+                    </div>
+                </div>
+                <div class="col-sm-6 col-xs-12">
+                    <div class="payroll_configuration">
+                        <div class="payroll_config_title">Create Work Flow</div>
+                        <div class="payroll_config_subtitle"><b>Step-1:</b> Select Work Flow</div>
+                        <div class="payroll_config_subtitle"><b>Step-2:</b> Select Approval type</div>
+                        <div class="payroll_config_subtitle"><b>Step-3:</b> Select Branch, Department and Authority Person</div>
+                        <a href="javascript:;" id="create_workflow_btn" class="btn create_payroll_btn"> <i class="fa-solid fa-plus"></i> Create Work Flow</a>
+                    </div>
+                </div>
+            </div>
+            <!-- No WorkFlow to Show : End -->
+            <!-- WorkFlow Form : Begin -->
+            <div class="workflow_block" id="workflow_form" style="display:none">
+                <div class="EmpExitRequest_height_card">
+                    <div class="col-lg-7 col-sm-12">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label class="control-label">Workflow<span class="required" aria-required="true">*</span></label>
+                                    <input type="text" id="workflow" placeholder="Please Enter" class="form-control" name="workflow" />
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label class="control-label">WorkflowFor<span class="required" aria-required="true">*</span></label>
+                                    <select class="form-control input-sm select2" id="workflowfor">
+                                        <option value="0">Please Select</option>
+                                        <option value="1">Full & Final Settlement</option>
+                                        <option value="2">Increment Process</option>
+                                        <option value="3">Advance Salary</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label class="control-label">Approval Type<span class="required" aria-required="true">*</span></label>
+                                    <select class="form-control input-sm select2" id="approvaltype">
+                                        <option value="1">Level 1</option>
+                                        <option value="2">Level 2</option>
+                                        <option value="3">Level 3</option>
+                                        <option value="4">Level 4</option>
+                                        <option value="5">Level 5</option>
+                                        <option value="6">Level 6</option>
+                                        <option value="7">Level 7</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="flow_hidden" id="approve_info" style="display:none">
+                            <p>Approval Level 1</p>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label class="control-label">Select Branch<span class="required" aria-required="true">*</span></label>
+                                        <input type="hidden" id="txt3" value="0" />
+                                        <select class="form-control input-sm select2" id="BranchIds1">
+                                            <option value="0" disabled selected>Select Branch</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label class="control-label">Select Department<span class="required" aria-required="true">*</span></label>
+                                        <input type="hidden" id="txt3" value="0" />
+                                        <select class="form-control input-sm select2" id="DeptIds1">
+                                            <option value="0" disabled selected>Select Department</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-group margin-bottom-0">
+                                        <label class="control-label">Authority Person<span class="required" aria-required="true">*</span></label>
+                                        <input type="hidden" id="txt3" value="0" />
+                                        <select class="form-control input-sm select2" id="EmpIds1">
+                                            <option value="0" disabled selected>Select Authority Person</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="flow_hidden" id="approve_info2" style="display:none">
+                            <p>Approval Level 2</p>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label class="control-label">Select Branch<span class="required" aria-required="true">*</span></label>
+                                        <input type="hidden" id="txt3" value="0" />
+                                        <select class="form-control input-sm select2" id="BranchIds2">
+                                            <option value="0" disabled selected>Select Branch</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label class="control-label">Select Department<span class="required" aria-required="true">*</span></label>
+                                        <input type="hidden" id="txt3" value="0" />
+                                        <select class="form-control input-sm select2" id="DeptIds2">
+                                            <option value="0" disabled selected>Select Department</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-group margin-bottom-0">
+                                        <label class="control-label">Authority Person<span class="required" aria-required="true">*</span></label>
+                                        <input type="hidden" id="txt3" value="0" />
+                                        <select class="form-control input-sm select2" id="EmpIds2">
+                                            <option value="0" disabled selected>Select Authority Person</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="flow_hidden" id="approve_info3" style="display:none">
+                            <p>Approval Level 3</p>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label class="control-label">Select Branch<span class="required" aria-required="true">*</span></label>
+                                        <input type="hidden" id="txt3" value="0" />
+                                        <select class="form-control input-sm select2" id="BranchIds3">
+                                            <option value="0" disabled selected>Select Branch</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label class="control-label">Select Department<span class="required" aria-required="true">*</span></label>
+                                        <input type="hidden" id="txt3" value="0" />
+                                        <select class="form-control input-sm select2" id="DeptIds3">
+                                            <option value="0" disabled selected>Select Department</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-group margin-bottom-0">
+                                        <label class="control-label">Authority Person<span class="required" aria-required="true">*</span></label>
+                                        <input type="hidden" id="txt3" value="0" />
+                                        <select class="form-control input-sm select2" id="EmpIds3">
+                                            <option value="0" disabled selected>Select Authority Person</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="flow_hidden" id="approve_info4" style="display:none">
+                            <p>Approval Level 4</p>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label class="control-label">Select Branch<span class="required" aria-required="true">*</span></label>
+                                        <input type="hidden" id="txt3" value="0" />
+                                        <select class="form-control input-sm select2" id="BranchIds4">
+                                            <option value="0" disabled selected>Select Branch</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label class="control-label">Select Department<span class="required" aria-required="true">*</span></label>
+                                        <input type="hidden" id="txt3" value="0" />
+                                        <select class="form-control input-sm select2" id="DeptIds4">
+                                            <option value="0" disabled selected>Select Department</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-group margin-bottom-0">
+                                        <label class="control-label">Authority Person<span class="required" aria-required="true">*</span></label>
+                                        <input type="hidden" id="txt3" value="0" />
+                                        <select class="form-control input-sm select2" id="EmpIds4">
+                                            <option value="0" disabled selected>Select Authority Person</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="flow_hidden" id="approve_info5" style="display:none">
+                            <p>Approval Level 5</p>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label class="control-label">Select Branch<span class="required" aria-required="true">*</span></label>
+                                        <input type="hidden" id="txt3" value="0" />
+                                        <select class="form-control input-sm select2" id="BranchIds5">
+                                            <option value="0" disabled selected>Select Branch</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label class="control-label">Select Department<span class="required" aria-required="true">*</span></label>
+                                        <input type="hidden" id="txt3" value="0" />
+                                        <select class="form-control input-sm select2" id="DeptIds5">
+                                            <option value="0" disabled selected>Select Department</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-group margin-bottom-0">
+                                        <label class="control-label">Authority Person<span class="required" aria-required="true">*</span></label>
+                                        <input type="hidden" id="txt3" value="0" />
+                                        <select class="form-control input-sm select2" id="EmpIds5">
+                                            <option value="0" disabled selected>Select Authority Person</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="flow_hidden" id="approve_info6" style="display:none">
+                            <p>Approval Level 6</p>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label class="control-label">Select Branch<span class="required" aria-required="true">*</span></label>
+                                        <input type="hidden" id="txt3" value="0" />
+                                        <select class="form-control input-sm select2" id="BranchIds6">
+                                            <option value="0" disabled selected>Select Branch</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label class="control-label">Select Department<span class="required" aria-required="true">*</span></label>
+                                        <input type="hidden" id="txt3" value="0" />
+                                        <select class="form-control input-sm select2" id="DeptIds6">
+                                            <option value="0" disabled selected>Select Department</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-group margin-bottom-0">
+                                        <label class="control-label">Authority Person<span class="required" aria-required="true">*</span></label>
+                                        <input type="hidden" id="txt3" value="0" />
+                                        <select class="form-control input-sm select2" id="EmpIds6">
+                                            <option value="0" disabled selected>Select Authority Person</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="flow_hidden" id="approve_info7" style="display:none">
+                            <p>Approval Level 7</p>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label class="control-label">Select Branch<span class="required" aria-required="true">*</span></label>
+                                        <input type="hidden" id="txt3" value="0" />
+                                        <select class="form-control input-sm select2" id="BranchIds7">
+                                            <option value="0" disabled selected>Select Branch</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label class="control-label">Select Department<span class="required" aria-required="true">*</span></label>
+                                        <input type="hidden" id="txt3" value="0" />
+                                        <select class="form-control input-sm select2" id="DeptIds7">
+                                            <option value="0" disabled selected>Select Department</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-group margin-bottom-0">
+                                        <label class="control-label">Authority Person<span class="required" aria-required="true">*</span></label>
+                                        <input type="hidden" id="txt3" value="0" />
+                                        <select class="form-control input-sm select2" id="EmpIds7">
+                                            <option value="0" disabled selected>Select Authority Person</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-5 col-sm-12">
+                        <div class="list-content">
+                            <div class="margin-bottom-10" id="divlevel1">
+                                <div class="accordian-header listgrey">
+                                    <div>
+                                        <a href="#list1" data-toggle="collapse" aria-expanded="true" aria-controls="listone">Level 1<i class="fa-solid fa-chevron-down arrow_down"></i></a>
+                                    </div>
+                                </div>
+                                <div class="collapse in" id="list1" aria-expanded="true" style="">
+                                    <div class="padding-top-10">
+                                        <div class="d-flex align-items-center margin-bottom-10">
+                                            <div class="row">
+                                                <table id="Level_table1"></table>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="margin-bottom-10" style="display:none" id="divlevel2">
+                                <div class="accordian-header listgrey">
+                                    <div>
+                                        <a href="#list2" data-toggle="collapse" aria-expanded="false" aria-controls="listtwo">Level 2<i class="fa-solid fa-chevron-down arrow_down"></i></a>
+                                    </div>
+                                </div>
+                                <div class="collapse" id="list2" aria-expanded="true" style="">
+                                    <div class="padding-top-10">
+                                        <div class="d-flex align-items-center margin-bottom-10">
+                                            <div class="row">
+                                                <table id="Level_table2"></table>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="margin-bottom-10" style="display:none" id="divlevel3">
+                                <div class="accordian-header listgrey">
+                                    <div>
+                                        <a href="#list3" data-toggle="collapse" aria-expanded="false" aria-controls="listthree">Level 3<i class="fa-solid fa-chevron-down arrow_down"></i></a>
+                                    </div>
+                                </div>
+                                <div class="collapse" id="list3" aria-expanded="true" style="">
+                                    <div class="padding-top-10">
+                                        <div class="d-flex align-items-center margin-bottom-10">
+                                            <div class="row">
+                                                <table id="Level_table3"></table>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="margin-bottom-10" style="display:none" id="divlevel4">
+                                <div class="accordian-header listgrey">
+                                    <div>
+                                        <a href="#list4" data-toggle="collapse" aria-expanded="false" aria-controls="listfour">Level 4<i class="fa-solid fa-chevron-down arrow_down"></i></a>
+                                    </div>
+                                </div>
+                                <div class="collapse" id="list4" aria-expanded="true" style="">
+                                    <div class="padding-top-10">
+                                        <div class="d-flex align-items-center margin-bottom-10">
+                                            <div class="row">
+                                                <table id="Level_table4"></table>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="margin-bottom-10" style="display:none" id="divlevel5">
+                                <div class="accordian-header listgrey">
+                                    <div>
+                                        <a href="#list5" data-toggle="collapse" aria-expanded="false" aria-controls="listfive">Level 5<i class="fa-solid fa-chevron-down arrow_down"></i></a>
+                                    </div>
+                                </div>
+                                <div class="collapse" id="list5" aria-expanded="true" style="">
+                                    <div class="padding-top-10">
+                                        <div class="d-flex align-items-center margin-bottom-10">
+                                            <div class="row">
+                                                <table id="Level_table5"></table>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="margin-bottom-10" style="display:none" id="divlevel6">
+                                <div class="accordian-header listgrey">
+                                    <div>
+                                        <a href="#list6" data-toggle="collapse" aria-expanded="false" aria-controls="listsix">Level 6<i class="fa-solid fa-chevron-down arrow_down"></i></a>
+                                    </div>
+                                </div>
+                                <div class="collapse" id="list6" aria-expanded="true" style="">
+                                    <div class="padding-top-10">
+                                        <div class="d-flex align-items-center margin-bottom-10">
+                                            <div class="row">
+                                                <table id="Level_table6"></table>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="margin-bottom-10" style="display:none" id="divlevel7">
+                                <div class="accordian-header listgrey">
+                                    <div>
+                                        <a href="#list7" data-toggle="collapse" aria-expanded="false" aria-controls="listseven">Level 7<i class="fa-solid fa-chevron-down arrow_down"></i></a>
+                                    </div>
+                                </div>
+                                <div class="collapse" id="list7" aria-expanded="true" style="">
+                                    <div class="padding-top-10">
+                                        <div class="d-flex align-items-center margin-bottom-10">
+                                            <div class="row">
+                                                <table id="Level_table7"></table>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+                <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                    @*<button type="button" class="btn icon_addbtn" id="cancel_btn">Cancel</button>*@
+                    <button type="button" class="btn save_btn" id="assign_workflow">Submit</button>
+
+                </div>
+            </div>
+            <!-- WorkFlow Form : End -->
+            <!-- WorkFlow Datatable : Begin -->
+            <div class="col-lg-12">
+                <div id="tblempty">
+                    <div class="table-responsive" id="tableResponsive">
+                        <table id="workflow_tbl" class="table new_datatbl table-striped table-bordered table_box_border table-hover serch_datatable table-checkable order-column" style="display: none;">
+                            <thead>
+                                <tr>
+                                    @*<th style="min-width: 10px;">Sr No.</th>*@
+                                    <th style="min-width: 200px;">WorkFlow Name</th>
+                                    <th style="min-width: 120px;">WorkFlow For</th>
+                                    <th style="min-width: 80px;">Approval Type</th>
+                                    <th style="min-width: 80px;">Status</th>
+                                    <th style="min-width: 100px;">Action</th>
+                                    <th hidden>WorkFlowId</th>
+                                </tr>
+                            </thead>
+                            <tfoot>
+                                <tr>
+                                    @*<th></th>*@
+                                    <th></th>
+                                    <th></th>
+                                    <th></th>
+                                    <th></th>
+                                    <th></th>
+                                    <th></th>
+                                </tr>
+                            </tfoot>
+                        </table>
+                        <!-- WorkFlow Datatable : End -->
+                    </div>
+                </div>
+                <div id="NotificationGrid-empty" style="display: none">
+                    <div class="datanotfound">
+                        <img src="" height="148" width="280" alt="Nodata Found Icon">
+                        <p class="datanotfound_title"></p> <!-- titleText -->
+                        <p class=""></p><!-- subText -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+

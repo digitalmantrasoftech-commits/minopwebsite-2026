@@ -1,0 +1,596 @@
+@{
+    // Get current product from session
+    var currentProductName = HttpContext.Current.Session["SelectedProductName"] != null
+        ? HttpContext.Current.Session["SelectedProductName"].ToString()
+        : "Time & Attendance";
+    var currentProductId = HttpContext.Current.Session["SelectedProductId"] != null
+        ? Convert.ToInt32(HttpContext.Current.Session["SelectedProductId"])
+        : 1;
+
+    //STATIC TEST VALUES - For testing expired plan functionality
+    //int isPlanExp = 1;           // 1 = expired, 0 = active
+    //int isFplan = 0;             // 1 = free/trial, 0 = paid
+    //int rmDay = 0;               // Days remaining
+    //string planExpDate = "2025-03-13";  // Expiry date
+
+    //ORIGINAL SESSION CODE - Uncomment after testing
+    int isPlanExp = HttpContext.Current.Session["isPlanExp"] != null
+        ? Convert.ToInt32(HttpContext.Current.Session["isPlanExp"]) : 0;
+    int isFplan = HttpContext.Current.Session["isFplan"] != null
+        ? Convert.ToInt32(HttpContext.Current.Session["isFplan"]) : 0;
+    int rmDay = HttpContext.Current.Session["rmDay"] != null
+        ? Convert.ToInt32(HttpContext.Current.Session["rmDay"]) : 0;
+    string planExpDate = HttpContext.Current.Session["PlanExpDate"] != null
+        ? HttpContext.Current.Session["PlanExpDate"].ToString() : "";
+}
+
+<link href="~/Newlayout/productseperation/css/productswitcher.css" rel="stylesheet" />
+
+<!-- Active Product Indicator -->
+<div class="active-product-indicator" id="activeProductIndicator">
+    <i class="fa-solid fa-cube"></i>
+    <span class="active-product-name" id="activeProductName">@currentProductName</span>
+</div>
+
+<!-- Product Switcher Icon Button -->
+<div class="product-switcher-icon-wrapper">
+    <button type="button" class="product-switcher-icon-btn" id="productSwitcherIconBtn" title="All Minop App">
+        <i class="fa-solid fa-grid-2 icon-grid"></i>
+        <img src="~/assets/images/icons/profile/icon_logo.svg" alt="Minop Logo" class="icon-logo" />
+    </button>
+</div>
+
+<!-- Modal Overlay -->
+<div class="product-switcher-modal-overlay" id="productModalOverlay"></div>
+
+<!-- Modal Popup -->
+<div class="product-switcher-modal" id="productModal">
+    <div class="product-modal-header">
+        <div class="product-modal-header-top">
+            <h3 class="product-modal-title">
+                <i class="fa-solid fa-layer-group"></i>
+                Minop Enterprise Suite
+            </h3>
+            <button type="button" class="product-modal-close" id="productModalClose">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+        <div class="product-search-wrapper">
+            <i class="fa-solid fa-search product-search-icon"></i>
+            <input type="text"
+                   class="product-search-input"
+                   id="productSearchInput"
+                   placeholder="Search applications..."
+                   autocomplete="off">
+            <button type="button" class="product-search-clear" id="productSearchClear">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+    </div>
+    <div class="product-modal-body">
+        <div id="productsContainer">
+            <div class="products-loading">
+                <i class="fa-solid fa-spinner-third"></i>
+                <p>Loading products...</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Subscription Expired Modal -->
+<div class="contact-sales-modal-overlay" id="contactSalesOverlay"></div>
+<div class="contact-sales-modal" id="contactSalesModal">
+    <button type="button" class="contact-sales-close" id="contactSalesClose">
+        <i class="fa-solid fa-xmark"></i>
+    </button>
+
+    <div class="contact-sales-content">
+        <!-- Warning Icon -->
+        <div class="contact-sales-icon">
+            <i class="fa-solid fa-exclamation-triangle"></i>
+        </div>
+
+        <!-- Title -->
+        <h3 class="contact-sales-title">Subscription Expired</h3>
+
+        <!-- Message with Product Name -->
+        <p class="contact-sales-message">
+            Your subscription for <strong id="expiredProductName" style="color: #dc3545;"></strong> has expired. Please renew to continue using all features.
+        </p>
+
+        <!-- Contact Info -->
+        <div class="contact-sales-info">
+            <div class="contact-row">
+                <i class="fa-solid fa-envelope"></i>
+                <span>helpdesk@mantratec.com</span>
+            </div>
+            <div class="contact-row">
+                <i class="fa-solid fa-phone"></i>
+                <span>+91-9512302970</span>
+            </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="contact-sales-actions">
+            <button type="button" class="btn-contact-back" id="contactSalesCancel">
+                Go Back
+            </button>
+            @*<a href="/PayTime/Planpricing" class="btn-contact-primary">
+                View Pricing Plans
+            </a>*@
+        </div>
+    </div>
+</div>
+
+<script>
+// Subscription/Plan data from session
+var planData = {
+    isPlanExpired: @isPlanExp,      // 1 = expired, 0 = active
+    isFreePlan: @isFplan,           // 1 = free/trial, 0 = paid
+    remainingDays: @rmDay,          // Days left
+    expiryDate: '@planExpDate'      // Expiry date string
+};
+
+// Get license status for a product
+    function getProductLicenseStatus(productId)
+    {        
+    // TNA (ProductId=1) is always LIVE - main product
+    if (productId === 1) {
+        return { status: 'live', badge: 'LIVE', days: null };
+    }
+
+    // Check if plan expired
+    if (planData.isPlanExpired === 1 && planData.isFreePlan === 0) {
+        return { status: 'expired', badge: 'EXPIRED', days: null };
+    }
+
+    // Check if free/trial plan
+    if (planData.isFreePlan === 1) {
+        if (planData.remainingDays > 0)
+        {
+            return {
+                status: 'trial',
+                badge: planData.remainingDays + ' DAYS LEFT',
+                days: planData.remainingDays
+            };
+        } else {
+            return { status: 'expired', badge: 'EXPIRED', days: null };
+        }
+    }
+
+    // Default: LIVE (paid and not expired)
+    return { status: 'live', badge: 'LIVE', days: null };
+}
+
+// Contact Sales Modal functions
+function showContactSalesModal(productName) {
+    $('#expiredProductName').text(productName || 'this product');
+    $('#contactSalesOverlay').addClass('show');
+    $('#contactSalesModal').addClass('show');
+}
+
+function closeContactSalesModal() {
+    $('#contactSalesOverlay').removeClass('show');
+    $('#contactSalesModal').removeClass('show');
+}
+
+// Contact Sales Modal event handlers
+$(document).ready(function() {
+    $('#contactSalesClose, #contactSalesCancel, #contactSalesOverlay').on('click', function() {
+        closeContactSalesModal();
+    });
+
+    $('#contactSalesModal').on('click', function(e) {
+        e.stopPropagation();
+    });
+
+    // ========================================================================
+    // NEW: Check for expiredProduct query param (from subscription redirect)
+    // If found, automatically show Contact Sales modal for that product
+    // Comment this block if any issues occur
+    // ========================================================================
+    // START: Auto-show Contact Sales modal on redirect
+    var urlParams = new URLSearchParams(window.location.search);
+    var expiredProduct = urlParams.get('expiredProduct');
+
+    if (expiredProduct) {
+        // Decode the product name and show Contact Sales modal
+        var productName = decodeURIComponent(expiredProduct);
+        console.log('[ProductSwitcher] Expired product detected: ' + productName);
+
+        // Show Contact Sales modal after short delay (let page load first)
+        setTimeout(function() {
+            showContactSalesModal(productName);
+        }, 500);
+
+        // Clean URL - remove query param without page reload
+        if (window.history && window.history.replaceState) {
+            var cleanUrl = window.location.pathname;
+            window.history.replaceState({}, document.title, cleanUrl);
+        }
+    }
+    // END: Auto-show Contact Sales modal
+    // ========================================================================
+});
+
+// Convert productId to Base64 encoded product code
+// Returns Base64 encoded codes to hide product names in browser URL
+// Example: productId 2 (Payroll) returns 'cGF5cm9sbA==' instead of 'payroll'
+function getProductCodeForUrl(productId) {
+    var plainCode = '';
+
+    switch (productId) {
+        case 1: plainCode = 'tna'; break;
+        case 2: plainCode = 'payroll'; break;
+        case 3: plainCode = 'ems'; break;        
+        case 4: plainCode = 'pms'; break;
+        case 5: plainCode = 'fieldsens'; break;
+        case 6: plainCode = 'cms'; break;
+        case 7: plainCode = 'vms'; break;
+        case 8: plainCode = 'okr'; break;
+        default: plainCode = 'tna'; break;
+    }
+
+    // Return Base64 encoded product code to hide product names from URL
+    return btoa(plainCode);
+}
+
+// Detect product from current URL (for multi-tab support)
+function detectProductFromUrl() {
+    var currentPath = window.location.pathname.toLowerCase();
+
+    if (currentPath.includes('/minopproduct/payrolldashboard') || currentPath.includes('/payroll/')) {
+        return { id: 2, name: 'Payroll', code: 'PAYROLL' };
+    } else if (currentPath.includes('/minopproduct/emsdashboard') || currentPath.includes('/viewsems/')) {
+        return { id: 3, name: 'EMS', code: 'EMS' };
+    } else if (currentPath.includes('/minopproduct/okrdashboard') || currentPath.includes('/okr/'))    {
+        return { id: 8, name: 'OKR', code: 'OKR' };
+    } else if (currentPath.includes('/minopproduct/pmsdashboard')) {
+        return { id: 4, name: 'PMS', code: 'PMS' };
+    } else if (currentPath.includes('/minopproduct/fieldsens') || currentPath.includes('/fieldsens/') || currentPath.includes('/fieldtracking/')) {
+        return { id: 5, name: 'FieldSens', code: 'FIELDSENS' };
+    } else if (currentPath.includes('/minopproduct/cmsdashboard') || currentPath.includes('/cms/') || currentPath.includes('/canteen/')) {
+        return { id: 6, name: 'Canteen Management', code: 'CMS' };
+    } else if (currentPath.includes('/minopproduct/vmsdashboard') || currentPath.includes('/vms/') || currentPath.includes('/visitor/')) {
+        return { id: 7, name: 'Visitor Management', code: 'VMS' };
+    } else {
+        // Default: TNA (includes /Dashboard/, /MasterData/, /Transactions/, etc.)
+        return { id: 1, name: 'Time & Attendance', code: 'TNA' };
+    }
+}
+
+$(document).ready(function () {
+    // Detect product from URL (overrides session)
+    var detectedProduct = detectProductFromUrl();
+    var currentProductId = detectedProduct.id;
+
+    // Update product indicator to match current URL
+    $('#activeProductName').text(detectedProduct.name);
+
+    var isModalOpen = false;
+    var allProducts = [];
+    var lastSwitchedProductId = null; // Track last switched product
+
+    // Open modal on icon click
+    $('#productSwitcherIconBtn').on('click', function (e) {
+        e.stopPropagation();
+        openModal();
+    });
+
+    // Close modal on close button click
+    $('#productModalClose').on('click', function () {
+        closeModal();
+    });
+
+    // Close modal on overlay click
+    $('#productModalOverlay').on('click', function () {
+        closeModal();
+    });
+
+    // Close modal on ESC key
+    $(document).on('keydown', function (e) {
+        if (e.key === 'Escape' && isModalOpen) {
+            closeModal();
+        }
+    });
+
+    // Prevent modal content clicks from closing modal
+    $('#productModal').on('click', function (e) {
+        e.stopPropagation();
+    });
+
+    // Search functionality
+    $('#productSearchInput').on('input', function () {
+        var searchTerm = $(this).val().toLowerCase().trim();
+
+        // Show/hide clear button
+        if (searchTerm) {
+            $('#productSearchClear').addClass('show');
+        } else {
+            $('#productSearchClear').removeClass('show');
+        }
+
+        // Filter products
+        filterProducts(searchTerm);
+    });
+
+    // Clear search
+    $('#productSearchClear').on('click', function () {
+        $('#productSearchInput').val('');
+        $('#productSearchClear').removeClass('show');
+        filterProducts('');
+        $('#productSearchInput').focus();
+    });
+
+    // Open modal function
+    function openModal() {
+        isModalOpen = true;
+        $('#productModalOverlay').addClass('show');
+        $('#productModal').addClass('show');
+        $('body').css('overflow', 'hidden');
+        loadProducts();
+
+        // Clear search when opening
+        $('#productSearchInput').val('');
+        $('#productSearchClear').removeClass('show');
+
+        // Focus search input
+        setTimeout(function() {
+            $('#productSearchInput').focus();
+        }, 300);
+    }
+
+    // Close modal function
+    function closeModal() {
+        isModalOpen = false;
+        $('#productModalOverlay').removeClass('show');
+        $('#productModal').removeClass('show');
+        $('body').css('overflow', '');
+
+        // Clear search
+        $('#productSearchInput').val('');
+        $('#productSearchClear').removeClass('show');
+    }
+
+    // Filter products by search term
+    function filterProducts(searchTerm) {
+        if (!searchTerm) {
+            // Show all products
+            renderProducts(allProducts);
+            return;
+        }
+
+        // Filter products
+        var filtered = allProducts.filter(function(product) {
+            return product.ProductName.toLowerCase().includes(searchTerm) ||
+                   product.ProductCode.toLowerCase().includes(searchTerm) ||
+                   (product.Description && product.Description.toLowerCase().includes(searchTerm));
+        });
+
+        // Render filtered results
+        if (filtered.length > 0) {
+            renderProducts(filtered);
+        } else {
+            // Show no results message (escape searchTerm to prevent XSS)
+            var escapedSearchTerm = $('<div>').text(searchTerm).html();
+            $('#productsContainer').html(`
+                <div class="products-grid">
+                    <div class="products-no-results">
+                        <i class="fa-solid fa-magnifying-glass"></i>
+                        <p>No applications found matching "<strong>${escapedSearchTerm}</strong>"</p>
+                    </div>
+                </div>
+            `);
+        }
+    }
+
+    // Load products
+    function loadProducts() {
+        $.ajax({
+            url: '/Product/GetAvailableProducts',
+            type: 'GET',
+            beforeSend: function () {
+                $('#productsContainer').html(`
+                    <div class="products-loading">
+                        <i class="fa-solid fa-spinner-third"></i>
+                        <p>Loading applications...</p>
+                    </div>
+                `);
+            },
+            success: function (response) {                
+                if (response.success && response.data && response.data.length > 0) {
+                    allProducts = response.data; // Store all products
+                    renderProducts(response.data);
+                } else {
+                    allProducts = [];
+                    $('#productsContainer').html(`
+                        <div class="products-empty">
+                            <i class="fa-solid fa-inbox"></i>
+                            <p>No applications available</p>
+                        </div>
+                    `);
+                }
+            },
+            error: function () {
+                $('#productsContainer').html(`
+                    <div class="products-empty">
+                        <i class="fa-solid fa-triangle-exclamation"></i>
+                        <p>Error loading applications</p>
+                    </div>
+                `);
+            }
+        });
+    }
+
+    // HTML escape function to prevent XSS
+    function escapeHtml(text) {
+        if (!text) return '';
+        var div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    // Render products with categories (FULLY DYNAMIC - No hardcoding!)
+    function renderProducts(products) {        
+        var html = '';
+
+        // Group products by Category dynamically
+        var categorizedProducts = {};
+        var categoryOrder = {};  // Track first occurrence for ordering
+        var orderCounter = 0;
+
+        products.forEach(function(product) {
+            var category = product.Category || 'Other Applications';  // Default category if none set
+
+            if (!categorizedProducts[category]) {
+                categorizedProducts[category] = [];
+                categoryOrder[category] = orderCounter++;
+            }
+
+            categorizedProducts[category].push(product);
+        });
+
+        // Sort categories by their first occurrence (maintains DisplayOrder)
+        var sortedCategories = Object.keys(categorizedProducts).sort(function(a, b) {
+            return categoryOrder[a] - categoryOrder[b];
+        });
+
+        // Render each category dynamically
+        sortedCategories.forEach(function(categoryName) {
+            var categoryProducts = categorizedProducts[categoryName];
+
+            if (categoryProducts.length > 0) {
+                // Get category icon from first product in category
+                var categoryIcon = categoryProducts[0].CategoryIcon || 'fa-solid fa-cube';
+
+                // Render category header
+                html += '<div class="product-category">';
+                html += '<h4 class="product-category-title">';
+                html += '<i class="' + escapeHtml(categoryIcon) + '"></i>' + escapeHtml(categoryName);
+                html += '</h4></div>';
+
+                // Render products in this category
+                html += '<div class="products-grid">';
+                categoryProducts.forEach(function(product) {
+                    html += renderProductCard(product);
+                });
+                html += '</div>';
+            }
+        });
+
+        $('#productsContainer').html(html);
+
+        // Add click handlers to product cards
+        $('.product-card').on('click', function () {
+            var productId = parseInt($(this).attr('data-product-id'));
+            var productName = $(this).attr('data-product-name');
+            var licenseStatus = $(this).attr('data-license-status');
+
+            // Check if expired - show contact sales modal
+            if (licenseStatus === 'expired') {
+                showContactSalesModal(productName);
+                return;
+            }
+
+            if (productId !== currentProductId) {
+                switchProduct(productId, productName);
+            }
+        });
+    }
+
+    // Render individual product card
+    function renderProductCard(product) {        
+        var isActive = currentProductId === product.ProductId;
+        var activeClass = isActive ? 'active' : '';
+        var mainBadge = product.IsMainProduct ? '<span class="product-badge product-badge-main">MAIN</span>' : '';
+        var activeBadge = isActive ? '<span class="product-badge product-badge-active">ACTIVE</span>' : '';
+
+        // Get license status
+        var license = getProductLicenseStatus(product.ProductId);
+        var statusBadge = '';
+        var disabledClass = '';
+
+        if (license.status === 'live') {
+            statusBadge = '<span class="product-badge product-badge-live"><i class="fa-solid fa-circle-check"></i> LIVE</span>';
+        } else if (license.status === 'trial') {
+            statusBadge = '<span class="product-badge product-badge-trial"><i class="fa-solid fa-clock"></i> ' + license.badge + '</span>';
+        } else if (license.status === 'expired') {
+            statusBadge = '<span class="product-badge product-badge-expired"><i class="fa-solid fa-lock"></i> EXPIRED</span>';
+            disabledClass = 'disabled';
+        }
+
+        return `
+            <div class="product-card ${activeClass} ${disabledClass}" data-product-id="${product.ProductId}" data-product-name="${escapeHtml(product.ProductName)}" data-license-status="${license.status}">
+                <div class="product-card-icon">
+                    <i class="${escapeHtml(product.IconClass || 'fa-solid fa-cube')}"></i>
+                </div>
+                <div class="product-card-info">
+                    <div class="product-card-name">${escapeHtml(product.ProductName)}</div>
+                    <div class="product-card-code">${escapeHtml(product.ProductCode)}</div>
+                </div>
+                <div class="product-card-badges">
+                    ${statusBadge}
+                    ${activeBadge}
+                    ${mainBadge}
+                </div>
+            </div>
+        `;
+    }
+
+    // Switch product
+    function switchProduct(productId, productName) {
+        $.ajax({
+            url: '/Product/SwitchProduct',
+            type: 'POST',
+            data: { productId: productId },
+            beforeSend: function () {
+                closeModal();
+                //toastr.info('Switching to ' + productName + '...');
+            },
+            success: function (response) {
+                if (response.success) {
+                    toastr.success(response.message);
+
+                    // Update active product indicator
+                    $('#activeProductName').text(productName);
+
+                    // Redirect to product dashboard
+                    if (response.redirectUrl) {
+                        setTimeout(function () {
+                            // Append product code to URL for multi-tab support
+                            // Uses ?p=code instead of ?productId=# to hide product IDs
+                            var urlWithProduct = response.redirectUrl;
+                            var separator = urlWithProduct.indexOf('?') === -1 ? '?' : '&';
+                            var productCode = getProductCodeForUrl(productId);
+                            urlWithProduct += separator + 'p=' + productCode;
+
+                            // Open sub-products in new tab, keep main product in same tab
+                            if (productId !== 1) {  // If not Time & Attendance (main product)
+                                window.open(urlWithProduct, '_blank');
+                            } else {
+                                window.location.href = urlWithProduct;
+                            }
+                        }, 500);
+                    } else {
+                        location.reload();
+                    }
+                } else {
+                    toastr.error(response.message || 'Failed to switch product');
+                    if (response.redirectUrl) {
+                        // Append product code to error redirect URL as well
+                        // Uses ?p=code instead of ?productId=# to hide product IDs
+                        var urlWithProduct = response.redirectUrl;
+                        var separator = urlWithProduct.indexOf('?') === -1 ? '?' : '&';
+                        var productCode = getProductCodeForUrl(productId);
+                        urlWithProduct += separator + 'p=' + productCode;
+                        window.location.href = urlWithProduct;
+                    }
+                }
+            },
+            error: function () {
+                toastr.error('Error switching product');
+            }
+        });
+    }
+});
+</script>

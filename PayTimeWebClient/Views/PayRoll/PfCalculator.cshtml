@@ -1,0 +1,727 @@
+﻿@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@using System.Configuration;
+@{
+    ViewBag.Title = "PfCalculator";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    string _webapiurlpayroll = ConfigurationManager.AppSettings["webapipaytimePayroll"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+    string isClientDBMatchFlag = HttpContext.Current.Session["IsClientDBMatch"] != null
+   ? HttpContext.Current.Session["IsClientDBMatch"].ToString()
+   : "false"; // Default to "false" if the session is null
+}
+
+<link href="/Newlayout/css/payrollstructure.css" rel="stylesheet">
+<script src="~/AssetsNew/js/CommonValidation.js"></script>
+<style type="text/css">
+    .dataTables_wrapper .dataTables_filter, .buttons-columns {
+        display: none !important;
+    }
+
+    .dataTables_wrapper {
+        padding: 0px 0 5px 0;
+    }
+
+    .remove:hover, .additional_cal:hover, .view_additional_cal:hover {
+        cursor: pointer;
+    }
+
+    .grade_clm:hover, .grade_view:hover {
+        cursor: pointer;
+        color: var(--navyblue_color);
+    }
+
+    .sectionTitle {
+        color: var(--navyblue_color);
+    }
+
+    #strcturetable_wrapper .customforms_table {
+        overflow: inherit;
+    }
+
+    .form-group.currency_box input.form-control {
+        padding: 5px 5px 5px 24px;
+    }
+
+    span.currency-symbol {
+        font-size: 16px;
+        padding: 3px;
+        position: absolute;
+        bottom: 1px;
+        left: 5px;
+    }
+</style>
+
+
+<script type="text/javascript">
+    $(document).ready(function () {
+        var EmployeePF = $("#employeePF").val();
+        var providentPF = $("#providentPF").val();
+        $("#employeePF").prop("disabled", true);
+        $("#providentPF").prop("disabled", true);
+        $("#professionaltax").prop("disabled", true);
+        $("#employeePF").val(0);
+        $("#providentPF").val(0);
+        $("#MonthlyCTC").val(0);
+        var basicofmonthlyctc;
+        var employeePF;
+        var providentPF;
+        var IsPfEsic = 0;
+
+        //Vaidations of monthly ctc textbox
+        $('.input-sm').keypress(function (e) {
+            var charCode = (e.which) ? e.which : event.keyCode
+            if (String.fromCharCode(charCode).match(/[^0-9]/g))
+                return false;
+        });
+
+        //When PF is bydefault selected
+        if ($('input[name="PfEsicChoice"]:checked').val() === "1") {
+            var IsPfFixed = false;
+            var IsPfActual = false;
+            var IsPfEsic = 1;
+            $("#MonthlyCTC").val(0);
+            $("#epfId").hide();
+            $("#esicId").hide();
+            $("#Ptid").hide();
+            $("#isPfRadio").hide();
+            $("#pfblockid").show();
+            $("#MonthlyCTC").blur(function () {
+                var valpf = $('input[name="PfEsicChoice"]:checked').val();
+                var monthlyctc = parseInt($("#MonthlyCTC").val());
+                var basicofmonthlyctc = (40 / 100) * monthlyctc;
+                if (basicofmonthlyctc != 0) {
+                    if (basicofmonthlyctc < 15000) {
+                        if (valpf == '1') {
+                            checkSession();
+                            $.ajax({
+                                type: "GET",
+                                headers: { 'Authorization': '@_tokan' },
+                                url: '@_webapiurlpayroll' + 'Payroll/IsPFApplicable/' + monthlyctc + "/" + IsPfEsic,
+                                contentType: "application/json; charset=utf-8",
+                                dataType: "json",
+                                beforeSend: function () {
+                                    $("#ajax_loader").show();
+                                },
+                                success: function (response) {
+                                    var basicofmonthlyctc = response.basicofmonthlyctc;
+                                    if (response.basicofmonthlyctc < 15000) {
+                                        $("#isPfRadio").hide();
+                                        $("#epfId").show();
+                                        $("#employeePF").val(response.employeePF);
+                                        $("#providentPF").val(response.providentPF);
+                                    }                                   
+                                },
+                                complete: function () {
+                                    $("#ajax_loader").hide();
+                                }
+                            });
+                        }
+                    }
+                    else if (basicofmonthlyctc > 15000) {
+                        if (valpf == '1') {
+                        ConfirmDialog("Basic of monthly ctc is greater than 15K. Do you want to deduct PF ?");
+                        $("#epfId").hide();
+                        $("#Ptid").hide();
+                        $("#isPfRadio").hide();
+                        $('input[name="IsPfchoice"]').change(function () {
+                            var selectedValue = $(this).val();
+                            if (selectedValue === "yes") {
+                                var IsPfFixed = true;
+                                var IsPfActual = false;
+                                if (basicofmonthlyctc != 0) {
+                                    if (basicofmonthlyctc > 15000) {
+                                        checkSession();
+                                        $.ajax({
+                                            type: "GET",
+                                            headers: { 'Authorization': '@_tokan' },
+                                            url: '@_webapiurlpayroll' + 'Payroll/IsTotalPFApplicable/' + monthlyctc + "/" + IsPfFixed + "/" + IsPfActual,
+                                            contentType: "application/json; charset=utf-8",
+                                            dataType: "json",
+                                            beforeSend: function () {
+                                                $("#ajax_loader").show();
+                                            },
+                                            success: function (response) {
+                                                var basicofmonthlyctc = response.basicofmonthlyctc;
+                                                if (response.basicofmonthlyctc < 15000) {
+                                                    $("#isPfRadio").hide();
+                                                    $("#epfId").show();
+                                                    $("#employeePF").val(response.employeePF);
+                                                    $("#providentPF").val(response.providentPF);
+                                                }
+                                                else if (response.basicofmonthlyctc > 15000) {
+                                                    $("#epfId").show();
+                                                    $("#employeePF").val(response.employeePF);
+                                                    $("#providentPF").val(response.providentPF);
+                                                }
+                                                else if (response.success == false) {
+                                                    toastr.remove();
+                                                    toastr.error(response.message);
+                                                }
+                                            },
+                                            complete: function () {
+                                                $("#ajax_loader").hide();
+                                            }
+                                        });
+                                    }
+                                }
+                            }
+                            else if (selectedValue === "no") {
+                                var IsPfFixed = false;
+                                var IsPfActual = true;
+                                if (basicofmonthlyctc != 0) {
+                                    if (basicofmonthlyctc > 15000) {
+                                        checkSession();
+                                        $.ajax({
+                                            type: "GET",
+                                            headers: { 'Authorization': '@_tokan' },
+                                            url: '@_webapiurlpayroll' + 'Payroll/IsTotalPFApplicable/' + monthlyctc + "/" + IsPfFixed + "/" + IsPfActual,
+                                            contentType: "application/json; charset=utf-8",
+                                            dataType: "json",
+                                            beforeSend: function () {
+                                                $("#ajax_loader").show();
+                                            },
+                                            success: function (response) {
+                                                if (response.basicofmonthlyctc < 15000) {
+                                                    $("#epfId").show();
+                                                    $("#employeePF").val(response.employeePF);
+                                                    $("#providentPF").val(response.providentPF);
+                                                }
+                                                else if (response.basicofmonthlyctc > 15000) {
+                                                    $("#epfId").show();
+                                                    $("#employeePF").val(response.employeePF);
+                                                    $("#providentPF").val(response.providentPF);
+                                                }
+                                                else if (response.success == false) {
+                                                    toastr.remove();
+                                                    toastr.error(response.message);
+                                                }
+                                            },
+                                            complete: function () {
+                                                $("#ajax_loader").hide();
+                                            }
+                                        });
+                                    }
+                                }
+                            }
+                        });
+                    }
+                }
+              }
+           });
+        }
+
+        //Calculation of Pf and Esic and Pt
+        $('input[name="PfEsicChoice"]').change(function () {
+            var IsPfEsic = $('input[name="PfEsicChoice"]:checked').val();
+            if (IsPfEsic === '1') {
+                var IsPfFixed = false;
+                var IsPfActual = false;
+                $("#MonthlyCTC").val(0);
+                $("#epfId").hide();
+                $("#esicId").hide();
+                $("#Ptid").hide();
+                $("#isPfRadio").hide();
+                $("#pfblockid").show();
+                $("#MonthlyCTC").blur(function () {
+                    var valpf = $('input[name="PfEsicChoice"]:checked').val();
+                    var monthlyctc = parseInt($("#MonthlyCTC").val());
+                    var basicofmonthlyctc = (40 / 100) * monthlyctc;
+                    if (basicofmonthlyctc != 0) {
+                        if (basicofmonthlyctc < 15000) {
+                            if (valpf == '1') {
+                                checkSession();
+                                $.ajax({
+                                    type: "GET",
+                                    headers: { 'Authorization': '@_tokan' },
+                                    url: '@_webapiurlpayroll' + 'Payroll/IsPFApplicable/' + monthlyctc + "/" + IsPfEsic,
+                                    contentType: "application/json; charset=utf-8",
+                                    dataType: "json",
+                                    beforeSend: function () {
+                                        $("#ajax_loader").show();
+                                    },
+                                    success: function (response) {
+                                        var basicofmonthlyctc = response.basicofmonthlyctc;
+                                        if (response.basicofmonthlyctc < 15000) {
+                                            $("#isPfRadio").hide();
+                                            $("#epfId").show();
+                                            $("#employeePF").val(response.employeePF);
+                                            $("#providentPF").val(response.providentPF);
+                                        }                                   
+                                    },
+                                    complete: function () {
+                                        $("#ajax_loader").hide();
+                                    }
+                                });
+                            }
+                        }
+                        else if (basicofmonthlyctc > 15000) {
+                            if (valpf == '1') {
+                                ConfirmDialog("Basic of monthly ctc is greater than 15K. Do you want to deduct PF ?");
+                                $("#epfId").hide();
+                                $("#Ptid").hide();
+                                $("#isPfRadio").hide();
+                                $('input[name="IsPfchoice"]').change(function () {
+                                    var selectedValue = $(this).val();
+                                    if (selectedValue === "yes") {
+                                        var IsPfFixed = true;
+                                        var IsPfActual = false;
+                                        if (basicofmonthlyctc != 0) {
+                                            if (basicofmonthlyctc > 15000) {
+                                                checkSession();
+                                                $.ajax({
+                                                    type: "GET",
+                                                    headers: { 'Authorization': '@_tokan' },
+                                                    url: '@_webapiurlpayroll' + 'Payroll/IsTotalPFApplicable/' + monthlyctc + "/" + IsPfFixed + "/" + IsPfActual,
+                                                    contentType: "application/json; charset=utf-8",
+                                                    dataType: "json",
+                                                    beforeSend: function () {
+                                                        $("#ajax_loader").show();
+                                                    },
+                                                    success: function (response) {
+                                                        var basicofmonthlyctc = response.basicofmonthlyctc;
+                                                        if (response.basicofmonthlyctc < 15000) {
+                                                            $("#isPfRadio").hide();
+                                                            $("#epfId").show();
+                                                            $("#employeePF").val(response.employeePF);
+                                                            $("#providentPF").val(response.providentPF);
+                                                        }
+                                                        else if (response.basicofmonthlyctc > 15000) {
+                                                            $("#epfId").show();
+                                                            $("#employeePF").val(response.employeePF);
+                                                            $("#providentPF").val(response.providentPF);
+                                                        }
+                                                        else if (response.success == false) {
+                                                            toastr.remove();
+                                                            toastr.error(response.message);
+                                                        }
+                                                    },
+                                                    complete: function () {
+                                                        $("#ajax_loader").hide();
+                                                    }
+                                                });
+                                            }
+                                        }
+                                    }
+                                    else if (selectedValue === "no") {
+                                        var IsPfFixed = false;
+                                        var IsPfActual = true;
+                                        if (basicofmonthlyctc != 0) {
+                                            if (basicofmonthlyctc > 15000) {
+                                                checkSession();
+                                                $.ajax({
+                                                    type: "GET",
+                                                    headers: { 'Authorization': '@_tokan' },
+                                                    url: '@_webapiurlpayroll' + 'Payroll/IsTotalPFApplicable/' + monthlyctc + "/" + IsPfFixed + "/" + IsPfActual,
+                                                    contentType: "application/json; charset=utf-8",
+                                                    dataType: "json",
+                                                    beforeSend: function () {
+                                                        $("#ajax_loader").show();
+                                                    },
+                                                    success: function (response) {
+                                                        if (response.basicofmonthlyctc < 15000) {
+                                                            $("#epfId").show();
+                                                            $("#employeePF").val(response.employeePF);
+                                                            $("#providentPF").val(response.providentPF);
+                                                        }
+                                                        else if (response.basicofmonthlyctc > 15000) {
+                                                            $("#epfId").show();
+                                                            $("#employeePF").val(response.employeePF);
+                                                            $("#providentPF").val(response.providentPF);
+                                                        }
+                                                        else if (response.success == false) {
+                                                            toastr.remove();
+                                                            toastr.error(response.message);
+                                                        }
+                                                    },
+                                                    complete: function () {
+                                                        $("#ajax_loader").hide();
+                                                    }
+                                                });
+                                            }
+                                        }
+                                    }
+                                });
+                            }
+                        }
+                    }
+                });
+            }
+
+
+            else if (IsPfEsic === '2') {
+                $("#pfblockid").show();
+                $("#MonthlyCTC").val(0);
+                $("#epfId").hide();
+                $("#esicId").hide();
+                $("#Ptid").hide();
+                $("#isPfRadio").hide();
+                $("#MonthlyCTC").blur(function () {
+                    var valesic = $('input[name="PfEsicChoice"]:checked').val();
+                    var monthlyctc = parseInt($("#MonthlyCTC").val());
+                    var basicofmonthlyctc = (40 / 100) * monthlyctc;
+                    if (basicofmonthlyctc != 0) {
+                        if (basicofmonthlyctc < 15000) {
+                            if (valesic == 2) {
+                                checkSession();
+                                $.ajax({
+                                    type: "GET",
+                                    headers: { 'Authorization': '@_tokan' },
+                                    url: '@_webapiurlpayroll' + 'Payroll/IsPFApplicable/' + monthlyctc + "/" + IsPfEsic,
+                                    contentType: "application/json; charset=utf-8",
+                                    dataType: "json",
+                                    beforeSend: function () {
+                                        $("#ajax_loader").show();
+                                    },
+                                    success: function (response) {
+                                        var basicofmonthlyctc = response.basicofmonthlyctc;
+                                        if (response.basicofmonthlyctc < 15000) {
+                                            $("#isPfRadio").hide();
+                                            $("#Ptid").hide();
+                                            $("#epfId").hide();
+                                            $("#esicId").show();
+                                            $("#employeeEsic").val(response.employeeEsic);
+                                            $("#employerEsic").val(response.employerEsic);
+                                        }
+                                    },
+                                    complete: function () {
+                                        $("#ajax_loader").hide();
+                                    }
+                                });
+                            }
+                        }
+                        else {
+                            if (valesic == 2) {
+                                checkSession();
+                                $.ajax({
+                                    type: "GET",
+                                    headers: { 'Authorization': '@_tokan' },
+                                    url: '@_webapiurlpayroll' + 'Payroll/IsPFApplicable/' + monthlyctc + "/" + IsPfEsic,
+                                    contentType: "application/json; charset=utf-8",
+                                    dataType: "json",
+                                    beforeSend: function () {
+                                        $("#ajax_loader").show();
+                                    },
+                                    success: function (response) {
+                                        var basicofmonthlyctc = response.basicofmonthlyctc;
+                                        if (response.basicofmonthlyctc > 15000) {
+                                            toastr.remove();
+                                            toastr.error(response.message);
+                                            $("#epfId").hide();
+                                            $("#esicId").hide();
+                                            $("#Ptid").hide();
+                                        }
+                                    },
+                                    complete: function () {
+                                        $("#ajax_loader").hide();
+                                    }
+                                });
+                            }
+                        }
+                    }
+                });
+            }
+
+
+            else if (IsPfEsic === '3') {
+                $("#pfblockid").show();
+                $("#MonthlyCTC").val(0);
+                $("#epfId").hide();
+                $("#Ptid").hide();
+                $("#esicId").hide();
+                $("#isPfRadio").hide();
+                $("#MonthlyCTC").blur(function () {
+                    var valpt = $('input[name="PfEsicChoice"]:checked').val();
+                    var monthlyctc = parseInt($("#MonthlyCTC").val());
+                    if (monthlyctc != 0) {
+                        if (monthlyctc >= 12000) {
+                            if (valpt == 3) {
+                                checkSession();
+                                $.ajax({
+                                    type: "GET",
+                                    headers: { 'Authorization': '@_tokan' },
+                                    url: '@_webapiurlpayroll' + 'Payroll/IsPFApplicable/' + monthlyctc + "/" + IsPfEsic,
+                                    contentType: "application/json; charset=utf-8",
+                                    dataType: "json",
+                                    beforeSend: function () {
+                                        $("#ajax_loader").show();
+                                    },
+                                    success: function (response) {
+                                        var monthlyctc = response.monthlyctc;
+                                        if (response.monthlyctc >= 12000) {
+                                            $("#isPfRadio").hide();
+                                            $("#epfId").hide();
+                                            $("#Ptid").show();
+                                            $("#professionaltax").val(response.professionaltax);
+                                        }
+                                    },
+                                    complete: function () {
+                                        $("#ajax_loader").hide();
+                                    }
+                                });
+                            }
+                        }
+                        else if (monthlyctc < 12000) {
+                            if (valpt == 3) {
+                                checkSession();
+                                $.ajax({
+                                    type: "GET",
+                                    headers: { 'Authorization': '@_tokan' },
+                                    url: '@_webapiurlpayroll' + 'Payroll/IsPFApplicable/' + monthlyctc + "/" + IsPfEsic,
+                                    contentType: "application/json; charset=utf-8",
+                                    dataType: "json",
+                                    beforeSend: function () {
+                                        $("#ajax_loader").show();
+                                    },
+                                    success: function (response) {
+                                        var monthlyctc = response.monthlyctc;
+                                        if (response.monthlyctc < 12000) {
+                                            $("#isPfRadio").hide();
+                                            $("#epfId").hide();
+                                            $("#esicId").hide();
+                                            $("#Ptid").show();
+                                            $("#professionaltax").val(response.professionaltax);
+                                        }
+                                    },
+                                    complete: function () {
+                                        $("#ajax_loader").hide();
+                                    }
+                                });
+                            }
+                        }
+                    }
+                });
+            }
+
+
+        });
+
+        //Clear Button
+        $("#btnClear").click(function () {
+            $("#MonthlyCTC").val(0);
+            $("#epfId").hide();
+            $("#Ptid").hide();
+            $("#isPfRadio").hide();           
+        });
+
+    });
+
+    function ConfirmDialog(message) {
+        $('<div></div>').appendTo('body')
+          .html('<div><h6>' + message + '?</h6></div>')
+          .dialog({
+              modal: true,
+              title: 'PF Message',
+              zIndex: 10000,
+              autoOpen: true,
+              width: 'auto',
+              resizable: false,
+              buttons: {
+
+                  Yes: function () {
+                      var confirmationResult = "Yes";
+                      $(this).dialog("close");
+                      $("#isPfRadio").show();
+                  },
+                  No: function () {
+                      var confirmationResult = "No";
+                      $("#isPfRadio").hide();
+                      $(this).dialog("close");
+
+                  }
+              },
+              close: function (event, ui) {
+                  $(this).remove();
+              }
+          });
+    }
+
+    function checkSession() {
+
+        $.ajax({
+            type: "GET",
+            async: false,
+            url: "/ESS/checkSession",
+            contentType: "application/json; charset=utf-8",
+            success: function (data) {
+                if (data.isRedirect) {
+                    window.location.href = data.redirectUrl;
+                }
+            },
+            error: function (data) {
+                window.location.href = data;
+            }
+        });
+    }
+
+
+</script>
+
+<div class="page-bar">
+    <ul class="page-breadcrumb">
+        <li>
+            <a href="@(isClientDBMatchFlag == "True" ? "/Admin/AdminDashboard" : "/Dashboard/AdminDashboard")"><i class="fa-regular fa-house"></i></a>
+        </li>
+        <li>
+            <span><i class="fa-light fa-angle-right"></i> Calculator</span>
+        </li>
+    </ul>
+</div>
+
+<div class="row">
+    <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+        <div class="portlet ">
+            <h4 class="sectionTitle"><b>Calculator</b></h4>
+            <div class="portlet-body">
+                <div class="row">
+                    <div class="col-lg-4 col-md-4 col-sm-12 col-xs-12">
+                        <div class="row" id="IsPfEsicRadio">
+                            <div class="col-xs-12">
+                                <div class="row">
+                                    <div class="col-md-4 col-xs-12">
+                                        <div class="form-group">
+                                            <label>
+                                                <input type="radio" name="PfEsicChoice" id="IsPfId" value="1" checked>
+                                                PF
+                                            </label>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4 col-xs-12">
+                                        <div class="form-group">
+                                            <label>
+                                                <input type="radio" name="PfEsicChoice" id="IsEsicId" value="2">
+                                                ESIC
+                                            </label>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4 col-xs-12">
+                                        <div class="form-group">
+                                            <label>
+                                                <input type="radio" name="PfEsicChoice" id="IsPtId" value="3">
+                                                PT
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="row">
+                                    <div class="col-xs-12" id="pfblockid" style="display:none;">
+                                        <div class="form-group currency_box">
+                                            <label>Monthly CTC<span class="" aria-required="true"> </span></label>
+                                            <span class="currency-symbol">&#8377;</span>
+                                            <input type="text" class="form-control input-sm" name="" id="MonthlyCTC" placeholder="Enter Amount" min="0" maxlength="11">
+                                        </div>
+
+                                        <div class="row" id="isPfRadio" style="display:none;">
+                                            <div class="col-xs-12">
+                                                <div class="row">
+                                                    <div class="col-md-6 col-xs-12">
+                                                        <div class="form-group">
+                                                            <label>
+                                                                <input type="radio" name="IsPfchoice" id="IsPfFixed" value="yes">
+                                                                IsPfFixed
+                                                            </label>
+                                                        </div>
+                                                    </div>
+
+                                                    <div class="col-md-6 col-xs-12">
+                                                        <div class="form-group">
+                                                            <label>
+                                                                <input type="radio" name="IsPfchoice" id="IsPfActual" value="no">
+                                                                IsPfActual
+                                                            </label>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div class="row" id="epfId" style="display:none;">
+                                            <div class="col-xs-12">
+                                                <div class="row">
+                                                    <div class="col-md-6 col-xs-12">
+                                                        <div class="form-group currency_box">
+                                                            <label>Employee's Monthly Contribution to EPF<span class="" aria-required="true"> </span></label>
+                                                            <span class="currency-symbol">&#8377;</span>
+                                                            <input type="text" class="form-control input-sm" name="" id="employeePF" placeholder="Employee PF">
+                                                        </div>
+                                                    </div>
+                                                    <div class="col-md-6 col-xs-12">
+                                                        <div class="form-group currency_box">
+                                                            <label>Employer's Monthly Contribution to EPF<span class="" aria-required="true">  </span></label>
+                                                            <span class="currency-symbol">&#8377;</span>
+                                                            <input type="text" class="form-control input-sm" name="" id="providentPF" placeholder="Provident PF">
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div class="row" id="esicId" style="display:none;">
+                                            <div class="col-xs-12">
+                                                <div class="row">
+                                                    <div class="col-md-6 col-xs-12">
+                                                        <div class="form-group currency_box">
+                                                            <label>Employee's Monthly Contribution to ESIC<span class="" aria-required="true"> </span></label>
+                                                            <span class="currency-symbol">&#8377;</span>
+                                                            <input type="text" class="form-control input-sm" name="" id="employeeEsic" placeholder="Employee Esic">
+                                                        </div>
+                                                    </div>
+                                                    <div class="col-md-6 col-xs-12">
+                                                        <div class="form-group currency_box">
+                                                            <label>Employer's Monthly Contribution to ESIC<span class="" aria-required="true">  </span></label>
+                                                            <span class="currency-symbol">&#8377;</span>
+                                                            <input type="text" class="form-control input-sm" name="" id="employerEsic" placeholder="Employer Esic">
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div class="row" id="Ptid" style="display:none;">
+                                            <div class="col-xs-12">
+                                                <div class="row">
+                                                    <div class="col-md-6 col-xs-12">
+                                                        <div class="form-group currency_box">
+                                                            <label>Professional Tax<span class="" aria-required="true"> </span></label>
+                                                            <span class="currency-symbol">&#8377;</span>
+                                                            <input type="text" class="form-control input-sm" name="" id="professionaltax" placeholder="Professional Tax">
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+                <div class="row">
+                    <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                        <hr class="save_hr_line" />
+                        @*<button type="button" class="btn save_btn btn-effect" id="btnCalculate"><i class="fa-solid fa-check"></i>Calculate</button>*@
+                        <button type="button" class="btn save_btn btn-effect" id="btnClear"><i class="fa-solid fa-check"></i>Clear</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+

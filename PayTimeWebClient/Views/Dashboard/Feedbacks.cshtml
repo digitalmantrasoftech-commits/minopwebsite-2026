@@ -1,0 +1,567 @@
+﻿@using System.Configuration;
+@{
+    ViewBag.Title = "Feedbacks";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    string _isdateformat = HttpContext.Current.Session["IsDateFormat"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    int empid = Convert.ToInt32(HttpContext.Current.Session["EmpId"]);
+}
+
+<style type="text/css">
+    .fixed-column {
+        width: 40px !important;
+        min-width: 40px !important;
+        right: 0px;
+        position: sticky !important;
+        background-color: #fff !important;
+    }
+
+    .fixed-column-1 {
+        width: 60px !important;
+        min-width: 60px !important;
+        right: 52px;
+        position: sticky !important;
+        background-color: #fff !important;
+        box-shadow: -1px 0px 3px 0px rgba(0, 0, 0, 0.20);
+    }
+</style>
+<script src="~/Scripts/Helpers/noDataHandler.js"></script>
+<script>
+    const token = '@_tokan';
+    const empid = '@empid';
+    $(document).ready(function () {
+        loadFeedbackData();
+        LoadFeedbackTypes();
+
+
+        // Apply the column Search
+        $("#tblFeedback thead").on("keyup", "input", function () {
+            table.column($(this).parent().index())
+                .search(this.value)
+                .draw();
+        });
+
+        // Filter Click Open Modal Code =========================
+        $("#Filtersearch").on('click', function () {
+            $("#Filtersearch").attr("data-toggle", "modal");
+            $("#Filtersearch").attr("data-target", "#Filtersearch_modal");
+        });
+        let selectedTPid = null;
+        let selectedRowData = null;
+        $('#tblFeedback').on('click', '.btncomment', function (e) {
+            const rowData = $('#tblFeedback').DataTable().row($(this).closest('tr')).data();   
+            selectedTPid = rowData.TPid;
+            selectedRowData = rowData;
+            e.preventDefault();
+            e.stopPropagation();
+            $('#btncomment_modal').modal('show');
+        });
+        
+        $("#submitComments").click(function () {                       
+            let comment = $("#commentText").val().trim();
+            if (!comment && comment == "") {
+                toastr.remove();
+                toastr.error("Please Add Comments.");
+                return false;
+            }
+            const FeedbackData = {
+                EmpID: empid,
+                Comments: comment,
+                TPid: selectedTPid,
+                flag:0
+            }
+            const EmailData = {
+                EmpID: selectedRowData.TraineeId,
+                EmpName: selectedRowData.TraineeName,
+                Email: selectedRowData.Email,
+                FeedbackType: selectedRowData.FeedbackType,
+                Description: selectedRowData.Description,
+                //Date:selectedRowData.
+                Comments: comment
+            }
+            $.ajax({
+                type: 'POST',
+                url: webapiuri + "DashBoard/AddAdminComment",
+                contentType: "application/json; charset=utf-8",
+                headers: {
+                    'Authorization': token
+                },
+                dataType: "json",
+                data: JSON.stringify(FeedbackData),
+                success: function (data) {
+                    toastr.success("Comment saved.");
+                    $('#btncomment_modal').modal('hide');
+                    loadFeedbackData();
+                    $("#commentText").val('');          
+                    sendEmailToEmployee(EmailData);
+                },
+                error: function (xhr, status, error) {
+                    toastr.remove();
+                    toastr.error("Error in submit Comment");
+                }
+            })
+        })
+
+        $("#filterData").click(function () {
+            let type = $("#Feedbacktype").val();
+            let status = $("#selectStatus").val();
+            //let fromDate = $("#fromDate").val();
+            //let ToDate = $("#ToDate").val();
+            if (!type || type === "company-0") {
+                toastr.error("Please select feedback type.");
+                return false;
+            }
+            if (!status || status === "status-0") {
+                toastr.error("Please select Status.");
+                return false;
+            }
+            if ($("#FromDate").val() == "") {
+                $("#FromDate").addClass('field_error');
+                event.preventDefault();
+                return false;
+            }
+            else {
+                $("#FromDate").removeClass('field_error');
+            }
+            if ($("#ToDate").val() == "") {
+                $("#ToDate").addClass('field_error');
+                event.preventDefault();
+                return false;
+            }
+            else {
+                $("#ToDate").removeClass('filed_error');
+            }
+            var fromDate = $("#FromDate").val();
+            var toDate = $("#ToDate").val();
+            if (fromDate > toDate) {
+                toastr.remove();
+                toastr.error("To date should be greater than from date.");
+                return false;
+            }
+            if ("@_isdateformat" == "dd-mm-yyyy") {
+                if ($("#FromDate").val() !== "" && $("#FromDate").val() !== "undefined" && $("#ToDate").val() !== "" && $("#ToDate").val() !== "undefined") {
+                    var fromDate = $("#FromDate").val().split("-");
+                    var _Fromdate = fromDate[2] + "-" + fromDate[1] + "-" + fromDate[0];
+                    var toDate = $("#ToDate").val().split("-");
+                    var _toDate = toDate[2] + "-" + toDate[1] + "-" + toDate[0];
+                }
+                else {
+                    _Fromdate = "";
+                    _toDate = "";
+                }
+            }
+            else if ("@_isdateformat" == "mm-dd-yyyy") {
+                if ($("#FromDate").val() !== "" && $("#FromDate").val() !== "undefined" && $("#ToDate").val() !== "" && $("#ToDate").val() !== "undefined") {
+                    var fromDate = $("#FromDate").val().split("-");
+                    var _Fromdate = fromDate[2] + "-" + fromDate[0] + "-" + fromDate[1];
+                    var toDate = $("#ToDate").val().split("-");
+                    var _toDate = toDate[2] + "-" + toDate[0] + "-" + toDate[1];
+                }
+                else {
+                    _Fromdate = "";
+                    _toDate = "";
+                }
+            }
+            else if ("@_isdateformat" == "yyyy-mm-dd") {
+                if ($("#FromDate").val() !== "" && $("#FromDate").val() !== "undefined" && $("#ToDate").val() !== "" && $("#ToDate").val() !== "undefined") {
+                    var fromDate = $("#FromDate").val().split("-");
+                    var _Fromdate = fromDate[0] + "-" + fromDate[1] + "-" + fromDate[2];
+                    var toDate = $("#ToDate").val().split("-");
+                    var _toDate = toDate[0] + "-" + toDate[1] + "-" + toDate[2];
+                }
+                else {
+                    _Fromdate = "";
+                    _toDate = "";
+                }
+            }
+            else if ("@_isdateformat" == "yyyy-M-dd") {
+                if ($("#FromDate").val() !== "" && $("#FromDate").val() !== "undefined" && $("#ToDate").val() !== "" && $("#ToDate").val() !== "undefined") {
+                    var fromDate = $("#FromDate").val().split("-");
+                    var getMonth = fromDate[1];
+                    var _Fromdate = fromDate[0] + "-" + (GetMonthNumber(getMonth).toString().length > 1 ? GetMonthNumber(getMonth) : "0" + GetMonthNumber(getMonth)) + "-" + fromDate[2];
+                    var toDate = $("#ToDate").val().split("-");
+                    var getMonth = toDate[1];
+                    var _toDate = toDate[0] + "-" + (GetMonthNumber(getMonth).toString().length > 1 ? GetMonthNumber(getMonth) : "0" + GetMonthNumber(getMonth)) + "-" + toDate[2];
+                }
+                else {
+                    _Fromdate = "";
+                    _toDate = "";
+                }
+            }
+            else if ("@_isdateformat" == "M-dd-yyyy") {
+                if ($("#FromDate").val() !== "" && $("#FromDate").val() !== "undefined" && $("#ToDate").val() !== "" && $("#ToDate").val() !== "undefined") {
+                    var fromDate = $("#FromDate").val().split("-");
+                    var getMonth = fromDate[0];
+                    var _Fromdate = fromDate[2] + "-" + (GetMonthNumber(getMonth).toString().length > 1 ? GetMonthNumber(getMonth) : "0" + GetMonthNumber(getMonth)) + "-" + fromDate[1];
+                    var toDate = $("#ToDate").val().split("-");
+                    var getMonth = toDate[0];
+                    var _toDate = toDate[2] + "-" + (GetMonthNumber(getMonth).toString().length > 1 ? GetMonthNumber(getMonth) : "0" + GetMonthNumber(getMonth)) + "-" + toDate[1];
+                }
+                else {
+                    _Fromdate = "";
+                    _toDate = "";
+                }
+            }
+            else if ("@_isdateformat" == "dd-M-yyyy") {
+                if ($("#FromDate").val() !== "" && $("#FromDate").val() !== "undefined" && $("#ToDate").val() !== "" && $("#ToDate").val() !== "undefined") {
+                    var fromDate = $("#FromDate").val().split("-");
+                    var getMonth = fromDate[1];
+                    var _Fromdate = fromDate[2] + "-" + (GetMonthNumber(getMonth).toString().length > 1 ? GetMonthNumber(getMonth) : "0" + GetMonthNumber(getMonth)) + "-" + fromDate[0];
+                    var toDate = $("#ToDate").val().split("-");
+                    var getMonth = toDate[1];
+                    var _toDate = toDate[2] + "-" + (GetMonthNumber(getMonth).toString().length > 1 ? GetMonthNumber(getMonth) : "0" + GetMonthNumber(getMonth)) + "-" + toDate[0];
+                }
+                else {
+                    _Fromdate = "";
+                    _toDate = "";
+                }
+            }
+
+            const Data = {
+                CompanyID: localStorage.getItem("selectedCompanyId"),
+                FeedbackType: parseInt(type),
+                Isstatus: parseInt(status),
+                fromDate: _Fromdate,
+                ToDate: _toDate
+            }
+
+            $.ajax({
+                type: 'POST',
+                url: webapiuri + "DashBoard/FilterFeedbacks",
+                contentType: "application/json; charset=utf-8",
+                headers: {
+                    'Authorization': token
+                },
+                dataType: "json",
+                data: JSON.stringify(Data),
+                beforeSend: function () {
+                    $("#ajax_loader").show();
+                },
+                success: function (data) {
+                    if (data != null) {
+                        const List = data;
+                        handleGridVisibility("tblempty", "NotificationGrid-empty", List, {
+                            imageUrl: "emptyscreen_3.png",
+                            subText: "No matching records found for the selected filters."
+                        });
+                    }
+                    DataTableBind(data);
+                    $("#Filtersearch_modal").modal('hide');
+                },
+                error: function (xhr, status, error) {
+                    toastr.remove();
+                    toastr.error("Error in get");
+                },
+                complete: function () {
+                    $("#ajax_loader").hide();
+                }
+            })
+        })
+
+        $("#cearData").click(function () {
+            $('#Feedbacktype').val('company-0');
+            $("#selectStatus").val('status-0');
+            $('#FromDate').val('');
+            $("#ToDate").val('');
+        })
+
+    });
+    function loadFeedbackData() {
+        let CompanyId = localStorage.getItem("selectedCompanyId");
+        $.ajax({
+            type: "GET",
+            url: webapiuri + "DashBoard/GetFeedbackData?companyId=" + CompanyId,
+            contentType: "application/json; charset=utf-8",
+            headers: {
+                'Authorization': token
+            },
+            success: function (data) {
+                if (data != null) {
+                    const employeeList = data;
+                    handleGridVisibility("tblempty", "NotificationGrid-empty", employeeList, {
+                        imageUrl: "emptyscreen_1.png",
+                        subText: "No entries found. Please add a record to get started."
+                    });
+                }
+                $("#dataTables_tbl_header").remove();
+                DataTableBind(data);
+            },
+            error: function (xhr, status, error) {
+                toastr.remove();
+                toastr.error("");
+            }
+        })
+    }
+    function LoadFeedbackTypes() {
+        $.ajax({
+            type: 'GET',
+            url: webapiuri + "DashBoard/GetFeedbackTypes",
+            contentType: "application/json; charset=utf-8",
+            headers: {
+                'Authorization': token
+            },
+            success: function (data) {
+                let $dropdown = $("#Feedbacktype");
+                $dropdown.empty();
+                $dropdown.append(`<option value="company-0">Select Type</option>`);
+                $.each(data, function (index, item) {
+                    $dropdown.append(`<option value="${item.TPid}">${item.FeedBackType}</option>`);
+                });
+            },
+            error: function () {
+                toastr.error("Failed to load feedback types.");
+            }
+        });
+    }
+    function DataTableBind(data) {        
+        $("#dataTables_tbl_header").remove();
+        var table = $("#tblFeedback").DataTable({
+            dom: _domCommon,
+            language: _languageCommon,
+            ordering: true,
+            deferRender: true,
+            data: data,
+            destroy: true,
+            columns: [
+                { title: "TPid", data: "TPid", visible: false },
+                { title: "TraineeId", data: "TraineeId" },
+                { title: "TraineeName", data: "TraineeName" },
+                { title: "Department", data: "department" },
+                { title: "Email", data: "Email", visible: false },
+                {
+                    title: "Date of feedback",
+                    data: "Dateof feedback",
+                },
+                { title: "Feedback Type", data: "FeedbackType" },
+                { title: "Description", data: "Description" },
+                {
+                    title: "Comments",
+                    data: "Approvefeedback",
+                    render: function (data, type, row) {
+                        return row.Status === "Pending" ? "" : data;
+                    }
+                },
+                { title: "Addressed Date", data: "Addressed Date"},
+                {
+                    title: "Trainee Acknowledgment",
+                    data: "EmpComment",
+                    render: function (data, type, row) {
+                        return data ? data : "";
+                    }
+                },
+                {
+                    title: "Status",
+                    data: "Status",
+                    class: "fixed-column-1",
+                    render: function (data, type, row) {
+                        if (data === "Pending") {
+                            return `<span class="orange_font">Pending</span>`;
+                        } else {
+                            return `<span class="green_font">Addressed</span>`;
+                        }
+                    }
+                },
+                {
+                    title: "Action",
+                    data: null,
+                    class: "fixed-column",
+                    render: function (data, type, row) {
+                        if (row.Status === "Pending") {
+                            return `
+                              <a class="btncomment btn blue_btnnew tooltips" data-toggle="modal" data-target="#btncomment_modal"
+                                 data-placement="left" data-original-title="Comment"><i class="fa-solid fa-check"></i></a>`;
+                        } else {
+                            return "";
+                        }
+                    }
+                },                
+            ],
+            columnDefs: [
+                { orderable: false, targets: [12] }
+            ],
+            initComplete: function () {
+                const visibleTable = $('table:visible').attr('id');
+                $("#buttons").append(`
+                      <div id="export-button" class="export-button tooltips" data-placement="bottom" data-original-title="Download" data-table-id="${visibleTable}">
+                          <img src="../Newlayout/images/download_icon.svg" alt="Download icon">
+                      </div>
+                `);
+            },
+        });
+        setTimeout(function () {
+            $("#" + "tblFeedback" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+            $('.tooltips').tooltip();
+        }, 100);
+    }
+
+    function sendEmailToEmployee(data) { 
+        $.ajax({
+            type: 'POST',
+            url: webapiuri + "DashBoard/SendEmailToEmployee",
+            contentType: "application/json; charset=utf-8",
+            headers: {
+                'Authorization': token
+            },
+            dataType: "json",
+            data: JSON.stringify(data),
+            success: function (data) {                
+            },
+            error: function (xhr, status, error) {
+                toastr.remove();
+                toastr.error("Error in Email Send");
+            }
+        })
+    }
+</script>
+
+<!-- Page Bar : Begin -->
+<div class="page-bar">
+    <ul class="page-breadcrumb">
+        <li>
+            <a href="/Admin/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+        </li>
+        <li>
+            <span><i class="fa-light fa-angle-right"></i> Feedbacks</span>
+        </li>
+    </ul>
+    <div class="page-toolbar">
+        <div class="text-right">
+            <a href="javascript:;" class="btn icon_transparent_btn tooltips" id="Filtersearch" data-placement="left" data-original-title="Filter" data-toggle="tooltip"><i class="fa-light fa-filter" aria-hidden="true"></i> </a>
+        </div>
+    </div>
+</div>
+<!-- Page Bar : End -->
+<!-- Ajax Loader : Begin -->
+<div id='ajax_loader' class="modal_bg loading" aria-hidden="true">
+    <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading" />
+</div>
+<!-- Ajax Loader : End -->
+<!-- Datatable Block : Begin -->
+<div class="row">
+    <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+        <div class="portlet">
+            <div class="portlet-body">
+                <div id="tblempty">
+                    <div class="table-responsive" id="tableResponsive">
+                        <table class="new_datatbl table table-striped table-bordered table-hover table-checkable order-column" id="tblFeedback">
+                            <thead></thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div id="NotificationGrid-empty" style="display: none">
+                    <div class="datanotfound">
+                        <img src="" width="280" height="148" alt="Nodata Found Icon">
+                        <p class="datanotfound_title"></p> <!-- titleText -->
+                        <p class=""></p><!-- subText -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Datatable Block : End -->
+<!-- Add Feedback Modal : Begin -->
+<div id="Filtersearch_modal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+    <div class="modal-dialog w-500">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal">&times;</button>
+                <h4 class="modal-title">Feedback Filter</h4>
+            </div>
+            <div class="modal-body">
+                <div class="modal-card">
+                    <fieldset>
+                        <div class="row">
+                            <div class="col-lg-12">
+                                <div class="form-group">
+                                    <label class="control-label">Feedback Type<span class="required" aria-required="true">*</span></label>
+                                    <select id="Feedbacktype" class="form-control input-sm"></select>
+                                </div>
+                            </div>
+                            <div class="col-lg-12">
+                                <div class="form-group">
+                                    <label class="control-label">Status<span class="required" aria-required="true">*</span></label>
+                                    <select id="selectStatus" class="form-control input-sm">
+                                        <option value="status-0">Select Status</option>
+                                        <option value="1">Addressed</option>
+                                        <option value="0">Pending</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-sm-6 col-xs-12">
+                                <div class="form-group data_picker_box">
+                                    <label class="control-label">From Date<span class="required" aria-required="true">*</span></label>
+                                    <div class="input-group input-group-sm date date-picker" id="" data-date="@DateTime.Now" data-date-format="@_isdateformat" data-date-viewmode="years">
+                                        <span class="input-group-btn">
+                                            <button class="btn default" type="button">
+                                                <i class="fa-light fa-calendar-days"></i>
+                                            </button>
+                                        </span>
+                                        <input type="text" class="form-control" id="FromDate" data-date-format="@_isdateformat" placeholder="@_isdateformat.Replace("M","MMM")" autocomplete="off">
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-sm-6 col-xs-12">
+                                <div class="form-group data_picker_box">
+                                    <label class="control-label">To Date<span class="required" aria-required="true">*</span></label>
+                                    <div class="input-group input-group-sm date date-picker" id="" data-date="@DateTime.Now" data-date-format="@_isdateformat" data-date-viewmode="years">
+                                        <span class="input-group-btn">
+                                            <button class="btn default" type="button">
+                                                <i class="fa-light fa-calendar-days"></i>
+                                            </button>
+                                        </span>
+                                        <input type="text" class="form-control" id="ToDate" data-date-format="@_isdateformat" placeholder="@_isdateformat.Replace("M","MMM")" autocomplete="off">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </fieldset>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <div class="row">
+                    <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                        <button type="button" class="btn icon_addbtn" id="cearData"><i class="fa-regular fa-eraser"></i> Clear</button>
+                        <button type="button" class="btn save_btn" id="filterData"><i class="fa-solid fa-magnifying-glass"></i>Search</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Add Feedback Modal : End -->
+<!-- Comments Modal : Begin -->
+<div id="btncomment_modal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+    <div class="modal-dialog w-500">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal">&times;</button>
+                <h4 class="modal-title">Comment</h4>
+            </div>
+            <div class="modal-body">
+                <div class="modal-card">
+                    <fieldset>
+                        <div class="row">
+                            <div class="col-lg-12">
+                                <div class="form-group">
+                                    <label>Comments <span class="required" aria-required="true">*</span></label>
+                                    <textarea class="form-control" rows="5" name="" id="commentText" placeholder="Please Enter Comments"></textarea>
+                                </div>
+                            </div>
+                        </div>
+                    </fieldset>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <div class="row">
+                    <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                        <button type="button" class="btn save_btn" id="submitComments">Submit</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Comments Modal : End -->

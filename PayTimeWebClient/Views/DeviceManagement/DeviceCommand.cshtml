@@ -1,0 +1,350 @@
+﻿@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@{
+    ViewBag.Title = "Device Command";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    string _Message = ViewBag.msg;
+    string _error = ViewBag.error;
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    string _webapiurl = System.Configuration.ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+    string _isdateformat = HttpContext.Current.Session["IsDateFormat"].ToString();
+    string _dbName = HttpContext.Current.Session["DbName"].ToString();
+
+    string isClientDBMatchFlag = HttpContext.Current.Session["IsClientDBMatch"] != null
+  ? HttpContext.Current.Session["IsClientDBMatch"].ToString()
+  : "false"; // Default to "false" if the session is null
+}
+<script src="~/Scripts/timeme.js"></script>
+<script src="~/AssetsNew/js/CommonValidation.js"></script>
+<script src="~/Scripts/Helpers/noDataHandler.js"></script>
+<script>
+    var count = 0;
+    var form = "Device Command";
+    var operation = "";
+    $(document).ready(function () {
+        /*timeMeInitialize function is  a javascript library which displays a timer to display how long you are actively viewing the current webpage.*/
+        timeMeInitialize();
+        var t = $('#tbldevice').DataTable(
+            {
+                     dom: _domCommon,
+                     language: _languageCommon,
+                     "processing": true,
+                     "ajax": {
+                         url: '@_webapiurl' + 'DeviceManagement/DeviceCommandsGetAll',
+                         type: "GET",
+                         headers: { 'Authorization': '@_tokan' },
+                         dataSrc: '',
+                     },
+                     "columns": [
+                         { "data": "DEV_CMD_ID" },
+                         { "data": "DEVICE_SN" },
+                         {
+                             "data": "CMD_CONTENT",
+                             "render": function (data) {
+                                 var cmd = ""
+                                 if (data.indexOf("INFO") != -1) {
+                                     cmd = "INFO";
+                                 }
+                                 if (data.indexOf("DATA UPDATE USERINFO") != -1) {
+                                     var i = data.indexOf("PIN=");
+                                     var j = data.indexOf("Name=");
+                                     var subStr = data.substring(i + 4, j)
+                                     cmd = "Upload user details for punchid " + subStr;
+                                 }
+                                 if (data.indexOf("DATA UPDATE FINGERTMP") != -1) {
+                                     var i = data.indexOf("PIN=");
+                                     var j = data.indexOf("FID=");
+                                     var subStr = data.substring(i + 4, j)
+                                     cmd = "Upload user finger for punchid " + subStr;
+                                 }
+                                 if (data.indexOf("DATA UPDATE USERPIC") != -1) {
+                                     var i = data.indexOf("PIN=");
+                                     var j = data.indexOf("tSize=");
+                                     var subStr = data.substring(i + 4, j)
+                                     cmd = "Upload user picture for punchid " + subStr;
+                                 }
+                                 if (data.indexOf("DATA UPDATE FACE") != -1) {
+                                     var i = data.indexOf("PIN=");
+                                     var j = data.indexOf("FID=");
+                                     var subStr = data.substring(i + 4, j)
+                                     cmd = "Upload user face for punchid " + subStr;
+                                 }
+                                 if (data.indexOf("DATA QUERY USERINFO") != -1) {
+                                     var i = data.indexOf("PIN=");
+                                     var j = data[data.length - 1];
+                                     var subStr = data.substring(i + 4, data.length)
+                                     cmd = "Download user details for punchid " + subStr;
+                                 }
+                                 if (data.indexOf("CHECK") != -1) {
+                                     cmd = "Download user from device";
+                                 }
+                                 return cmd;
+                             }
+                         },
+                         { "data": "CMD_COMMIT_TIMES" },
+                         { "data": "CMD_TRANS_TIMES" },
+                         { "data": "CMD_OVER_TIME" },
+                         {
+                             "data": "CMD_RETURN",
+                             "render": function (data) {
+                                 switch (data) {
+                                     case "0":
+                                         text = "Successful";
+                                         break;
+                                     case "1":
+                                         text = "Successful";
+                                         break;
+                                     case "2":
+                                         text = "Enrolling User Print, the fingerprint of corresponding user already exists";
+                                         break;
+                                     case "4":
+                                         text = "Enrolling User Print, enrollment failure, which is usually due to poor quality or not the same fingerprint enrolled for three times";
+                                         break;
+                                     case "5":
+                                         text = "Enrolling User Print, the enrolled fingerprint already exists in the database";
+                                         break;
+                                     case "6":
+                                         text = "Enrolling User Print, enrollment is cancelled";
+                                         break;
+                                     case "7":
+                                         text = "Enrolling User Print, the equipment is busy and enrollment cannot be conducted";
+                                         break;
+                                     case "-1":
+                                         text = "The parameter is incorrect. ";
+                                         break;
+                                     case "-2":
+                                         text = "The transmitted user photo data does not match the given size";
+                                         break;
+                                     case "-3":
+                                         text = "Reading or writing is incorrect";
+                                         break;
+                                     case "-9":
+                                         text = "The transmitted template data does not match the given size";
+                                         break;
+                                     case "-10":
+                                         text = "The user specified by PIN does not exist in the equipment";
+                                         break;
+                                     case "-11":
+                                         text = "The fingerprint template format is illegal";
+                                         break;
+                                     case "-12":
+                                         text = "The fingerprint template is illegal";
+                                         break;
+                                     case "-1001":
+                                         text = "Limited capacity";
+                                         break;
+                                     case "-1002":
+                                         text = "Not supported by the equipment";
+                                         break;
+                                     case "-1003":
+                                         text = "Command execution timeout";
+                                         break;
+                                     case "-1004":
+                                         text = "The data and equipment configuration are inconsistent";
+                                         break;
+                                     case "-1005":
+                                         text = "The equipment is busy";
+                                         break;
+                                     case "-1006":
+                                         text = "The data is too long";
+                                         break;
+                                     case "-1007":
+                                         text = "Memory error";
+                                         break;
+                                     default:
+                                         text = "";
+                                 }
+                                 return text;
+                             }
+                         },
+                         { "data": "CMD_RETURN_INFO" }
+                     ],
+                     "columnDefs": [
+                         {
+                             "targets": [4, 7],
+                             "visible": false
+                         }],
+                     "order": [[0, 'desc']],
+                "initComplete": function (json) {
+                        if (json != null) {
+                            const dc = json.json;
+                                    handleGridVisibility("tblempty", "NotificationGrid-empty", dc, {
+                                    imageUrl: "emptyscreen_3.png",
+                                    subText: "No matching records found for the selected filters."
+                                });
+                            }
+                         var column = t.column(1);
+                         var select = $('<select class="form-control"><option value="">All</option></select>')
+                             .appendTo('#selectTriggerFilter')
+                             .on('change', function () {
+                                 var val = $.fn.dataTable.util.escapeRegex(
+                                     $(this).val()
+                                 );
+
+                                 column
+                                     .search(val ? '^' + val + '$' : '', true, false)
+                                     .draw();
+                             });
+
+                         column.data().unique().sort().each(function (d, j) {
+                             select.append('<option value="' + d + '">' + d + '</option>')
+                         });
+                     }
+                 }
+        );
+        setTimeout(function () {
+            $("#" + "tbldevice" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+            $('.tooltips').tooltip();
+        }, 100);
+        setInterval(function () {
+            t.ajax.reload();
+        }, 10000);
+        window.onload = function () {
+            timeSpentOnPage();
+        }
+        $(window).on("beforeunload", function () {
+            if (operation == "" || operation == null || operation == '') {
+                operation = "View Device Command";
+            }
+            var url = '@_webapiurl' + '/DashBoard/AddAnalyticsUser';
+            var timeSpent = timeSpentOnPage();
+            analyticsDataUsage(url, '@_dbName', form, '@_tokan', count, operation, timeSpent)
+        })
+
+        //$("#Filter_search").click(function () {
+        //    $("#filter_open_div").toggle();
+        //});
+
+        $("#Filter_search").click(function () {
+            const wrapper = $(".filter_portlet_wrapper");
+            wrapper.toggleClass("full-width");
+
+            var screenWidth = $(window).width();
+            if (screenWidth >= 300 && screenWidth <= 600) {
+                $('.filter_portlet_tbl').toggle();
+                $('.filter_portlet_wrapper .filter_boxModal').css('width', '100%');
+            }
+        });
+
+        // Close filter panel on close button click
+        $(".filterclose_btn").click(function () {
+            const wrapper = $(".filter_portlet_wrapper");
+            wrapper.addClass("full-width");
+
+            var screenWidth = $(window).width();
+            if (screenWidth >= 300 && screenWidth <= 600) {
+                $(".filter_portlet_tbl").css("display", "block");
+            }
+        });
+
+    });
+</script>
+
+<div class="page-bar">
+    @if (_RoleId == 1 || _RoleId == 6805 || _RoleId == 6806)
+    {
+        <ul class="page-breadcrumb">
+            <li>
+                @if (isClientDBMatchFlag == "True")
+                {
+                    <a href="/Admin/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+                }
+                else
+                {
+                    <a href="/Dashboard/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+                }
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> Device Command</span>
+            </li>
+        </ul>
+    }
+    else
+    {
+        <ul class="page-breadcrumb">
+            <li>
+                <a href="/Dashboard/EmployeeDashboard"><i class="fa-regular fa-house"></i></a>
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> Device Command</span>
+            </li>
+        </ul>
+    }
+    <div class="page-toolbar text-right">
+        <a href="javascript:;" class="btn icon_transparent_btn tooltips" id="Filter_search" data-placement="left" data-original-title="Filter" data-toggle="tooltip"><i class="fa-light fa-filter" aria-hidden="true"></i> </a>
+    </div>
+</div>
+
+<div class="filter_portlet_wrapper full-width">
+
+    <!-- Datatable Block : Begin -->
+    <div class="portlet filter_portlet_tbl">
+        <div class="portlet-body">
+            <div class="row">
+                <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                    <div id="tblempty">
+                        <div class="table-responsive" id="tableResponsive">
+                            <table id="tbldevice" class="new_datatbl table table-striped table-bordered table-hover table-checkable order-column ">
+                                <thead>
+                                    <tr>
+                                        @*<th>Sr. No</th>*@
+                                        <th style="min-width: 80px;">Command Id</th>
+                                        <th>Device Serial Number</th>
+                                        <th>Command Content</th>
+                                        <th>Commit Time <i class='fa-regular fa-circle-info tooltips' data-placement='bottom' title='Date format is : @_isdateformat.ToUpper()' style='color: #295097;'></i></th>
+                                        <th hidden>Transfer Time</th>
+                                        <th>Return Time</th>
+                                        <th>Return Value</th>
+                                        <th hidden>Return info</th>
+                                    </tr>
+                                </thead>
+                            </table>
+                        </div>
+                    </div>
+                    <div id="NotificationGrid-empty" style="display: none">
+                        <div class="datanotfound">
+                            <img src="" height="148" width="280" alt="Nodata Found Icon">
+                            <p class="datanotfound_title"></p> <!-- titleText -->
+                            <p class=""></p><!-- subText -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Datatable Block : End -->
+    <!-- Filter Block : Begin -->
+    <div class="portlet filter_boxModal">
+        <div class="filterbox_header">
+            <div class="d-flex align-items-center justify-content-between">
+                <h4 class="filter-title">Filters</h4>
+                <button type="button" class="filterclose_btn"><i class="fa-light fa-xmark"></i></button>
+            </div>
+        </div>
+        <div class="filterbox_body">
+            <div class="col-lg-12">
+                <div class="form-group margin-0" id="selectTriggerFilter">
+                    <label class="control-label">Filter:</label>
+                </div>
+            </div>
+        </div>
+        <div class="filterbox_footer">
+            <div class="text-right">
+            </div>
+        </div>
+    </div>
+    <!-- Filter Block : End -->
+
+</div>

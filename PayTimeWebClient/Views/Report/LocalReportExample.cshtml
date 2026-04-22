@@ -1,0 +1,545 @@
+﻿@model PayTimeWebClient.Models.reqDailyInOutReport
+@using System.Data;
+@using PayTimeWebClient.Helper;
+@using System.Configuration;
+@using PayTimeWebClient.Models;
+@{
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+
+    ViewBag.Title = "PayTimeWebReports";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    //string _ReportName = HttpContext.Current.Request.["name"].ToString();
+    //string selectedOption = ViewBag.SelectedOption;
+    ReportDataRestClient objreport = new ReportDataRestClient();
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenurole = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenurole.Where(m => m.ActionUrl.ToLowerInvariant().Equals(actionurl.ToLowerInvariant()));
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+    //string V = "Analytics DashBoard";
+
+    //obj.RoleMenuData = selectedUserMenurole.Where(m => m.OperationName == V);
+
+    //foreach (RoleRightsMapping item in obj.RoleMenuData)
+    //{
+    //    obj = item;
+    //}
+
+    int ankercnt = 1;
+    string IsSchool = HttpContext.Current.Session["IsSchool"].ToString();
+    string _isdateformat = HttpContext.Current.Session["IsDateFormat"].ToString();
+
+    string isClientDBMatchFlag = HttpContext.Current.Session["IsClientDBMatch"] != null
+  ? HttpContext.Current.Session["IsClientDBMatch"].ToString()
+  : "false"; // Default to "false" if the session is null
+}
+
+<script>
+    var selectedEmpArray = new Array();
+    $(document).ready(function () {
+
+        var flgscl = '@IsSchool';
+        if (flgscl == "1") {
+            $('.repo_right p').css({ "font-size": "13px", "padding-top": "0" });
+        }
+        $('.row a').click(function (e) {
+            if ($("#CompanyID").val() == "") {
+                toastr.remove();
+                toastr.error("Please select company. ");
+                $("body").toggleClass("page-quick-sidebar-open");
+                return false;
+            }
+            if ($("#BranchId").val() == "") {
+                toastr.remove();
+                toastr.error("Please select branch.");
+                $("#BranchId").addClass('field_error');
+                $("body").addClass("page-quick-sidebar-open");
+                return false;
+            }
+
+            if ($("#FromDate").val() == "") {
+                toastr.remove();
+                toastr.error("Please select from date.");
+                $("body").addClass("page-quick-sidebar-open");
+                $("#FromDate").addClass('field_error');
+                return false;
+            }
+            if ($("#Todate").val() == "") {
+                toastr.remove();
+                toastr.error("Please select to date.");
+                $("#Todate").addClass('filed_error');
+                $("body").addClass("page-quick-sidebar-open");
+                return false;
+            }
+            if ('@_isdateformat' == "dd-mm-yyyy") {
+                if ($("#FromDate").val() != "" && $("#Todate").val() != "") {
+                    var datefrom = $("#FromDate").val().split("-");
+                    var todate = $("#Todate").val().split("-");
+                    datefrom = datefrom[2] + "-" + datefrom[1] + "-" + datefrom[0];
+                    todate = todate[2] + "-" + todate[1] + "-" + todate[0];
+                    if (datefrom > todate) {
+                        toastr.remove();
+                        toastr.error("To date should be greater than from date.");
+                        return false;
+                    }
+                }
+
+            }
+            else {
+                var datefrom = $("#FromDate").val();
+                var todate = $("#Todate").val();
+                // Convert the date strings to Date objects
+                var fromDateObj = new Date(datefrom);
+                var toDateObj = new Date(todate);
+
+                if (fromDateObj > toDateObj) {
+                    toastr.remove();
+                    toastr.error("To date should be greater than from date.");
+                    return false;
+                }
+            }
+
+            if ($("#txt2").val() == 0) {
+                toastr.remove();
+                toastr.error("Please select at least one  department.");
+                $("#txt2").addClass('filed_error');
+                $("body").addClass("page-quick-sidebar-open");
+                return false;
+            }
+
+            var selectedEmpArray = [];
+            $("#tblemp .ClsChkEmp").each(function () {
+                if ($(this).is(':checked') == true) {
+                    selectedEmpArray.push($(this).attr("id"));
+                }
+            });
+            if (selectedEmpArray.length == 0) {
+                toastr.remove();
+                toastr.error("Please select employee.");
+                $("body").addClass("page-quick-sidebar-open");
+                return false;
+            }
+            var rptname = $(this).find('p').text().trim();
+            var vcrptid = $(this).find('#hdncrptid').val();
+            var vcrpttypeid = $(this).find('#hdncrpttype').val() == "Daily Report" ? 1 : $(this).find('#hdncrpttype').val() == "Monthly Report" ? 2 : $(this).find('#hdncrpttype').val() == "Daily Report Flexi" ? 4 : 3;
+            var vcrptheader = $(this).find('#hdncrptHeaderName').val();
+            if (flgscl == "1") {
+                //if (rptname == "Daily Attendance Details Report") {
+                //    $('#ReportName').val('Daily_Attendance_Details');
+                //    $('#RptID').val(1);
+                //}
+                //if (rptname == "Attendance Percentage Report") {
+                //    $('#ReportName').val('Student_wise_Attendance_Percentage');
+                //    $('#RptID').val(2);
+                //}
+                //if (rptname == "Punch Details Report") {
+                //    $('#ReportName').val('Student_Punch_Detail');
+                //    $('#RptID').val(3);
+                //}
+                //if (rptname == "Daily Attendance Summary") {
+                //    $('#ReportName').val('Student_Wise_Daily_Attendance_Summary');
+                //    $('#RptID').val(4);
+                //}
+                //if (rptname == "Absent List Report") {
+                //    $('#ReportName').val('Student_Absent_List');
+                //    $('#RptID').val(5);
+                //}
+                //if (rptname == "Monthly Attendance") {
+                //    $('#ReportName').val('Monthly_Attendance');
+                //    $('#RptID').val(6);
+                //}
+
+                if (rptname == "Student Daily Attendance Details Report") {
+                    $('#ReportName').val('Daily_Attendance_Details');
+                    $('#RptID').val(1);
+                }
+                if (rptname == "Student Wise Attendance Percentage Report") {
+                    $('#ReportName').val('Student_wise_Attendance_Percentage');
+                    $('#RptID').val(2);
+                }
+                if (rptname == "Student Punch Details Report") {
+                    $('#ReportName').val('Student_Punch_Detail');
+                    $('#RptID').val(3);
+                }
+                if (rptname == "Student Wise Daily Attendance Summary") {
+                    $('#ReportName').val('Student_Wise_Daily_Attendance_Summary');
+                    $('#RptID').val(4);
+                }
+                if (rptname == "Absent Student List Report") {
+                    $('#ReportName').val('Student_Absent_List');
+                    $('#RptID').val(5);
+                }
+                if (rptname == "Monthly Attendance") {
+                    $('#ReportName').val('Monthly_Attendance');
+                    $('#RptID').val(6);
+                }
+
+
+            }
+            else {
+
+                if (rptname == "Daily In-Out Report") {
+                    $('#ReportName').val('DailyInOutReport');
+                    $('#RptID').val(1);
+                }
+                else if (rptname == "Daily In-Out DeviceName Report") {
+                    $('#ReportName').val('DailyInOutDeviceNameReport');
+                    $('#RptID').val(2);
+
+                }
+                else if (rptname == "First IN Last OUT Report") {
+                    $('#ReportName').val('FirstINLastOUTReport');
+                    $('#RptID').val(3);
+
+                }
+                else if (rptname == "Daily In Report") {
+                    $('#ReportName').val('DailyInReport');
+                    $('#RptID').val(4);
+                }
+                else if (rptname == "Error Case Report") {
+                    $('#ReportName').val('ErrorCaseReport');
+                    $('#RptID').val(5);
+                }
+                else if (rptname == "Absent Report") {
+                    $('#ReportName').val('AbsentReport');
+                    $('#RptID').val(6);
+                }
+                else if (rptname == "Late IN Report") {
+                    $('#ReportName').val('LateINReport');
+                    $('#RptID').val(7);
+                }
+                else if (rptname == "Early IN Report") {
+                    $('#ReportName').val('EarlyINReport');
+                    $('#RptID').val(8);
+                }
+                else if (rptname == "Early Departure Report") {
+                    $('#ReportName').val('EarlyOutReport');
+                    $('#RptID').val(9);
+                }
+                else if (rptname == "Late Departure Report") {
+                    $('#ReportName').val('LateOutReport');
+                    $('#RptID').val(10);
+                }
+                else if (rptname == "OT Report") {
+                    $('#ReportName').val('OTReport');
+                    $('#RptID').val(11);
+                }
+                else if (rptname == "Continuous Late Arrival Report") {
+                    $('#ReportName').val('LateArrivalReport');
+                    $('#RptID').val(12);
+                }
+                else if (rptname == "Continuous Early Departure Report") {
+                    $('#ReportName').val('ContinuousEarlyDepartureReport');
+                    $('#RptID').val(13);
+                }
+                else if (rptname == "Continuous Absenteeism Report") {
+                    $('#ReportName').val('ContinuousAbsenteeismReport');
+                    $('#RptID').val(14);
+                }
+                else if (rptname == "Machine Raw Transaction Report") {
+                    $('#ReportName').val('MachineRawTransactionReport');
+                    $('#RptID').val(15);
+                }
+                else if (rptname == "Manual Punch Report") {
+                    $('#ReportName').val('ManualPunchReport');
+                    $('#RptID').val(16);
+                }
+                else if (rptname == "Department Summary Report") {
+                    $('#ReportName').val('DepartmentSummaryReport');
+                    $('#RptID').val(17);
+                }
+                else if (rptname == "Early In Summary Report") {
+                    $('#ReportName').val('EarlyInSummaryReport');
+                    $('#RptID').val(18);
+                }
+                else if (rptname == "Monthly Muster Report") {
+                    $('#ReportName').val('MonthlyMusterReport');
+                    $('#RptID').val(19);
+                }
+                else if (rptname == "Monthly Working Duration Report") {
+                    $('#ReportName').val('MonthlyWorkingDurationReport');
+                    $('#RptID').val(20);
+                }
+                else if (rptname == "Leave Balance Report") {
+                    $('#ReportName').val('LeaveBalanceReport');
+                    $('#RptID').val(21);
+                }
+                else if (rptname == "Monthly Bio-Metric Report") {
+                    $('#ReportName').val('MonthlyMusterCustom');
+                    $('#RptID').val(22);
+                }
+                else if (rptname == "Monthly Attendance Report") {
+                    $('#ReportName').val('MonthlyWorkingDurationCustom');
+                    $('#RptID').val(23);
+                }
+                else if (rptname == "Daily Flexi In-Out Report") {
+                    $('#ReportName').val('DailyFlexiInOutReport');
+                    $('#RptID').val(24);
+                }
+                else if (rptname == "Mask Report") {
+                    $('#ReportName').val('Dailypresentwithoutmaskreport');
+                    $('#RptID').val(25);
+                }
+                else if (rptname == "Temperature Report") {
+                    $('#ReportName').val('Dailyhightempraturedetectedreport');
+                    $('#RptID').val(26);
+                }
+                else if (rptname == "Failed status Report") {
+                    $('#ReportName').val('Dailyhightempraturedetectedreport');
+                    $('#RptID').val(27);
+                }
+                else if (rptname == "Face / Web Punch  Report") {
+                    $('#ReportName').val('FaceWebPunchReport');
+                    $('#RptID').val(28);
+                }
+                else if (rptname == "Leave Balance Summary Report") {
+                    $('#ReportName').val('LeaveBalanceSummaryReport');
+                    $('#RptID').val(29);
+                }
+                else if (rptname == "Weekly Flexi In-Out Report") {
+                    $('#ReportName').val('WeeklyFlexiInOutReport');
+                    $('#RptID').val(30);
+                }
+                else if (rptname == "Monthly Flexi In-Out Report") {
+                    $('#ReportName').val('MonthlyFlexiInOutReport');
+                    $('#RptID').val(31);
+                }
+                else if (rptname == "Face WebPunch Details") {
+                    $('#ReportName').val('FaceWebPunchFiloReport');
+                    $('#RptID').val(32);
+                }
+                else if (rptname == "Punch Wise Report") {
+                    $('#ReportName').val('Punchwisereport');
+                    $('#RptID').val(33);
+                }
+                else if (rptname == "Miss Punch Report") {
+                    $('#ReportName').val('Misspunchreport');
+                    $('#RptID').val(34);
+                }
+                else if (rptname == "Joining and Rejoining Report") {
+                    $('#ReportName').val('JoinrejoinReport');
+                    $('#RptID').val(35);
+                }
+                    //FastTrack Report
+                else if (rptname == "GatePassIssueReport") {
+                    $('#ReportName').val('GatePassIssueReport');
+                    $('#RptID').val(36);
+                }
+                else if (rptname == "GatePassPolicy AssignReport") {
+                    $('#ReportName').val('GatePassPolicyAssignedReport');
+                    $('#RptID').val(37);
+                }
+                else if (rptname == "DailyInOut SecurityReport") {
+                    $('#ReportName').val('DailyInOutSecurityReport');
+                    $('#RptID').val(38);
+                }
+                else if (rptname == "MonthlyAttendanceReport") {
+                    $('#ReportName').val('MonthlyAttendanceReport');
+                    $('#RptID').val(39);
+                }
+                else if (rptname == "EmployeePunch Comparison Report") {
+                    $('#ReportName').val('EmployeePunchComparisonReport');
+                    $('#RptID').val(40);
+                }
+                else if (rptname == "Leave Balance Status Report") {
+                    $('#ReportName').val('LeaveBalanceStatusReport');
+                    $('#RptID').val(41);
+                }
+                else if (rptname == "Daily Operations Summary Report")
+                {
+                    $('#ReportName').val('DailyOperationsSummaryReport');
+                    $('#RptID').val(42);
+                }
+                else if (rptname == "Installation Status Report") {
+                    $('#ReportName').val('InstallationStatusReport');
+                    $('#RptID').val(43);
+                }
+                else if (rptname == "Face Web Punch Details Report") {
+                    $('#ReportName').val('FaceWebPunchDetailsReport');
+                    $('#RptID').val(44);
+                }
+                else if (rptname == "Monthly KM Report") {
+                    $('#ReportName').val('MonthlyKMReport');
+                    $('#RptID').val(45);
+                }
+                else if (rptname == "Daily Working Hours Report") {
+                    $('#ReportName').val('DailyWorkingHoursReport');
+                    $('#RptID').val(46);
+                }
+                else if (rptname == "Daily Working Hours IN/OUT Report") {
+                    $('#ReportName').val('DailyWorkingHoursINOUTReport');
+                    $('#RptID').val(47);
+                }
+                else if (rptname == "Absent Report Details") {
+                    $('#ReportName').val('AbsentReportDetails');
+                    $('#RptID').val(48);
+                }
+                else if (rptname == "Attendance Correction Report") {
+                    $('#ReportName').val('AttendanceCorrectionReport');
+                    $('#RptID').val(49);
+                }
+                else {
+
+                    if (vcrptid == 0) {
+
+                        alert('Report is under construction');
+                        return;
+                    }
+                    else {
+                        $('#crptid').val(vcrptid);
+                        $('#RptID').val(vcrpttypeid);
+                        $('#ReportName').val(vcrptheader);
+                    }
+                }
+            }
+            $('#frmrpt').submit();
+
+
+
+        });
+    });
+</script>
+<div class="page-bar">
+    <ul class="page-breadcrumb">
+        @if (IsSchool == "1")
+        {
+            <li>
+                <a href="/School/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+            </li>
+        }
+        else
+        {
+            if (_RoleId == 1 || _RoleId == 6805 || _RoleId == 6806)
+            {
+                <li>
+                    <a href="@(isClientDBMatchFlag == "True" ? "/Admin/AdminDashboard" : "/Dashboard/AdminDashboard")"><i class="fa-regular fa-house"></i></a>
+                </li>
+            }
+            else
+            {
+                <li>
+                    <a href="/Dashboard/EmployeeDashboard"><i class="fa-regular fa-house"></i></a>
+                </li>
+            }
+        }
+        <li><i class="fa-light fa-angle-right"></i> 
+            <span>
+                Report
+            </span>
+        </li>
+    </ul>
+    @if (obj.CanView)
+    {
+        <div class="page-toolbar">
+            <div class="text-right">
+                <div class="dropdown dropdown-quick-sidebar-toggler">
+                    <a href="javascript:;" class="dropdown-toggle btn icon_btn tooltips" data-placement="left" title="Filter">
+                        <i class="fa-light fa-filter"></i>
+                    </a>
+                </div>
+            </div>
+        </div>
+    }
+</div>
+
+@if (obj.CanView)
+{
+    <div class="row">
+        <div class="col-md-12">
+            <div class="note note-info" id="filternote">
+                <h4 class="block">Reports</h4>
+                <p id="filterpara"></p>
+            </div>
+            <div class="portlet-body">
+                <div class="row">
+                    @{
+    if (!string.IsNullOrEmpty(_tokan) && _RoleId > 0)
+    {
+
+        var selectedUserMenu = objusedetails.GetReportDashBoardRoleWise(_RoleId);
+        var ParentMenu = selectedUserMenu.Where(m => m.ParentMenuName == null).Select(m => new { m.OperationName, m.ImgClassName }).Distinct();
+        //parent
+        foreach (var item in ParentMenu)
+        {
+
+
+            //child
+
+            <div class="">
+                <div style="display:none;">
+                    @ankercnt=1;
+                </div>
+                @foreach (PayTimeWebClient.Models.reqDailyInOutReport itemSub in selectedUserMenu.Where(m => m.ParentMenuName == item.OperationName))
+                {
+                    <div class="col-xl-3 col-md-6 col-lg-3 col-sm-6 col-xs-12">
+                        <a href="#" class="local_report_icon report_@ankercnt">
+                            <div class="repo_bg">
+                                <div class="repo_left"><i class="@itemSub.ImgClassName"></i></div>
+                                <div class="repo_right">
+                                    <p>@itemSub.OperationName</p>
+                                </div>
+                            </div>
+                        </a>
+                    </div>
+                    ankercnt++;
+                }
+
+            </div>
+
+        }
+
+
+        var customreporttemplate = objreport.GetCustomreportlist();
+
+        if (customreporttemplate != null && _RoleId == 1)
+        {
+
+
+            <div style="display:none;">
+                <div style="display:none;">
+                    @ankercnt=1;
+                </div>
+                @foreach (PayTimeWebClient.Models.Reporttemplate itemSub in customreporttemplate)
+                {
+                    <div class="col-xl-3 col-md-6 col-lg-3 col-sm-6 col-xs-12">
+                        <a href="#" class=@ankercnt>
+                            <div class="repo_bg">
+                                <div class="repo_left"><i class="fa-regular fa-file-lines"></i></div>
+                                <div class="repo_right">
+                                    <p>@itemSub.ReportName</p><input type="hidden" id="hdncrptid" value="@itemSub.ReportId" /><input type="hidden" id="hdncrpttype" value="@itemSub.ReportType" /><input type="hidden" id="hdncrptHeaderName" value="@itemSub.ReportHeaderName" />
+                                </div>
+                            </div>
+                        </a>
+                    </div>
+                    ankercnt++;
+                }
+
+            </div>
+
+        }
+
+    }
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="page-quick-sidebar-wrapper report_model" data-close-on-body-click="false">
+        <div class="page-quick-sidebar">
+            @Html.Partial("_ReportFilter")
+        </div>
+    </div>
+}
+else
+{
+    <span style="color:red">Unauthorized Access.</span>
+}

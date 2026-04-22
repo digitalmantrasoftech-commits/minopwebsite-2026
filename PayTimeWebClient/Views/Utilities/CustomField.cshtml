@@ -1,0 +1,563 @@
+﻿@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@{
+    ViewBag.Title = "CustomField";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    string _webapiurl = System.Configuration.ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+    string isClientDBMatchFlag = HttpContext.Current.Session["IsClientDBMatch"] != null
+    ? HttpContext.Current.Session["IsClientDBMatch"].ToString()
+    : "false"; // Default to "false" if the session is null
+}
+
+<script type="text/javascript">
+	$(document).ready(function () {
+		var t = $('#tblCustomFields').DataTable(
+	{
+		"processing": true,
+		"ajax": {
+			url: '@_webapiurl' + 'Master/tblCustomFieldGetAllGrid',
+			type: "GET",
+			headers: { 'Authorization': '@_tokan' },
+			dataSrc: '',
+		},
+		"columns": [
+			{ "data": null },
+			{ "data": "CustomFieldID" },
+			{ "data": "FieldTypeID" },
+			{ "data": "FieldID" },
+			{ "data": "SequenceNo" },
+			{ "data": "CustomPageID" },
+			{ "data": "FieldLabel" },
+			{ "data": "FieldPlaceHolder" },
+			{ "data": "FieldTypeName" },
+			{ "data": "CustomPageName" },
+			{ "data": "Iscompulsory" },
+		],
+		"columnDefs": [
+			{
+				"targets": [1,2,4,5,6,7,9],
+				"visible": false
+			},
+			{
+				"targets": 11,
+				"data": null,
+				"render": function (data, type, full, meta) {
+					if ('@obj.CanEdit.ToString()' == 'True') {
+					data = "<a class='editclass btn btn-xs blue tooltips' title='Edit'><i class='fa-regular fa-pen-to-square'></i></a";
+					}
+					else {
+					data = "";
+					}
+					return data;
+				}
+
+			},
+			{
+				"searchable": false,
+				"orderable": false,
+				"targets": 0
+			}],
+		"order": [[1, 'asc']],
+	}
+	);
+		t.on('order.dt search.dt', function () {
+			t.column(0, { search: 'applied', order: 'applied' }).nodes().each(function (cell, i) {
+				cell.innerHTML = i + 1;
+			});
+		}).draw();
+		$("#Add").on('click', function () {
+			$("#FieldLabel").removeClass('field_error');
+			$("#FieldID").removeClass('field_error');
+			$("#FieldTypeID").removeClass('field_error');
+			//$("#CustomPageID").removeClass('field_error');
+			//$("#SequenceNo").removeClass('field_error');
+			frmClear();
+			fillcustomfieldtype()
+			//fillPage();
+			fillSequenceNo(0, 0);
+			$("#Add").attr("data-toggle", "modal");
+			$("#Add").attr("data-target", "#frmpopup");
+		});
+		//$("#CustomPageID").change(function () {
+		//	fillSequenceNo(0, $('option:selected', this).val());
+		//});
+		fillcustomfieldtype();
+		//fillPage();
+		fillSequenceNo(0, 0);
+		$("#FieldLabel").keypress(function (e) {
+			$("#FieldLabel").removeClass('field_error');
+		})
+		$("#FieldID").keypress(function (e) {
+			$("#FieldID").removeClass('field_error');
+		})
+		$("#FieldTypeID").change(function (e) {
+			$("#FieldTypeID").removeClass('field_error');
+		})
+		//$("#CustomPageID").change(function (e) {
+		//	$("#CustomPageID").removeClass('field_error');
+		//})
+		//$("#SequenceNo").change(function (e) {
+		//	$("#SequenceNo").removeClass('field_error');
+		//})
+
+		$('#btnCreateField').click(function (event) {
+			if ($("#FieldLabel").val() == "") {
+				$("#FieldLabel").addClass('field_error');
+				$("#FieldLabel").focus();
+				event.preventDefault();
+				return false;
+			}
+			else {
+				$("#FieldLabel").removeClass('field_error');
+			}
+			if ($("#FieldID").val() == "") {
+				$("#FieldID").addClass('field_error');
+				$("#FieldID").focus();
+				event.preventDefault();
+				return false;
+			}
+			else {
+				$("#FieldID").removeClass('field_error');
+			}
+			if ($("#FieldTypeID").val() == "") {
+				$("#FieldTypeID").addClass('field_error');
+				$("#FieldTypeID").focus();
+				event.preventDefault();
+				return false;
+			}
+			else {
+				$("#FieldTypeID").removeClass('field_error');
+			}
+			//if ($("#CustomPageID").val() == "") {
+			//	$("#CustomPageID").addClass('field_error');
+			//	$("#CustomPageID").focus();
+			//	event.preventDefault();
+			//	return false;
+			//}
+			//else {
+			//	$("#CustomPageID").removeClass('field_error');
+			//}
+			//if ($("#SequenceNo").val() == "") {
+			//	$("#SequenceNo").addClass('field_error');
+			//	$("#SequenceNo").focus();
+			//	event.preventDefault();
+			//	return false;
+			//}
+			//else {
+			//	$("#SequenceNo").removeClass('field_error');
+			//}
+
+			var obj = {
+				CustomFieldID: $('#CustomFieldID').val(),
+				FieldTypeID: $("#FieldTypeID").val(),
+				//CustomPageID: $("#CustomPageID").val(),
+				FieldLabel: $('#FieldLabel').val(),
+				FieldID: $('#FieldID').val(),
+				FieldClass: 'form-control input-sm',
+				FieldPlaceHolder: $('#FieldPlaceHolder').val(),
+				Iscompulsory: $("#Iscompulsory").prop('checked')
+				//SequenceNo: $("#SequenceNo").val()
+			};
+			if ($('#CustomFieldID').val() == "0" || $('#CustomFieldID').val() == "") {
+				$.ajax({
+					type: "POST",
+					headers: { 'Authorization': '@_tokan' },
+					url: '@_webapiurl' + 'Master/CustomFieldCreate',
+					data: JSON.stringify(obj),
+					contentType: "application/json; charset=utf-8",
+					dataType: "json",
+					success: function (response) {
+						if (response != null) {
+							$("<div class='alert alert-success overlay'><label>" + response.Meg + "</label></div>").insertBefore(".portlet-body").fadeOut(3000);
+							$('#tblCustomFields').DataTable().ajax.reload();
+							$('#frmpopup').modal('toggle');
+						} else {
+							$("<div class='alert alert-danger overlay'><label>" + response.Meg + "</label></div>").insertBefore(".portlet-body").fadeOut(3000);
+							$('#tblCustomFields').DataTable().ajax.reload();
+							$('#frmpopup').modal('toggle');
+						}
+					},
+					error: function (response) {
+						if (response != null) {
+							var obj = JSON.parse(response.responseText);
+							if (obj.MegSts == 'error') {
+								$("<div class='alert alert-danger overlay'><label>" + obj.Meg + "</label></div>").insertBefore(".portlet-body").fadeOut(3000);
+								$('#tblCustomFields').DataTable().ajax.reload();
+								$('#frmpopup').modal('toggle');
+							}
+						}
+					}
+				});
+			}
+			else {
+				$.ajax({
+					type: "POST",
+					headers: { 'Authorization': '@_tokan' },
+					url: '@_webapiurl' + 'Master/CustomFieldUpdate',
+					data: JSON.stringify(obj),
+					contentType: "application/json; charset=utf-8",
+					dataType: "json",
+					success: function (response) {
+						if (response != null) {
+							$("<div class='alert alert-success overlay'><label>" + response.Meg + "</label></div>").insertBefore(".portlet-body").fadeOut(3000);
+							$('#tblCustomFields').DataTable().ajax.reload();
+							$('#frmpopup').modal('toggle');
+						} else {
+							$("<div class='alert alert-danger overlay'><label>" + response.Meg + "</label></div>").insertBefore(".portlet-body").fadeOut(3000);
+							$('#tblCustomFields').DataTable().ajax.reload();
+							$('#frmpopup').modal('toggle');
+						}
+					},
+					error: function (response) {
+						if (response != null) {
+							var obj = JSON.parse(response.responseText);
+							if (obj.MegSts == 'error') {
+								$("<div class='alert alert-danger overlay'><label>" + obj.Meg + "</label></div>").insertBefore(".portlet-body").fadeOut(3000);
+								$('#tblCustomFields').DataTable().ajax.reload();
+								$('#frmpopup').modal('toggle');
+							}
+						}
+					}
+				});
+			}
+		})
+		$("#tblCustomFields").on('click', '.editclass', function () {
+			$("#FieldLabel").removeClass('field_error');
+			$("#FieldID").removeClass('field_error');
+			$("#FieldTypeID").removeClass('field_error');
+			//$("#CustomPageID").removeClass('field_error');
+			//$("#SequenceNo").removeClass('field_error');
+			frmClear();
+			$("#CustomFieldID").val(t.row($(this).parent('td').parent('tr')).data()["CustomFieldID"]);
+			$("#FieldTypeID").val(t.row($(this).parent('td').parent('tr')).data()["FieldTypeID"]);
+			fillcustomfieldtype(t.row($(this).parent('td').parent('tr')).data()["FieldTypeID"])
+			//$("#CustomPageID").val(t.row($(this).parent('td').parent('tr')).data()["CustomPageID"]);
+			//fillPage(t.row($(this).parent('td').parent('tr')).data()["SequenceNo"],t.row($(this).parent('td').parent('tr')).data()["CustomPageID"]);
+			$('#FieldLabel').val(t.row($(this).parent('td').parent('tr')).data()["FieldLabel"]);
+			$("#FieldID").val(t.row($(this).parent('td').parent('tr')).data()["FieldID"]);
+			$("#FieldPlaceHolder").val(t.row($(this).parent('td').parent('tr')).data()["FieldPlaceHolder"]);
+			//$("#Iscompulsory").val(t.row($(this).parent('td').parent('tr')).data()["Iscompulsory"]);
+			$('#Iscompulsory').prop('checked', t.row($(this).parent('td').parent('tr')).data()["Iscompulsory"]);
+			//fillSequenceNo(t.row($(this).parent('td').parent('tr')).data()["SequenceNo"], t.row($(this).parent('td').parent('tr')).data()["CustomPageID"]);
+			//$('#SequenceNo').val(t.row($(this).parent('td').parent('tr')).data()["SequenceNo"]);
+			//$("#CompanyEmail").attr("readOnly", true);
+			$(".editclass").attr("data-toggle", "modal");
+			$(".editclass").attr("data-target", "#frmpopup");
+		});
+	});
+	function fillcustomfieldtype(selectedfieldtype) {
+		$('#FieldTypeID').empty();
+		$.ajax(
+		 {
+			 type: "GET",
+			 headers: { 'Authorization': '@_tokan' },
+			 url: '@_webapiurl' + "/Master/fieldtypeGetAll",
+			 //data: { CountryId: Countryid },
+			 contentType: "application/json; charset=utf-8",
+			 dataType: "json",
+			 beforeSend: function () {
+				 //     $(".loading").show();
+			 },
+			 success: function (data) {
+				 if (data.isRedirect) {
+					 window.location.href = data.redirectUrl;
+				 }
+				 //      $(".loading").hide();
+				 $("#FieldTypeID").append("<option value=''>Select Field Type</option>");
+				 for (var x = 0; x < data.length; x++) {
+					 $("#FieldTypeID").append("<option value=" + data[x].FieldTypeID + ">" + data[x].FieldTypeName + "</option>");
+				 }
+				 $("#FieldTypeID option[value = '" + selectedfieldtype + "' ]").prop('selected', true);
+			 },
+			 error: function (jqXHR, ajaxOptions, thrownError) {
+			     if (jqXHR.status == 500) { //InternalServerError = 500,
+			         toastr.error("InternalServerError");
+			     } else if (jqXHR.status == 400) { //BadRequest = 400,
+			         toastr.error("BadRequest");
+			     } else if (jqXHR.status == 401) {
+			         window.location.href = "/PayTime/LoginPage";
+			     }
+			 }
+		 });
+	}
+	function fillPage(selectedSequenceNo,selectedpage) {
+		$('#CustomPageID').empty();
+		$.ajax(
+		 {
+			 type: "GET",
+			 headers: { 'Authorization': '@_tokan' },
+			 url: '@_webapiurl' + "/Master/PageGetAll",
+			 contentType: "application/json; charset=utf-8",
+			 dataType: "json",
+			 beforeSend: function () {
+				 //     $(".loading").show();
+			 },
+			 success: function (data) {
+				 if (data.isRedirect) {
+					 window.location.href = data.redirectUrl;
+				 }
+				 //      $(".loading").hide();
+				 $("#CustomPageID").append("<option value=''>Select Page</option>");
+				 for (var x = 0; x < data.length; x++) {
+					 $("#CustomPageID").append("<option value=" + data[x].CustomPageID + ">" + data[x].CustomPageName + "</option>");
+				 }
+				 $("#CustomPageID option[value = '" + selectedpage + "' ]").prop('selected', true);
+				 if (selectedpage != undefined) {
+					 if (selectedpage != undefined && selectedSequenceNo != undefined) {
+						 //$('#SequenceNo').empty();
+						 //fillSequenceNo(selectedSequenceNo, selectedpage);
+					 }
+					 else {
+						 //fillSequenceNo(0, selectedpage);
+					 }
+				 }
+				 //if (selectedpage != undefined && selectedSequenceNo != undefined) {
+				 //    $('#SequenceNo').empty();
+				 //    fillSequenceNo(selectedSequenceNo, selectedpage);
+				 //}
+
+			 },
+			 error: function (jqXHR, ajaxOptions, thrownError) {
+			     if (jqXHR.status == 500) { //InternalServerError = 500,
+			         toastr.error("InternalServerError");
+			     } else if (jqXHR.status == 400) { //BadRequest = 400,
+			         toastr.error("BadRequest");
+			     } else if (jqXHR.status == 401) {
+			         window.location.href = "/PayTime/LoginPage";
+			     }
+			 }
+		 });
+	}
+	function fillSequenceNo(selectedSequenceNo, pageid) {
+		$('#SequenceNo').empty();
+		if (pageid == "" || pageid == null) {
+			pageid = 0;
+		}
+		$.ajax(
+		 {
+			 type: "GET",
+			 headers: { 'Authorization': '@_tokan' },
+			 url: '@_webapiurl' + "/Master/SequenceNoGetAll?pageID=" + pageid + "&selectedSequenceNo=" + selectedSequenceNo + "",
+			 contentType: "application/json; charset=utf-8",
+			 dataType: "json",
+			 beforeSend: function () {
+				 //     $(".loading").show();
+			 },
+			 success: function (data) {
+				 if (data.isRedirect) {
+					 window.location.href = data.redirectUrl;
+				 }
+				 //      $(".loading").hide();
+				 $("#SequenceNo").append("<option value=''>Select Sequence No</option>");
+				 for (var x = 0; x < data.length; x++) {
+					 $("#SequenceNo").append("<option value=" + data[x].SequenceNo + ">" + data[x].SequenceName + "</option>");
+				 }
+				 $("#SequenceNo option[value = '" + selectedSequenceNo + "' ]").prop('selected', true);
+			 },
+			 error: function (jqXHR, ajaxOptions, thrownError) {
+			     if (jqXHR.status == 500) { //InternalServerError = 500,
+			         toastr.error("InternalServerError");
+			     } else if (jqXHR.status == 400) { //BadRequest = 400,
+			         toastr.error("BadRequest");
+			     } else if (jqXHR.status == 401) {
+			         window.location.href = "/PayTime/LoginPage";
+			     }
+			 }
+		 });
+	}
+	function frmClear() {
+		$("#CustomFieldID").val("");
+		$("#FieldTypeID").val("");
+		$("#CustomPageID").val("");
+		$('#FieldLabel').val("");
+		$("#FieldID").val("");
+		$("#FieldPlaceHolder").val("");
+		$('#Iscompulsory').val("");
+		$('#Iscompulsory').prop('checked', false);
+		//$('#SequenceNo').val("");
+		//$('#SequenceNo').empty();
+	}
+</script>
+<div class="page-bar">
+	@if (_RoleId == 1)
+	{
+		<ul class="page-breadcrumb">
+			<li>
+                <a href="@(isClientDBMatchFlag == "True" ? "/Admin/AdminDashboard" : "/Dashboard/AdminDashboard")"><i class="fa-regular fa-house"></i></a>
+			</li>
+			<li>
+				<span><i class="fa-light fa-angle-right"></i> Custom Fields</span>
+			</li>
+		</ul>
+	}
+	else
+	{
+		<ul class="page-breadcrumb">
+			<li>
+				<a href="/Dashboard/EmployeeDashboard"><i class="fa-regular fa-house"></i></a>
+			</li>
+			<li>
+				<span><i class="fa-light fa-angle-right"></i> Custom Fields</span>
+			</li>
+		</ul>
+    }
+
+
+	<div class="page-toolbar">
+		@if (obj.CanAdd)
+        {
+		<div class=" text-right">
+			<a href="#" id="Add" class="btn blue btn-sm"> <i class="fa-solid fa-plus"></i> Create Custom Field</a>
+		</div>
+        }
+	</div>
+</div>
+@if (obj.CanView)
+{
+<div class="row">
+	<div class="col-md-12">
+		<div class="portlet">
+			<div class="portlet-body">
+				<div>
+					<table id="tblCustomFields" class="table table-striped table-bordered table-hover table-checkable order-column">
+						<thead>
+							<tr>
+								<th>Srno</th>
+								<th>CustomFieldID</th>
+								<th>FieldTypeID</th>
+								<th>Field Name</th>
+								<th>SequenceNo</th>
+								<th>CustomPageID</th>
+								<th>FieldLabel</th>
+								<th>FieldPlaceHolder</th>
+								<th>Field Type</th>
+								<th>Page</th>
+								<th>Iscompulsory</th>
+								<th>Action</th>
+							</tr>
+						</thead>
+					</table>
+				</div>
+				<div id="frmpopup" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+					<div class="modal-dialog">
+						<!-- Modal content-->
+						<div class="modal-content">
+							<div class="modal-header">
+								<button type="button" class="close" data-dismiss="modal">&times;</button>
+								<h4 class="modal-title">Custom Field in Employee Master</h4>
+							</div>
+							<div class="modal-body">
+								<span class="help-block" style="color:red;" hidden id="spvalidation"></span>
+								<div class="row">
+									<div class="col-md-12">
+										<fieldset class="form-horizontal">
+											<div class="form-group">
+												<div class="editor-label   col-md-4 control-label">
+													label Name <span class="required" aria-required="true"> * </span>
+												</div>
+												<div class="editor-field col-md-7">
+													@Html.Editor("FieldLabel", new { htmlAttributes = new { @class = "form-control input-sm" } })
+													<span class="help-block" hidden id="spFieldID"></span>
+												</div>
+											</div>
+											<div class="form-group">
+												<div class="editor-label   col-md-4 control-label">
+													@Html.Hidden("CustomFieldID")
+													Field Name <span class="required" aria-required="true"> * </span>
+												</div>
+												<div class="editor-field col-md-7">
+													@Html.Editor("FieldID", new { htmlAttributes = new { @class = "form-control input-sm" } })
+													<span class="help-block" hidden id="spFieldID"></span>
+												</div>
+											</div>
+											<div class="form-group">
+												<div class="editor-label   col-md-4 control-label">
+													Place Holder
+												</div>
+												<div class="editor-field col-md-7">
+													@Html.Editor("FieldPlaceHolder", new { htmlAttributes = new { @class = "form-control input-sm" } })
+													<span class="help-block" hidden id="spFieldID"></span>
+												</div>
+											</div>
+											<div class="form-group">
+												<div class="editor-label   col-md-4 control-label">
+													Field Type <span class="required" aria-required="true"> * </span>
+												</div>
+												<div class="editor-field col-md-7">
+													@Html.DropDownList("FieldTypeID", new SelectList(new[] { "" }), "Select Field Type", new { @class = "form-control input-sm" })
+													<span class="help-block" hidden id="spFieldTypeID"></span>
+												</div>
+											</div>
+											@*<div class="form-group">
+												<div class="editor-label   col-md-4 control-label">
+													Page <span class="required" aria-required="true"> * </span>
+												</div>
+												<div class="editor-field col-md-7">
+													@Html.DropDownList("CustomPageID", new SelectList(new[] { "" }), "Select Page", new { @class = "form-control input-sm" })
+												</div>
+											</div>*@
+											@*<div class="form-group">
+												<div class="editor-label   col-md-4 control-label">
+													Sequence No<span class="required" aria-required="true"> * </span>
+												</div>
+												<div class="editor-field col-md-7">
+													@Html.DropDownList("SequenceNo", new SelectList(new[] { "" }), "Select Sequence No", new { @class = "form-control input-sm" })
+													<span class="help-block" hidden id="spSequenceNo"></span>
+												</div>
+											</div>*@
+											<div class="form-group">
+												<div class="editor-label   col-md-4 control-label">
+													Is compulsory
+												</div>
+												<div class="editor-field col-md-7">
+													@Html.CheckBox("Iscompulsory", new { htmlAttributes = new { @class = "form-control input-sm" } })
+													<span class="help-block" hidden id="spIscompulsory"></span>
+												</div>
+											</div>
+										</fieldset>
+										@*<fieldset id="fsselectList" class="form-horizontal">
+											<h4 class="form-section">Drop down</h4>
+											<div class="form-group">
+													<div class="editor-label   col-md-4 control-label">
+														Add option
+													</div>
+													<div class="editor-field col-md-7">
+														@Html.Editor("Options", new { htmlAttributes = new { @class = "form-control input-sm" } })
+													</div>
+											</div>
+
+										</fieldset>*@
+									</div>
+									<div class="row">
+										<div class="form-group col-md-11 text-right">
+											<input type="button" class="btn btn-sm blue " style="float:right" value="Save" id="btnCreateField" />
+										</div>
+									</div>
+								</div>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+</div>
+}
+else
+{
+	<span style="color:red">@PayTimeWebClient.Resource.Resource.UnauthorizedAccess.</span>
+	}
+

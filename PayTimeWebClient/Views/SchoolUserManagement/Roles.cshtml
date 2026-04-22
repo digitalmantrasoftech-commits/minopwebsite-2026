@@ -1,0 +1,264 @@
+﻿@using System.Configuration;
+@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@{
+    ViewBag.Title = "Roles";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+}
+<script type="text/javascript">
+    $(document).ready(function () {
+        var t = $('#tblRoleMaster').DataTable(
+    {
+        "processing": true,
+        "ajax": {
+            url: '@_webapiurl' + 'Master/RoleMasterGetAll',
+            type: "GET",
+            headers: { 'Authorization': '@_tokan' },
+            dataSrc: '',
+        },
+        "columns": [
+            { "data": null },
+            { "data": "RoleId" },
+            { "data": "RoleName" }
+        ],
+        "columnDefs": [
+            {
+                "targets": [1],
+                "visible": false
+            },
+            {
+                "targets": 3,
+                "data": null,
+                "render": function (data, type, full, meta) {
+                    if ('@obj.CanEdit.ToString()' == 'True') {
+                        data = "<a class='editclass btn btn-xs blue tooltips' title='Edit'><i class='fa-regular fa-pen-to-square'></i></a";
+                    }
+                    else {
+                        data = "";
+                    }
+                    return data;
+                }
+            },
+             {
+                 "searchable": false,
+                 "orderable": false,
+                 "targets": 0
+             }
+        ],
+        "order": [[1, 'asc']],
+    }
+    );
+        t.on('order.dt search.dt', function () {
+            t.column(0, { search: 'applied', order: 'applied' }).nodes().each(function (cell, i) {
+                cell.innerHTML = i + 1;
+            });
+        }).draw();
+        $("#AddRole").on('click', function () {
+            frmClear();
+            $("#AddRole").attr("data-toggle", "modal");
+            $("#AddRole").attr("data-target", "#frmpopup");
+        });
+        $("#btnrolesubmit").click(function (event) {
+            //alert($('#RoleId').val());
+            if ($("#RoleName").val() == "") {
+                $("#RoleName").addClass('field_error');
+                $("#RoleName").focus();
+                event.preventDefault();//or return false
+                return false;
+            }
+            else {
+                $("#RoleName").removeClass('field_error');
+            }
+            var obj = {
+                RoleId: $('#RoleId').val(),
+                RoleName: $("#RoleName").val()
+            };
+            if ($('#RoleId').val() == "0") {
+                $.ajax({
+                    type: "POST",
+                    headers: { 'Authorization': '@_tokan' },
+                    url: '@_webapiurl' + 'Master/RoleMasterCreate',
+                    data: JSON.stringify(obj),
+                    contentType: "application/json; charset=utf-8",
+                    dataType: "json",
+                    success: function (response) {
+                        if (response != null) {
+                            $("<div class='alert alert-success overlay'><label>" + response.Meg + "</label></div>").insertBefore(".portlet-body").fadeOut(3000);
+                            $('#tblRoleMaster').DataTable().ajax.reload();
+                            $('#frmpopup').modal('toggle');
+                        } else {
+                            $("<div class='alert alert-danger overlay'><label>" + response.Meg + "</label></div>").insertBefore(".portlet-body").fadeOut(3000);
+                            $('#tblRoleMaster').DataTable().ajax.reload();
+                            $('#frmpopup').modal('toggle');
+                        }
+                    },
+                    error: function (response) {
+                        if (response != null) {
+                            var obj = JSON.parse(response.responseText);
+                            if (obj.MegSts == 'error') {
+                                $("<div class='alert alert-danger overlay'><label>" + obj.Meg + "</label></div>").insertBefore(".portlet-body").fadeOut(3000);
+                                $('#tblRoleMaster').DataTable().ajax.reload();
+                                $('#frmpopup').modal('toggle');
+                            }
+                        }
+                    }
+                });
+            } else {
+                $.ajax({
+                    type: "POST",
+                    headers: { 'Authorization': '@_tokan' },
+                    //url: '@_webapiurl' + 'SchoolMaster/RoleUpdate',
+                    url: '@_webapiurl' + 'Master/RolemasterUpdate',
+                    data: JSON.stringify(obj),
+                    contentType: "application/json; charset=utf-8",
+                    dataType: "json",
+                    success: function (response) {
+                        if (response != null) {
+                            $("<div class='alert alert-success overlay'><label>" + response.Meg + "</label></div>").insertBefore(".portlet-body").fadeOut(3000);
+                            $('#tblRoleMaster').DataTable().ajax.reload();
+                            $('#frmpopup').modal('toggle');
+                        } else {
+                            $("<div class='alert alert-danger overlay'><label>" + response.Meg + "</label></div>").insertBefore(".portlet-body").fadeOut(3000);
+                            $('#tblRoleMaster').DataTable().ajax.reload();
+                            $('#frmpopup').modal('toggle');
+                        }
+                    }
+                });
+            }
+        });
+        $("#RoleName").keypress(function (evt) {
+            $("#RoleName").removeClass('field_error');
+            var k;
+            if (evt.keyCode > 0) {
+                k = evt.keyCode;
+            }
+            else if (typeof (evt.charCode) != "undefined") {
+                k = evt.charCode;
+            }
+            return ((k > 64 && k < 91) || (k > 96 && k < 123) || k == 8 || (k >= 48 && k <= 57) || k == 32);
+        });
+        $("#RoleName").keypress(function (e) {
+            $("#RoleName").removeClass('field_error');
+        });
+        $("#tblRoleMaster").on('click', '.editclass', function () {
+            $("#RoleName").removeClass('field_error');
+            $("#RoleId").val(t.row($(this).parent('td').parent('tr')).data()["RoleId"]);
+            $("#RoleName").val(t.row($(this).parent('td').parent('tr')).data()["RoleName"]);
+            $(".editclass").attr("data-toggle", "modal");
+            $(".editclass").attr("data-target", "#frmpopup");
+            //alert($('#RoleId').val());
+        });
+
+    });
+    function frmClear()
+    {
+        $("#Roleid").val(0);
+        $("#RoleName").val("");
+        $("#RoleName").attr("placeholder", "Enter Role Name");
+        $("#RoleName").removeClass('field_error');
+    }
+</script>
+<div class="page-bar">
+    <ul class="page-breadcrumb">
+        <li>
+            <a href="/School/AdminDashboard">Home</a>
+            <i class="fa fa-circle"></i>
+        </li>
+        <li>
+            <span>Admin Dashboard</span>
+        </li>
+    </ul>
+
+    <div class="page-toolbar">
+        @if (obj.CanAdd && Convert.ToInt32(Session["IsSchool"]) == 1)
+    {
+        <div class="">
+            <a href="#" id="AddRole" class="btn btn-sm blue" style="float:right"> <i class="fa-solid fa-plus"></i> Add Role</a>
+        </div>
+        }
+
+    </div>
+</div>
+<h1 class="page-title">
+    <small></small>
+</h1>
+@if (obj.CanView && Convert.ToInt32(Session["IsSchool"]) == 1)
+    {
+    <div class="row">
+        <div class="col-md-12">
+            <div class="portlet ">
+                <div class="portlet-body">
+                    <div>
+                        <table id="tblRoleMaster" class="table table-striped table-bordered table-hover table-checkable order-column">
+                            <thead>
+                                <tr>
+                                    <th>Sr. No</th>
+                                    <th hidden>Role ID</th>
+                                    <th>Role Name</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                        </table>
+                    </div>
+                    <div id="ajax_loaderbranch" class="modal_bg loading" aria-hidden="true">
+                        <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading"/>
+                    </div>
+                    <div id="frmpopup" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+                        <div class="modal-dialog">
+                            <!-- Modal content-->
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                                    <h4 class="modal-title">Role</h4>
+                                </div>
+                                <div class="modal-body">
+                                        <div class="row">
+                                            <div class="col-md-12">
+                                                <fieldset>
+                                                    <div class="form-group">
+                                                        <label class=" control-label">
+                                                            @Html.Hidden("RoleId")
+                                                            Role Name <span class="required" aria-required="true"> * </span>
+                                                        </label>
+
+                                                        <div class="editor-field">
+                                                            @Html.Editor("RoleName", new { htmlAttributes = new { @class = "form-control input-sm", @maxlength = "30" } })
+                                                            <span class="help-block" hidden id="spComcode"></span>
+                                                        </div>
+                                                    </div>
+                                                    <span class="help-block" style="color:red;" hidden id="spvalidation"></span>
+                                                    <div class="form-group">
+                                                        <button type="button" class=" btn btn-sm blue" id="btnrolesubmit" style="float:right"> <i class="fa-solid fa-check"></i> Save</button>
+                                                    </div>
+                                                </fieldset>
+
+                                            </div>
+                                        </div>
+                                </div>
+
+                            </div>
+                        </div>
+                    </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+}
+else
+{
+    <span style="color:red">Unauthorized Access.</span>
+}

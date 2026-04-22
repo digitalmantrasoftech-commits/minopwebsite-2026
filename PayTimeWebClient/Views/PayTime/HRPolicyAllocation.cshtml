@@ -1,0 +1,825 @@
+﻿@model PayTimeWebClient.Models.reqPolicydata
+@using System.Configuration;
+@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@{
+    ViewBag.Title = "HRPolicyAllocation";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    string _Message = "";
+    string _error = "";
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    string _companyCode = HttpContext.Current.Session["cmpcode"].ToString();
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+    string _dbName = HttpContext.Current.Session["DbName"].ToString();
+
+    string isClientDBMatchFlag = HttpContext.Current.Session["IsClientDBMatch"] != null
+    ? HttpContext.Current.Session["IsClientDBMatch"].ToString()
+    : "false"; // Default to "false" if the session is null
+}
+@*<style>
+    #export-button{
+        display:none;
+    }*@
+<!--</style>-->
+<script src="~/Scripts/timeme.js"></script>
+<script src="~/AssetsNew/js/CommonValidation.js"></script>
+<script src="~/Scripts/Helpers/noDataHandler.js"></script>
+<script type="text/javascript">
+    var $empselect = "";
+    var empidlst = 0;
+    var comidlst = 0;
+    var branchidlst = 0;
+    var desigidlst = 0;
+    var deptidlst = 0;
+    var roleidlst = 0;
+    var count = 0;
+    var form = "HRPolicy Allocation";
+    var operation = "";
+    $(document).ready(function () {
+        /*timeMeInitialize function is  a javascript library which displays a timer to display how long you are actively viewing the current webpage.*/
+        timeMeInitialize();
+        $(".alert").hide();
+        if ("@_Message" != "") {
+            toastr.remove();
+            toastr.success("@_Message");
+        }
+        if ('@_error' != "") {
+            toastr.remove();
+            toastr.error("@_error");
+        }
+        //for branch
+        var $select = $("#BranchId").multiselect({
+            selectAllValue: 'multiselect-all',
+            enableCaseInsensitiveFiltering: true,
+            includeSelectAllOption: true,
+            allSelectedText: 'All Select',
+            enableFiltering: true,
+            maxHeight: '300',
+            buttonWidth: '100%',
+            enableClickableOptGroups: true,
+            nonSelectedText: 'Select Branch',
+        });
+        $select.multiselect('disable'); //disable it initially
+
+
+        //foremployee
+        $empselect = $("#EmpId").multiselect({
+            selectAllValue: 'multiselect-all',
+            enableCaseInsensitiveFiltering: true,
+            includeSelectAllOption: true,
+            allSelectedText: 'All Select',
+            enableFiltering: true,
+            maxHeight: '300',
+            buttonWidth: '100%',
+            enableClickableOptGroups: true,
+            nonSelectedText: 'Select Employee',
+        });
+        $empselect.multiselect('disable'); //disable it initially
+
+        $("#companyID").multiselect({
+            selectAllValue: 'multiselect-all',
+            enableCaseInsensitiveFiltering: true,
+            includeSelectAllOption: true,
+            allSelectedText: 'All Select',
+            enableFiltering: true,
+            maxHeight: '300',
+            buttonWidth: '100%',
+            enableClickableOptGroups: true,
+            nonSelectedText: 'Select Company',
+        });
+        $(document.body).on('change', '#companyID', function () {
+            $("#spvalidation").hide();
+            var comid = $('#companyID option:selected');
+            var comarray = [];
+            $(comid).each(function (index, comid) {
+                comarray.push([$(this).val()]);
+            });
+            if (comarray == "") {
+                $("#txt1").val(0);
+            }
+            else {
+                $("#txt1").val(comarray);
+            }
+            if ($("#txt1").val() != 0) {
+                comidlst = $("#txt1").val();
+                AllDatafromChangeFire(comidlst, branchidlst, deptidlst, desigidlst, roleidlst, empidlst);
+                $("#BranchId").empty();
+                $.ajax({
+                    type: "GET",
+                    url: "/MasterData/FillBranchesbyCompanyChange",
+                    data: { comidlst: comidlst },
+                    contentType: "application/json; charset=utf-8",
+                    dataType: "json",
+                    beforeSend: function () {
+                        $(".loading").show();
+                    },
+                    success: function (response) {
+
+                        if (response != "") {
+                            var obj = JSON.stringify(response);
+                            $select.multiselect('enable');
+                            $("#DepartmentID").multiselect('enable');
+                            $empselect.multiselect('enable');
+                            $("#DesignationId").multiselect('enable');
+                            $("#RoleId").multiselect('enable');
+                            $("#BranchId").empty();
+                            response.sort(function (a, b) {
+                                return a.BranchName.localeCompare(b.BranchName);
+                            });
+                            for (var i = 0; i < response.length; i++) {
+                                $('#BranchId').append('<option value=" ' + response[i].BranchId + ' ">' + response[i].BranchName + '</option>');
+                            }
+                            $select.multiselect('rebuild');
+                            $(".loading").hide();
+                            $(document.body).on('change', '#BranchId', function () {
+                                var brid = $('#BranchId option:selected');
+                                var Brancharray = [];
+                                $(brid).each(function (index, brid) {
+                                    Brancharray.push([$(this).val()]);
+                                });
+                                if (Brancharray == "") {
+                                    $("#txt2").val(0);
+                                }
+                                else {
+                                    $("#txt2").val(Brancharray);
+                                }
+                                var ArrBranch = $("#txt2").val();
+                                branchidlst = ArrBranch;
+                                AllDatafromChangeFire(comidlst, branchidlst, deptidlst, desigidlst, roleidlst, empidlst);
+                            });
+                        }
+                        else {
+                            $(".loading").hide();
+                            $select.multiselect('disable'); //disable it initially
+                            $("#DepartmentID").multiselect('disable');
+                            $empselect.multiselect('disable');
+                            $("#DesignationId").multiselect('disable');
+                            $("#RoleId").multiselect('disable');
+                        }
+                    },
+                    error: function () {
+                        $(".loading").hide();
+                        alert('No Data');
+                    }
+                });
+            }
+            else {
+                ClearAllControls();
+                return false;
+            }
+
+        });
+
+        $("#DepartmentID").multiselect({
+            selectAllValue: 'multiselect-all',
+            enableCaseInsensitiveFiltering: true,
+            includeSelectAllOption: true,
+            allSelectedText: 'All Select',
+            enableFiltering: true,
+            disable: 'disable',
+            maxHeight: '300',
+            buttonWidth: '100%',
+            enableClickableOptGroups: true,
+            nonSelectedText: 'Select Department',
+        });
+        $("#DepartmentID").multiselect('disable');
+        $(document.body).on('change', '#DepartmentID', function () {
+            var deptid = $('#DepartmentID option:selected');
+            var DeptArray = [];
+            $(deptid).each(function (index, deptid) {
+                DeptArray.push([$(this).val()]);
+            });
+            if (DeptArray == "") {
+                $("#txt3").val(0);
+            }
+            else {
+                $("#txt3").val(DeptArray);
+            }
+            var deptarry = $("#txt3").val();
+            deptidlst = deptarry;
+            AllDatafromChangeFire(comidlst, branchidlst, deptidlst, desigidlst, roleidlst, empidlst);
+        });
+
+
+        $("#DesignationId").multiselect({
+            selectAllValue: 'multiselect-all',
+            enableCaseInsensitiveFiltering: true,
+            includeSelectAllOption: true,
+            allSelectedText: 'All Select',
+            enableFiltering: true,
+            disable: 'disable',
+            maxHeight: '300',
+            buttonWidth: '100%',
+            enableClickableOptGroups: true,
+            nonSelectedText: 'Select Designation',
+        });
+        $("#DesignationId").multiselect('disable');
+        $(document.body).on('change', '#DesignationId', function () {
+            var designationId = $('#DesignationId option:selected');
+            var Desgarray = [];
+            $(designationId).each(function (index, designationId) {
+                Desgarray.push([$(this).val()]);
+            });
+
+            if (Desgarray == "") {
+                $("#txt4").val(0);
+            }
+            else {
+                $("#txt4").val(Desgarray);
+            }
+            var desarray = $("#txt4").val();
+            desigidlst = desarray;
+            AllDatafromChangeFire(comidlst, branchidlst, deptidlst, desigidlst, roleidlst, empidlst);
+        });
+
+
+        $("#RoleId").multiselect({
+            selectAllValue: 'multiselect-all',
+            enableCaseInsensitiveFiltering: true,
+            includeSelectAllOption: true,
+            allSelectedText: 'All Select',
+            enableFiltering: true,
+            maxHeight: '300',
+            buttonWidth: '100%',
+            enableClickableOptGroups: true,
+            nonSelectedText: 'Select Role',
+        });
+        $("#RoleId").multiselect('disable');
+        $(document.body).on('change', '#RoleId', function () {
+            var roleid = $('#RoleId option:selected');
+            var rolearray = [];
+            $(roleid).each(function (index, roleid) {
+                rolearray.push([$(this).val()]);
+            });
+            if (rolearray == "") {
+                $("#txt5").val(0);
+            }
+            else {
+                $("#txt5").val(rolearray);
+            }
+            var rolarry = $("#txt5").val();
+            roleidlst = rolarry;
+
+            AllDatafromChangeFire(comidlst, branchidlst, deptidlst, desigidlst, roleidlst, empidlst);
+        });
+
+        $("#dataTables_tbl_header").remove();
+        $("#tblHrpolicyAllocation").DataTable({
+            dom: _domCommon,
+            language: _languageCommon,
+            "deferRender":true
+        });
+        setTimeout(function () {
+            $("#" + "tblHrpolicyAllocation" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+            $('.tooltips').tooltip();
+        }, 100);
+        $('#Btnclear').click(function () {
+
+            $("#PolicyId").val(null);
+            $("#select2-PolicyId-container").html("Select Policy");
+            $("#select2-PolicyId-container").attr("title", "Select Policy");
+            ClearAllControls();
+        });
+
+        $("#BtnApply").click(function () {
+            count++;
+            operation = "Allocation Policy";
+            var policyid = $('#PolicyId option:selected').val();
+            if (policyid == "") {
+                toastr.remove();
+                toastr.error("Please select policy.");
+                return false;
+            }
+            else {
+                $("#spvalidation").hide();
+            }
+            var com = $("#txt1").val();
+            if (com == 0) {
+                toastr.remove();
+                toastr.error("Please select company.");
+                return false;
+            }
+            else {
+                $("#spvalidation").hide();
+            }
+            var emp = $("#txt6").val();
+            if (emp == 0) {
+                toastr.remove();
+                toastr.error("Please select employee.");
+                return false;
+            }
+            else {
+                $("#spvalidation").hide();
+            }
+            var emlist = $("#txt6").val();
+            $.post("/PayTime/ApplyPolicyToEmployee", { comidlst: comidlst, branchidlst: branchidlst, deptidlst: deptidlst, desigidlst: desigidlst, roleidlst: roleidlst, empidlst: emlist, policyid: policyid }, function (response) {
+                if (response.isRedirect) {
+                    window.location.href = response.redirectUrl;
+                }
+                var _response = $.parseJSON(response);
+                if (_response == true) {
+                    toastr.remove();
+                    toastr.success("HR Policy allocation saved successfully.");
+                    window.location.href = "/PayTime/HRPolicyAllocation";
+                }
+                else {
+                    toastr.remove();
+                    toastr.error("Something wrong occured. Please try again.");
+                }
+            });
+        });
+        $("#BtnView").click(function () {
+            const wrapper = $(".filter_portlet_wrapper");
+            wrapper.addClass("full-width");            
+            count++;
+            operation = "View Policy";
+            //var policyval = $('#PolicyId option:selected').val();
+            //if (policyval == "") {
+            //    $("#spvalidation").html("Please Select Policy").show();
+            //    return false;
+            //}
+            //else {
+            //    $("#spvalidation").hide();
+            //}
+
+            var policyid = $('#PolicyId option:selected').val();
+            if (policyid == "") {
+                policyid = 0;
+            }
+            var cmlist = $("#txt1").val();
+            if (cmlist == 0) {
+                toastr.remove();
+                toastr.error("Please select  company.");
+                return false;
+            }
+            else {
+                $("#spvalidation").hide();
+            }
+            var screenWidth = $(window).width();
+            if (screenWidth >= 300 && screenWidth <= 600) {
+                $(".filter_portlet_tbl").show();
+            }
+            var brlist = $("#txt2").val();
+            var deslist = $("#txt3").val();
+            var deplst = $("#txt4").val();
+            var rolelst = $("#txt5").val();
+            var emlist = $("#txt6").val();
+            $.post("/PayTime/ApplyPolicyView", { policyid: policyid, comidlst: cmlist, branchidlst: brlist, desigidlst: deslist, deptidlst: deptidlst, roleidlst: rolelst, empidlst: emlist }, function (response) {
+                if (response.isRedirect) {
+                    window.location.href = response.redirectUrl;
+                }
+                var obj = JSON.stringify(response);
+                if (response.length == 0) {
+                    const wrapper = $(".filter_portlet_wrapper");
+                    wrapper.removeClass("full-width");
+                }
+                if (response != null) {
+                    const detail = response;
+                    handleGridVisibility("tblempty", "NotificationGrid-empty", detail, {
+                        imageUrl: "emptyscreen_3.png",
+                        subText: "No matching records found for the selected filters."
+                    });
+                }
+                if (obj != "") {
+                    var table = "";
+                    for (var i = 0; i < response.length; i++) {
+                        var tbl = "<tr class='odd gradeX'>";
+                        tbl = tbl + "<td id='srn'>" + (i + 1);
+                        tbl = tbl + "</td>";
+                        tbl = tbl + "<td id='enm'>" + response[i].EmpName;
+                        tbl = tbl + "</td>";
+                        tbl = tbl + "<td id='pnm'>" + response[i].PolicyName;
+                        tbl = tbl + "</td>";
+                        tbl = tbl + "<td id='cnm'>" + response[i].CompanyName;
+                        tbl = tbl + "</td>";
+                        tbl = tbl + "<td id='bnm'>" + response[i].BranchName;
+                        tbl = tbl + "</td>";
+
+                        tbl = tbl + "</tr>";
+                        table += tbl;
+                    }
+                }
+                if ($.fn.DataTable.isDataTable('#tblHrpolicyAllocation')) {
+                    $('#tblHrpolicyAllocation').DataTable().clear().destroy();
+                }
+                $('#tblHrpolicyAllocation').empty();
+                $('#tblHrpolicyAllocation').append(table);
+                $("#dataTables_tbl_header").remove();
+                $('#tblHrpolicyAllocation').dataTable({
+                    dom: _domCommon,
+                    language: _languageCommon,
+                    "destroy": true,
+                    "bInfo": true,
+                    "bPaginate": true,
+                    deferRender: true,
+                    destroy: true,
+                    bInfo: true,
+                    paging: true,
+                    "columns": [
+                          { "title": "Sr No" ,visible:false},
+                           { "title": "Employees" },
+                        { "title": "Policy" },
+                        { "title": "Company" },
+                        { "title": "Branch" }
+                    ],
+                    initComplete: function () {
+                        const visibleTable = $('table:visible').attr('id');
+                        $("#buttons").append(`
+                        <div id="export-button" class="export-button tooltips" data-placement="bottom" data-original-title="Download" data-table-id="${visibleTable}">
+                            <img src="../Newlayout/images/download_icon.svg" alt="Download icon">
+                        </div>
+                     `);
+
+                    },
+                });
+                setTimeout(function () {
+                    $("#" + "tblHrpolicyAllocation" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+                    $('.tooltips').tooltip();
+                }, 100);
+            });
+        });
+
+        $("#PolicyId").change(function () {
+            $("#spvalidation").hide();
+        });
+        window.onload = function () {
+            timeSpentOnPage();
+        }
+        $(window).on("beforeunload", function () {
+            if (operation == "" || operation == null || operation == '') {
+                operation = "View  HRPolicy Allocation";
+            }
+            var url = '@_webapiurl' + '/DashBoard/AddAnalyticsUser';
+            var timeSpent = timeSpentOnPage();
+            analyticsDataUsage(url, '@_dbName', form, '@_tokan', count, operation, timeSpent)
+        })
+
+        $("#Filter_search").click(function () {
+            const wrapper = $(".filter_portlet_wrapper");
+            wrapper.toggleClass("full-width");
+
+            var screenWidth = $(window).width();
+            if (screenWidth >= 300 && screenWidth <= 600) {
+                $('.filter_portlet_tbl').toggle();
+                $('.filter_portlet_wrapper .filter_boxModal').css('width', '100%');
+            }
+        });
+
+        // Close filter panel on close button click
+        $(".filterclose_btn").click(function () {
+            const wrapper = $(".filter_portlet_wrapper");
+            wrapper.addClass("full-width");
+
+            var screenWidth = $(window).width();
+            if (screenWidth >= 300 && screenWidth <= 600) {
+                $(".filter_portlet_tbl").css("display", "block");
+            }
+        });
+
+    });
+
+    function ClearAllControls() {
+        $("#companyID option:selected").prop("selected", false);
+        $("#companyID").multiselect('refresh');
+        $("#BranchId option:selected").prop("selected", false);
+        $("#BranchId").multiselect('refresh');
+        $("#BranchId").empty();
+        $("#BranchId").multiselect('disable');
+        $("#DepartmentID option:selected").prop("selected", false);
+        $("#DepartmentID").multiselect('refresh');
+        $("#DepartmentID").multiselect('disable');
+        $("#DesignationId option:selected").prop("selected", false);
+        $("#DesignationId").multiselect('refresh');
+        $("#DesignationId").multiselect('disable');
+        $("#RoleId option:selected").prop("selected", false);
+        $("#RoleId").multiselect('refresh');
+        $("#RoleId").multiselect('disable');
+        $("#EmpId option:selected").prop("selected", false);
+        $("#EmpId").multiselect('refresh');
+        $("#EmpId").multiselect('disable');
+        $("#txt1").val(0);
+        $("#txt2").val(0);
+        $("#txt3").val(0);
+        $("#txt4").val(0);
+        $("#txt5").val(0);
+        $("#txt6").val(0);
+        comidlst = 0;
+        branchidlst = 0;
+        desigidlst = 0;
+        deptidlst = 0;
+        roleidlst = 0;
+        empidlst = 0;
+    }
+
+    function AllDatafromChangeFire(comidlst, branchidlst, deptidlst, desigidlst, roleidlst, empidlst) {
+        $.ajax({
+            type: "GET",
+            url: "/MasterData/FillEmployeebyChange",
+            data: { comidlst: comidlst, branchidlst: branchidlst, desigidlst: desigidlst, deptidlst: deptidlst, roleidlst: roleidlst, empidlst: empidlst },
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            beforeSend: function () {
+                $("#ajax_loaderCompany").show();
+            },
+            success: function (response) {
+                if (response.isRedirect) {
+                    window.location.href = response.redirectUrl;
+                }
+                $("#ajax_loaderCompany").hide();
+                if (response != "") {
+                    var obj = JSON.stringify(response);
+                    $empselect.multiselect('enable');
+                    $("#EmpId").empty();
+                    response.sort(function (a, b) {
+                        return a.EmpName.localeCompare(b.EmpName);
+                    });
+                    for (var i = 0; i < response.length; i++) {
+                        $('#EmpId').append('<option value=" ' + response[i].EmpId + ' ">' + response[i].EmpName + '</option>');
+                    }
+                    $empselect.multiselect('rebuild');
+                    $(document.body).on('change', '#EmpId', function () {
+                        var empid = $('#EmpId option:selected');
+                        var emparray = [];
+                        $(empid).each(function (index, empid) {
+                            emparray.push([$(this).val()]);
+                        });
+                        if (emparray == "") {
+                            $("#txt6").val(0);
+                        }
+                        else {
+                            $("#txt6").val(emparray);
+                        }
+
+                        var ArrEmp = $("#txt6").val();
+                        empidlst = ArrEmp;
+                    });
+                }
+                else {
+                    $empselect.multiselect('disable');
+                }
+            },
+            error: function (jqXHR, ajaxOptions, thrownError) {
+                $('.loading').hide();
+
+                if (jqXHR.status == 500) { //InternalServerError = 500,
+                    toastr.error("InternalServerError");
+                } else if (jqXHR.status == 400) { //BadRequest = 400,
+                    toastr.error("BadRequest");
+                } else if (jqXHR.status == 401) {
+                    window.location.href = "/PayTime/LoginPage";
+                }
+            },
+        });
+    }
+
+
+</script>
+<div class="page-bar">
+    @if (_RoleId == 1 || _RoleId == 6805 || _RoleId == 6806)
+    {
+        <ul class="page-breadcrumb">
+            <li>
+                <a href="@(isClientDBMatchFlag == "True" ? "/Admin/AdminDashboard" : "/Dashboard/AdminDashboard")"><i class="fa-regular fa-house"></i></a>
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> HR Policy Allocation</span>
+            </li>
+        </ul>
+    }
+    else
+    {
+        <ul class="page-breadcrumb">
+            <li>
+                <a href="/Dashboard/EmployeeDashboard"><i class="fa-regular fa-house"></i></a>
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> HR Policy Allocation</span>
+            </li>
+        </ul>
+    }
+    @if (obj.CanView)
+    {
+        <div class="page-toolbar">
+            <a href="javascript:;" class="btn icon_transparent_btn tooltips" id="Filter_search" data-original-title="Assign policy to employee" data-placement="bottom"><i class="fa-solid fa-check" aria-hidden="true"></i></a>
+        </div>
+    }
+
+</div>
+@if (obj.CanView)
+{
+    <div class="modal_bg loading" aria-hidden="true">
+        <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading" />
+    </div>
+
+    <div class="filter_portlet_wrapper full-width">
+        <!-- Datatable Block : Begin -->
+        <div class="portlet filter_portlet_tbl">
+            <div class="portlet-body">
+                <div class="row">
+                    <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                        <div id="tblempty">
+                            @if (ViewBag.PolicyGetAll.Count != 0)
+                            {
+                                <div class="table-responsive" id="tableResponsive">
+                                    <table id="tblHrpolicyAllocation" class="new_datatbl table table-striped table-bordered table-hover table-checkable order-column ">
+                                        <thead>
+                                            <tr>
+                                                <th style="display:none;">Sr. No</th>
+                                                <th>Employees</th>
+                                                <th>Policy</th>
+                                                <th>Company</th>
+                                                <th>Branch</th>
+                                            </tr>
+                                        </thead>
+                                        @{int n = 1;}
+                                        <tbody>
+                                            @if (ViewBag.PolicyGetAll != null)
+                                            {
+                                                foreach (var item in ViewBag.PolicyGetAll)
+                                                {
+                                                    <tr>
+                                                        <td style="display:none;">@n</td>
+                                                        <td>@item.EmpName</td>
+                                                        <td>@item.PolicyName</td>
+                                                        <td>@item.CompanyName</td>
+                                                        <td>@item.BranchName</td>
+                                                    </tr>
+                                                    n++;
+                                                }
+                                            }
+                                            else
+                                            {
+                                                <tr>
+                                                    <td colspan="4">No Data Available.</td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            }
+                            else
+                            {
+                                <div id="NotificationGrid-empty">
+                                    <div class="datanotfound">
+                                        <img src="~/assets/images/emptyscreen_3.png" height="148" width="280" alt="Nodata Found Icon">
+                                        <p class="datanotfound_title">No data found</p> <!-- titleText -->
+                                        <p class="">No matching records found for the selected filters.</p><!-- subText -->
+                                    </div>
+                                </div>
+                            }
+                            </div>
+                            <div id="NotificationGrid-empty" style="display:none">
+                                <div class="datanotfound">
+                                    <img src="~/assets/images/emptyscreen_3.png" height="148" width="280" alt="Nodata Found Icon">
+                                    <p class="datanotfound_title">No data found</p> <!-- titleText -->
+                                    <p class="">No matching records found for the selected filters.</p><!-- subText -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+            </div>
+        </div>
+        <!-- Datatable Block : End -->
+        <!-- Filter Block : Begin -->
+        <div class="portlet filter_boxModal">
+            <div class="filterbox_header">
+                <div class="d-flex align-items-center justify-content-between">
+                    <h4 class="filter-title">Filters</h4>
+                    <button type="button" class="filterclose_btn"><i class="fa-light fa-xmark"></i></button>
+                </div>
+            </div>
+            <div class="filterbox_body">
+                @using (Html.BeginForm("HRPolicyAllocation", "PayTime", FormMethod.Post, new { @id = "frmrpt" }))
+                {
+                    <div class="col-lg-12">
+                        <div class="alert alert-danger popMsg" hidden>
+                            <a href="#" class="close" data-dismiss="alert">&times;</a>
+                            <strong id="strstg"></strong>
+                        </div>
+                    </div>
+                    <div class="col-lg-12">
+                        <span class="help-block" style="color:red;" hidden id="spvalidation"></span>
+                    </div>
+                    <div class="col-lg-12">
+                        <div class="form-group">
+                            <label class="control-label">HR Policy<span class="required" aria-required="true"> * </span></label>
+                            @if (ViewBag.PolicyName != null)
+                            {
+                                @Html.DropDownList("PolicyId", new SelectList(ViewBag.PolicyName, "PolicyId", "PolicyName"), "Select Policy", new { @class = "form-control select2" })
+                            }
+                            else
+                            {
+                                @Html.DropDownList("PolicyId", new SelectList(new[] { "" }), "Select Policy", new { @class = "form-control select2" })
+                            }
+                        </div>
+                    </div>
+                    <div class="col-lg-12">
+                        <div class="form-group">
+                            <label class="control-label">Companies<span class="required" aria-required="true"> * </span></label>
+                            <input type="text" id="txt1" value="0" hidden />
+                            @if (ViewBag.Companyslist != null)
+                            {
+                                <select class="mt-multiselect btn blue btn-outline" multiple="multiple" id="companyID" data-width="100%">
+                                    @foreach (var i in ViewBag.Companyslist)
+                                    {
+                                        <option value="@i.CompanyID">@i.CompanyName</option>
+                                    }
+                                </select>
+                            }
+                        </div>
+                    </div>
+                    <div class="col-lg-12">
+                        <div class="form-group">
+                            <label class="control-label">Branches</label>
+                            <input type="text" id="txt2" value="0" hidden />
+                            <select id="BranchId" class="mt-multiselect btn blue btn-outline" multiple="multiple" data-width="100%">
+                            </select>
+                        </div>
+                    </div>
+                    <div class="col-lg-12">
+                        <div class="form-group">
+                            <label class="control-label">Departments</label>
+                            <input type="text" id="txt3" value="0" hidden />
+                            @if (ViewBag.DepartmentList != null)
+                            {
+                                <select class="mt-multiselect btn blue btn-outline" multiple="multiple" id="DepartmentID" data-width="100%">
+                                    @foreach (var i in ViewBag.DepartmentList)
+                                    {
+                                        <option value="@i.DepartmentId">@i.DepartmentName</option>
+                                    }
+                                </select>
+                            }
+                        </div>
+                    </div>
+                    <div class="col-lg-12">
+                        <div class="form-group">
+                            <label class="control-label">Designation</label>
+                            <input type="text" id="txt4" value="0" hidden />
+                            @if (ViewBag.DesignationList != null)
+                            {
+                                <select class="mt-multiselect btn blue btn-outline" multiple="multiple" id="DesignationId" data-width="100%">
+                                    @foreach (var i in ViewBag.DesignationList)
+                                    {
+                                        <option value="@i.DesignationId">@i.DesignationName</option>
+                                    }
+                                </select>
+                            }
+                        </div>
+                    </div>
+                    <div class="col-lg-12">
+                        <div class="form-group">
+                            <label class="control-label">Role</label>
+                            <input type="text" id="txt5" value="0" hidden />
+                            @if (ViewBag.RoleList != null)
+                            {
+                                <select class="mt-multiselect btn blue btn-outline " multiple="multiple" id="RoleId" data-width="100%">
+                                    @foreach (var i in ViewBag.RoleList)
+                                    {
+                                        <option value="@i.RoleId">@i.RoleName</option>
+                                    }
+                                </select>
+                            }
+                        </div>
+                    </div>
+                    <div class="col-lg-12">
+                        <div class="form-group">
+                            <label class="control-label">Employees<span class="required" aria-required="true"> * </span></label>
+                            <input type="text" id="txt6" value="0" hidden />
+                            <select class="mt-multiselect btn blue btn-outline" multiple="multiple" id="EmpId" data-width="100%"></select>
+                        </div>
+                    </div>
+                }
+            </div>
+            <div class="filterbox_footer">
+                <div class="text-right">
+                    <button type="button" id="Btnclear" class="btn clear_btn tooltips" data-placement="top" data-original-title="Clear"><i class="fa-regular fa-eraser"></i></button>
+                    <button type="button" id="BtnView" class="btn icon_btn margin-left-5 tooltips" data-placement="top" data-original-title="View"><i class="fa-regular fa-eye"></i></button>
+                    @if (obj.CanEdit)
+                    {
+                        <button type="button" id="BtnApply" class="btn icon_btn margin-left-5 tooltips" data-placement="top" data-original-title="Allocation"><i class="fa-solid fa-check"></i></button>
+                    }
+                </div>
+            </div>
+        </div>
+        <!-- Filter Block : End -->
+    </div>
+}
+else
+{
+    <span style="color:red">Unauthorized Access.</span>
+}
+<script>
+    $('.overlay').fadeIn('fast').delay(5000).fadeOut('slow');
+</script>

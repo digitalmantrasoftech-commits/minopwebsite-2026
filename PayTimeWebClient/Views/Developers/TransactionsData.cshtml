@@ -1,0 +1,420 @@
+﻿@using System.Configuration;
+@{
+    ViewBag.Title = "TransactionsData";
+    Layout = "~/Views/Shared/_LayoutDevelopers.cshtml";
+    string _Message = ViewBag.msg;
+    string _error = ViewBag.error;
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+
+    Int64 _DatagridThsold = 0;
+
+    _DatagridThsold = Convert.ToInt64(HttpContext.Current.Session["DataGridThresold"]);
+}
+<script src="~/Scripts/toastr.min.js"></script>
+<link href="~/Content/toastr.min.css" rel="stylesheet" />
+<script src="/assets/plugins/bootstrap-datepicker/js/bootstrap-datepicker.min.js"></script>
+<link href="/assets/plugins/bootstrap-datepicker/css/bootstrap-datepicker3.min.css" rel="stylesheet" />
+<script src="~/AssetsNew/js/CommonValidation.js"></script>
+<script src="~/Pages_JS/DeveloperData/TransctionDataGridDataPagination.js"></script>
+<script type="text/javascript">
+    var Directory_table = "";
+    var commonConfig = "";
+</script>
+<script type="text/javascript">
+
+    $(document).ready(function () {
+
+        $("#PunchID").keypress(function (e) {
+            var keyCode = e.which;
+            var Responce = validateKeyPress(keyCode);
+            if (Responce == true) {
+            }
+            else { e.preventDefault(); }
+        });
+
+        $("#PunchID").blur(function () {
+            var PunchID = removeTags($("#PunchID").val());
+            $("#PunchID").val(PunchID);
+        });
+
+
+        var currentDate = new Date(); // Get the current date
+        var fromDate = formatDate(currentDate); // Format the current date
+        var toDate = formatDate(currentDate); // Format the current date
+
+        function formatDate(date) {
+            var day = date.getDate();
+            var month = date.getMonth() + 1; // Months are zero-based
+            var year = date.getFullYear();
+
+            // Add leading zeros if necessary
+            if (day < 10) {
+                day = '0' + day;
+            }
+            if (month < 10) {
+                month = '0' + month;
+            }
+
+            return year + '-' + month + '-' + day; // Format: YYYY-MM-DD
+        }
+
+        $("#FilterFromDate").val(fromDate);
+        $("#FilterToDate").val(toDate);
+
+
+        $("#FilterFromDate").change(function () {
+            FilterFromDate();
+        });
+
+        $("#FilterToDate").change(function () {
+            FilterToDate();
+        })
+
+        GetAllManualPunchData();
+
+        $("#SearchFilter").click(function () {
+            var Is_Flag = 0;
+            if ($("#FilterFromDate").val() == "") {
+                toastr.remove();
+                toastr.error("Select FromDate");
+                return false;
+                Is_Flag = 1;
+            } else {
+            }
+
+            if ($("#FilterToDate").val() == "") {
+                toastr.remove();
+                toastr.error("Select ToDate");
+                return false;
+                Is_Flag = 1;
+
+            } else {
+            }
+            if (Is_Flag == 0) {
+                GetAllManualPunchData();
+            }
+        });
+    });
+    Date.prototype.toInputFormat = function () {
+        var yyyy = this.getFullYear().toString();
+        var mm = (this.getMonth() + 1).toString(); // getMonth() is zero-based
+        var dd = this.getDate().toString();
+        return yyyy + "-" + (mm[1] ? mm : "0" + mm[0]) + "-" + (dd[1] ? dd : "0" + dd[0]); // padding
+    };
+
+    function FilterFromDate() {
+        var date = new Date($("#FilterFromDate").val()),
+         days = 30;
+        //if (!isNaN(date.getTime())) {
+        //    date.setDate(date.getDate() + days);
+        //    $("#FilterToDate").val(date.toInputFormat());
+        //}
+        if ($('#FilterFromDate').val() != "") {
+            var start = $('#FilterFromDate').val();
+            var end = $('#FilterToDate').val();
+            if (end != "") {
+                var diff = Date.parse(end) - Date.parse(start);
+                days = diff / 1000 / 60 / 60 / 24;
+                if (days > 31) {
+                    days = 31;
+                }
+            }
+            else {
+                end = 31;
+            }
+
+            var date = new Date($("#FilterFromDate").val()), daynew, daynew = days
+            if (!isNaN(date.getTime())) {
+                date.setDate(date.getDate() + daynew);
+                $("#FilterToDate").val(date.toInputFormat());
+            }
+
+        }
+    };
+    function FilterToDate() {
+
+        var date = new Date($("#FilterToDate").val()),
+         days = 30;
+        //if (!isNaN(date.getTime())) {
+        //    date.setDate(date.getDate() - days);
+
+        //    $("#FilterFromDate").val(date.toInputFormat());
+        //}
+        if ($('#FilterToDate').val() != "") {
+            var start = $('#FilterFromDate').val();
+            var end = $('#FilterToDate').val();
+            if (start != "") {
+                var diff = Date.parse(end) - Date.parse(start);
+                days = diff / 1000 / 60 / 60 / 24;
+                if (days > 31) {
+                    days = 31;
+                }
+            }
+            else {
+                days = 31;
+            }
+            var date = new Date($("#FilterToDate").val()), daynew, daynew = days
+
+            if (!isNaN(date.getTime())) {
+                date.setDate(date.getDate() - daynew);
+                $("#FilterFromDate").val(date.toInputFormat());
+            }
+        }
+    };
+    fillDeviceCode();
+    function fillDeviceCode() {
+        $("#ddlDevice").empty();
+        $.ajax({
+            type: "GET",
+            url: '@_webapiurl' + 'Master/GetDeviceCode',
+            contentType: "application/json; charset=utf-8",
+            headers: { 'Authorization': '@_tokan' },
+            datatype: "json",
+            async: "false",
+            success: function (response) {
+                if (response.isRedirect) {
+                    window.location.href = response.redirectUrl;
+                }
+                if (response != null) {
+                    $("#ddlDevice").append("<option value='0'> Select DeviceCode </option>");
+                    for (var i = 0; i < response.length; i++) {
+                        $("#ddlDevice").append("<option value='" + response[i].DeviceCode + "'>" + response[i].DeviceCode + " ( " + response[i].DeviceSrNo + " )</option>");
+                    }
+                }
+            },
+            error: function (xhr, ajaxOptions, thrownError) {
+                $("#ddlDevice").append("<option value='0'> Select DeviceCode </option>");
+                if (jqXHR.status == 500) { //InternalServerError = 500,
+                    toastr.error("InternalServerError");
+                } else if (jqXHR.status == 400) { //BadRequest = 400,
+                    toastr.error("BadRequest");
+                } else if (jqXHR.status == 401) {
+                    window.location.href = "/PayTime/LoginPage";
+                }
+            }
+        });
+    }
+
+    function GetAllManualPunchData()
+    {
+        var bID = $("#ddlBranch").val();
+        var FilterFromDate = $("#FilterFromDate").val();
+        var FilterToDate = $("#FilterToDate").val();
+        var PunchId = $("#PunchID").val();
+        var DeviceCode = $("#ddlDevice").val();
+        // var obj = { "BranchID": bID, "FilterFromDate": FilterFromDate, "FilterToDate": FilterToDate, "PunchID": PunchId, "DeviceCode": DeviceCode };
+        $("#dataTables_tbl_header").remove();
+        $('#tblTransactionData').destroy; // (You should call destroy() as a function if needed)
+   
+
+        var _ojbClassTransParamData =
+        {
+            BranchID: 0,
+            FilterFromDate: FilterFromDate,
+            FilterToDate: FilterToDate,
+            PunchId: PunchId,
+            DeviceCode: DeviceCode,
+            DataGridThreSold: '@_DatagridThsold',
+            webapiurl: '@_webapiurl',
+            tokan: '@_tokan',
+            pageSize: 10,
+            page: 1,
+            _PunchID: PunchId
+        };
+        LoadTransctionDeviceData(_ojbClassTransParamData);
+    }
+
+    @*function GetAllManualPunchData() {
+        var bID = $("#ddlBranch").val();
+        var FilterFromDate = $("#FilterFromDate").val();
+        var FilterToDate = $("#FilterToDate").val();
+        var PunchId = $("#PunchID").val();
+        var DeviceCode = $("#ddlDevice").val();
+        //var obj = { "BranchID": bID, "FilterFromDate": FilterFromDate, "FilterToDate": FilterToDate, "PunchID": PunchId, "DeviceCode": DeviceCode };
+        $('#tblTransactionData').destroy;
+
+        var _ojbClassTransParamData =
+        {
+            BranchID = 0,
+            FilterFromDate = FilterFromDate,
+            FilterToDate = FilterToDate,
+            PunchId = PunchId,
+            DeviceCode = DeviceCode,
+            DataGridThreSold: '@_DatagridThsold',
+            webapiurl='@_webapiurl',
+            tokan= '@_tokan',
+            pageSize= 10,
+            page=1,
+           _PunchID= PunchId
+        };
+
+        LoadTransctionDeviceData(_ojbClassTransParamData);*@
+
+        //var t = $('#tblTransactionData').DataTable({
+        //    processing: true,
+        //    //serverSide: true,
+        //    "ajax": ({
+        //        "url": "/Developers/TransactionsDataGrid?jsondata=" + JSON.stringify(obj),
+        //        "data": JSON.stringify(obj),
+        //        "method": "POST",
+        //        "type": "json"
+        //    }),
+        //    "language": {
+        //        "search": "Search",
+        //        "searchplaceholder": "search..."
+        //    },
+        //    "dom": 'Bflrtip',
+        //    "buttons": [
+        //        'csvHtml5'
+
+        //    ],
+        //    lengthMenu: [
+        //        [10, 25, 50, 100, 1700],
+        //        ['10', '25', '50', '100', 'All']
+        //    ],
+        //    searching: true,
+        //    order: [[1, 'desc']],
+        //    searchDelay: 1000,
+        //    "bDestroy": true,
+        //    "columns": [
+        //        {"data":null},
+        //        { "data": "txnId" },
+        //        { "data": "punchId" },
+        //        { "data": "dvcId" },
+        //        { "data": "txnDateTime" },
+        //        { "data": "isSync" },
+        //        { "data": "LastActivity" },
+        //        { "data": "EntryDate" },
+        //        { "data": "Remarks" },
+        //        { "data": "RemarksDate"}
+        //    ],
+        //    "columnDefs": [
+        //        {
+        //            "searchable": false,
+        //            "bSort": false,
+        //            "targets": 0
+        //        },
+        //        {
+        //            "targets": [1],
+        //            "visible": false
+        //        },
+        //    ]
+        //});
+        //t.on('order.dt search.dt', function () {
+        //    t.column(0, { search: 'applied', order: 'applied' }).nodes().each(function (cell, i) {
+        //        cell.innerHTML = i + 1;
+        //    });
+        //}).draw();
+    //}
+</script>
+
+<style>
+    .custom_dataTableHeader .has-search {
+        display: none;
+    }
+
+</style>
+
+
+<div class="page-bar">
+
+    <ul class="page-breadcrumb">
+        <li>
+            <a href="/Developers/DevelopersDashboard">@PayTimeWebClient.Resource.Resource.mnuHome</a>
+            <i class="fa fa-circle"></i>
+        </li>
+        <li>
+            <span>Transaction Data</span>
+        </li>
+    </ul>
+
+</div>
+<div>
+    @*<div class="alert alert-success  overlay display-none">
+            <a href="/Transactions/ManualPunching" class="close" data-dismiss="alert">&times;</a>
+            <strong id="strstg">Success ! </strong> @_Message
+        </div>
+        <div class="alert alert-danger cancel overlay display-none">
+            <a href="/Transactions/ManualPunching" class="close" data-dismiss="alert">&times;</a>
+            <strong id="strstg1">Error ! </strong> @_error
+        </div>*@
+    <div id="ajax_loaderTransData" class="modal_bg loading" aria-hidden="true">
+        <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading"/>
+    </div>
+    <div class="portlet light bordered margin-bottom-10">
+        <div class="row">
+            <div class="col-lg-12">
+                <div class="col-lg-2">
+                    <label class="control-label">From Date <span class="required" aria-required="true"> * </span></label>
+                    <div class="input-group  date date-picker" data-date-format="yyyy-mm-dd" data-date-end-date="0d" data-date-viewmode="years">
+
+                        <span class="input-group-btn">
+                            <button class="btn default btn-sm" type="button">
+                                <i class="fa fa-calendar"></i>
+                            </button>
+                        </span>
+                        <input type="text" id="FilterFromDate" class="form-control input-sm" autocomplete="off">
+                    </div>
+                </div>
+                <div class="col-lg-2">
+                    <label class="control-label">To Date <span class="required" aria-required="true"> * </span></label>
+                    <div class="input-group  date date-picker" data-date-format="yyyy-mm-dd" data-date-end-date="0d" data-date-viewmode="years">
+                        <span class="input-group-btn">
+                            <button class="btn default btn-sm" type="button">
+                                <i class="fa fa-calendar"></i>
+                            </button>
+                        </span>
+                        <input type="text" id="FilterToDate" class="form-control input-sm" autocomplete="off">
+                    </div>
+                </div>
+                <div class="col-lg-2">
+                    <label class="control-label">Punch ID</label>
+                    <div class="form-group">
+                        <input type="text" class="form-control input-sm" placeholder="Punch ID" id="PunchID" name="PunchID" maxlength="50">
+                    </div>
+                </div>
+                <div class="col-lg-2">
+                    <div class="form-group">
+                        <label>Device Code</label>
+                        <select class="form-control input-sm select2" id="ddlDevice" name="ddlDevice"></select>
+                    </div>
+                </div>
+                <div class="col-lg-2" style="margin-top: 22px;">
+                    <button type="button" class="btn icon_btn tooltips" id="SearchFilter" data-placement="top" data-original-title="Search">
+                        <i class="fa-solid fa-magnifying-glass" style="font-size:13px;"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="portlet light bordered">
+        <div class="portlet-body">
+            <div id="divmanual">
+                <div class="row">
+                    <div class="col-md-12 clsTable">
+                        <div class="table-responsive" id="tableResponsive">
+                            <table class="table new_datatbl table-striped table-bordered table-hover order-column" id="tblTransactionData">
+                                <thead>
+                                    <tr>
+                                        <th>Sr No.</th>
+                                        <th hidden>Transaction Id</th>
+                                        <th>Punch Id</th>
+                                        <th>Device code</th>
+                                        <th>Punch Time</th>
+                                        <th>IsSync</th>
+                                        <th>Last Activity</th>
+                                        <th>Entry Date</th>
+                                        <th>Remarks</th>
+                                        <th>Remarks Date</th>
+                                    </tr>
+                                </thead>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+

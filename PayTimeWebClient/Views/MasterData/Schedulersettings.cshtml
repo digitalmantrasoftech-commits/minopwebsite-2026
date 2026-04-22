@@ -1,0 +1,1583 @@
+﻿@model PayTimeWebClient.Models.Scheduler
+@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@{
+    ViewBag.Title = "Scheduler Settings";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    string _Message = ViewBag.msg;
+    string _error = ViewBag.error;
+
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+    string isClientDBMatchFlag = HttpContext.Current.Session["IsClientDBMatch"] != null
+   ? HttpContext.Current.Session["IsClientDBMatch"].ToString()
+   : "false"; // Default to "false" if the session is null
+
+
+}
+<script type="text/javascript">
+    $(document).ready(function () {
+        var $selectDep = $("#DeptIds").multiselect({
+            selectAllValue: 'multiselect-all',
+            enableCaseInsensitiveFiltering: true,
+            includeSelectAllOption: true,
+            allSelectedText: 'All Select',
+            enableFiltering: true,
+            maxHeight: '300',
+            buttonWidth: '100%',
+            enableClickableOptGroups: true
+        });
+        $(".alert").hide();
+        frmClear();
+        if ("@_Message" != "") {
+            toastr.succes("@_Message");
+            //$(".alert-danger").hide();
+            //$(".alert-success").show();
+        }
+        if ('@_error' != "") {
+            toastr.remove();
+            toastr.error("@_error");
+            //$(".alert-danger").show();
+            //$(".alert-success").hide();
+        }
+        var schedulercount =  @Model.Schedulersettingslist.Count();
+        if (schedulercount > 0) {
+            $("#Addscheduler").prop("disabled", true)
+            $("#Addscheduler").prop("readonly", true);
+            $("#Addscheduler").addClass("disabled");
+        }
+        $('#tblSchedulersettings').DataTable({
+            dom: _domCommon,
+            language: _languageCommon,
+            "paging":   true,
+            "ordering": false,
+            "searching": true,
+            "info": false
+        }); setTimeout(function () {
+            $("#" + "tblSchedulersettings" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+            $('.tooltips').tooltip();
+        }, 100);
+        $("#Addscheduler").on('click', function () {
+            frmClear();
+            var dt = new Date();
+            var time = dt.getHours() + ":" + dt.getMinutes();
+            $('#tssStarttime').val(time);
+            $("#tssIsActive").prop('checked', false);
+            $("#Addscheduler").attr("data-toggle", "modal");
+            $("#Addscheduler").attr("data-target", "#frmpopup");
+            $("input:checkbox").prop('checked', false);
+
+        });
+        $(':input[type=number]').on('mousewheel', function (e) {
+            e.preventDefault();
+        });
+        $(":input[type=number]").keypress(function (e) {
+            //if the letter is not digit then display error and don't type anything
+            if (this.value.length == 0 && e.which != 8 && e.which != 0 && (e.which <= 48 || e.which > 57)) {
+                return false;
+            }
+        });
+        $("#tssIntervalday").keypress(function (e) {
+            if (this.value.length > 2) {
+                return false;
+            }
+        });
+        $("#tssIntervalweek").keypress(function (e) {
+            if (this.value.length > 1) {
+                return false;
+            }
+        });
+        //$('#tssStarttime').timepicker({
+        //    timeFormat: 'HH:mm',
+        //    minuteStep: 1,
+        //    showMeridian: false
+        //});
+        $("#tssAction").change(function () {
+            $("#tssAction").removeClass('field_error');
+            var actionid = $("#tssAction").val();
+            if (actionid == 0) {
+                $("#fsattenProcess").show();
+            }
+            else {
+                $("#fsattenProcess").hide();
+            }
+        });
+        $('#tssNametxt').bind('cut copy paste', function (e) {
+            e.preventDefault(); //disable cut,copy,paste
+        });
+
+        $('#tssNametxt').blur(function ()
+        {
+            CheckIsSchedulerExist($("#tssNametxt").val());
+        });
+        $('#tssDescription').bind('cut copy paste', function (e) {
+            e.preventDefault(); //disable cut,copy,paste
+        })
+        $("#tssTriggerid").change(function () {
+            frmclerDaily();
+            frmclerWeekly();
+            frmclearMonthly();
+            Hidefieldset();
+            $("#tssTriggerid").removeClass('field_error');
+            var trv = $("#tssTriggerid").val();
+            //if (trv == 1) {
+            //    $("#fsonetiem").show();
+            //}
+            if (trv == 2) {
+                $("#fsdaily").show();
+                $("#tssIntervalday").val(1);
+            }
+            if (trv == 3) {
+                $("#fsweekly").show();
+                $("#tssIntervalweek").val(1);
+
+            }
+            if (trv == 4) {
+                $("#fsmonthly").show();
+                $("#fsdaysofmo").hide();
+                $("#fsmonthdayno").hide();
+                $("#tssIntervalmonth").val(1);
+                document.getElementById("monthrule1").checked = false;
+                document.getElementById("monthrule2").checked = false;
+            }
+
+        });
+        $("#monthrule1").change(function () {
+            var monthrulval = $("#monthrule1").val();
+            $("#fsdaysofmo").hide();
+            $("#fsmonthdayno").hide();
+            $('input[name="tssMothdaynoarr"]').prop('checked', false);
+            $('input[name="tssmonthdayarr"]').prop('checked', false);
+            $("#checkboxpanelmonthlyday").removeClass('field_error');
+            $("#checkboxpanalmonthdayno").removeClass('field_error');
+            if (monthrulval == 1) {
+                $("#fsdaysofmo").show();
+            }
+        });
+        $("#monthrule2").change(function () {
+            var monthrulval = $("#monthrule2").val();
+            $("#fsdaysofmo").hide();
+            $("#fsmonthdayno").hide();
+            $('input[name="tssMonthsdatearr"]').prop('checked', false);
+            $("#checkboxpanalMonthsdate").removeClass('field_error');
+            if (monthrulval == 2) {
+                $("#fsmonthdayno").show();
+            }
+        });
+
+        $("#tblSchedulersettings").on('click', '.editclass', function () {
+            frmClear();
+            $('#spIsChecked').hide();
+            $(".editclass").attr("data-toggle", "modal");
+            $(".editclass").attr("data-target", "#frmpopup");
+            $("#tssId").val($(this).parent('td').parent('tr').children(1)[1].innerText);
+            $("#tssActionid").val($(this).parent('td').parent('tr').children(1)[2].innerText);
+            $("#tssNametxt").val($(this).parent('td').parent('tr').children(1)[3].innerText);
+            var tssId = $("#tssId").val();
+            $.get("/MasterData/FillSchedulerbyID?id=" + tssId, function (response) {
+                if (response.isRedirect) {
+                    window.location.href = response.redirectUrl;
+                }
+                if (response != null) {
+                    var obj = JSON.parse(response);
+                    $("#tssDescription").val(obj.tssDescription);
+                    $("#tssTriggerid").val(obj.tssTriggerid);
+                    $("#tssTriggerid").trigger("change");
+                    $("#tssStartdate").datepicker("setDate", obj.tssStartdate);
+                    $('#tssStarttime').val(obj.tssStarttime);
+                    $('#tssIntervalday').val(obj.tssIntervalday);
+                    $('#tssIntervalweek').val(obj.tssIntervalweek);
+                    $('#tssIsActive').val(obj.tssIsActive);
+                    if (obj.tssIsActive) {
+                        $("#tssIsActive").prop('checked', true);
+                    }
+                    else {
+                        $("#tssIsActive").prop('checked', false);
+                    }
+                    var weekarray = obj.tssWeekday.split(",");
+                    for (i = 0; i < weekarray.length; i++) {
+                        var week = "#tssWeekday" + weekarray[i];
+                        $(week).prop("checked", true);
+                    }
+                    var montharray = obj.tssmonths.split(",");
+                    for (i = 0; i < montharray.length; i++) {
+                        var month = "#tssMonths" + montharray[i];
+                        $(month).prop("checked", true);
+                    }
+                    if (obj.tssMothdayno != "") {
+                        $('#monthrule1').prop("checked", true);
+                        $("#monthrule1").trigger("change");
+                        var monthdatearray = obj.tssMothdayno.split(",");
+                        for (i = 0; i < monthdatearray.length; i++) {
+                            var monthdate = "#tssMonthsdate" + monthdatearray[i];
+                            $(monthdate).prop("checked", true);
+                        }
+                    }
+                    if (obj.tssMonthday !="") {
+                        $('#monthrule2').prop("checked", true);
+                        $("#monthrule2").trigger("change");
+                        var monthdayarray = obj.tssMonthday.split(",");
+                        for (i = 0; i < monthdayarray.length; i++) {
+                            var monthday = "#tssMothdayno" + monthdayarray[i];
+                            $(monthday).prop("checked", true);
+                        }
+                    }
+                    if (obj.tssMonthdayrule != "") {
+                        var tssMonthdayrulearray = obj.tssMonthdayrule.split(",");
+                        for (i = 0; i < tssMonthdayrulearray.length; i++) {
+                            var tssMonthdayrule = "#tssmonthday" + tssMonthdayrulearray[i];
+                            $(tssMonthdayrule).prop("checked", true);
+                        }
+                    }
+                    if (obj.saReportId==0) {
+                        $('#tssAction').val(0);
+                        $("#tssAction").trigger("change");
+                    }
+                    $('#CompanyID').val(obj.CompanyID);
+                    $("#CompanyID").trigger("change");
+                    fillBranchbycompnyid(obj.CompanyID, obj.BranchId);
+                    $("#BranchId option[value = '" + obj.BranchId + "' ]").prop('selected', true);
+                    $('#BranchId').trigger('change');
+                    var dataarray = obj.DepartmentId.split(",");
+                    $("#DeptIds").val(dataarray);
+                    $("#DeptIds").multiselect("refresh");
+                    //$("#BranchId").trigger("change",2);
+                    fillDeptTable(obj.BranchId, obj.DepartmentId);
+                }
+            });
+        });
+
+        $("#tblSchedulersettings").on('click', '.deleteclass', function () {
+            $("#tssId").val($(this).parent('td').parent('tr').children(1)[1].innerText);
+            swal({
+                title: "Important!",
+                text: "Are you sure for Delete this scheduler?",
+                type: "error",
+                showCancelButton: true,
+                confirmButtonText: "Yes, delete it!",
+                closeOnConfirm: true,
+                confirmButtonClass: "btn-danger"
+
+            },
+             function (isConfirm) {
+                 if (isConfirm) {
+                     $.ajax({
+                         url: '/MasterData/DeleteScheduler?id=' + $("#tssId").val(),
+                         type: 'POST',
+                         contentType: "application/json; charset=utf-8",
+                         success: function (data) {
+                             if (data = "OK") {
+                                 $(".alert-danger").hide();
+                                 $(".alert-success").text("Scheduler deleted sucessfully.");
+                                 $('.alert-success').fadeIn('fast').delay(2000).fadeOut('slow');
+                                 window.location.href = "/MasterData/Schedulersettings";
+                             }
+                             else {
+                                 $(".alert-success").hide();
+                                 $(".alert-danger").text("Error in deleting scheduler.");
+                                 $('.alert-danger').fadeIn('fast').delay(2000).fadeOut('slow');
+                             }
+                         },
+                         statusCode: {
+                             404: function (content) { alert('cannot find resource'); },
+                             500: function (content) { alert('internal server error'); }
+                         },
+                         error: function (req, status, errorObj) {
+                             // handle status === "timeout"
+                             // handle other errors
+                         }
+                     });
+                     return true;
+                 }
+                 else {
+                     return false;
+                 }
+             });
+        });
+
+        $("#tblSchedulersettings").on('click', '.Inactiveclass', function () {
+            $("#tssId").val($(this).parent('td').parent('tr').children(1)[1].innerText);
+            var isactive = false;
+            $.ajax({
+                url: '/MasterData/ActiveInactiveScheduler?id=' + $("#tssId").val()+"&Isactive="+isactive,
+                type: 'POST',
+                contentType: "application/json; charset=utf-8",
+                success: function (data) {
+                    if (data = "OK") {
+                        $(".alert-danger").hide();
+                        $(".alert-success").text("Scheduler deactivated sucessfully.");
+                        $('.alert-success').fadeIn('fast').delay(2000).fadeOut('slow');
+                        window.location.href = "/MasterData/Schedulersettings";
+                    }
+                    else {
+                        $(".alert-success").hide();
+                        $(".alert-danger").text("Error in deactivating scheduler.");
+                        $('.alert-danger').fadeIn('fast').delay(2000).fadeOut('slow');
+                    }
+                },
+                statusCode: {
+                    404: function (content) { alert('cannot find resource'); },
+                    500: function (content) { alert('internal server error'); }
+                },
+                error: function (req, status, errorObj) {
+                    // handle status === "timeout"
+                    // handle other errors
+                }
+            });
+        });
+
+        $("#tblSchedulersettings").on('click', '.Activeclass', function () {
+            $("#tssId").val($(this).parent('td').parent('tr').children(1)[1].innerText);
+            var isactive = true;
+            $.ajax({
+                url: '/MasterData/ActiveInactiveScheduler?id=' + $("#tssId").val() + "&Isactive=" + isactive,
+                type: 'POST',
+                contentType: "application/json; charset=utf-8",
+                success: function (data) {
+                    if (data = "OK") {
+                        $(".alert-danger").hide();
+                        $(".alert-success").text("Scheduler Activated sucessfully.");
+                        $('.alert-success').fadeIn('fast').delay(2000).fadeOut('slow');
+                        window.location.href = "/MasterData/Schedulersettings";
+                    }
+                    else {
+                        $(".alert-success").hide();
+                        $(".alert-danger").text("Error in activing scheduler.");
+                        $('.alert-danger').fadeIn('fast').delay(2000).fadeOut('slow');
+                    }
+                },
+                statusCode: {
+                    404: function (content) { alert('cannot find resource'); },
+                    500: function (content) { alert('internal server error'); }
+                },
+                error: function (req, status, errorObj) {
+                    // handle status === "timeout"
+                    // handle other errors
+                }
+            });
+        });
+
+
+        $('#CompanyID').change(function () {
+            $("#spvalidation").text("");
+            $("#spValidation").hide();
+            $("#select2-CompanyID-container").removeClass('field_error');
+            var s = $('#CompanyID').val();
+            $('#CompanyName').val($('#CompanyID :selected').text());
+            fillBranchbycompnyid(s, "");
+        });
+
+        $('#BranchId').change(function () {
+            $("#select2-BranchId-container").removeClass('field_error');
+            $("#spvalidation").text("");
+            $("#spValidation").hide();
+            $("#txt3").val(0);
+            $("#DeptIds").empty();
+            $("#DeptIds option:selected").prop("selected", false);
+            $("#DeptIds").multiselect('refresh');
+            var s = $('#BranchId').val();
+            $('#BranchName').val($('#BranchId :selected').text());
+            $('#EmpIdTbl tr').remove();
+            $('#EmpIdTbl tr').empty();
+            $("#EmpIdTbl").empty();
+            $.ajax({
+                type: "POST",
+                url: "/Transactions/GetDeptbyBranch?BranchId=" + $('#BranchId :selected').val(),
+                contentType: "application/json; charset=utf-8",
+                datatype: "json",
+                async: "false",
+                success: function (response) {
+                    if (response.isRedirect) {
+                        window.location.href = response.redirectUrl;
+                    }
+                    if (response != null) {
+                        $selectDep.multiselect('enable');
+                        for (var i = 0; i < response.length; i++) {
+                            $('#DeptIds').append('<option value=" ' + response[i].Value + ' ">' + response[i].Text + '</option>');
+                        }
+                        $selectDep.multiselect('rebuild');
+
+                    }
+                    $(".loading").hide();
+                },
+                beforeSend: function () {
+                    $(".loading").show();
+                },
+                error: function () {
+                    $(".loading").hide();
+                }
+            });
+        });
+
+
+        $('#ChkAll').click(function (e) {
+            $('#EmpIdTbl tr').remove();
+            var table = $(e.target).closest('table');
+            $('td input:checkbox', table).prop('checked', this.checked);
+            for (i = 0; i < $('td input:checkbox', table).length; i++) {
+
+                if ($('td input:checkbox', table)[i].checked == true) {
+                    var DeptCode = $('td input:checkbox', table)[i].value;
+                    fillEmpTable(DeptCode, true);
+                }
+                else {
+                    $('#EmpIdTbl tr').remove();
+                }
+            }
+        });
+
+        $(document.body).on('change', '#DeptIds', function () {
+            var deptid = $('#DeptIds option:selected');
+            var DeptArray = [];
+            $(deptid).each(function (index, deptid) {
+                DeptArray.push([$(this).val()]);
+            });
+            if (DeptArray == "") {
+                $("#txt3").val(0);
+            }
+            else {
+                $("#txt3").val(DeptArray);
+                $("#spValidation").hide();
+            }
+            var ArrDept = $("#txt3").val();
+            DeptIdlst = ArrDept;
+        });
+
+        $("#btnsave").click(function (e) {
+            if ($("#tssNametxt").val() == "") {
+                $("#tssNametxt").addClass('field_error');
+                e.preventDefault();
+                return false;
+            }
+            else {
+                $("#tssNametxt").removeClass('field_error');
+            }
+
+            if ($("#spIsChecked").is(":visible")) {
+                $("#tssNametxt").addClass('field_error');
+                $("#tssNametxt").focus();
+                event.preventDefault();
+                return false;
+            }
+            else {
+                $("#tssNametxt").removeClass('field_error');
+            }
+
+            if ($("#tssTriggerid").val() == 0) {
+                $("#tssTriggerid").addClass('field_error');
+                e.preventDefault();
+                return false;
+            }
+            else {
+                $("#tssTriggerid").removeClass('field_error');
+            }
+
+            if ($("#tssStartdate").val() == "") {
+                $("#tssStartdate").addClass('field_error');
+                e.preventDefault();
+                return false;
+            }
+            else {
+                $("#tssStartdate").removeClass('field_error');
+            }
+            if ($("#tssStarttime").val() == "") {
+                $("#tssStarttime").addClass('field_error');
+                e.preventDefault();
+                return false;
+            }
+            else {
+                $("#tssStarttime").removeClass('field_error');
+            }
+
+
+
+
+            if ($("#tssTriggerid").val() == 2) {
+
+                if ($("#tssIntervalday").val() == "" || $("#tssIntervalday").val() == 0 || $("#tssIntervalday").val() < 0) {
+                    $("#tssIntervalday").addClass('field_error');
+                    e.preventDefault();
+                    return false;
+                }
+                else {
+                    $("#tssIntervalday").removeClass('field_error');
+                }
+            }
+            if ($("#tssTriggerid").val() == 3) {
+                if ($("#tssIntervalweek").val() == "" || $("#tssIntervalweek").val() == 0 || $("#tssIntervalweek").val() < 0) {
+                    $("#tssIntervalweek").addClass('field_error');
+                    e.preventDefault();
+                    return false;
+                }
+                else {
+                    $("#tssIntervalweek").removeClass('field_error');
+                }
+                if ($("#tssWeekday1").prop('checked') == false && $("#tssWeekday2").prop('checked') == false && $("#tssWeekday3").prop('checked') == false && $("#tssWeekday4").prop('checked') == false && $("#tssWeekday5").prop('checked') == false && $("#tssWeekday6").prop('checked') == false && $("#tssWeekday7").prop('checked') == false) {
+                    $("#checkboxpanelweeklyday").addClass('field_error');
+                    e.preventDefault();
+                    return false;
+                }
+                else {
+                    $("#checkboxpanelweeklyday").removeClass('field_error');
+                }
+            }
+
+            if ($("#tssTriggerid").val() == 4) {
+                if ($("#tssIntervalmonth").val() == "" || $("#tssIntervalmonth").val() == 0 || $("#tssIntervalmonth").val() < 0) {
+                    $("#tssIntervalmonth").addClass('field_error');
+                    e.preventDefault();
+                    return false;
+                }
+                else {
+                    $("#tssIntervalmonth").removeClass('field_error');
+                }
+                var MonthIsChecked = $('input[name="tssMonthsarr"]:checked').length > 0;
+                if (!MonthIsChecked)
+                {
+                    $("#checkboxpanelMonths").addClass('field_error');
+                    e.preventDefault();
+                    return false;
+                }
+                else {
+                    $("#checkboxpanelMonths").removeClass('field_error');
+                }
+
+                var monthrule = $('input[name="monthrule"]:checked').length > 0;
+                if (!monthrule) {
+                    $("#radiopanalMonthsrule").addClass('field_error');
+                    e.preventDefault();
+                    return false;
+                }
+                else {
+                    $("#radiopanalMonthsrule").removeClass('field_error');
+                }
+
+                if (document.getElementById("monthrule1").checked) {
+                    var MonthdateIsChecked = $('input[name="tssMonthsdatearr"]:checked').length > 0;
+                    if (!MonthdateIsChecked) {
+                        $("#checkboxpanalMonthsdate").addClass('field_error');
+                        e.preventDefault();
+                        return false;
+                    }
+                    else {
+                        $("#checkboxpanalMonthsdate").removeClass('field_error');
+                    }
+
+                }
+
+                if (document.getElementById("monthrule2").checked) {
+
+                    var MonthdaynoIsChecked = $('input[name="tssMothdaynoarr"]:checked').length > 0;
+                    if (!MonthdaynoIsChecked) {
+                        $("#checkboxpanalmonthdayno").addClass('field_error');
+                        e.preventDefault();
+                        return false;
+                    }
+                    else {
+                        $("#checkboxpanalmonthdayno").removeClass('field_error');
+                    }
+
+                    var MonthdayIsChecked = $('input[name="tssmonthdayarr"]:checked').length > 0;
+                    if (!MonthdayIsChecked) {
+                        $("#checkboxpanelmonthlyday").addClass('field_error');
+                        e.preventDefault();
+                        return false;
+                    }
+                    else {
+                        $("#checkboxpanelmonthlyday").removeClass('field_error');
+                    }
+
+
+                }
+                if ($("#tssAction").val() == -1) {
+                    $("#tssAction").addClass('field_error');
+                    e.preventDefault();
+                    return false;
+                }
+                else {
+                    $("#tssAction").removeClass('field_error');
+                }
+
+
+            }
+            $("#tssNametxt").keypress(function (e) {
+                $("#tssNametxt").removeClass('field_error');
+            });
+            $("#tssStartdate").focus(function () {
+                $("#tssStartdate").removeClass('field_error');
+            });
+            $("#tssStarttime").focus(function (e) {
+                $("#tssStarttime").removeClass('field_error');
+            });
+
+            $("#tssWeekday1").change(function () {
+                $("#checkboxpanelweeklyday").removeClass('field_error');
+            });
+            $("#tssWeekday2").change(function () {
+                $("#checkboxpanelweeklyday").removeClass('field_error');
+            });
+            $("#tssWeekday3").change(function () {
+                $("#checkboxpanelweeklyday").removeClass('field_error');
+            });
+            $("#tssWeekday4").change(function () {
+                $("#checkboxpanelweeklyday").removeClass('field_error');
+            });
+            $("#tssWeekday5").change(function () {
+                $("#checkboxpanelweeklyday").removeClass('field_error');
+            });
+            $("#tssWeekday6").change(function () {
+                $("#checkboxpanelweeklyday").removeClass('field_error');
+            });
+            $("#tssIntervalweek").change(function () {
+                $("#tssIntervalweek").removeClass('field_error');
+            });
+            $("#tssIntervalmonth").change(function () {
+                $("#tssIntervalmonth").removeClass('field_error');
+            });
+            $("#tssMothdayno").change(function () {
+                $("#tssMothdayno").removeClass('field_error');
+            });
+            $("#tssmonthweekday1").change(function () {
+                $("#checkboxpanalmonthdayno").removeClass('field_error');
+            });
+            $("#tssmonthweekday2").change(function () {
+                $("#checkboxpanalmonthdayno").removeClass('field_error');
+            });
+            $("#tssmonthweekday3").change(function () {
+                $("#checkboxpanalmonthdayno").removeClass('field_error');
+            });
+            $("#tssmonthweekday4").change(function () {
+                $("#checkboxpanalmonthdayno").removeClass('field_error');
+            });
+            $("#tssmonthweekday5").change(function () {
+                $("#checkboxpanalmonthdayno").removeClass('field_error');
+            });
+            $("#tssmonthday1").change(function () {
+                $("#checkboxpanelweeklyday").removeClass('field_error');
+            });
+            $("#tssmonthday2").change(function () {
+                $("#checkboxpanelweeklyday").removeClass('field_error');
+            });
+            $("#tssmonthday3").change(function () {
+                $("#checkboxpanelweeklyday").removeClass('field_error');
+            });
+            $("#tssmonthday4").change(function () {
+                $("#checkboxpanelweeklyday").removeClass('field_error');
+            });
+            $("#tssmonthday5").change(function () {
+                $("#checkboxpanelweeklyday").removeClass('field_error');
+            });
+            $("#tssmonthday6").change(function () {
+                $("#checkboxpanelweeklyday").removeClass('field_error');
+            });
+            $("#tssmonthday7").change(function () {
+                $("#checkboxpanelweeklyday").removeClass('field_error');
+            });
+
+            if ($("#tssAction").val() == -1) {
+                $("#tssAction").addClass('field_error');
+                e.preventDefault();
+                return false;
+            }
+            else {
+                $("#tssAction").removeClass('field_error');
+            }
+
+            if ($('#CompanyID').val() <= 0) {
+                $("#CompanyID").addClass('field_error');
+                $("#select2-CompanyID-container").addClass('field_error');
+                e.preventDefault();
+                return false;
+            }
+            else {
+                $("#CompanyID").removeClass('field_error');
+                $("#select2-CompanyID-container").removeClass('field_error');
+            }
+
+            if ($('#BranchId').val() <= 0) {
+                $("#BranchId").addClass('field_error');
+                $("#select2-BranchId-container").addClass('field_error');
+                e.preventDefault();
+                return false;
+            }
+            else {
+                $("#BranchId").removeClass('field_error');
+                $("#select2-BranchId-container").removeClass('field_error');
+            }
+
+            if ($("#DeptIds").val() == null)
+            {
+                $("#DeptIds").addClass('field_error');
+                e.preventDefault();
+                return false;
+            }
+            else {
+                $("#DeptIds").removeClass('field_error');
+            }
+
+        });
+        $('#tssIsActive').change(function () {
+            if ($('#tssIsActive').is(':checked')) {
+                $('#tssIsActive').val(true);
+            }
+            else {
+                $('#tssIsActive').val(false);
+            }
+        });
+        $('#tssIsActive').val(false);
+        function fillBranchbycompnyid(companyid, selectbranch) {
+            $('#BranchId').empty();
+            $.ajax(
+             {
+                 type: "GET",
+                 url: "/MasterData/GetBranchbycomapny",
+                 data: { comapanyid: companyid },
+                 contentType: "application/json; charset=utf-8",
+                 dataType: "json",
+                 beforeSend: function () {
+                     $("#ajax_loader").show();
+                 },
+                 success: function (data) {
+                     if (data.isRedirect) {
+                         window.location.href = data.redirectUrl;
+                     }
+                     $("#ajax_loader").hide();
+                     var markup = '';
+
+                     for (var x = 0; x < data.length; x++) {
+                         markup += "<option value=" + data[x].BranchId + ">" + data[x].BranchName + "</option>";
+                     }
+                     var newOption = '<option selected="selected"  value="">Select Branch</option>';
+
+                     $('#BranchId').html(newOption);
+                     $('#BranchId').append(markup);
+                     $('#BranchId').val(selectbranch);
+                 },
+                 error: function (jqXHR, ajaxOptions, thrownError) {
+                     if (jqXHR.status == 500) { //InternalServerError = 500,
+                         toastr.error("InternalServerError");
+                     } else if (jqXHR.status == 400) { //BadRequest = 400,
+                         toastr.error("BadRequest");
+                     } else if (jqXHR.status == 401) {
+                         window.location.href = "/PayTime/LoginPage";
+                     }
+                 }
+             });
+        }
+        function fillDeptTable(BranchId, selectedDept) {
+            $("#DeptIds").empty();
+            $.ajax({
+                type: "POST",
+                url: "/Transactions/GetDeptbyBranch?BranchId=" + BranchId,
+                contentType: "application/json; charset=utf-8",
+                datatype: "json",
+                async: "false",
+                success: function (response) {
+                    if (response != null) {
+                        for (var i = 0; i < response.length; i++) {
+                            if (selectedDept.length != 0) {
+                                var re = new RegExp("(^|,)" + response[i].Value + "($|,)");
+                                if (re.test(selectedDept) == true) {
+                                    $('#DeptIds').append('<option value=" ' + response[i].Value + '" selected>' + response[i].Text + '</option>');
+                                }
+                                else {
+                                    $('#DeptIds').append('<option value=" ' + response[i].Value + ' ">' + response[i].Text + '</option>');
+                                }
+                            }
+                            else {
+                                $('#DeptIds').append('<option value=" ' + response[i].Value + ' ">' + response[i].Text + '</option>');
+                            }
+                        }
+                        $selectDep.multiselect('rebuild');
+                    }
+                    $(".loading").hide();
+                },
+                beforeSend: function () {
+                    $(".loading").show();
+                },
+                error: function () {
+                    $(".loading").hide();
+                }
+            });
+        }
+
+
+        function frmclerDaily() {
+            $("#tssIntervalday").val(0);
+            $("#tssIntervalday").removeClass('field_error');
+
+        }
+        function frmclerWeekly() {
+            $("#tssIntervalweek").val(0);
+
+
+            $("#tssWeekday1").prop('checked', false);
+            $("#tssWeekday2").prop('checked', false);
+            $("#tssWeekday3").prop('checked', false);
+            $("#tssWeekday4").prop('checked', false);
+            $("#tssWeekday5").prop('checked', false);
+            $("#tssWeekday6").prop('checked', false);
+            $("#tssWeekday7").prop('checked', false);
+
+            $("#tssIntervalweek").removeClass('field_error');
+            $("#checkboxpanelweeklyday").removeClass('field_error');
+            $("#tssWeekday").val("0");
+        }
+        function frmclearMonthly() {
+            $("#tssIntervalmonth").val(0);
+            $("#tssIntervalmonth").removeClass('field_error');
+            frmclearmonthlyrule1();
+            frmclearmonthlyrule2();
+        }
+
+        function frmclearmonthlyrule1() {
+            $("#tssMothdayno").val(0);
+            $("#tssMothdayno").removeClass('field_error');
+
+        }
+        function frmclearmonthlyrule2() {
+            $("#tssmonthweekday1").prop('checked', false);
+            $("#tssmonthweekday2").prop('checked', false);
+            $("#tssmonthweekday3").prop('checked', false);
+            $("#tssmonthweekday4").prop('checked', false);
+            $("#tssmonthweekday5").prop('checked', false);
+
+            $("#tssmonthday1").prop('checked', false);
+            $("#tssmonthday2").prop('checked', false);
+            $("#tssmonthday3").prop('checked', false);
+            $("#tssmonthday4").prop('checked', false);
+            $("#tssmonthday5").prop('checked', false);
+            $("#tssmonthday6").prop('checked', false);
+            $("#tssmonthday7").prop('checked', false);
+
+            $("#checkboxpanalmonthdayno").removeClass('field_error');
+            $("#checkboxpanelweeklyday").removeClass('field_error');
+
+
+            $("#tssMonthday").val("0");
+            $("#tssMonthdayrule").val("0");
+
+        }
+
+
+
+        function frmClear() {
+            frmclerDaily();
+            frmclerWeekly();
+            frmclearMonthly();
+            $("#tssId").val(0);
+            $("#tssNametxt").val("");
+            $("#tssDescription").val("");
+            $("#tssTriggerid").val(0);
+            $("#tssAction").val(-1);
+            Hidefieldset();
+            $("#tssNametxt").removeClass('field_error');
+            $("#tssStartdate").removeClass('field_error');
+            $("#tssStarttime").removeClass('field_error');
+            $("#checkboxpanelMonths").removeClass('field_error');
+            $("#tssTriggerid").removeClass('field_error');
+            $("#tssAction").removeClass('field_error');
+            $("#checkboxpanalmonthdayno").removeClass('field_error');
+            $("#checkboxpanelmonthlyday").removeClass('field_error');
+            $("#radiopanalMonthsrule").removeClass('field_error');
+            $("#CompanyID").val(null);
+            $("#select2-CompanyID-container").html("Select Company");
+            $("#select2-CompanyID-container").attr("title", "Select Company");
+            $("#BranchId").empty();
+            $("#BranchId").append("<option value='0'>Select Branch</option>");
+            $("#BranchId").val(0);
+            $("#DeptIds option:selected").prop("selected", false);
+            $("#DeptIds").multiselect('refresh');
+            $("#DeptIds").multiselect('disable');
+            $("#CompanyID").removeClass('field_error');
+            $("#BranchId").removeClass('field_error');
+            $("#fsattenProcess").hide();
+            $('#spIsChecked').hide();
+
+        }
+        function Hidefieldset() {
+            $("#fsonetiem").hide();
+            $("#fsdaily").hide();
+            $("#fsweekly").hide();
+            $("#fsmonthly").hide();
+        }
+
+    });
+    function blockSpecialChar(e) {
+        var k = e.keyCode;
+        return ((k > 64 && k < 91) || (k > 96 && k < 123) || k == 8 || (k >= 48 && k <= 57) || k == 32);
+    }
+
+    function CheckIsSchedulerExist(name) {
+        $.ajax(
+         {
+             type: "GET",
+             url: "/MasterData/CheckIsSchedulerExist",
+             data: { Name: name },
+             contentType: "application/json; charset=utf-8",
+             dataType: "json",
+             beforeSend: function () {
+             },
+             success: function (data) {
+                 if (data.isRedirect) {
+                     window.location.href = data.redirectUrl;
+                 }
+                 if (data.IsExist == true) {
+                     $('#spIsChecked').html("Scheduler with this name already exists.")
+                     $('#spIsChecked').show()
+                     $("#tssNametxt").addClass('field_error');
+                     $("#tssNametxt").focus();
+                     event.preventDefault();
+                     return false;
+                 }
+                 else {
+                     $('#spIsChecked').hide()
+                     $("#tssNametxt").removeClass('field_error');
+                 }
+             },
+             error: function (jqXHR, ajaxOptions, thrownError) {
+                 if (jqXHR.status == 500) { //InternalServerError = 500,
+                     toastr.error("InternalServerError");
+                 } else if (jqXHR.status == 400) { //BadRequest = 400,
+                     toastr.error("BadRequest");
+                 } else if (jqXHR.status == 401) {
+                     window.location.href = "/PayTime/LoginPage";
+                 }
+             }
+         });
+    }
+
+
+</script>
+<style>
+    input[type=number] {
+        -moz-appearance: textfield;
+    }
+
+        input[type=number]::-webkit-inner-spin-button,
+        input[type=number]::-webkit-outer-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+
+    .portlet.fsthff .mt-checkbox {
+        margin-bottom: 7px;
+    }
+
+    .dataTables_wrapper {
+        padding: 0px 0 0px 0;
+    }
+</style>
+<div class="page-bar">
+    @if (_RoleId == 1 || _RoleId == 6805 || _RoleId == 6806)
+    {
+        <ul class="page-breadcrumb">
+            <li>
+                @if (isClientDBMatchFlag == "True")
+                {
+                    <a href="/Admin/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+                }
+                else
+                {
+                    <a href="/Dashboard/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+                }                
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> Scheduler</span>
+            </li>
+        </ul>
+    }
+    else
+    {
+        <ul class="page-breadcrumb">
+            <li>
+                <a href="/Dashboard/EmployeeDashboard"><i class="fa-regular fa-house"></i></a>
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> Scheduler</span>
+            </li>
+        </ul>
+
+    }
+    <div class="page-toolbar">
+        @if (obj.CanAdd)
+        {
+            <div class="text-right">
+                @*<a href="#" id="Addscheduler" class="btn btn-sm blue"> <i class="fa-solid fa-plus"></i> Add Scheduler</a>*@
+            </div>
+        }
+    </div>
+</div>
+
+@if (obj.CanView)
+{
+    <div class="portlet">
+        <div class="portlet-body">
+            <div class="row">
+                <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                    @if (Model.Schedulersettingslist != null && Model.Schedulersettingslist.Count() > 0)
+                    {
+                        <div class="table-responsive" id="tableResponsive">
+                            <table id="tblSchedulersettings" class="new_datatbl table table-striped table-bordered table-hover table-checkable order-column">
+                                <thead>
+                                    <tr>
+                                        <th style="display:none;">Sr. No</th>
+                                        <th hidden>ID</th>
+                                        <th hidden>Actionsid</th>
+                                        <th>Name</th>
+                                        <th hidden>Description</th>
+                                        <th>Trigger</th>
+                                        <th>Action</th>
+                                        <th hidden>Start Date</th>
+                                        <th hidden>Start Time</th>
+                                        <th>Next Run Time</th>
+                                        <th>Last Run Time</th>
+                                        <th hidden>Last Run Result</th>
+                                        <th hidden>Created Date</th>
+                                        <th>Is Active</th>
+                                        <th hidden>Triggersid</th>
+                                        <th hidden></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @{
+                                        int n = 1;
+                                    }
+                                    @foreach (var item in Model.Schedulersettingslist)
+                                    {
+                                        <tr>
+                                            <td style="display:none;">@n</td>
+                                            <td hidden>@Html.DisplayFor(modelItem => item.tssId)</td>
+                                            <td hidden>@Html.DisplayFor(modelItem => item.tssActionid)</td>
+                                            <td>@Html.DisplayFor(modelItem => item.tssName)</td>
+                                            <th hidden>@Html.DisplayFor(modelItem => item.tssDescription)</th>
+                                            <td>
+                                                @if (item.tssTriggerid == 2)
+                                                {
+                                                    <span>Daily</span>
+                                                }
+                                                else if (item.tssTriggerid == 3)
+                                                {
+                                                    <span>Weekly</span>
+                                                }
+                                                else if (item.tssTriggerid == 4)
+                                                {
+                                                    <span>Monthly</span>
+                                                }
+
+                                            </td>
+                                            <td><span>Attendance Process</span></td>
+                                            <td hidden>@Html.DisplayFor(modelItem => item.tssStartdate)</td>
+                                            <td hidden>@Html.DisplayFor(modelItem => item.tssStarttime)</td>
+                                            <td>@Html.DisplayFor(modelItem => item.tssNextRunTime)</td>
+                                            <td>
+                                                @Html.DisplayFor(modelItem => item.tssLastRunTime)
+                                            </td>
+                                            <td hidden>
+                                                @if (item.tssLastRunResult == 0)
+                                                {
+                                                    <span>Never</span>
+                                                }
+                                                else if (item.tssLastRunResult == 1)
+                                                {
+                                                    <span>Success</span>
+                                                }
+                                                else if (true)
+                                                {
+                                                    <span>fail</span>
+                                                }
+                                            </td>
+                                            <td hidden>@Html.DisplayFor(modelItem => item.tssCreatedate)</td>
+                                            <td>
+                                                @if (item.tssIsActive == true)
+                                                {
+                                                    <span>True</span>
+                                                }
+                                                else
+                                                {
+                                                    <span>False</span>
+                                                }
+                                            </td>
+                                            <td hidden>@Html.DisplayFor(modelItem => item.tssTriggerid)</td>
+                                            <td hidden>
+                                                <a class="editclass btn btn-xs blue tooltips" title="Edit">
+                                                    <i class="fa-regular fa-pen-to-square"></i>
+                                                </a>
+                                                @if (item.tssIsActive == false)
+                                                {
+                                                    <span> </span><a class="Activeclass btn btn-xs blue tooltips" title="Active"><i class="fa-solid fa-check"></i></a>
+                                                }
+                                                else
+                                                {
+                                                    <span> </span><a class="Inactiveclass btn btn-xs blue tooltips" title="Inactive"><i class="fa-solid fa-xmark"></i></a>
+                                                }
+                                                <span> </span><a class="deleteclass btn btn-xs red tooltips" title="Delete"><i class="fa-regular fa-trash-can"></i></a>
+                                            </td>
+                                        </tr>
+                                        n++;
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    else
+                    {
+                        <div id="NotificationGrid-empty">
+                            <div class="datanotfound">
+                                <img src="~/assets/images/emptyscreen_1.png" width="280" height="148" alt="Nodata Found Icon">
+                                <p class="datanotfound_title">No data found</p> <!-- titleText -->
+                                <p class="">No entries found. Please add a record to get started.</p><!-- subText -->
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="frmpopup" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    <h4 class="modal-title">Scheduler</h4>
+                </div>
+                <div class="modal-body">
+                    <div class="modal-card">
+                        @using (Html.BeginForm("Schedulersettings", "MasterData"))
+                        {
+                            <fieldset>
+                                <div class="row">
+                                    <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                        <div class="form-group">
+                                            <label>
+                                                @Html.HiddenFor(model => model.tssId)
+                                                @Html.HiddenFor(model => model.tssActionid)
+                                                Scheduler Name <span class="required" aria-required="true"> * </span>
+                                            </label>
+                                            @Html.EditorFor(model => model.tssName, new { htmlAttributes = new { @class = "form-control input-sm", @maxlength = 50, @id = "tssNametxt", @onkeypress = "return blockSpecialChar(event)" } })
+                                            <span class="help-block" style="color:red;" hidden id="spIsChecked"></span>
+                                        </div>
+                                    </div>
+                                    <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                        <div class="form-group">
+                                            <label>Description</label>
+                                            @Html.EditorFor(model => model.tssDescription, new { htmlAttributes = new { @class = "form-control input-sm", @maxlength = 200 } })
+                                        </div>
+                                    </div>
+                                    <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                        <div class="form-group">
+                                            <label class="control-label">Trigger Type <span class="required" aria-required="true"> * </span></label>
+                                            <select id="tssTriggerid" name="tssTriggerid" class="form-control">
+                                                <option value="0" selected>Select Trigger</option>
+                                                <option value="2">Daily</option>
+                                                @*<option value="3">Weekly</option>
+                                    <option value="4">Monthly</option>*@
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                        <div class="form-group data_picker_box">
+                                            <label class="control-label">Start Date <span class="required" aria-required="true"> * </span></label>
+                                            <div class="input-group input-group-sm  date date-picker" data-date="@DateTime.Now" data-date-format="yyyy-mm-dd" data-date-viewmode="years">
+                                                <span class="input-group-btn">
+                                                    <button class="btn default" type="button">
+                                                        <i class="fa-light fa-calendar-days"></i>
+                                                    </button>
+                                                </span>
+                                                <input type="text" placeholder="YYYY-MM-DD" class="form-control" id="tssStartdate" name="tssStartdate">
+                                                <span class="help-block" hidden id="sptssStartdate"></span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                        <div class="form-group data_picker_box">
+                                            <label class="control-label">Start Time <span class="required" aria-required="true"> * </span></label>
+                                            <div class="input-group input-group-sm" id="StartDiv">
+                                                <input type="text" class="form-control timepicker timepicker-24" id="tssStarttime" name="tssStarttime" placeholder="00:00" data-minute-step="1" data-timeformat="HH:MM">
+                                                <span class="input-group-btn">
+                                                    <button class="btn default" type="button" id="btnIntime">
+                                                        <i class="fa-regular fa-clock"></i>
+                                                    </button>
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12" style="display:none">
+                                        <div class="form-group">
+                                            <label class="control-label">Is Acive <span class="required" aria-required="true"> * </span></label>
+                                            <div class="input-group input-group-sm" id="ActiveDiv">
+                                                @Html.CheckBoxFor(model => model.tssIsActive)
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </fieldset>
+                            <fieldset id="fsdaily">
+                                <div class="row">
+                                    <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                                        <h4 class="form-section">Daily</h4>
+                                    </div>
+                                    <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                        <div class="form-group">
+                                            <label class="control-label">Recur every :</label>
+                                            @Html.EditorFor(model => model.tssIntervalday, new { htmlAttributes = new { @class = "form-control input-sm" } })
+                                            days
+                                        </div>
+                                    </div>
+                                </div>
+                            </fieldset>
+                            <fieldset id="fsweekly">
+                                <div class="row">
+                                    <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                                        <h4 class="form-section">Weekly</h4>
+                                    </div>
+                                    <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                        <div class="form-group">
+                                            <label class="control-label">Recur every :</label>
+                                            @Html.EditorFor(model => model.tssIntervalweek, new { htmlAttributes = new { @class = "form-control input-sm" } })
+                                            weeks on
+                                        </div>
+                                    </div>
+                                    <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                                        <div class="form-group">
+                                            <div class="fsthff" id="checkboxpanelweeklyday">
+                                                <div class="mt-checkbox-inline row">
+                                                    <div class="col-lg-3 col-md-3 col-sm-4 col-xs-6">
+                                                        <label class="mt-checkbox mt-checkbox-outline">Sunday<input type="checkbox" value="1" name="tssWeekdayarr" id="tssWeekday1" /><span></span></label>
+                                                    </div>
+                                                    <div class="col-lg-3 col-md-3 col-sm-4 col-xs-6">
+                                                        <label class="mt-checkbox mt-checkbox-outline">Monday<input type="checkbox" value="2" name="tssWeekdayarr" id="tssWeekday2" /><span></span></label>
+                                                    </div>
+                                                    <div class="col-lg-3 col-md-3 col-sm-4 col-xs-6">
+                                                        <label class="mt-checkbox mt-checkbox-outline">Tuesday<input type="checkbox" value="3" name="tssWeekdayarr" id="tssWeekday3" /><span></span></label>
+                                                    </div>
+                                                    <div class="col-lg-3 col-md-3 col-sm-4 col-xs-6">
+                                                        <label class="mt-checkbox mt-checkbox-outline">Wednesday<input type="checkbox" value="4" name="tssWeekdayarr" id="tssWeekday4" /><span></span></label>
+                                                    </div>
+                                                    <div class="col-lg-3 col-md-3 col-sm-4 col-xs-6">
+                                                        <label class="mt-checkbox mt-checkbox-outline">Thursday<input type="checkbox" value="5" name="tssWeekdayarr" id="tssWeekday5" /><span></span></label>
+                                                    </div>
+                                                    <div class="col-lg-3 col-md-3 col-sm-4 col-xs-6">
+                                                        <label class="mt-checkbox mt-checkbox-outline">Friday<input type="checkbox" value="6" name="tssWeekdayarr" id="tssWeekday6" /><span></span></label>
+                                                    </div>
+                                                    <div class="col-lg-3 col-md-3 col-sm-4 col-xs-6">
+                                                        <label class="mt-checkbox mt-checkbox-outline">Saturday<input type="checkbox" value="7" name="tssWeekdayarr" id="tssWeekday7" /><span></span></label>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </fieldset>
+                            <fieldset id="fsmonthly">
+                                <div class="row">
+                                    <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                                        <h4 class="form-section">Monthly</h4>
+                                    </div>
+                                    <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                                        <div class="fsthff" id="checkboxpanelMonths">
+                                            <div class="mt-checkbox-inline row">
+                                                <div class="col-lg-3 col-md-3 col-sm-4 col-xs-6">
+                                                    <label class="mt-checkbox mt-checkbox-outline">January<input type="checkbox" value="1" name="tssMonthsarr" id="tssMonths1" /><span></span></label>
+                                                </div>
+                                                <div class="col-lg-3 col-md-3 col-sm-4 col-xs-6">
+                                                    <label class="mt-checkbox mt-checkbox-outline">Febuary<input type="checkbox" value="2" name="tssMonthsarr" id="tssMonths2" /><span></span></label>
+                                                </div>
+                                                <div class="col-lg-3 col-md-3 col-sm-4 col-xs-6">
+                                                    <label class="mt-checkbox mt-checkbox-outline">March<input type="checkbox" value="3" name="tssMonthsarr" id="tssMonths3" /><span></span></label>
+                                                </div>
+                                                <div class="col-lg-3 col-md-3 col-sm-4 col-xs-6">
+                                                    <label class="mt-checkbox mt-checkbox-outline">April<input type="checkbox" value="4" name="tssMonthsarr" id="tssMonths4" /><span></span></label>
+                                                </div>
+                                                <div class="col-lg-3 col-md-3 col-sm-4 col-xs-6">
+                                                    <label class="mt-checkbox mt-checkbox-outline">May<input type="checkbox" value="5" name="tssMonthsarr" id="tssMonths5" /><span></span></label>
+                                                </div>
+                                                <div class="col-lg-3 col-md-3 col-sm-4 col-xs-6">
+                                                    <label class="mt-checkbox mt-checkbox-outline">June<input type="checkbox" value="6" name="tssMonthsarr" id="tssMonths6" /><span></span></label>
+                                                </div>
+                                                <div class="col-lg-3 col-md-3 col-sm-4 col-xs-6">
+                                                    <label class="mt-checkbox mt-checkbox-outline">July<input type="checkbox" value="7" name="tssMonthsarr" id="tssMonths7" /><span></span></label>
+                                                </div>
+                                                <div class="col-lg-3 col-md-3 col-sm-4 col-xs-6">
+                                                    <label class="mt-checkbox mt-checkbox-outline">August<input type="checkbox" value="8" name="tssMonthsarr" id="tssMonths8" /><span></span></label>
+                                                </div>
+                                                <div class="col-lg-3 col-md-3 col-sm-4 col-xs-6">
+                                                    <label class="mt-checkbox mt-checkbox-outline">September<input type="checkbox" value="9" name="tssMonthsarr" id="tssMonths9" /><span></span></label>
+                                                </div>
+                                                <div class="col-lg-3 col-md-3 col-sm-4 col-xs-6">
+                                                    <label class="mt-checkbox mt-checkbox-outline">October<input type="checkbox" value="10" name="tssMonthsarr" id="tssMonths10" /><span></span></label>
+                                                </div>
+                                                <div class="col-lg-3 col-md-3 col-sm-4 col-xs-6">
+                                                    <label class="mt-checkbox mt-checkbox-outline">November<input type="checkbox" value="11" name="tssMonthsarr" id="tssMonths11" /><span></span></label>
+                                                </div>
+                                                <div class="col-lg-3 col-md-3 col-sm-4 col-xs-6">
+                                                    <label class="mt-checkbox mt-checkbox-outline">December<input type="checkbox" value="12" name="tssMonthsarr" id="tssMonths12" /><span></span></label>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12" id="radiopanalMonthsrule">
+                                        <div class="form-group radio_box">
+                                            <label class="control-label">Select</label>
+                                            <label class="mt-radio mt-radio-outline">
+                                                Day of Month
+                                                <input type="radio" id="monthrule1" name="monthrule" value="1" checked="" />
+                                                <span></span>
+                                            </label>
+                                            <label class="mt-radio mt-radio-outline">
+                                                Month On
+                                                <input type="radio" id="monthrule2" name="monthrule" value="2" />
+                                                <span></span>
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="row" id="fsdaysofmo">
+                                    <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                                        <h4 class="form-section">Day of Month</h4>
+                                    </div>
+                                    <div class="col-lg-12 col-md12 col-sm-12 col-xs-12">
+                                        <div class="editor-field col-md-13" id="checkboxpanalMonthsdate">
+                                            <div class="mt-checkbox-inline row">
+                                                <div class="col-lg-2 col-md-4 col-sm-4 col-xs-3">
+                                                    <label class="mt-checkbox mt-checkbox-outline">1<input type="checkbox" value="1" name="tssMonthsdatearr" id="tssMonthsdate1" /><span></span></label>
+                                                </div>
+                                                <div class="col-lg-2 col-md-4 col-sm-4 col-xs-3">
+                                                    <label class="mt-checkbox mt-checkbox-outline">2<input type="checkbox" value="2" name="tssMonthsdatearr" id="tssMonthsdate2" /><span></span></label>
+                                                </div>
+                                                <div class="col-lg-2 col-md-4 col-sm-4 col-xs-3">
+                                                    <label class="mt-checkbox mt-checkbox-outline">3<input type="checkbox" value="3" name="tssMonthsdatearr" id="tssMonthsdate3" /><span></span></label>
+                                                </div>
+                                                <div class="col-lg-2 col-md-4 col-sm-4 col-xs-3">
+                                                    <label class="mt-checkbox mt-checkbox-outline">4<input type="checkbox" value="4" name="tssMonthsdatearr" id="tssMonthsdate4" /><span></span></label>
+                                                </div>
+                                                <div class="col-lg-2 col-md-4 col-sm-4 col-xs-3">
+                                                    <label class="mt-checkbox mt-checkbox-outline">5<input type="checkbox" value="5" name="tssMonthsdatearr" id="tssMonthsdate5" /><span></span></label>
+                                                </div>
+                                                <div class="col-lg-2 col-md-4 col-sm-4 col-xs-3">
+                                                    <label class="mt-checkbox mt-checkbox-outline">6<input type="checkbox" value="6" name="tssMonthsdatearr" id="tssMonthsdate6" /><span></span></label>
+                                                </div>
+                                                <div class="col-lg-2 col-md-4 col-sm-4 col-xs-3">
+                                                    <label class="mt-checkbox mt-checkbox-outline">7<input type="checkbox" value="7" name="tssMonthsdatearr" id="tssMonthsdate7" /><span></span></label>
+                                                </div>
+                                                <div class="col-lg-2 col-md-4 col-sm-4 col-xs-3">
+                                                    <label class="mt-checkbox mt-checkbox-outline">8<input type="checkbox" value="8" name="tssMonthsdatearr" id="tssMonthsdate8" /><span></span></label>
+                                                </div>
+                                                <div class="col-lg-2 col-md-4 col-sm-4 col-xs-3">
+                                                    <label class="mt-checkbox mt-checkbox-outline">9<input type="checkbox" value="9" name="tssMonthsdatearr" id="tssMonthsdate9" /><span></span></label>
+                                                </div>
+                                                <div class="col-lg-2 col-md-4 col-sm-4 col-xs-3">
+                                                    <label class="mt-checkbox mt-checkbox-outline">10<input type="checkbox" value="10" name="tssMonthsdatearr" id="tssMonthsdate10" /><span></span></label>
+                                                </div>
+                                                <div class="col-lg-2 col-md-4 col-sm-4 col-xs-3">
+                                                    <label class="mt-checkbox mt-checkbox-outline">11<input type="checkbox" value="11" name="tssMonthsdatearr" id="tssMonthsdate11" /><span></span></label>
+                                                </div>
+                                                <div class="col-lg-2 col-md-4 col-sm-4 col-xs-3">
+                                                    <label class="mt-checkbox mt-checkbox-outline">12<input type="checkbox" value="12" name="tssMonthsdatearr" id="tssMonthsdate12" /><span></span></label>
+                                                </div>
+                                                <div class="col-lg-2 col-md-4 col-sm-4 col-xs-3">
+                                                    <label class="mt-checkbox mt-checkbox-outline">13<input type="checkbox" value="13" name="tssMonthsdatearr" id="tssMonthsdate13" /><span></span></label>
+                                                </div>
+                                                <div class="col-lg-2 col-md-4 col-sm-4 col-xs-3">
+                                                    <label class="mt-checkbox mt-checkbox-outline">14<input type="checkbox" value="14" name="tssMonthsdatearr" id="tssMonthsdate14" /><span></span></label>
+                                                </div>
+                                                <div class="col-lg-2 col-md-4 col-sm-4 col-xs-3">
+                                                    <label class="mt-checkbox mt-checkbox-outline">15<input type="checkbox" value="15" name="tssMonthsdatearr" id="tssMonthsdate15" /><span></span></label>
+                                                </div>
+                                                <div class="col-lg-2 col-md-4 col-sm-4 col-xs-3">
+                                                    <label class="mt-checkbox mt-checkbox-outline">16<input type="checkbox" value="16" name="tssMonthsdatearr" id="tssMonthsdate16" /><span></span></label>
+                                                </div>
+                                                <div class="col-lg-2 col-md-4 col-sm-4 col-xs-3">
+                                                    <label class="mt-checkbox mt-checkbox-outline">17<input type="checkbox" value="17" name="tssMonthsdatearr" id="tssMonthsdate17" /><span></span></label>
+                                                </div>
+                                                <div class="col-lg-2 col-md-4 col-sm-4 col-xs-3">
+                                                    <label class="mt-checkbox mt-checkbox-outline">18<input type="checkbox" value="18" name="tssMonthsdatearr" id="tssMonthsdate18" /><span></span></label>
+                                                </div>
+                                                <div class="col-lg-2 col-md-4 col-sm-4 col-xs-3">
+                                                    <label class="mt-checkbox mt-checkbox-outline">19<input type="checkbox" value="19" name="tssMonthsdatearr" id="tssMonthsdate19" /><span></span></label>
+                                                </div>
+                                                <div class="col-lg-2 col-md-4 col-sm-4 col-xs-3">
+                                                    <label class="mt-checkbox mt-checkbox-outline">20<input type="checkbox" value="20" name="tssMonthsdatearr" id="tssMonthsdate20" /><span></span></label>
+                                                </div>
+                                                <div class="col-lg-2 col-md-4 col-sm-4 col-xs-3">
+                                                    <label class="mt-checkbox mt-checkbox-outline">21<input type="checkbox" value="21" name="tssMonthsdatearr" id="tssMonthsdate21" /><span></span></label>
+                                                </div>
+                                                <div class="col-lg-2 col-md-4 col-sm-4 col-xs-3">
+                                                    <label class="mt-checkbox mt-checkbox-outline">22<input type="checkbox" value="22" name="tssMonthsdatearr" id="tssMonthsdate22" /><span></span></label>
+                                                </div>
+                                                <div class="col-lg-2 col-md-4 col-sm-4 col-xs-3">
+                                                    <label class="mt-checkbox mt-checkbox-outline">23<input type="checkbox" value="23" name="tssMonthsdatearr" id="tssMonthsdate23" /><span></span></label>
+                                                </div>
+                                                <div class="col-lg-2 col-md-4 col-sm-4 col-xs-3">
+                                                    <label class="mt-checkbox mt-checkbox-outline">24<input type="checkbox" value="24" name="tssMonthsdatearr" id="tssMonthsdate24" /><span></span></label>
+                                                </div>
+                                                <div class="col-lg-2 col-md-4 col-sm-4 col-xs-3">
+                                                    <label class="mt-checkbox mt-checkbox-outline">25<input type="checkbox" value="25" name="tssMonthsdatearr" id="tssMonthsdate25" /><span></span></label>
+                                                </div>
+                                                <div class="col-lg-2 col-md-4 col-sm-4 col-xs-3">
+                                                    <label class="mt-checkbox mt-checkbox-outline">26<input type="checkbox" value="26" name="tssMonthsdatearr" id="tssMonthsdate26" /><span></span></label>
+                                                </div>
+                                                <div class="col-lg-2 col-md-4 col-sm-4 col-xs-3">
+                                                    <label class="mt-checkbox mt-checkbox-outline">27<input type="checkbox" value="27" name="tssMonthsdatearr" id="tssMonthsdate27" /><span></span></label>
+                                                </div>
+                                                <div class="col-lg-2 col-md-4 col-sm-4 col-xs-3">
+                                                    <label class="mt-checkbox mt-checkbox-outline">28<input type="checkbox" value="28" name="tssMonthsdatearr" id="tssMonthsdate28" /><span></span></label>
+                                                </div>
+                                                <div class="col-lg-2 col-md-4 col-sm-4 col-xs-3">
+                                                    <label class="mt-checkbox mt-checkbox-outline">29<input type="checkbox" value="29" name="tssMonthsdatearr" id="tssMonthsdate29" /><span></span></label>
+                                                </div>
+                                                <div class="col-lg-2 col-md-4 col-sm-4 col-xs-3">
+                                                    <label class="mt-checkbox mt-checkbox-outline">30<input type="checkbox" value="30" name="tssMonthsdatearr" id="tssMonthsdate30" /><span></span></label>
+                                                </div>
+                                                <div class="col-lg-2 col-md-4 col-sm-4 col-xs-3">
+                                                    <label class="mt-checkbox mt-checkbox-outline">31<input type="checkbox" value="31" name="tssMonthsdatearr" id="tssMonthsdate31" /><span></span></label>
+                                                </div>
+                                                <div class="col-lg-2 col-md-2 col-sm-4 col-xs-3">
+                                                    <label class="mt-checkbox mt-checkbox-outline">Last<input type="checkbox" value="32" name="tssMonthsdatearr" id="tssMonthsdate32" /><span></span></label>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="row" id="fsmonthdayno" style="display:none;">
+                                    <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                                        <h4 class="form-section">Month On :</h4>
+                                    </div>
+                                    <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                                        <div class="fsthff" id="checkboxpanalmonthdayno">
+                                            <div class="mt-checkbox-inline row">
+                                                <div class="col-lg-3 col-md-3 col-sm-4 col-xs-6">
+                                                    <label class="mt-checkbox mt-checkbox-outline">First<input type="checkbox" value="1" name="tssMothdaynoarr" id="tssMothdayno1" /><span></span></label>
+                                                </div>
+                                                <div class="col-lg-3 col-md-3 col-sm-4 col-xs-6">
+                                                    <label class="mt-checkbox mt-checkbox-outline">Second<input type="checkbox" value="2" name="tssMothdaynoarr" id="tssMothdayno2" /><span></span></label>
+                                                </div>
+                                                <div class="col-lg-3 col-md-3 col-sm-4 col-xs-6">
+                                                    <label class="mt-checkbox mt-checkbox-outline">Third<input type="checkbox" value="3" name="tssMothdaynoarr" id="tssMothdayno3" /><span></span></label>
+                                                </div>
+                                                <div class="col-lg-3 col-md-3 col-sm-4 col-xs-6">
+                                                    <label class="mt-checkbox mt-checkbox-outline">Fourth<input type="checkbox" value="4" name="tssMothdaynoarr" id="tssMothdayno4" /><span></span></label>
+                                                </div>
+                                                <div class="col-lg-3 col-md-3 col-sm-4 col-xs-6">
+                                                    <label class="mt-checkbox mt-checkbox-outline">Fifth<input type="checkbox" value="5" name="tssMothdaynoarr" id="tssMothdayno5" /><span></span></label>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                                        <div class="fsthff" id="checkboxpanelmonthlyday">
+                                            <div class="mt-checkbox-inline row">
+                                                <div class="col-lg-3 col-md-3 col-sm-4 col-xs-6">
+                                                    <label class="mt-checkbox mt-checkbox-outline">Sunday<input type="checkbox" value="1" name="tssmonthdayarr" id="tssmonthday1" /><span></span></label>
+                                                </div>
+                                                <div class="col-lg-3 col-md-3 col-sm-4 col-xs-6">
+                                                    <label class="mt-checkbox mt-checkbox-outline">Monday<input type="checkbox" value="2" name="tssmonthdayarr" id="tssmonthday2" /><span></span></label>
+                                                </div>
+                                                <div class="col-lg-3 col-md-3 col-sm-4 col-xs-6">
+                                                    <label class="mt-checkbox mt-checkbox-outline">Tuesday<input type="checkbox" value="3" name="tssmonthdayarr" id="tssmonthday3" /><span></span></label>
+                                                </div>
+                                                <div class="col-lg-3 col-md-3 col-sm-4 col-xs-6">
+                                                    <label class="mt-checkbox mt-checkbox-outline">Wednesday<input type="checkbox" value="4" name="tssmonthdayarr" id="tssmonthday4" /><span></span></label>
+                                                </div>
+                                                <div class="col-lg-3 col-md-3 col-sm-4 col-xs-6">
+                                                    <label class="mt-checkbox mt-checkbox-outline">Thursday<input type="checkbox" value="5" name="tssmonthdayarr" id="tssmonthday5" /><span></span></label>
+                                                </div>
+                                                <div class="col-lg-3 col-md-3 col-sm-4 col-xs-6">
+                                                    <label class="mt-checkbox mt-checkbox-outline">Friday<input type="checkbox" value="6" name="tssmonthdayarr" id="tssmonthday6" /><span></span></label>
+                                                </div>
+                                                <div class="col-lg-3 col-md-3 col-sm-4 col-xs-6">
+                                                    <label class="mt-checkbox mt-checkbox-outline">Saturday<input type="checkbox" value="7" name="tssmonthdayarr" id="tssmonthday7" /><span></span></label>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </fieldset>
+                            <fieldset>
+                                <div class="row">
+                                    <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                                        <div class="form-group">
+                                            <label class="control-label">Actions <span class="required" aria-required="true"> * </span></label>
+                                            <select id="tssAction" name="tssAction" class="form-control">
+                                                <option value="-1" selected>Select Action</option>
+                                                <option value="0">Attendance process</option>
+                                                @*<option value="6">Send Mail</option>*@
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                            </fieldset>
+                            <fieldset id="fsattenProcess">
+                                <div class="row">
+                                    <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                                        <h4 class="form-section">Attendance Process</h4>
+                                    </div>
+                                    <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                        <div class="form-group">
+                                            <label class="control-label">Company <span class="required" aria-required="true"> * </span></label>
+                                            <div class="editor-field" id="divCompany">
+                                                @if (ViewBag.Companyslist != null)
+                                            {
+                                                @Html.DropDownList("CompanyID", new SelectList(ViewBag.Companyslist, "CompanyID", "CompanyName"), "Select Company", new { @class = "select2 form-control input-sm" })
+                                            }
+                                            else
+                                            {
+                                                @Html.DropDownList("CompanyID", new SelectList(new[] { "" }), "Select Company", new { @class = "select2 form-control input-sm" })
+                                            }
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                        <div class="form-group">
+                                            <label class="control-label">Branch <span class="required" aria-required="true"> * </span></label>
+                                            <div class="editor-field" id="divBranch">
+                                                @Html.DropDownList("BranchId", new SelectList(new[] { "" }), "Select Branch", new { @class = "form-control input-sm select2" })
+                                                <div id='ajax_loader' class="modal_bg loading" aria-hidden="true">
+                                                    <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading"/>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                        <div class="form-group">
+                                            <label class="control-label">Department <span class="required" aria-required="true"> * </span></label>
+                                            <div class="editor-field">
+                                                <input type="text" id="txt3" value="0" hidden />
+                                                <select id="DeptIds" class="mt-multiselect btn btn-default" multiple="multiple" data-label="left" data-select-all="true" data-width="100%" data-filter="true" data-action-onchange="true" name="DepartmentIds[]"></select>
+                                            </div>
+                                        </div>
+                                    </div>                                    
+                                </div>
+                            </fieldset>
+                        }
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <div class="row">
+                        <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                            <button type="submit" class="btn save_btn" id="btnsave"><i class="fa-light fa-floppy-disk"></i> Save</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    <span style="color:red">Unauthorized Access.</span>
+}
+<script>
+    $('.overlay').fadeIn('fast').delay(5000).fadeOut('slow');
+</script>

@@ -1,0 +1,490 @@
+﻿@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@using System.Configuration;
+@{
+    ViewBag.Title = "ImportInsuranceDetail";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    string _Message = ViewBag.msg;
+    string _error = ViewBag.error;
+    string _flgempover = ViewBag.flgempover;
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+
+    if (_flgempover == "true")
+    {
+        obj.CanAdd = false;
+    }
+    string _dbName = HttpContext.Current.Session["DbName"].ToString();
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+}
+<style>
+    .progress {
+        position: relative;
+        height: 15px;
+        background-color: #e9ecef;
+    }
+
+    .progress-bar {
+        height: 100%;
+        background-color: #5C95FF;
+        border-radius: 3px !important;
+    }
+</style>
+<script src="~/AssetsNew/js/exportexcel.js"></script>
+<script src="~/Scripts/Helpers/noDataHandler.js"></script>
+<script type="text/javascript">
+    $(document).ready(function () {
+        if ("@_Message" != "") {
+            toastr.remove();
+            toastr.success("@_Message");
+        }
+        if ('@_error' != "") {
+            toastr.remove();
+            toastr.error("@_error");
+        }
+        generateInsurancegriddata();
+        generateprogressdata();
+        $("#btnImport").click(function (event) {
+            if (document.getElementById("FileUpload").files.length == 0) {
+                toastr.remove();
+                toastr.error("Please upload file.");
+                event.preventDefault();
+                return false;
+            }
+        });
+        $("#FileUpload").change(function () {
+            if ($("#FileUpload").val() != null) {
+                var validExts = new Array(".xlsx", ".xls", ".csv");
+                var fileExt = $("#FileUpload").val();
+                if (fileExt != "") {
+                    fileExt = fileExt.substring(fileExt.lastIndexOf('.'));
+                    if (validExts.indexOf(fileExt) < 0) {
+                        toastr.remove();
+                        toastr.error("Invalid file selected, valid files are of " + validExts.toString() + " types.");
+                        $("#FileUpload").val("");
+                        return false;
+                    }
+                }
+            }
+        });
+
+        $("#Filter_search").click(function () {
+            const wrapper = $(".filter_portlet_wrapper");
+            wrapper.toggleClass("full-width");
+
+            var screenWidth = $(window).width();
+            if (screenWidth >= 300 && screenWidth <= 600) {
+                $('.filter_portlet_tbl').toggle();
+                $('.filter_portlet_wrapper .filter_boxModal').css('width', '100%');
+            }
+        });
+
+        // Close filter panel on close button click
+        $(".filterclose_btn").click(function () {
+            const wrapper = $(".filter_portlet_wrapper");
+            wrapper.addClass("full-width");
+
+            var screenWidth = $(window).width();
+            if (screenWidth >= 300 && screenWidth <= 600) {
+                $(".filter_portlet_tbl").css("display", "block");
+            }
+        });
+
+    });
+    function generateprogressdata() {
+     $("#ajax_loader").show();
+     interval = setInterval(() => {
+         $.ajax({
+             url: '@_webapiurl' + 'Utility/GetProgressInsuranceData',
+             type: "GET",
+             headers: { 'Authorization': '@_tokan' },
+             contentType: "application/json; charset=utf-8",
+             datatype: "json",
+             success: function (data) {
+                 if (Array.isArray(data) && data.length > 0 && data[0].Progress !== undefined) {
+                     var progressValue = data[0].Progress;
+
+                     $(".progress-bar").css("width", progressValue + "%").attr("aria-valuenow", progressValue);
+                     $(".progress-value").text(progressValue + "%");
+
+                     if (progressValue >= 100) {
+                         clearInterval(interval);
+                         $("#ajax_loader").hide();
+                         generateInsurancegriddata();
+                     }
+                 }
+             },
+             error: function (jqXHR, ajaxOptions, thrownError) {
+                 if (jqXHR.status === 500) {
+                     toastr.error("Internal Server Error.");
+                 } else if (jqXHR.status === 400) {
+                     toastr.error("Bad Request.");
+                 } else if (jqXHR.status === 401) {
+                     window.location.href = "/PayTime/LoginPage";
+                 }
+                 clearInterval(interval);
+                 $("#ajax_loader").hide();
+             }
+         });
+     }, 3000);
+ }
+
+    function generateInsurancegriddata() {
+     $.ajax({
+         url: '@_webapiurl' + "Utility/GetExcelInsuarnceGridData",
+         type: "GET",
+         headers: { 'Authorization': '@_tokan' },
+         contentType: "application/json; charset=utf-8",
+         datatype: "json",
+         success: function (response) {
+
+             if (response != null) {
+                 const details = response;
+                 handleGridVisibility("tblempty", "NotificationGrid-empty", details, {
+                     imageUrl: "emptyscreen_3.png",
+                     subText: "No matching records found for the selected filters."
+                 });
+             }
+
+             if (response && response.length > 0) {
+                 $("#tblinsuranceMaster").show();
+                 if ($.fn.dataTable.isDataTable('#tblinsuranceMaster')) {
+                     $('#tblinsuranceMaster').DataTable().clear().destroy();
+                 }
+                 var tableData = [];
+                 for (var i = 0; i < response.length; i++) {
+                     var row = [];
+                     row.push(i + 1);
+                     row.push(response[i].Startdate);
+
+                     if (response[i].Status === "Success") {
+                         row.push("<div style='display: flex;'><span class='green_font'>" + response[i].Status + "</span></div>");
+                     } else if (response[i].Status === "Pending") {
+                         row.push(
+                             "<div style='display: flex;'>"+
+                             "<div class='orange_font'>" + response[i].Status + "</div>" +
+                             "<div class='loading1' style='width: 100px; margin: 0 8px;'>" +
+                             "<div class='progress' style='margin-bottom: 0;'>" +
+                             "<div class='progress-bar' role='progressbar' style='width: 0%;' aria-valuenow='0' aria-valuemin='0' aria-valuemax='100'></div>" +
+                             "</div>" +
+                             "</div>" +
+                             "<span class='progress-value'>0%</span>" +
+                             "</div>"
+
+                         );
+                     } else {
+                         row.push(response[i].Status);
+                     }
+
+                     row.push(response[i].CreatedDtFlag);
+                     row.push(response[i].Err);
+
+                     if (response[i].Err == 1 && response[i].Status != "Pending") {
+                         row.push(
+                             "<a class='btnDownloadErrorList btn btn-xs seagreen_btnnew tooltips' " + "data-placement='top'" + "data-original-title='Download'" +
+                             "onclick='generateInsuranceExcelFile(" + response[i].CreatedDtFlag + ")'>" +
+                             "<i class='fa-regular fa-file-excel'></i></a>"
+                         );
+                     } else {
+                         row.push("");
+                     }
+                     tableData.push(row);
+                 }
+                 $("#dataTables_tbl_header").remove();
+                 $('#tblinsuranceMaster').DataTable({
+                     data: tableData,
+                     dom: _domCommon,
+                     language: _languageCommon,
+                     columns: [
+                         { title: "Sr No.",visible:false},
+                         { title: "StartDate"},
+                         { title: "Status"},
+                         { title: "CreatedDtFlag", visible: false },
+                         { title: "Err", visible: false },
+                         { title: "View Error File"}
+                     ],
+                     initComplete: function () {
+                         const visibleTable = $('table:visible').attr('id');
+                         $("#buttons").append(`
+                                <div id="export-button" class="export-button tooltips" data-placement="top" data-original-title="Download" data-table-id="${visibleTable}">
+                                    <img src="../Newlayout/images/download_icon.svg" alt="Download icon">
+                                </div>
+                         `);
+
+                     },
+                     ordering: true,
+                     lengthChange: true,
+                     info: true,
+                     autoWidth: false,
+                     responsive: true,
+                 });
+                 setTimeout(function () {
+                     $("#" + "tblinsuranceMaster" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+                     $('.tooltips').tooltip();
+                 }, 100);
+                 $("#ajax_loader").hide();
+             }
+         },
+         error: function (xhr, ajaxOptions, thrownError) {
+             $("#ajax_loader").hide();
+         },
+         complete: function () {
+             $("#ajax_loader").hide();
+         }
+         });
+    }
+    function generateInsuranceExcelFile(_Date) {
+    var DtFlag = _Date;
+    $.ajax({
+        url: "/ESS/DownloadInsuranceErrList",
+        type: "GET",
+        headers: { 'Authorization': '@_tokan' },
+        data: { DtFlag: _Date },
+        contentType: "application/json; charset=utf-8",
+        datatype: "json",
+        success: function (data) {
+            if (typeof data === "string") {
+                try {
+                    data = JSON.parse(data);
+                } catch (error) {
+                    toastr.error("Failed to parse data.");
+                    $("#btnDownloadErrorList").prop('disabled', false);
+                    return;
+                }
+            }
+
+            // Check for redirection first
+            if (typeof data === "object" && data.isRedirect) {
+                window.location.href = data.redirectUrl;
+                return;
+            }
+
+            if (!Array.isArray(data)) {
+                toastr.error("Unexpected data format received.");
+                $("#btnDownloadErrorList").prop('disabled', false);
+                return;
+            }
+            if (data.length === 0) {
+                toastr.error("No entry found in excel.");
+                return;
+            }
+            try {
+                const formattedData = data.map(item => ({
+                    employee_code: item.employee_code,
+                    insurance_of: item.insurance_of,
+                    dependent_name: item.dependent_name,
+                    dependent_age: item.dependent_age,
+                    dependent_gender: item.dependent_gender,
+                    dependent_birthdate: item.dependent_birthdate,
+                    policy_type: item.policy_type,
+                    insurance_company_name: item.insurance_company_name,
+                    policy_number: item.policy_number,
+                    registration_date: item.registration_date,
+                    due_date: item.due_date,
+                    expire_date: item.expire_date,
+                    insurance_amount: item.insurance_amount,
+                    annual_amount: item.annual_amount,
+                    monthly_premium: item.monthly_premium,
+                    premium_deduct_salary: item.premium_deduct_salary,
+                    Salary_deduct_date: item.Salary_deduct_date,
+                    is_verify: item.is_verify,
+                    link: item.link,
+                    UID: item.UID,
+                    Reason: item.Reason
+                }));
+                var worksheet = XLSX.utils.json_to_sheet(formattedData);
+                var workbook = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(workbook, worksheet, "insurancedetails");
+
+                worksheet['!cols'] = [
+                    { wch: 15 },
+                    { wch: 20 },
+                    { wch: 20 },
+                    { wch: 10 },
+                    { wch: 15 },
+                    { wch: 15 },
+                    { wch: 20 },
+                    { wch: 25 },
+                    { wch: 20 },
+                    { wch: 15 },
+                    { wch: 15 },
+                    { wch: 15 },
+                    { wch: 20 },
+                    { wch: 20 },
+                    { wch: 20 },
+                    { wch: 25 },
+                    { wch: 20 },
+                    { wch: 10 },
+                    { wch: 30 },
+                    { wch: 10 },
+                    { wch: 30 }
+                ];
+                const range = XLSX.utils.decode_range(worksheet['!ref']);
+                const headerRow = range.s.r; // Start row (header row)
+                for (let col = range.s.c; col <= range.e.c; col++) {
+                    const cellAddress = XLSX.utils.encode_cell({ r: headerRow, c: col });
+                    if (!worksheet[cellAddress]) continue;
+
+                    worksheet[cellAddress].s = {
+                        font: { bold: true, color: { rgb: "FFFFFF" } },
+                        fill: { fgColor: { rgb: "4CAF50" } },
+                        alignment: { horizontal: "center" }
+                    };
+                }
+
+                XLSX.writeFile(workbook, 'insurancedetails.xlsx');
+                $("#btnDownloadErrorList").prop('disabled', false);
+
+            } catch (error) {
+                toastr.error("Error in processing the data.");
+                $("#btnDownloadErrorList").prop('disabled', false);
+            }
+        },
+        error: function (jqXHR, ajaxOptions, thrownError) {
+            if (jqXHR.status == 500) {
+                toastr.error("InternalServerError");
+            } else if (jqXHR.status == 400) {
+                toastr.error("BadRequest");
+            } else if (jqXHR.status == 401) {
+                window.location.href = "/PayTime/LoginPage";
+            }
+        }
+    });
+    }
+
+</script>
+<div class="page-bar">
+    @if (_RoleId == 1 || _RoleId == 6805 || _RoleId == 6806)
+    {
+        <ul class="page-breadcrumb">
+            <li>
+                <a href="/PayTime/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> Import Insurance Details</span>
+            </li>
+        </ul>
+    }
+    else
+    {
+        <ul class="page-breadcrumb">
+            <li>
+                <a href="/PayTime/EmployeeDashboard"><i class="fa-regular fa-house"></i></a>
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> Import Insurance Details</span>
+            </li>
+        </ul>
+    }
+    <div class="page-toolbar text-right">
+        <a href="javascript:;" class="btn icon_transparent_btn tooltips" id="Filter_search" data-placement="left" data-original-title="Filter" data-toggle="tooltip"><i class="fa-light fa-filter" aria-hidden="true"></i> </a>
+    </div>
+</div>
+@if (obj.CanView)
+{
+    <div class="row">
+        <div id='ajax_loader' class="modal_bg loading" aria-hidden="true">
+            <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading" />
+        </div>
+    </div>
+
+    <div class="filter_portlet_wrapper full-width">
+
+        <!-- Datatable Block : Begin -->
+        <div class="portlet filter_portlet_tbl">
+            <div class="portlet-body">
+                <div id="tblempty">
+                    <div class="table-responsive" id="tableResponsive">
+                        <table id="tblinsuranceMaster" class="new_datatbl table table-striped table-bordered table-hover table-checkable order-column">
+                            <thead>
+                                <tr>
+                                    <th style="display:none;">Sr No.</th>
+                                    <th>Startdate</th>
+                                    <th>Status</th>
+                                    <th hidden>CreatedDtFlag</th>
+                                    <th hidden>Err</th>
+                                    <th>View Error List</th>
+                                </tr>
+                            </thead>
+                        </table>
+                    </div>
+                </div>
+                <div id="NotificationGrid-empty" style="display: none">
+                    <div class="datanotfound">
+                        <img src="" height="148" width="280" alt="Nodata Found Icon">
+                        <p class="datanotfound_title"></p> <!-- titleText -->
+                        <p class=""></p><!-- subText -->
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Datatable Block : End -->
+        <!-- Filter Block : Begin -->
+        <div class="portlet filter_boxModal">
+            @using (Html.BeginForm("ImportInsuranceDetails", "ESS", FormMethod.Post, new { enctype = "multipart/form-data" }))
+            {
+                <div class="filterbox_header">
+                    <div class="d-flex align-items-center justify-content-between">
+                        <h4 class="filter-title">Filters</h4>
+                        <button type="button" class="filterclose_btn"><i class="fa-light fa-xmark"></i></button>
+                    </div>
+                </div>
+                <div class="filterbox_body">
+                    <div class="col-lg-12">
+                        <div class="form-group margin-0">
+                            <label>Select File<span class="required" aria-required="true"> * </span></label>
+                            <div class="fileinput fileinput-new" data-provides="fileinput">
+                                <div class="input-group">
+                                    <div class="form-control uneditable-input input-fixed input" data-trigger="fileinput" style="min-width: auto;">
+                                        <i class="fa-light fa-clipboard-list"></i>&nbsp;
+                                        <span class="fileinput-filename" style="white-space: nowrap; width: 100px; text-overflow: ellipsis;"></span>
+                                    </div>
+                                    <span class="input-group-addon btn blue btn-file">
+                                        <span class="fileinput-new"><i class="fa-regular fa-file" aria-hidden="true"></i></span>
+                                        <span class="fileinput-exists"><i class="fa-regular fa-arrows-rotate" aria-hidden="true"></i></span>
+                                        <input type="file" name="FileUpload" id="FileUpload">
+                                    </span>
+                                    <a href="javascript:;" class="input-group-addon btn red fileinput-exists" data-dismiss="fileinput"><i class="fa-regular fa-trash-can" style="color: #fff;"></i></a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-12">
+                        <hr class="save_hr_line" />
+                    </div>
+                    <div class="col-lg-12 sample_sheet_box">
+                        <p>Download the attached sample CSV, which can be used as a template to import your data into the application</p>
+                    </div>
+                    <div class="col-lg-12 sample_sheet_box margin-top-15">
+                        <a class="btn green-dark linkexcel" href="~/SampleXlFile/ImportInsurancePolicyFormat.xls" download>Download Sample</a>
+                    </div>
+                </div>
+                <div class="filterbox_footer">
+                    <div class="text-right">
+                        @if (obj.CanAdd)
+                        {
+                            <button type="submit" id="btnImport" class="btn icon_btn margin-left-5 tooltips" data-placement="top" data-original-title="Import Data"><i class="fa-regular fa-upload"></i></button>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+        <!-- Filter Block : End -->
+
+    </div>
+}
+else
+{
+    <span style="color:red">Unauthorized Access.</span>
+}

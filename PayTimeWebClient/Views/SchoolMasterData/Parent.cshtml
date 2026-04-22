@@ -1,0 +1,477 @@
+﻿@using System.Configuration;
+@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models
+@{
+    ViewBag.Title = "Parent";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    string _companyCode = HttpContext.Current.Session["cmpcode"].ToString();
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+    string _companyid = string.Empty;
+    if (_RoleId == 6805)
+    {
+        _companyid = HttpContext.Current.Session["ClientCompanyId"].ToString();
+    }
+
+}
+
+<script type="text/javascript">
+    $(document).ready(function () {
+        var schoolid = '@_companyid';
+        var emprole = '@_RoleId';
+        _url = '@_webapiurl' + 'SchoolMaster/ParentGetAll';
+        if (emprole == '6805') {
+            _url = '@_webapiurl' + 'SchoolMaster/ParentGetAllbycmp?id=' + schoolid;
+        }
+
+        var t = $('#tblParentMaster').DataTable(
+    {
+        "processing": true,
+        "ajax": {
+            url: _url,
+            type: "GET",
+            headers: { 'Authorization': '@_tokan' },
+            dataSrc: '',
+        },
+        "columns": [
+            { "data": null },
+            { "data": "ParentId" },
+            { "data": "ParentTypeId" },
+            { "data": "ParentName" },
+            { "data": "ParentOccupation" },
+            { "data": "ContactNo" },
+            { "data": "IsActive" },
+            { "data": "ParentPhoto" },
+        ],
+        "columnDefs": [
+            {
+                "targets": [1, 2, 4, 6, 7],
+                "visible": false
+            },
+            {
+                "targets": 8,
+                "data": null,
+                "render": function (data, type, full, meta) {
+                    if ('@obj.CanEdit.ToString()' == 'True') {
+                        data = "<a class='editclass btn btn-xs blue tooltips' title='Edit'><i class='fa fa-edit'></i></a";
+                    }
+                    else {
+                        data = "";
+                    }
+                    return data;
+                }
+            },
+             {
+                 "searchable": false,
+                 "orderable": false,
+                 "targets": 0
+             }
+        ],
+        "order": [[1, 'asc']],
+    }
+    );
+        t.on('order.dt search.dt', function () {
+            t.column(0, { search: 'applied', order: 'applied' }).nodes().each(function (cell, i) {
+                cell.innerHTML = i + 1;
+            });
+        }).draw();
+        $("#ContactNo").keypress(function (e) {
+            $("#ContactNo").removeClass('field_error');
+            if (e.which != 8 && e.which != 0 && (e.which < 48 || e.which > 57)) {
+                return false;
+            }
+            else {
+                return true;
+            }
+        });
+        $('#ContactNo').bind('cut copy paste', function (e) {
+            e.preventDefault(); //disable cut,copy,paste
+        });
+        $("#AddParent").on('click', function () {
+            frmClear();
+            $("#AddParent").attr("data-toggle", "modal");
+            $("#AddParent").attr("data-target", "#frmpopup");
+        });
+        $("#btnParentSubmit").click(function (event) {
+            if ($("#ParentTypeId").val() == "0") {
+                $("#ParentTypeId").addClass('field_error');
+                $("#ParentTypeId").focus();
+                event.preventDefault();//or return false
+                return false;
+            }
+            else {
+                $("#ParentTypeId").removeClass('field_error');
+            }
+            if ($("#ParentName").val() == "") {
+                $("#ParentName").addClass('field_error');
+                $("#ParentName").focus();
+                event.preventDefault();//or return false
+                return false;
+            }
+            else {
+                $("#ParentName").removeClass('field_error');
+            }
+            if ($("#ParentOccupation").val() == "") {
+                $("#ParentOccupation").addClass('field_error');
+                $("#ParentOccupation").focus();
+                event.preventDefault();//or return false
+                return false;
+            }
+            else {
+                $("#ParentOccupation").removeClass('field_error');
+            }
+            if ($("#ContactNo").val() == "") {
+                $("#ContactNo").addClass('field_error');
+                $("#ContactNo").focus();
+                event.preventDefault();//or return false
+                return false;
+            }
+            else {
+                $("#ContactNo").removeClass('field_error');
+            }
+
+
+
+            var obj = {
+                ParentId: $('#ParentId').val(),
+                ParentTypeId: $('#ParentTypeId').val(),
+                ParentName: $("#ParentName").val(),
+                ParentOccupation: $('#ParentOccupation').val(),
+                ContactNo: $("#ContactNo").val(),
+                IsActive: $("#IsActive").val() ? 1 : 0,
+                ParentPhoto: $("#ParentPhoto").val(),
+                Accountcode: '@_companyCode'
+
+            };
+
+            if ($('#ParentId').val() == "0") {
+                $.ajax({
+                    type: "POST",
+                    headers: { 'Authorization': '@_tokan' },
+                    url: '@_webapiurl' + 'SchoolMaster/ParentCreate',
+                    data: JSON.stringify(obj),
+                    contentType: "application/json; charset=utf-8",
+                    dataType: "json",
+                    success: function (response) {
+                        if (response != null) {
+                            $("<div class='alert alert-success overlay'><label>Saved Successfully</label></div>").insertBefore(".portlet-body").fadeOut(3000);
+                            $('#tblParentMaster').DataTable().ajax.reload();
+                            $('#frmpopup').modal('toggle');
+                            $("#frmupload").submit();
+                        } else {
+                            $("<div class='alert alert-danger overlay'><label>Error on save</label></div>").insertBefore(".portlet-body").fadeOut(3000);
+                            $('#tblParentMaster').DataTable().ajax.reload();
+                            $('#frmpopup').modal('toggle');
+                        }
+                    },
+                    error: function (response) {
+                        if (response != null) {
+                            var obj = JSON.parse(response.responseText);
+                            if (obj.MegSts == 'error') {
+                                $("<div class='alert alert-danger overlay'><label>" + obj.Meg + "</label></div>").insertBefore(".portlet-body").fadeOut(3000);
+                                $('#tblParentMaster').DataTable().ajax.reload();
+                                $('#frmpopup').modal('toggle');
+                            }
+                        }
+                    }
+                });
+
+            } else {
+                $.ajax({
+                    type: "POST",
+                    headers: { 'Authorization': '@_tokan' },
+                    url: '@_webapiurl' + 'SchoolMaster/ParentUpdate',
+                    data: JSON.stringify(obj),
+                    contentType: "application/json; charset=utf-8",
+                    dataType: "json",
+                    success: function (response) {
+                        if (response != null) {
+                            $("<div class='alert alert-success overlay'><label>Updated Successfully</label></div>").insertBefore(".portlet-body").fadeOut(3000);
+                            $('#tblParentMaster').DataTable().ajax.reload();
+                            $('#frmpopup').modal('toggle');
+                            $("#frmupload").submit();
+                        } else {
+                            $("<div class='alert alert-danger overlay'><label>Error on updation</label></div>").insertBefore(".portlet-body").fadeOut(3000);
+                            $('#tblParentMaster').DataTable().ajax.reload();
+                            $('#frmpopup').modal('toggle');
+                        }
+                    }
+                });
+            }
+
+        });
+        $("#ParentName").keypress(function (evt) {
+            $("#ParentName").removeClass('field_error');
+            var k;
+            if (evt.keyCode > 0) {
+                k = evt.keyCode;
+            }
+            else if (typeof (evt.charCode) != "undefined") {
+                k = evt.charCode;
+            }
+            return ((k > 64 && k < 91) || (k > 96 && k < 123) || k == 8 || (k >= 48 && k <= 57) || k == 32);
+        });
+        $("#tblParentMaster").on('click', '.editclass', function (e) {
+
+            //var $img = document.getElementsByTagName('img');//('img');
+            //alert($img[0].src);
+            //alert(document.getElementsByTagName('img').prop('src'));
+
+            $("#ParentName").removeClass('field_error');
+            $("#ParentId").val(t.row($(this).parent('td').parent('tr')).data()["ParentId"]);
+            $("#ParentTypeId").val(t.row($(this).parent('td').parent('tr')).data()["ParentTypeId"]);
+            $("#ParentName").val(t.row($(this).parent('td').parent('tr')).data()["ParentName"]);
+            $("#ParentOccupation").val(t.row($(this).parent('td').parent('tr')).data()["ParentOccupation"]);
+            $("#ContactNo").val(t.row($(this).parent('td').parent('tr')).data()["ContactNo"]);
+            var pathname = t.row($(this).parent('td').parent('tr')).data()["ParentPhoto"];
+            //alert(pathname);
+            $("#ParentPhoto").val(pathname);
+            if (pathname != "" && pathname != null) {
+                //alert('1');
+                //alert($('#profile_img').innerHTML);
+                //$('.fileinput-preview profile_img img').attr("src", "/UploadEmpPhoto/" + pathname);
+                $("#showimg").attr("src", "/UploadParentPhoto/" + pathname);
+                //$('.fileinput-preview profile_img').append($("#showimg"));
+            }
+            else {
+                //alert('v');
+                //$('.fileinput-preview profile_img').innerHTML = '';
+                $("#showimg").attr("src", "/assets/images/avtar.png");
+                //$('.fileinput-preview profile_img').append($("#showimg"));
+            }
+            $(".editclass").attr("data-toggle", "modal");
+            $(".editclass").attr("data-target", "#frmpopup");
+        });
+        $("#ContactNo").blur(function () {
+            var inputStr = $("#ContactNo").val();
+            if (inputStr.length < 8) {
+                $("#spscnt").html("Please enter atleast 8 number.").show();
+                $("#ContactNo").val("");
+                $("#ContactNo").focus();
+                $("#ContactNo").addClass('field_error');
+                //$("#spscnt").html("enter atleast 5 chars in the input box");
+            }
+            else {
+                $("#ContactNo").removeClass('field_error');
+                $("#spscnt").hide();
+                return true;
+            }
+        });
+
+        $("#ParentPhotoFile").change(function () {
+            var GetfileName = document.getElementById('ParentPhotoFile');
+            var selectedfile = GetfileName.files[0].size;
+            var rann = Date.now();
+
+
+            var filename = GetfileName.files[0].name;
+            var fname = filename.split('.')[0];
+            var ext = filename.split('.')[1];
+            var newname = fname + Date.now() + '.' + ext;
+            //alert(newname);
+
+
+
+            $("#ParentPhoto").val(newname);
+            var validFileSize = 1000 * 1024;
+            if (selectedfile > validFileSize) {
+                alert('Select File Between 0 to 1 MB.');
+                $(this).val("");
+                $("#showimg").attr("src", "/assets/images/avtar.png");
+                return false;
+            }
+            var allowedFiles = [".bmp", ".png", ".jpg", ".jpeg"];
+            var fileUpload = $("#ParentPhotoFile");
+            var regex = new RegExp("([a-zA-Z0-9\s_\\.\-:])+(" + allowedFiles.join('|') + ")$");
+            if (!regex.test(fileUpload.val().toLowerCase())) {
+                alert("Please upload files having extensions:" + allowedFiles.join(', ') + " only.");
+                $("#showimg").attr("src", "/assets/images/avtar.png");
+                return false;
+            }
+            var reader = new FileReader();
+            reader.onload = function (e) {
+                $('#showimg').attr('src', e.target.result)
+            };
+            reader.readAsDataURL(GetfileName.files[0]);
+        });
+
+
+    });
+    function frmClear() {
+        $("#ParentId").val(0);
+        $("#ParentTypeId").val(0);
+        $("#ParentName").val("");
+        $("#ParentName").attr("placeholder", "Enter Parent name");
+        $("#ParentName").removeClass('field_error');
+        $("#ParentOccupation").val("");
+        $("#ParentOccupation").attr("placeholder", "Enter Parent Occupation");
+        $("#ParentOccupation").removeClass('field_error');
+        $("#ContactNo").val("");
+        $("#ContactNo").attr("placeholder", "Enter Contact Number");
+        $("#ContactNo").removeClass('field_error');
+        $("#spscnt").hide();
+        $("#spschnme").hide();
+        $("#showimg").attr("src", "/assets/images/avtar.png");
+    }
+</script>
+<div class="page-bar">
+    <ul class="page-breadcrumb">
+        <li>
+            <a href="/School/AdminDashboard">Home</a>
+            <i class="fa fa-circle"></i>
+        </li>
+        <li>
+            <span>Parent</span>
+        </li>
+    </ul>
+
+    <div class="page-toolbar">
+        @if (obj.CanAdd && Convert.ToInt32(Session["IsSchool"]) == 1)
+        {
+            <div class="">
+                <a href="#" id="AddParent" class="btn btn-sm blue" style="float:right"> <i class="fa fa-plus"></i> Add Parent</a>
+            </div>
+        }
+
+    </div>
+</div>
+<h1 class="page-title">
+    <small></small>
+</h1>
+@if (obj.CanView && Convert.ToInt32(Session["IsSchool"]) == 1)
+{
+    <div class="row">
+        <div class="col-md-12">
+            <div class="portlet ">
+                <div class="portlet-body">
+                    <div>
+                        <table id="tblParentMaster" class="table table-striped table-bordered table-hover table-checkable order-column">
+                            <thead>
+                                <tr>
+                                    <th>Sr. No</th>
+                                    <th hidden>Parent ID</th>
+                                    <th hidden>Parent Type Id</th>
+                                    <th>Name</th>
+                                    <th hidden>Occupation</th>
+                                    <th>Contact No</th>
+                                    <th hidden>Is Active</th>
+                                    <th hidden>Photo</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                        </table>
+                    </div>
+                    <div id="ajax_loaderbranch" class="modal_bg loading" aria-hidden="true">
+                        <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading"/>
+                    </div>
+                    <div id="frmpopup" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+                        <div class="modal-dialog">
+                            <!-- Modal content-->
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                                    <h4 class="modal-title">Parent</h4>
+                                </div>
+                                <div class="modal-body">
+                                    <div class="row">
+                                        <div class="col-md-12">
+                                            <fieldset>
+                                                <div class="form-group">
+                                                    <label class=" control-label">
+                                                        Parent type <span class="required" aria-required="true"> * </span>
+                                                    </label>
+
+                                                    <div class="editor-field">
+                                                        <select id="ParentTypeId" class="form-control input-sm">
+                                                            <option value="0">Select Parent Type</option>
+                                                            <option value="1">Father</option>
+                                                            <option value="2">Mother</option>
+                                                            <option value="3">Guardian</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                                <div class="form-group">
+                                                    <label class=" control-label">
+                                                        @Html.Hidden("ParentId")
+                                                        @Html.Hidden("IsActive", true)
+                                                        Name <span class="required" aria-required="true"> * </span>
+                                                    </label>
+
+                                                    <div class="editor-field">
+                                                        @Html.Editor("ParentName", new { htmlAttributes = new { @class = "form-control input-sm", @maxlength = "50" } })
+                                                    </div>
+                                                </div>
+                                                <div class="form-group">
+                                                    <label class=" control-label">
+                                                        Occupation <span class="required" aria-required="true"> * </span>
+                                                    </label>
+
+                                                    <div class="editor-field">
+                                                        @Html.Editor("ParentOccupation", new { htmlAttributes = new { @class = "form-control input-sm", @maxlength = "50" } })
+                                                    </div>
+                                                </div>
+                                                <div class="form-group">
+                                                    <label class=" control-label">
+                                                        Contact No <span class="required" aria-required="true"> * </span>
+                                                    </label>
+                                                    <div class="editor-field">
+                                                        @Html.Editor("ContactNo", new { htmlAttributes = new { @class = "form-control input-sm", @maxlength = "15" } })
+                                                        <span class="help-block" hidden id="spscnt" style="color:red;"></span>
+                                                    </div>
+                                                </div>
+                                                <div class="form-group">
+                                                    <form id="frmupload" method="post" action="UploadParentphoto" enctype="multipart/form-data">
+                                                        <div class="form-group text-center">
+                                                            <label>Photo</label>
+                                                            <div>
+                                                                <div class="fileinput fileinput-new">
+                                                                    <div class="fileinput-preview profile_img">
+                                                                        <img id="showimg" src="" />
+                                                                    </div>
+                                                                    <div class=" text-center margin-top-10">
+                                                                        <span class="btn blue  btn-sm btn-file">
+                                                                            <span class="fileinput-new btn-block"> Select image </span>
+                                                                            <span class="fileinput-exists"> Change </span>
+                                                                            <input type="file" name="ParentPhotoFile" id="ParentPhotoFile" value="">
+                                                                            <input type="hidden" id="ParentPhoto" name="ParentPhoto">
+                                                                        </span>
+                                                                        <a href="javascript:;" class="btn red fileinput-exists btn-sm" data-dismiss="fileinput"> Remove </a>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </form>
+                                                </div>
+                                                <span class="help-block" style="color:red;" hidden id="spvalidation"></span>
+                                                <div class="form-group">
+                                                    <button type="button" class=" btn btn-sm blue" id="btnParentSubmit" style="float:right"> <i class="fa fa-check"></i> Save</button>
+                                                </div>
+                                            </fieldset>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    <span style="color:red">Unauthorized Access.</span>
+}
+

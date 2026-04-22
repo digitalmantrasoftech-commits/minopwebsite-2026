@@ -1,0 +1,538 @@
+﻿@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@using System.Configuration;
+@{
+    ViewBag.Title = "Client Management - Field Sense";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiurl = System.Configuration.ConfigurationManager.AppSettings["webapifieldtracking"].ToString();
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"] ?? 0);
+    string _companyid = HttpContext.Current.Session["CompanyId"].ToString();
+    int _userid = Convert.ToInt32(HttpContext.Current.Session["UserId"]);
+    string _isdateformat = HttpContext.Current.Session["IsDateFormat"].ToString();
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+}
+
+<!-- Minimal Razor for configuration -->
+<script>
+    window.FieldSenseConfig = {
+        token: '@_tokan',
+        apiUrl: '@_webapiurl',
+        roleId: '@_RoleId',
+        companyId: '@_companyid',
+        userId: '@_userid',
+        dateFormat: '@_isdateformat',
+        canEdit: '@obj.CanEdit',
+        canDelete:'@obj.CanDelete'
+    };
+
+    // Location Services Configuration
+    window.LocationProvider = '@System.Configuration.ConfigurationManager.AppSettings["LocationProvider"]';
+    window.LocationDefaultLat = '@System.Configuration.ConfigurationManager.AppSettings["Location.DefaultCenter.Lat"]';
+    window.LocationDefaultLng = '@System.Configuration.ConfigurationManager.AppSettings["Location.DefaultCenter.Lng"]';
+    window.LocationDefaultZoom = '@System.Configuration.ConfigurationManager.AppSettings["Location.DefaultZoom"]';
+    window.LocationEnableCaching = '@System.Configuration.ConfigurationManager.AppSettings["Location.EnableCaching"]';
+    window.LocationCacheDuration = '@System.Configuration.ConfigurationManager.AppSettings["Location.CacheDuration"]';
+    window.LocationEnableGeolocation = '@System.Configuration.ConfigurationManager.AppSettings["Location.EnableGeolocation"]';
+    window.LocationGeofenceStrokeColor = '@System.Configuration.ConfigurationManager.AppSettings["Location.GeofenceStrokeColor"]';
+    window.LocationGeofenceFillColor = '@System.Configuration.ConfigurationManager.AppSettings["Location.GeofenceFillColor"]';
+    window.LocationGeofenceFillOpacity = '@System.Configuration.ConfigurationManager.AppSettings["Location.GeofenceFillOpacity"]';
+    window.OpenSourceTileServer = '@System.Configuration.ConfigurationManager.AppSettings["OpenSource.TileServer"]';
+    window.OpenSourceGeocodingService = '@System.Configuration.ConfigurationManager.AppSettings["OpenSource.GeocodingService"]';
+    window.OpenSourceMaxZoom = '@System.Configuration.ConfigurationManager.AppSettings["OpenSource.MaxZoom"]';
+    window.OpenSourceAttribution = '@System.Configuration.ConfigurationManager.AppSettings["OpenSource.Attribution"]';
+    window.GoogleApiKey = '@System.Configuration.ConfigurationManager.AppSettings["Google.ApiKey"]';
+    window.GoogleMapType = '@System.Configuration.ConfigurationManager.AppSettings["Google.MapType"]';
+    window.GoogleLibraries = '@System.Configuration.ConfigurationManager.AppSettings["Google.Libraries"]';
+</script>
+
+<!-- Location Services Scripts (Page-specific) -->
+<link href="~/Content/FieldSense/location-services.css" rel="stylesheet" />
+<script src="~/Scripts/FieldSense/Location/Utils/LocationUtils.js"></script>
+<script src="~/Scripts/FieldSense/Location/Utils/CoordinateValidator.js"></script>
+<script src="~/Scripts/FieldSense/Location/Models/LocationModels.js"></script>
+
+@if (System.Configuration.ConfigurationManager.AppSettings["LocationProvider"] == "google")
+{
+    <!-- Google Maps Provider -->
+    <script src="~/Scripts/FieldSense/Location/Providers/GoogleMapsLocationProvider.js"></script>
+}
+else
+{
+    <!-- OpenStreetMap Provider -->
+    <script src="~/Scripts/FieldSense/Location/Providers/OpenSourceLocationProvider.js"></script>
+}
+
+<script src="~/Scripts/FieldSense/Location/Core/FieldSenseLocationService.js"></script>
+<script src="~/Scripts/FieldSense/Location/Components/LocationPickerModal.js"></script>
+
+<!-- Page-specific scripts -->
+<script src="~/Scripts/FieldSense/ClientMaster.js"></script>
+
+<!-- Page Header -->
+<div class="page-bar">
+    <ul class="page-breadcrumb">
+        <li>
+            <a href="/Dashboard/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+        </li>
+        <li>
+            <span><i class="fa-light fa-angle-right"></i> Field Sense</span>
+        </li>
+        <li>
+            <span><i class="fa-light fa-angle-right"></i> Clients</span>
+        </li>
+    </ul>
+    <div class="page-toolbar">
+        <div class="text-right">
+            @*<a href="javascript:;" class="btn icon_transparent_btn" id="btnFilterToggle" title="Filter">
+                    <i class="fa-light fa-filter"></i>
+                </a>
+                <a href="javascript:;" class="btn icon_transparent_btn" id="btnRefresh" title="Refresh">
+                    <i class="fa-light fa-refresh"></i>
+                </a>*@
+            @if (obj.CanAdd)
+            {
+                <a href="javascript:;" class="btn icon_transparent_btn tooltips" id="btnAddClient" data-placement="left" title="Add Client">
+                    <i class="fa-solid fa-plus"></i>
+                </a>
+            }
+        </div>
+    </div>
+</div>
+
+<!-- Ajax Loader -->
+<div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+    <div id='ajax_loader' class="modal_bg loading">
+        <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading" />
+    </div>
+</div>
+
+@if (obj.CanView)
+{
+    <!-- Main Content -->
+    <div class="portlet light">
+        <div class="portlet-body">
+            <!-- Statistics Cards -->
+            <div id="statsContainer" class="client-stats-grid">
+                <!-- Statistics will be loaded here -->
+            </div>
+
+            <!-- Table Container -->
+            <div id="divtblClient" class="table-scrollable">
+                <div id="tblempty">
+                    <div class="table-responsive" id="tableResponsive">
+                        <table id="tblClient" class="new_datatbl table table-striped table-bordered table-hover order-column"></table>
+                    </div>
+                </div>
+                <div id="ClientGrid-empty" style="display: none">
+                    <div class="datanotfound">
+                        <img src="~/assets/images/emptyscreen_1.png" height="148" width="280" alt="Nodata Found Icon">
+                        <p class="datanotfound_title">No data found</p>
+                        <p class="">No matching records found for the selected filters.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Container -->
+    <div id="modalContainer">
+        <!-- Add Client Modal : Begin -->
+        <div id="btnAddClient_modal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <button type="button" class="close" data-dismiss="modal">&times;</button>
+                        <h4 class="modal-title" id="clientModalTitle">Add New Client</h4>
+                    </div>
+                    <div class="modal-body">
+                        <div class="modal-card">
+                            <form id="clientForm">
+                                <input type="hidden" id="clientId" />
+                                <div class="row">
+                                    <div class="col-sm-6">
+                                        <div class="form-group">
+                                            <label>Client Name <span class="required" aria-required="true">*</span></label>
+                                            <input type="text" id="clientName" class="form-control" placeholder="Enter client name" required>
+                                        </div>
+                                    </div>
+                                    <div class="col-sm-6">
+                                        <div class="form-group">
+                                            <label>Client Category</label>
+                                            <select id="clientCategory" class="form-control">
+                                                <option value="">Select Category</option>
+                                                <option value="Premium">Premium</option>
+                                                <option value="Regular">Regular</option>
+                                                <option value="New">New</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="col-lg-12">
+                                        <div class="form-group">
+                                            <label>Client Description</label>
+                                            <textarea id="clientDescription" class="form-control" rows="2" placeholder="Enter client description and details"></textarea>
+                                        </div>
+                                    </div>
+                                    <div class="col-lg-12">
+                                        <div class="form-group">
+                                            <label>Address <span class="required" aria-required="true">*</span></label>
+                                            <div style="display: flex; gap: 10px;">
+                                                <textarea id="clientAddress" class="form-control" rows="1" placeholder="Enter complete address" required style="flex: 1;" readonly></textarea>
+                                                <button type="button" class="btn save_btn" onclick="pickLocationOnMap()" style="height: fit-content; align-self: center;">
+                                                    <i class="fa-regular fa-map-marker-alt"></i> Pick
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-sm-6">
+                                        <div class="form-group">
+                                            <label>City</label>
+                                            <input type="text" id="clientCity" class="form-control" placeholder="Mumbai" readonly>
+                                        </div>
+                                    </div>
+                                    <div class="col-sm-6">
+                                        <div class="form-group">
+                                            <label>State</label>
+                                            <input type="text" id="clientState" class="form-control" placeholder="Maharashtra" readonly>
+                                        </div>
+                                    </div>
+                                    <div class="col-sm-6">
+                                        <div class="form-group">
+                                            <label>Country</label>
+                                            <input type="text" id="clientCountry" class="form-control" value="India" readonly>
+                                        </div>
+                                    </div>
+                                    <div class="col-sm-6">
+                                        <div class="form-group">
+                                            <label>Pin Code</label>
+                                            <input type="text" id="clientPinCode" class="form-control" placeholder="400001">
+                                        </div>
+                                    </div>
+                                    <div class="col-sm-6">
+                                        <div class="form-group">
+                                            <label>Phone Number</label>
+                                            <input type="tel" id="clientPhone" class="form-control" placeholder="022-12345678">
+                                        </div>
+                                    </div>
+                                    <div class="col-sm-6">
+                                        <div class="form-group">
+                                            <label>Alternate Phone</label>
+                                            <input type="tel" id="clientAlternatePhone" class="form-control" placeholder="022-87654321">
+                                        </div>
+                                    </div>
+                                    <div class="col-sm-6">
+                                        <div class="form-group">
+                                            <label>Email</label>
+                                            <input type="email" id="clientEmail" class="form-control" placeholder="contact@example.com">
+                                        </div>
+                                    </div>
+                                    <div class="col-sm-6">
+                                        <div class="form-group">
+                                            <label>Website</label>
+                                            <input type="url" id="clientWebsite" class="form-control" placeholder="https://www.example.com">
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Contact Person Information -->
+                                <h5 style="margin-top: 20px; margin-bottom: 15px; font-size: 14px; font-weight: 600; color: #555;">Contact Person Details</h5>
+                                <div class="row">
+                                    <div class="col-sm-6">
+                                        <div class="form-group">
+                                            <label>Contact Person Name</label>
+                                            <input type="text" id="contactPerson" class="form-control" placeholder="John Doe">
+                                        </div>
+                                    </div>
+                                    <div class="col-sm-6">
+                                        <div class="form-group">
+                                            <label>Contact Person Phone</label>
+                                            <input type="tel" id="contactPersonPhone" class="form-control" placeholder="9876543210">
+                                        </div>
+                                    </div>
+                                    <div class="col-sm-6">
+                                        <div class="form-group">
+                                            <label>Contact Person Email</label>
+                                            <input type="email" id="contactPersonEmail" class="form-control" placeholder="john@example.com">
+                                        </div>
+                                    </div>
+
+                                    <div class="col-lg-12">
+                                        <div class="form-group">
+                                            <small class="text-muted" id="locationStatus"><i class="fas fa-info-circle"></i> No location selected</small>
+                                            <!-- Hidden fields for lat/long -->
+                                            <input type="hidden" id="clientLatitude">
+                                            <input type="hidden" id="clientLongitude">
+                                        </div>
+                                    </div>
+                                    <div class="col-lg-12">
+                                        <div class="form-group">
+                                            <label>Notes</label>
+                                            <textarea id="clientNotes" class="form-control" rows="2" placeholder="Additional notes or special instructions"></textarea>
+                                        </div>
+                                        <div class="form-group">
+                                            <div class="form-check">
+                                                <input type="checkbox" id="clientActive" checked>
+                                                <label for="clientActive">Active Client</label>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </form>
+                        </div>
+                        <small id="editInfo"class="help-block"></small>
+                    </div>
+                    <div class="modal-footer">
+                        <div class="row">
+                            <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                                <button type="button" class="btn clear_btn" onclick="closeClientModal()"><i class="fa-regular fa-xmark"></i> Cancel</button>
+                                <button type="button" class="btn save_btn" id="saveButtonText" onclick="saveClient()"><i class="fa-light fa-floppy-disk"></i> Save Client</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Add Client Modal : End -->
+        <!-- Client Details View Modal : Begin -->
+        <div id="btnViewClient_modal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <button type="button" class="close" data-dismiss="modal">&times;</button>
+                        <h4 class="modal-title">
+                            <i class="fa-regular fa-user-circle"></i> Client Details
+                        </h4>
+                    </div>
+                    <div class="modal-body viewclient_block">
+                        <div class="vc_detail">
+                            <div class="d-flex align-items-center">
+                                <div class="vc_box">
+                                    <i class="fa-regular fa-building"></i>
+                                </div>
+                                <div>
+                                    <h2 id="detailClientName" class="vc-title"></h2>
+                                    <div class="vc-subbox">
+                                        <span id="detailClientCode" class="vc_statusbox"></span>
+                                        <span id="detailClientCategory" class="vc_statusbox"></span>
+                                        <span id="detailClientStatus" class="vc_statusbox"></span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Details Content -->
+                        <div class="margin-top-5">
+
+                            <!-- Basic Information -->
+                            <div class="modal-card">
+                                <div class="detail-section">
+                                    <h5 class="blocktitle">
+                                        <i class="fa-regular fa-info-circle"></i> Basic Information
+                                    </h5>
+                                    <div class="row">
+                                        <div class="col-md-12">
+                                            <div class="detail-field">
+                                                <label>Description</label>
+                                                <p id="detailDescription"></p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Contact Information -->
+                            <div class="modal-card">
+                                <div class="detail-section">
+                                    <h5 class="blocktitle">
+                                        <i class="fa-regular fa-phone"></i> Contact Information
+                                    </h5>
+                                    <div class="row">
+                                        <div class="col-lg-4 col-sm-6">
+                                            <div class="detail-field">
+                                                <label>Phone</label>
+                                                <p id="detailPhone"></p>
+                                            </div>
+                                        </div>
+                                        <div class="col-lg-4 col-sm-6">
+                                            <div class="detail-field">
+                                                <label>Alternate Phone</label>
+                                                <p id="detailAlternatePhone"></p>
+                                            </div>
+                                        </div>
+                                        <div class="col-lg-4 col-sm-6">
+                                            <div class="detail-field">
+                                                <label>Email</label>
+                                                <p id="detailEmail"></p>
+                                            </div>
+                                        </div>
+                                        <div class="col-lg-4 col-sm-6">
+                                            <div class="detail-field">
+                                                <label>Website</label>
+                                                <p id="detailWebsite"></p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Contact Person -->
+                            <div class="modal-card">
+                                <div class="detail-section">
+                                    <h5 class="blocktitle">
+                                        <i class="fa-regular fa-user"></i> Contact Person
+                                    </h5>
+                                    <div class="row">
+                                        <div class="col-lg-4 col-sm-6">
+                                            <div class="detail-field">
+                                                <label>Name</label>
+                                                <p id="detailContactPerson"></p>
+                                            </div>
+                                        </div>
+                                        <div class="col-lg-4 col-sm-6">
+                                            <div class="detail-field">
+                                                <label>Phone</label>
+                                                <p id="detailContactPersonPhone"></p>
+                                            </div>
+                                        </div>
+                                        <div class="col-lg-4 col-sm-6">
+                                            <div class="detail-field">
+                                                <label>Email</label>
+                                                <p id="detailContactPersonEmail"></p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Location Information -->
+                            <div class="modal-card">
+                                <div class="detail-section">
+                                    <h5 class="blocktitle">
+                                        <i class="fa-regular fa-map-marker-alt"></i> Location Information
+                                    </h5>
+                                    <div class="row">
+                                        <div class="col-lg-12">
+                                            <div class="detail-field">
+                                                <label>Full Address</label>
+                                                <p id="detailFullAddress"></p>
+                                            </div>
+                                        </div>
+                                        <div class="col-lg-4 col-sm-6">
+                                            <div class="detail-field">
+                                                <label>City</label>
+                                                <p id="detailCity"></p>
+                                            </div>
+                                        </div>
+                                        <div class="col-lg-4 col-sm-6">
+                                            <div class="detail-field">
+                                                <label>State</label>
+                                                <p id="detailState"></p>
+                                            </div>
+                                        </div>
+                                        <div class="col-lg-4 col-sm-6">
+                                            <div class="detail-field">
+                                                <label>Country</label>
+                                                <p id="detailCountry"></p>
+                                            </div>
+                                        </div>
+                                        <div class="col-lg-4 col-sm-6">
+                                            <div class="detail-field">
+                                                <label>PIN Code</label>
+                                                <p id="detailPinCode"></p>
+                                            </div>
+                                        </div>
+                                        <div class="col-lg-4 col-sm-6">
+                                            <div class="detail-field">
+                                                <label>GPS Coordinates</label>
+                                                <p id="detailGPS"></p>
+                                            </div>
+                                        </div>
+                                        <div class="col-lg-4 col-sm-6">
+                                            <div class="detail-field">
+                                                <label>Geofence Radius</label>
+                                                <p id="detailGeofence"></p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Additional Information -->
+                            <div class="modal-card">
+                                <div class="detail-section">
+                                    <h5 class="blocktitle">
+                                        <i class="fa-regular fa-sticky-note"></i> Additional Information
+                                    </h5>
+                                    <div class="row">
+                                        <div class="col-md-12">
+                                            <div class="detail-field">
+                                                <label>Notes</label>
+                                                <p id="detailNotes"></p>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-6">
+                                                <div class="detail-field">
+                                                    <label>Total Visits</label>
+                                                    <p id="detailTotalVisits"></p>
+                                                </div>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <div class="detail-field">
+                                                    <label>Last Visit Date</label>
+                                                    <p id="detailLastVisit"></p>
+                                                </div>
+                                            </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <div class="row">
+                            <div class="col-sm-6 col-xs-6">
+                                <div class="text-left">
+                                    <span>Created: <span id="detailCreatedDate"></span></span> |
+                                    <span>Modified: <span id="detailModifiedDate"></span></span>
+                                </div>
+                            </div>
+                            <div class="col-sm-6 col-xs-6 text-right">
+                                <button class="btn save_btn" onclick="editClientFromDetails()">
+                                    <i class="fa-regular fa-pen-to-square"></i> Edit
+                                </button>
+                                <button type="button" class="btn" data-dismiss="modal">Close</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Client Details View Modal : End -->
+    </div>
+}
+else
+{
+    <span style="color:red">Unauthorized Access.</span>
+}
+
+<!-- Initialize the application -->
+<script>
+    $(document).ready(function () {
+        if (typeof FieldSenseClient !== 'undefined') {
+            FieldSenseClient.init();
+        } else {
+            console.error('FieldSenseClient is not loaded');
+        }
+    });
+</script>

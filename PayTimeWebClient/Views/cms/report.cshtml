@@ -1,0 +1,1021 @@
+@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@using System.Configuration;
+@{
+    ViewBag.Title = "Salary Deduction Report";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    int _UserId = Convert.ToInt32(HttpContext.Current.Session["UserId"]);
+    int _cmpid = Convert.ToInt32(HttpContext.Current.Session["CompanyId"]);
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapicms"].ToString();
+    string _webapiurlMain = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    string _ChunkSize = HttpContext.Current.Session["DataDropDownThreShold"] != null
+        ? HttpContext.Current.Session["DataDropDownThreShold"].ToString()
+        : "500";
+
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+
+    string _companyid = "0";
+    if (_RoleId == 6805 || _RoleId == 6806 || _RoleId == 6811)
+    {
+        _companyid = HttpContext.Current.Session["ClientCompanyId"].ToString();
+    }
+
+    string _branchidStr = "0";
+    if (_RoleId == 6806)
+    {
+        _branchidStr = HttpContext.Current.Session["BranchId"].ToString();
+    }
+
+    string isClientDBMatchFlag = HttpContext.Current.Session["IsClientDBMatch"] != null
+        ? HttpContext.Current.Session["IsClientDBMatch"].ToString()
+        : "false";
+}
+
+<script src="~/Pages_JS/VirtuallScroll/NormalDropDownVirtualClientServer.js"></script>
+<script src="~/Pages_JS/VirtuallScroll/ServerSideMultiSelectDropDown.js"></script>
+
+<script>
+    var _webapiurl = '@_webapiurl';
+    var _webapiurlMain = '@_webapiurlMain';
+    var _tokan = '@_tokan';
+    var _RoleId = '@_RoleId';
+
+    let RoleId = '@_RoleId';
+    let CompanyId = '@_companyid';
+    let BranchId = '@_branchidStr';
+
+    var reportTable = null;
+    var reportData = null;
+    var CompanyDropdown = null;
+    var BranchDropdown = null;
+    var DepartmentDropdown = null;
+    var currentOrderType = 1;
+
+    // ==================== Utility Functions ====================
+
+    function formatCurrency(amount) {
+        if (amount == null) return '-';
+        return '\u20B9' + parseFloat(amount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function formatDateApi(dt) {
+        var y = dt.getFullYear();
+        var m = ('0' + (dt.getMonth() + 1)).slice(-2);
+        var d = ('0' + dt.getDate()).slice(-2);
+        return y + '-' + m + '-' + d;
+    }
+
+    function checkSession() {
+        $.ajax({
+            type: "GET",
+            async: false,
+            url: "/ESS/checkSession",
+            contentType: "application/json; charset=utf-8",
+            success: function (data) {
+                if (data.isRedirect) {
+                    window.location.href = data.redirectUrl;
+                }
+            },
+            error: function (data) {
+                window.location.href = data;
+            }
+        });
+    }
+
+    function getFirstDayOfMonth() {
+        var now = new Date();
+        return new Date(now.getFullYear(), now.getMonth(), 1);
+    }
+
+    function buildMultiParam(paramName, csvValue) {
+        if (!csvValue || csvValue === '') return '';
+        var ids = csvValue.split(',');
+        var result = '';
+        for (var i = 0; i < ids.length; i++) {
+            if (ids[i].trim() !== '') {
+                result += '&' + paramName + '=' + ids[i].trim();
+            }
+        }
+        return result;
+    }
+
+    // ==================== Page Initialization ====================
+
+    $(document).ready(function () {
+        initDateFilters();
+        loadCanteenDropdown();
+        bindEvents();
+
+        $(window).on("load", function () {
+            initializeFilterDropdowns();
+            setTimeout(function () {
+                loadReport();
+            }, 300);
+        });
+    });
+
+    // ==================== Filter Dropdowns ====================
+
+    function initializeFilterDropdowns() {
+        if (RoleId == '1') {
+            // SA: Company → Branch → Department
+            CompanyDropdown = new Select2Dropdown({
+                dropdownId: "FilterCompanyId",
+                apiUrl: _webapiurlMain + "DataDropDownOptimize/GetCompanyDropDownPaginated",
+                dataKey: "Id",
+                labelKey: "Name",
+                chunkSize: '@_ChunkSize',
+                token: '@_tokan',
+                extraParams: { RoleId: '@_RoleId', CompanyID: '@_cmpid' }
+            });
+
+            BranchDropdown = new ServerVirtualDropdown({
+                dropdownId: "FilterBranchIds",
+                apiUrl: _webapiurlMain + "DataDropDownOptimize/GetBranchMultiselectDropDownPaginated",
+                chunkSize: '@_ChunkSize',
+                dataKey: "Id",
+                labelKey: "Name",
+                tokan: '@_tokan',
+                selectAll: false
+            });
+
+            DepartmentDropdown = new ServerVirtualDropdown({
+                dropdownId: "FilterDeptIds",
+                apiUrl: _webapiurlMain + "DataDropDownOptimize/GetDepartmentDropDown_MulBranch_Paginated",
+                chunkSize: '@_ChunkSize',
+                dataKey: "Id",
+                labelKey: "Name",
+                tokan: '@_tokan',
+                selectAll: false
+            });
+
+            $('#FilterCompanyId').change(function () {
+                var companyId = $(this).val();
+                if (BranchDropdown) BranchDropdown.empty();
+                if (DepartmentDropdown) DepartmentDropdown.empty();
+                if (companyId && companyId !== '') {
+                    BranchDropdown.data = { CompanyID: companyId, RoleId: '@_RoleId' };
+                    BranchDropdown.loadInitialData();
+                }
+            });
+
+            $(document).on('change', '#FilterBranchIds', function () {
+                if (DepartmentDropdown) DepartmentDropdown.empty();
+                var branchIds = BranchDropdown ? BranchDropdown.Result() : '';
+                var companyId = $('#FilterCompanyId').val() || '';
+                if (branchIds && branchIds !== '') {
+                    DepartmentDropdown.data = { CompanyID: companyId, BranchID: branchIds };
+                    DepartmentDropdown.loadInitialData();
+                }
+            });
+
+        } else if (RoleId == '6805') {
+            // Company Admin: Branch → Department
+            BranchDropdown = new ServerVirtualDropdown({
+                dropdownId: "FilterBranchIds",
+                apiUrl: _webapiurlMain + "DataDropDownOptimize/GetBranchMultiselectDropDownPaginated",
+                chunkSize: '@_ChunkSize',
+                dataKey: "Id",
+                labelKey: "Name",
+                tokan: '@_tokan',
+                selectAll: false
+            });
+
+            BranchDropdown.data = { CompanyID: CompanyId, RoleId: '@_RoleId' };
+            BranchDropdown.loadInitialData();
+
+            DepartmentDropdown = new ServerVirtualDropdown({
+                dropdownId: "FilterDeptIds",
+                apiUrl: _webapiurlMain + "DataDropDownOptimize/GetDepartmentDropDown_MulBranch_Paginated",
+                chunkSize: '@_ChunkSize',
+                dataKey: "Id",
+                labelKey: "Name",
+                tokan: '@_tokan',
+                selectAll: false
+            });
+
+            $(document).on('change', '#FilterBranchIds', function () {
+                if (DepartmentDropdown) DepartmentDropdown.empty();
+                var branchIds = BranchDropdown ? BranchDropdown.Result() : '';
+                if (branchIds && branchIds !== '') {
+                    DepartmentDropdown.data = { CompanyID: CompanyId, BranchID: branchIds };
+                    DepartmentDropdown.loadInitialData();
+                }
+            });
+
+        } else if (RoleId == '6806') {
+            // Branch Admin: Department only (scoped to their branch)
+            DepartmentDropdown = new ServerVirtualDropdown({
+                dropdownId: "FilterDeptIds",
+                apiUrl: _webapiurlMain + "DataDropDownOptimize/GetDepartmentDropDown_MulBranch_Paginated",
+                chunkSize: '@_ChunkSize',
+                dataKey: "Id",
+                labelKey: "Name",
+                tokan: '@_tokan',
+                selectAll: false
+            });
+
+            DepartmentDropdown.data = { CompanyID: CompanyId, BranchID: BranchId };
+            DepartmentDropdown.loadInitialData();
+        }
+    }
+
+    // ==================== Date Filters ====================
+
+    function initDateFilters() {
+        $('#FilterFromDate').val(formatDateApi(getFirstDayOfMonth()));
+        $('#FilterToDate').val(formatDateApi(new Date()));
+    }
+
+    // ==================== Canteen Dropdown ====================
+
+    function loadCanteenDropdown() {
+        $.ajax({
+            url: _webapiurl + 'canteens?pageSize=100&isActive=true',
+            type: 'GET',
+            headers: { 'Authorization': 'Bearer ' + _tokan },
+            success: function (response) {
+                var canteens = response.canteens || [];
+                var opts = '<option value="">All Canteens</option>';
+                for (var i = 0; i < canteens.length; i++) {
+                    opts += '<option value="' + canteens[i].canteenId + '">' + canteens[i].canteenName + '</option>';
+                }
+                $('#FilterCanteenId').html(opts);
+            },
+            error: function () {
+                toastr.error("Failed to load canteens");
+            }
+        });
+    }
+
+    // ==================== Helper ====================
+
+    function getSelectedCompanyId() {
+        if (RoleId == '1') {
+            return $('#FilterCompanyId').val() || '';
+        }
+        return CompanyId;
+    }
+
+    // ==================== Event Bindings ====================
+
+    function bindEvents() {
+        // Filter panel toggle
+        $("#Filter_search").click(function () {
+            var wrapper = $(".filter_portlet_wrapper");
+            wrapper.toggleClass("full-width");
+            var screenWidth = $(window).width();
+            if (screenWidth >= 300 && screenWidth <= 600) {
+                $('.filter_portlet_tbl').toggle();
+                $('.filter_portlet_wrapper .filter_boxModal').css('width', '100%');
+            }
+        });
+
+        $(".filterclose_btn").click(function () {
+            var wrapper = $(".filter_portlet_wrapper");
+            wrapper.addClass("full-width");
+            var screenWidth = $(window).width();
+            if (screenWidth >= 300 && screenWidth <= 600) {
+                $(".filter_portlet_tbl").css("display", "block");
+            }
+        });
+
+        // Search button
+        $("#Search_OPration").click(function () {
+            loadReport();
+        });
+
+        // Clear button
+        $("#Clear_OPration").click(function () {
+            if (CompanyDropdown) CompanyDropdown.clearDropdown();
+            if (BranchDropdown) BranchDropdown.empty();
+            if (DepartmentDropdown) DepartmentDropdown.empty();
+            $('#FilterCanteenId').val('');
+            $('#FilterOrderType').val('1');
+            initDateFilters();
+
+            if (RoleId == '6805') {
+                BranchDropdown.data = { CompanyID: CompanyId, RoleId: '@_RoleId' };
+                BranchDropdown.loadInitialData();
+            } else if (RoleId == '6806') {
+                DepartmentDropdown.data = { CompanyID: CompanyId, BranchID: BranchId };
+                DepartmentDropdown.loadInitialData();
+            }
+
+            loadReport();
+        });
+
+        // Export CSV button
+        $('#btnExportCsv').click(function () {
+            exportCsv();
+        });
+
+        // Export Excel button
+        $('#btnExportExcel').click(function () {
+            exportExcel();
+        });
+
+        // Order type change
+        $('#FilterOrderType').change(function () {
+            var newType = parseInt($(this).val()) || 1;
+            if (newType !== currentOrderType) {
+                currentOrderType = newType;
+            }
+            if (newType === 2) {
+                $('#guestFilterNote').show();
+            } else {
+                $('#guestFilterNote').hide();
+            }
+        });
+    }
+
+    // ==================== Load Report ====================
+
+    function buildReportApiUrl(basePath, extraParams) {
+        var fromDate = $('#FilterFromDate').val();
+        var toDate = $('#FilterToDate').val();
+        var orderType = $('#FilterOrderType').val() || '1';
+
+        var url = _webapiurl + basePath + '?fromDate=' + fromDate + '&toDate=' + toDate + '&orderType=' + orderType;
+
+        var canteenId = $('#FilterCanteenId').val();
+        if (canteenId) url += '&canteenId=' + canteenId;
+
+        var companyId = getSelectedCompanyId();
+        if (companyId && companyId !== '0' && companyId !== '') url += '&companyId=' + companyId;
+
+        if (BranchDropdown) {
+            var branchIds = BranchDropdown.Result();
+            if (branchIds && branchIds !== '') {
+                url += buildMultiParam('branchIds', branchIds);
+            }
+        }
+
+        if (DepartmentDropdown) {
+            var deptIds = DepartmentDropdown.Result();
+            if (deptIds && deptIds !== '') {
+                url += buildMultiParam('departmentIds', deptIds);
+            }
+        }
+
+        if (extraParams) url += extraParams;
+        return url;
+    }
+
+    function loadReport() {
+        checkSession();
+
+        var fromDate = $('#FilterFromDate').val();
+        var toDate = $('#FilterToDate').val();
+
+        if (!fromDate || !toDate) {
+            toastr.warning("Please select both From Date and To Date");
+            return;
+        }
+
+        if (new Date(fromDate) > new Date(toDate)) {
+            toastr.warning("From Date cannot be greater than To Date");
+            return;
+        }
+
+        var orderType = $('#FilterOrderType').val() || '1';
+        currentOrderType = parseInt(orderType);
+
+        $('#tblReportBlock').show();
+        $('#NotificationGrid-empty').hide();
+        buildReportTable(currentOrderType);
+    }
+
+    // ==================== Summary Cards ====================
+
+    function updateSummaryCards(totals) {
+        if (!totals) {
+            $('#summaryEmployees').text('0');
+            $('#summaryOrders').text('0');
+            $('#summaryGross').text('0');
+            $('#summarySubsidy').text('0');
+            $('#summaryNet').text('0');
+            return;
+        }
+        $('#summaryEmployees').text(totals.totalEmployees || 0);
+        $('#summaryOrders').text(totals.totalOrders || 0);
+        $('#summaryGross').text(formatCurrency(totals.totalGross));
+        $('#summarySubsidy').text(formatCurrency(totals.totalSubsidy));
+        $('#summaryNet').text(formatCurrency(totals.totalNet));
+    }
+
+    // ==================== Build DataTable ====================
+
+    function getReportSortColumns(orderType) {
+        if (orderType === 2) {
+            // Guest: Sr No(0), guestName(1), hostEmpName(2), hostEmpCode(3), canteenName(4), totalOrders(5), grossAmount(6), netAmount(7)
+            return { 1: 'guestName', 2: 'hostEmpName', 3: 'hostEmpCode', 4: 'canteenName', 5: 'totalOrders', 6: 'grossAmount', 7: 'netAmount' };
+        }
+        // Employee: Sr No(0), empCode(1), empName(2), departmentName(3), branchName(4), canteenName(5), policyName(6), monthlyLimit(7), totalOrders(8), grossAmount(9), subsidyAmount(10), netAmount(11), usagePercentage(12)
+        return { 1: 'empCode', 2: 'empName', 3: 'departmentName', 4: 'branchName', 5: 'canteenName', 8: 'totalOrders', 9: 'grossAmount', 10: 'subsidyAmount', 11: 'netAmount' };
+    }
+
+    function buildReportTable(orderType) {
+        // Destroy existing table
+        if (reportTable) {
+            reportTable.destroy();
+            reportTable = null;
+            $('#tblReport').empty();
+        }
+        $("#dataTables_tbl_header").remove();
+
+        var columns = [];
+        var sortColMap = getReportSortColumns(orderType);
+
+        if (orderType === 2) {
+            // Guest columns
+            columns = [
+                {
+                    title: "Sr No",
+                    data: null,
+                    orderable: false,
+                    render: function (data, type, row, meta) {
+                        return meta.row + meta.settings._iDisplayStart + 1;
+                    }
+                },
+                { title: "Guest Name", data: "guestName", render: function (d) { return d || '-'; } },
+                { title: "Host Employee", data: "hostEmpName", render: function (d) { return d || '-'; } },
+                { title: "Host Emp Code", data: "hostEmpCode", render: function (d) { return d || '-'; } },
+                { title: "Canteen", data: "canteenName", render: function (d) { return d || '-'; } },
+                { title: "Total Orders", data: "totalOrders", render: function (d) { return d || 0; } },
+                { title: "Gross Amount", data: "grossAmount", render: function (d) { return formatCurrency(d); } },
+                { title: "Net Amount", data: "netAmount", render: function (d) { return formatCurrency(d); } }
+            ];
+        } else {
+            // Employee columns
+            columns = [
+                {
+                    title: "Sr No",
+                    data: null,
+                    orderable: false,
+                    render: function (data, type, row, meta) {
+                        return meta.row + meta.settings._iDisplayStart + 1;
+                    }
+                },
+                { title: "Emp Code", data: "empCode", render: function (d) { return d || '-'; } },
+                { title: "Employee Name", data: "empName", render: function (d) { return d || '-'; } },
+                { title: "Department", data: "departmentName", render: function (d) { return d || '-'; } },
+                { title: "Branch", data: "branchName", render: function (d) { return d || '-'; } },
+                { title: "Canteen", data: "canteenName", render: function (d) { return d || '-'; } },
+                { title: "Policy", data: "policyName", orderable: false, render: function (d) { return d || '-'; } },
+                {
+                    title: "Monthly Limit",
+                    data: "monthlyLimit",
+                    orderable: false,
+                    render: function (d) {
+                        if (d == null) return 'Unlimited';
+                        return formatCurrency(d);
+                    }
+                },
+                { title: "Total Orders", data: "totalOrders", render: function (d) { return d || 0; } },
+                { title: "Gross Amount", data: "grossAmount", render: function (d) { return formatCurrency(d); } },
+                { title: "Subsidy Amount", data: "subsidyAmount", render: function (d) { return formatCurrency(d); } },
+                {
+                    title: "Net Amount (Deduction)",
+                    data: "netAmount",
+                    render: function (d) { return formatCurrency(d); }
+                },
+                {
+                    title: "Usage %",
+                    data: "usagePercentage",
+                    orderable: false,
+                    render: function (d) {
+                        if (d == null) return '-';
+                        return parseFloat(d).toFixed(1) + '%';
+                    }
+                }
+            ];
+        }
+
+        reportTable = $('#tblReport').DataTable({
+            dom: _domCommon,
+            language: _languageCommon,
+            serverSide: true,
+            searching: true,
+            ordering: true,
+            order: [[1, 'asc']],
+            pageLength: 25,
+            columns: columns,
+            ajax: function (dtData, callback, settings) {
+                var pageSize = dtData.length;
+                var pageNumber = Math.floor(dtData.start / pageSize) + 1;
+                var searchText = dtData.search.value || '';
+
+                var sortBy = '';
+                var sortDirection = 'asc';
+                if (dtData.order && dtData.order.length > 0) {
+                    var colIdx = dtData.order[0].column;
+                    sortDirection = dtData.order[0].dir;
+                    sortBy = sortColMap[colIdx] || '';
+                }
+
+                var extraParams = '&pageNumber=' + pageNumber + '&pageSize=' + pageSize;
+                if (searchText) extraParams += '&search=' + encodeURIComponent(searchText);
+                if (sortBy) extraParams += '&sortBy=' + sortBy + '&sortDirection=' + sortDirection;
+
+                var url = buildReportApiUrl('orders/salary-report', extraParams);
+
+                $.ajax({
+                    url: url,
+                    type: 'GET',
+                    headers: { 'Authorization': 'Bearer ' + _tokan },
+                    success: function (data) {
+                        reportData = data;
+                        updateSummaryCards(data.totals);
+
+                        callback({
+                            draw: dtData.draw,
+                            recordsTotal: data.totalCount || 0,
+                            recordsFiltered: data.totalCount || 0,
+                            data: data.employees || []
+                        });
+
+                        if ((data.employees || []).length === 0 && pageNumber === 1) {
+                            $('#NotificationGrid-empty').show();
+                        } else {
+                            $('#NotificationGrid-empty').hide();
+                        }
+                    },
+                    error: function (xhr) {
+                        var errorMsg = "Error fetching report data";
+                        if (xhr.responseJSON && xhr.responseJSON.detail) {
+                            errorMsg = xhr.responseJSON.detail;
+                        }
+                        toastr.error(errorMsg);
+                        updateSummaryCards(null);
+                        callback({ draw: dtData.draw, recordsTotal: 0, recordsFiltered: 0, data: [] });
+                    }
+                });
+            },
+            drawCallback: function () {
+                $('.tooltips').tooltip();
+                setTimeout(function () {
+                    $("#tblReport_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+                }, 100);
+            },
+            initComplete: function () {
+                if ($('#buttons').length) {
+                    $("#buttons").empty();
+                }
+            }
+        });
+    }
+
+    // ==================== Export CSV ====================
+
+    function getTableSearchText() {
+        if (reportTable) {
+            return reportTable.search() || '';
+        }
+        return '';
+    }
+
+    function exportCsv() {
+        checkSession();
+
+        var fromDate = $('#FilterFromDate').val();
+        var toDate = $('#FilterToDate').val();
+
+        if (!fromDate || !toDate) {
+            toastr.warning("Please select both From Date and To Date");
+            return;
+        }
+
+        var searchText = getTableSearchText();
+        var extraParams = '';
+        if (searchText) extraParams += '&search=' + encodeURIComponent(searchText);
+
+        var url = buildReportApiUrl('orders/export', extraParams);
+
+        $("#ajax_loader").show();
+
+        $.ajax({
+            url: url,
+            type: 'GET',
+            headers: { 'Authorization': 'Bearer ' + _tokan },
+            success: function (data) {
+                var emps = data.employees || [];
+                if (emps.length === 0) {
+                    toastr.warning("No data available to export.");
+                    return;
+                }
+
+                var rows = [];
+
+                if (currentOrderType === 2) {
+                    // Guest CSV
+                    var headers = ['Sr No', 'Guest Name', 'Host Employee', 'Host Emp Code', 'Canteen', 'Total Orders', 'Gross Amount', 'Net Amount'];
+                    rows.push(headers.join(','));
+
+                    for (var i = 0; i < emps.length; i++) {
+                        var e = emps[i];
+                        var row = [
+                            (i + 1),
+                            '"' + (e.guestName || '') + '"',
+                            '"' + (e.hostEmpName || '') + '"',
+                            '"' + (e.hostEmpCode || '') + '"',
+                            '"' + (e.canteenName || '') + '"',
+                            e.totalOrders || 0,
+                            e.grossAmount || 0,
+                            e.netAmount || 0
+                        ];
+                        rows.push(row.join(','));
+                    }
+                } else {
+                    // Employee CSV
+                    var headers = ['Sr No', 'Emp Code', 'Employee Name', 'Department', 'Branch', 'Canteen', 'Policy', 'Monthly Limit', 'Total Orders', 'Gross Amount', 'Subsidy Amount', 'Net Amount (Deduction)', 'Usage %'];
+                    rows.push(headers.join(','));
+
+                    for (var i = 0; i < emps.length; i++) {
+                        var e = emps[i];
+                        var row = [
+                            (i + 1),
+                            '"' + (e.empCode || '') + '"',
+                            '"' + (e.empName || '') + '"',
+                            '"' + (e.departmentName || '') + '"',
+                            '"' + (e.branchName || '') + '"',
+                            '"' + (e.canteenName || '') + '"',
+                            '"' + (e.policyName || '') + '"',
+                            e.monthlyLimit != null ? e.monthlyLimit : 'Unlimited',
+                            e.totalOrders || 0,
+                            e.grossAmount || 0,
+                            e.subsidyAmount || 0,
+                            e.netAmount || 0,
+                            e.usagePercentage != null ? e.usagePercentage.toFixed(1) : '-'
+                        ];
+                        rows.push(row.join(','));
+                    }
+                }
+
+                // Totals row
+                if (data.totals) {
+                    var t = data.totals;
+                    rows.push('');
+                    if (currentOrderType === 2) {
+                        rows.push('"","TOTALS","","","","' + (t.totalOrders || 0) + '",' + (t.totalGross || 0) + ',' + (t.totalNet || 0));
+                    } else {
+                        rows.push('"","TOTALS","","","","","","",' + (t.totalOrders || 0) + ',' + (t.totalGross || 0) + ',' + (t.totalSubsidy || 0) + ',' + (t.totalNet || 0) + ',""');
+                    }
+                }
+
+                var csv = rows.join('\r\n');
+                var filename = 'CMS_Salary_Deduction_' + fromDate + '_to_' + toDate + '.csv';
+                downloadCsv(csv, filename);
+                toastr.success("Export downloaded successfully");
+            },
+            error: function () {
+                toastr.error("An error occurred while exporting CSV.");
+            },
+            complete: function () {
+                $("#ajax_loader").hide();
+            }
+        });
+    }
+
+    function downloadCsv(csv, filename) {
+        var blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+        var url = window.URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        a.remove();
+    }
+
+    // ==================== Export Excel ====================
+
+    function exportExcel() {
+        checkSession();
+
+        var fromDate = $('#FilterFromDate').val();
+        var toDate = $('#FilterToDate').val();
+
+        if (!fromDate || !toDate) {
+            toastr.warning("Please select both From Date and To Date");
+            return;
+        }
+
+        var orderType = $('#FilterOrderType').val() || '1';
+        var canteenId = $('#FilterCanteenId').val();
+        var companyId = getSelectedCompanyId();
+        var searchText = getTableSearchText();
+
+        var branchIds = '';
+        if (BranchDropdown) {
+            branchIds = BranchDropdown.Result() || '';
+        }
+
+        var deptIds = '';
+        if (DepartmentDropdown) {
+            deptIds = DepartmentDropdown.Result() || '';
+        }
+
+        var mainObj = {
+            fromDate: fromDate,
+            toDate: toDate,
+            orderType: orderType,
+            canteenId: canteenId || '',
+            companyId: (companyId && companyId !== '0') ? companyId : '',
+            branchIds: branchIds,
+            departmentIds: deptIds,
+            search: searchText
+        };
+
+        $.ajax({
+            url: '/cms/ExportReportExcel',
+            type: 'POST',
+            data: JSON.stringify(mainObj),
+            contentType: 'application/json',
+            beforeSend: function () {
+                $("#ajax_loader").show();
+            },
+            success: function (response) {
+                if (response.success && response.filePath) {
+                    window.location.href = response.filePath;
+                } else {
+                    toastr.warning(response.message || "Failed to generate export file.");
+                }
+            },
+            error: function () {
+                toastr.error("An error occurred while exporting data.");
+            },
+            complete: function () {
+                $("#ajax_loader").hide();
+            }
+        });
+    }
+</script>
+
+<!-- ==================== PAGE BAR ==================== -->
+<div class="page-bar">
+    <ul class="page-breadcrumb">
+        <li>
+            <a href="@(isClientDBMatchFlag == "True" ? "/Admin/AdminDashboard" : "/Dashboard/AdminDashboard")"><i class="fa-regular fa-house"></i></a>
+        </li>
+        <li>
+            <span><i class="fa-light fa-angle-right"></i> Canteen Management</span>
+        </li>
+        <li>
+            <span><i class="fa-light fa-angle-right"></i> Salary Deduction Report</span>
+        </li>
+    </ul>
+    @if (obj.CanView)
+    {
+        <div class="page-toolbar text-right">
+            <a href="javascript:;" class="btn icon_transparent_btn tooltips" id="Filter_search" data-placement="left" data-original-title="Filter"><i class="fa-light fa-filter"></i></a>
+            <a href="javascript:;" class="btn icon_transparent_btn tooltips" id="btnExportCsv" data-placement="left" data-original-title="Export CSV"><i class="fa-light fa-file-csv"></i></a>
+            <a href="javascript:;" class="btn icon_transparent_btn tooltips" id="btnExportExcel" data-placement="left" data-original-title="Export Excel"><i class="fa-light fa-file-excel"></i></a>
+        </div>
+    }
+</div>
+
+@if (obj.CanView)
+{
+    <!-- DataTable + Filter -->
+    <div class="filter_portlet_wrapper full-width payrollfilter_height">
+
+        <div class="filter_portlet_tbl">
+
+            <!-- Summary Section -->
+            <div class="portlet margin-bottom-10" style="padding: 8px 12px;">
+                <div class="list-content summary_list">
+                    <div class="accordian-header" id="list_one">
+                        <div>
+                            <a class="caption-subject font-dark bold" href="#listone" data-toggle="collapse" aria-expanded="false" aria-controls="listone">
+                                <span class="assign_emp_ctn">Report Summary</span>
+                                <i class="fa-solid fa-chevron-down arrow_down"></i>
+                            </a>
+                        </div>
+                    </div>
+                    <div class="collapse in" id="listone" aria-expanded="true">
+                        <div class="portlet-body">
+                            <div class="row" style="margin-top:5px;">
+                                <div class="col-md-2 col-sm-4 col-xs-6">
+                                    <div class="order_summary">
+                                        <div class="summary_count darkgrey_font" id="summaryEmployees">0</div>
+                                        <small class="text-muted">Total Employees</small>
+                                    </div>
+                                </div>
+                                <div class="col-md-2 col-sm-4 col-xs-6">
+                                    <div class="order_summary">
+                                        <div class="summary_count navyblue_font" id="summaryOrders">0</div>
+                                        <small class="text-muted">Total Orders</small>
+                                    </div>
+                                </div>
+                                <div class="col-md-3 col-sm-4 col-xs-6">
+                                    <div class="order_summary">
+                                        <div class="summary_count darkgrey_font" id="summaryGross">0</div>
+                                        <small class="text-muted">Total Gross</small>
+                                    </div>
+                                </div>
+                                <div class="col-md-3 col-sm-4 col-xs-6">
+                                    <div class="order_summary">
+                                        <div class="summary_count green_font" id="summarySubsidy">0</div>
+                                        <small class="text-muted">Total Subsidy</small>
+                                    </div>
+                                </div>
+                                <div class="col-md-2 col-sm-4 col-xs-6">
+                                    <div class="order_summary">
+                                        <div class="summary_count red_font" id="summaryNet">0</div>
+                                        <small class="text-muted">Total Net</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- DataTable Block -->
+            <div class="portlet">
+                <div class="portlet-body">
+                    <div class="row">
+                        <div class="col-lg-12">
+                            <div id="divtblReport" class="table-scrollable">
+                                <div id="tblReportBlock" style="display:none;">
+                                    <div class="table-responsive" id="tableResponsive">
+                                        <table id="tblReport" class="new_datatbl table table-striped table-bordered table-hover table-checkable order-column"></table>
+                                    </div>
+                                </div>
+                                <div id="NotificationGrid-empty" style="display: none">
+                                    <div class="datanotfound">
+                                        <img src="~/assets/images/emptyscreen_3.png" height="148" width="280" alt="No Data Found Icon">
+                                        <p class="datanotfound_title">No data found</p>
+                                        <p>No report data found for the selected filters.</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Filter Sidebar -->
+        <div class="portlet filter_boxModal">
+            <div class="filterbox_header">
+                <div class="d-flex align-items-center justify-content-between">
+                    <h4 class="filter-title">Filters</h4>
+                    <button type="button" class="filterclose_btn"><i class="fa-light fa-xmark"></i></button>
+                </div>
+            </div>
+            <div class="filterbox_body">
+                <div class="col-lg-12">
+                    <div class="form-group">
+                        <label>From Date <span class="required" style="color:red;"> * </span></label>
+                        <input type="date" class="form-control input-sm" id="FilterFromDate">
+                    </div>
+                </div>
+                <div class="col-lg-12">
+                    <div class="form-group">
+                        <label>To Date <span class="required" style="color:red;"> * </span></label>
+                        <input type="date" class="form-control input-sm" id="FilterToDate">
+                    </div>
+                </div>
+                <div class="col-lg-12">
+                    <div class="form-group">
+                        <label>Canteen</label>
+                        <select class="form-control input-sm" id="FilterCanteenId"></select>
+                    </div>
+                </div>
+                @if (_RoleId == 1)
+                {
+                    <div class="col-lg-12">
+                        <div class="form-group">
+                            <label>Company</label>
+                            <select class="form-control" id="FilterCompanyId"></select>
+                        </div>
+                    </div>
+                }
+                @if (_RoleId == 1 || _RoleId == 6805)
+                {
+                    <div class="col-lg-12">
+                        <div class="form-group">
+                            <label>Branch</label>
+                            <div id="FilterBranchIdsContainer">
+                                <select id="FilterBranchIds" multiple="multiple"></select>
+                            </div>
+                        </div>
+                    </div>
+                }
+                @if (_RoleId == 1 || _RoleId == 6805 || _RoleId == 6806)
+                {
+                    <div class="col-lg-12">
+                        <div class="form-group">
+                            <label>Department</label>
+                            <div id="FilterDeptIdsContainer">
+                                <select id="FilterDeptIds" multiple="multiple"></select>
+                            </div>
+                        </div>
+                    </div>
+                }
+                <div class="col-lg-12">
+                    <div class="form-group">
+                        <label>Order Type</label>
+                        <select class="form-control input-sm" id="FilterOrderType">
+                            <option value="1" selected>Employee</option>
+                            <option value="2">Guest</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="col-lg-12" id="guestFilterNote" style="display:none;">
+                    <div class="alert alert-info" style="padding:8px 12px; margin-bottom:10px; font-size:12px;">
+                        <i class="fa-light fa-circle-info"></i> <strong>Note:</strong> Company, Branch and Department filters will be applied based on the <strong>Host Employee</strong>.
+                    </div>
+                </div>
+            </div>
+            <div class="filterbox_footer">
+                <div class="text-right">
+                    <button type="button" id="Clear_OPration" class="btn clear_btn margin-left-5 tooltips" data-placement="top" data-original-title="Clear filters"><i class="fa-regular fa-eraser"></i></button>
+                    <button type="button" id="Search_OPration" class="btn icon_btn margin-left-5 tooltips" data-placement="top" data-original-title="Search"><i class="fa-solid fa-magnifying-glass"></i></button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <div class="col-lg-12">
+        <div id="ajax_loader" class="modal_bg loading">
+            <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading" />
+        </div>
+    </div>
+}
+else
+{
+    <span style="color:red">Unauthorized Access.</span>
+}
+
+<style>
+    /* Summary cards */
+    .summary_count {
+        font-size: 16px;
+        font-weight: bold;
+    }
+
+    .order_summary {
+        background: #fff;
+        padding: 2px;
+        border-radius: 6px !important;
+        text-align: center;
+        border: 1px solid #e3e3e3;
+        margin: 8px 0;
+    }
+
+    .field_error {
+        border-color: #dc3545 !important;
+    }
+
+    .list-content .accordian-header {
+        position: relative;
+        padding-left: 25px;
+    }
+
+    .list-content a i.arrow_down {
+        text-align: right;
+        position: absolute;
+        top: 12px;
+        left: 10px;
+        transition: 0.5s;
+        font-size: 12px;
+        color: #252525;
+    }
+
+    .list-content .accordian-header a {
+        color: #252525;
+        display: block;
+    }
+
+        .list-content .accordian-header a:focus {
+            text-decoration: none;
+        }
+
+    .list-content a[aria-expanded="true"] i {
+        transform: rotate(180deg);
+    }
+
+    .summary_list a i.arrow_down {
+        top: 2px;
+        left: 0px;
+    }
+</style>

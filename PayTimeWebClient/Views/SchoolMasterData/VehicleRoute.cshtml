@@ -1,0 +1,1075 @@
+﻿@using System.Configuration;
+@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@{
+    ViewBag.Title = "VehicleRoute";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    string _token = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    string _companyCode = HttpContext.Current.Session["cmpcode"].ToString();
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+}
+
+<style>
+    /* Optional: Makes the sample page fill the window. */
+    /*html, body {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+    }
+
+    #infowindow-content {
+        display: none;
+    }*/
+
+    /*#map #infowindow-content {
+        display: inline;
+    }*/
+    /*.modeal-Vehicle-Route {
+        padding: 0 !important;
+        padding-top: 20px !important;
+        padding-bottom: 20px !important;
+    }*/
+
+    /*#right-panel {
+        position: relative;
+        font-family: 'Roboto','sans-serif';
+        line-height: 30px;
+        padding-left: 10px;
+        height: 200px;
+        padding: 0px 0px 11px 64px;
+        float: left;
+        width: 80%;
+        overflow: auto;
+        background: aliceblue;
+    }*/
+    .modal.in .modal-dialog {
+        width: inherit !important;
+        height: inherit !important;
+    }
+    .clsAction{
+        width:75px;
+    }
+    #mapview {
+        width: 100%;
+        height: 500px;
+        position: relative !important;
+    }
+
+</style>
+
+<div class="page-bar">
+    <ul class="page-breadcrumb">
+        <li>
+            <a href="/School/AdminDashboard">Home</a>
+            <i class="fa fa-circle"></i>
+        </li>
+        <li>
+            <span>VehicleRoute</span>
+        </li>
+    </ul>
+    <div class="page-toolbar">
+        @if (obj.CanAdd && Convert.ToInt32(Session["IsSchool"]) == 1)
+        {
+            <div class="">
+                <a href="#" id="btnadd" class="btn btn-sm blue" style="float:right"> <i class="fa fa-plus"></i> Add Route</a>
+                <a href="#" id="btnback" class="btn btn-sm blue" style="display: none; float: right"> <i class="fa fa-backward"></i> Back </a>
+            </div>
+        }
+    </div>
+</div>
+<h1 class="page-title">
+    <small></small>
+</h1>
+
+@if (obj.CanView && Convert.ToInt32(Session["IsSchool"]) == 1)
+{
+    <div class="row">
+        <div class="col-md-12">
+            <div class="portlet ">
+                <div class="portlet-body">
+                    <div id="routegrid">
+                        <table id="tblVehicleRouteMaster" class="table table-striped table-bordered table-hover table-checkable order-column">
+                            <thead>
+                                <tr>
+                                    <th>Sr. No</th>
+                                    <th hidden>Route ID</th>
+                                    <th hidden>Vehicle ID</th>
+                                    <th hidden>shift ID</th>
+                                    <th>Route Name</th>
+                                    <th>Vehicle Number</th>
+                                    <th>Route Start</th>
+                                    <th>Route End</th>
+                                    <th hidden>Route Startloc</th>
+                                    <th hidden>Route Endloc</th>
+                                    <th>Route Type</th>
+                                    <th>Shift</th>
+                                    <th>Start time</th>
+                                    <th>End time</th>
+                                    <th hidden>Driverid</th>
+                                    <th hidden>Scoolid</th>
+                                    <th hidden>add1</th>
+                                    <th hidden>add2</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                        </table>
+                    </div>
+                    <div id="RouteDefine" style="display:none">
+                        @Html.Partial("_RouteMap")
+                    </div>
+                    <div id="Routeview" style="display:none">
+                        <div class="row">
+                            <div class="col-md-12">
+                                <div class="col-md-6">
+                                    <table class="table detail-view">
+                                        <caption style="border-bottom:solid; font-size: medium">Route Details</caption>
+                                        <tbody>
+                                            <tr><th style="width: 20%;">Route Name</th><td><span id="rname"></span></td></tr>
+                                            <tr><th>Route Vehicle</th><td><span id="rvehicle"></span></td></tr>
+                                            <tr><th>Route Type</th><td><span id="rtype"></span></td></tr>
+                                            <tr><th>Route Shift</th><td><span id="rshift"></span></td></tr>
+                                            <tr><th>Route Start Point</th><td><span id="rstart"></span></td></tr>
+                                            <tr><th>Route End Point</th><td><span id="rend"></span></td></tr>
+                                            <tr><th>Route Start Time</th><td><span id="rstime"></span></td></tr>
+                                            <tr><th>Route End Time</th><td><span id="retime"></span></td></tr>
+                                        </tbody>
+                                    </table>
+                                    <table class="table detail-view">
+                                        <caption style="border-bottom:solid;font-size:medium">Busstop Details</caption>
+                                        <thead>
+                                            <tr style="font-weight:bold;">
+                                                <td style="align-content:center">SrNo.</td>
+                                                <td style="align-content:center">BusStop Name</td>
+                                                <td style="align-content:center">Point Type</td>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="Viewtblbusstopbody"></tbody>
+                                    </table>
+                                </div>
+                                <div class="col-md-6">
+                                    <div id="mapview"></div>
+                                </div>
+                            </div>
+                            <div class="col-md-12">
+                                
+                            </div>
+                            <div class="col-md-12">
+
+                            </div>
+                        </div>
+                        
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    <span style="color:red">Unauthorized Access.</span>
+}
+<script src="~/LandingAssets/js/jquery.smartWizard.min.js"></script>
+<script type="text/javascript" src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBZKLtQG-hhnOXL3OFg7uJzlusQj38k0VU&libraries=drawing,places&mode=transit" async defer></script>
+<script type="text/javascript">
+    var map, marker, infoWindow, pos, geocoder, placeId, request, position;
+    var busstoparray = [];
+    var placearr = [];
+    var busstoparrayedit = [];
+    var markers = [];
+    var waypts = [];
+    var Apiuri = '';
+    var apiToken = '';
+    var waypoints = [];
+    //var labelIndex = 0;
+    $(document).ready(function () {
+        Apiuri = '@_webapiurl';
+        apiToken = '@_token';
+
+
+
+
+        var t = $('#tblVehicleRouteMaster').DataTable(
+		{
+		    "processing": true,
+		    "ajax": {
+		        url: '@_webapiurl' + 'SchoolMaster/RouteGetAll',
+		        type: "GET",
+		        headers: { 'Authorization': '@_token' },
+		        dataSrc: '',
+		    },
+		    "columns": [
+				{ "data": null },
+				{ "data": "RouteId" },
+				{ "data": "VehicleId" },
+				{ "data": "Shiftid" },
+				{ "data": "RouteCode" },
+				{ "data": "VehicleNo" },
+				{ "data": "RouteStartPlace" },
+				{ "data": "RouteEndNamePlace" },
+				{ "data": "RouteStart" },
+				{ "data": "RouteEnd" },
+				{ "data": "Routetype" },
+				{ "data": "ShiftName" },
+				{ "data": "Starttime" },
+				{ "data": "Endtime" },
+				{ "data": "DriverId" },
+                { "data": "Schoolid" },
+				{ "data": "RouteStartName" },
+				{ "data": "RouteEndName" },
+		    ],
+		    "columnDefs": [
+				{
+				    "targets": [1, 2, 3, 8, 9, 14, 15, 16,17],
+				    "visible": false
+				},
+				{
+				    "targets": 18,
+				    "data": null,
+				    "render": function (data, type, full, meta) {
+				        if ('@obj.CanEdit.ToString()' == 'True') {
+				            data = "<a class='editclass btn btn-xs blue tooltips' title='Edit'><i class='fa fa-edit'></i></a> <a class='Viewclass btn btn-xs green tooltips' title='View'><i class='fa fa-search-plus'></i></a>";
+				        }
+				        else {
+				            data = "";
+				        }
+				        return data;
+				    },
+				    "className":'clsAction'
+				},
+				{
+				    "searchable": false,
+				    "orderable": false,
+				    "targets": 0
+				}
+		    ],
+		    "order": [[1, 'asc']],
+		}
+		);
+        t.on('order.dt search.dt', function () {
+            t.column(0, { search: 'applied', order: 'applied' }).nodes().each(function (cell, i) {
+                cell.innerHTML = i + 1;
+            });
+        }).draw();
+
+
+        //$("#tblbusstop").DataTable({
+        //    "paging": true
+        //});
+
+        $("#btnadd").on('click', function () {
+            frmclear();
+            fillSchooldll();
+            fillVehicledll();
+            fillDriverdll();
+            fillShiftdll();
+            $("#RouteDefine").show();
+            $("#routegrid").hide();
+            $("#Routeview").hide();
+            $("#btnback").show();
+            $("#btnadd").hide();
+
+           //Getschoollocation(0);
+            
+           Getschoollocation(1);
+
+
+        });
+
+        function Getschoollocation(cmpid) {
+            var strlocation = '';
+            $.ajax({
+                type: "GET",
+                headers: { 'Authorization': '@_token' },
+                url: '@_webapiurl' + "Master/CompanyGetById?id=" + cmpid,
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                success: function (data) {
+                    if (data.isRedirect) {
+                        window.location.href = data.redirectUrl;
+                    }
+                    if (data != null && data.length > 0) {
+                        var strlocation = data[0]["LicenseType"];
+                        if (strlocation != '') {
+                            pos = Getposlatlng(strlocation);
+                            initMap(pos);
+                        }
+                        else {
+                            alert('Please set school loaction first');
+                        }
+                    }
+                    else {
+
+                        if (navigator.geolocation) {
+                            navigator.geolocation.getCurrentPosition(function (position) {
+                                pos = {
+                                    lat: position.coords.latitude,
+                                    lng: position.coords.longitude
+                                };
+                                initMap(pos);
+                            }, function () {
+                                pos = new google.maps.LatLng(parseFloat(23.0745648), parseFloat(72.52532870000005));
+                                initMap(pos);
+                            });
+                        } else {
+                            // Browser doesn't support Geolocation
+                            alert('Browser doesn\'t support Geolocation');
+                        }
+
+                    }
+                },
+                error: function () {
+                    if (navigator.geolocation) {
+                        navigator.geolocation.getCurrentPosition(function (position) {
+                            pos = {
+                                lat: position.coords.latitude,
+                                lng: position.coords.longitude
+                            };
+                            initMap(pos);
+                        }, function () {
+                            pos = new google.maps.LatLng(parseFloat(23.0745648), parseFloat(72.52532870000005));
+                            initMap(pos);
+                        });
+                    } else {
+                        // Browser doesn't support Geolocation
+                        alert('Browser doesn\'t support Geolocation');
+                    }
+                }
+            });
+
+
+        }
+        function Getposlatlng(strlocation) {
+            var input = strlocation.replace('(', '').replace(')', '');
+            var latlngStr = input.split(',', 2)
+            var latlng = new google.maps.LatLng(parseFloat(latlngStr[0]), parseFloat(latlngStr[1]));
+            return latlng;
+        }
+
+        $("#btnback").on('click', function () {
+            $("#RouteDefine").hide();
+            $("#routegrid").show();
+            $("#btnback").hide();
+            $("#Routeview").hide();
+            $("#btnadd").show();
+        });
+
+        $("#tblVehicleRouteMaster").on('click', '.editclass', function () {
+            frmclear();
+            //fillVehicledll();
+            //fillDriverdll();
+            //fillShiftdll();
+
+
+            $("#hdnrtid").val(t.row($(this).parent('td').parent('tr')).data()["RouteId"]);
+
+
+            var _VehicleId = t.row($(this).parent('td').parent('tr')).data()["VehicleId"];
+            var _Shiftid = t.row($(this).parent('td').parent('tr')).data()["Shiftid"];
+            var _DriverId = t.row($(this).parent('td').parent('tr')).data()["DriverId"];
+            var _Schoolid = t.row($(this).parent('td').parent('tr')).data()["Schoolid"];
+            fillVehicledll(_VehicleId);
+            fillDriverdll(_DriverId);
+            fillShiftdll(_Shiftid);
+            fillSchooldll(_Schoolid);
+            
+            $("#VehicleId").val(t.row($(this).parent('td').parent('tr')).data()["VehicleId"]);
+            $("#DriverId").val(t.row($(this).parent('td').parent('tr')).data()["Shiftid"]);
+            $("#Shiftid").val(t.row($(this).parent('td').parent('tr')).data()["DriverId"]);
+
+            $("#RouteCode").val(t.row($(this).parent('td').parent('tr')).data()["RouteCode"]);
+            $('#searchboxinput').val(t.row($(this).parent('td').parent('tr')).data()["RouteStartName"]);
+            $('#searchboxinput1').val(t.row($(this).parent('td').parent('tr')).data()["RouteEndName"]);
+
+            $("#hdnfrm").val(t.row($(this).parent('td').parent('tr')).data()["RouteStart"]);
+            $("#hdnto").val(t.row($(this).parent('td').parent('tr')).data()["RouteEnd"]);
+
+            $('#Routetype').val(t.row($(this).parent('td').parent('tr')).data()["Routetype"]);
+            $('#Starttime').val(t.row($(this).parent('td').parent('tr')).data()["Starttime"]);
+            $('#Endtime').val(t.row($(this).parent('td').parent('tr')).data()["Endtime"]);
+
+            //fillBusstoplist($("#hdnrtid").val());
+            //fillgeofencing($("#hdnrtid").val());
+            EditinitMap();
+            $("#RouteDefine").show();
+            $("#routegrid").hide();
+            $("#Routeview").hide();
+            $("#btnback").show();
+            $("#btnadd").hide();
+        });
+
+        $("#tblVehicleRouteMaster").on('click', '.Viewclass', function () {
+
+            $("#hdnrtid").val(t.row($(this).parent('td').parent('tr')).data()["RouteId"]);
+            $("#hdnfrm").val(t.row($(this).parent('td').parent('tr')).data()["RouteStart"]);
+            $("#hdnto").val(t.row($(this).parent('td').parent('tr')).data()["RouteEnd"]);
+
+            $('#rname').html(t.row($(this).parent('td').parent('tr')).data()["RouteCode"]);
+            $('#rvehicle').html(t.row($(this).parent('td').parent('tr')).data()["VehicleNo"]);
+            $('#rtype').html(t.row($(this).parent('td').parent('tr')).data()["Routetype"]);
+            $('#rshift').html(t.row($(this).parent('td').parent('tr')).data()["ShiftName"]);
+            $('#rstart').html(t.row($(this).parent('td').parent('tr')).data()["RouteStartPlace"]);
+            $('#rend').html(t.row($(this).parent('td').parent('tr')).data()["RouteEndNamePlace"]);
+            $('#rstime').html(t.row($(this).parent('td').parent('tr')).data()["Starttime"]);
+            $('#retime').html(t.row($(this).parent('td').parent('tr')).data()["Endtime"]);
+      
+            //fillgeofencing($("#hdnrtid").val());
+            
+            //fillBusstoplist($("#hdnrtid").val());
+            
+            Viewmap();
+            
+            $("#RouteDefine").hide();
+            $("#routegrid").hide();
+            $("#Routeview").show();
+            $("#btnback").show();
+            $("#btnadd").hide();
+        });
+        
+
+
+        function Savedata() {
+            var _Routeid = $("#hdnrtid").val();
+
+            //alert($("#hdn_redius").val());
+
+
+            var Geofdata = {
+                RouteId: _Routeid,
+                Geooverlay: $('#hdn_Geooverlay').val(),
+                Georedius: $("#hdn_redius").val(),
+                GeoCenter: $("#hdn_center").val(),
+                Geobound: $("#hdn_Getbound").val(),
+                GeoLatlng: $("#hdn_GeoLatlng").val(),
+                GeoNorthEast: $("#hdn_NorthEast").val(),
+                GeoSouthWest: $("#hdn_SouthWest").val()
+            };
+
+            var obj = {
+                RouteId: _Routeid,
+                VehicleId: $('#VehicleId').val(),
+                RouteCode: $("#RouteCode").val(),
+                RouteStart: $("#hdnfrm").val(),
+                RouteEnd: $('#hdnto').val(),
+                RouteStartname: $('#searchboxinput').val(),
+                RouteEndname: $('#searchboxinput1').val(),
+                Routetype: $('#Routetype').val(),
+                Shiftid: $('#Shiftid').val(),
+                Starttime: $('#Starttime').val(),
+                Endtime: $('#Endtime').val(),
+                DriverId: $('#DriverId').val(),
+                Schoolid: $('#Schoolid').val(),
+                busstop: busstoparray,
+                Geofd: Geofdata
+            };
+
+            if (_Routeid == "0") {
+
+                $.ajax({
+                    type: "POST",
+                    headers: { 'Authorization': '@_token' },
+                    url: '@_webapiurl' + 'SchoolMaster/RouteCreate',
+                    data: JSON.stringify(obj),
+                    contentType: "application/json; charset=utf-8",
+                    dataType: "json",
+                    success: function (response) {
+                        if (response != null) {
+                            $("<div class='alert alert-success overlay'><label>" + response.Msg + "</label></div>").insertBefore(".portlet-body").fadeOut(3000);
+                            $('#tblVehicleRouteMaster').DataTable().ajax.reload();
+                            $("#btnback").trigger("click");
+                            //$('#frmpopup').modal('toggle');
+                        } else {
+                            $("<div class='alert alert-danger overlay'><label>Route created Successfully.</label></div>").insertBefore(".portlet-body").fadeOut(3000);
+                            $('#tblVehicleRouteMaster').DataTable().ajax.reload();
+                            $("#btnback").trigger("click");
+                            //$('#frmpopup').modal('toggle');
+                        }
+                    },
+                    error: function (response) {
+                        if (response != null) {
+                            var obj = JSON.parse(response.responseText);
+
+                            if (obj.MsgSts == 'error') {
+                                $("<div class='alert alert-danger overlay'><label>" + obj.Msg + "</label></div>").insertBefore(".portlet-body").fadeOut(3000);
+                                $("#ste")
+                                //$('#tblVehicleRouteMaster').DataTable().ajax.reload();
+                                //$("#btnback").trigger("click");
+                                //$('#frmpopup').modal('toggle');
+                            }
+                        }
+                    }
+                });
+            }
+            else {
+                $.ajax({
+                    type: "POST",
+                    headers: { 'Authorization': '@_token' },
+                    url: '@_webapiurl' + 'SchoolMaster/RouteUpdate',
+                    data: JSON.stringify(obj),
+                    contentType: "application/json; charset=utf-8",
+                    dataType: "json",
+                    success: function (response) {
+                        if (response != null) {
+                            $("<div class='alert alert-success overlay'><label>" + response.Msg + "</label></div>").insertBefore(".portlet-body").fadeOut(3000);
+                            $('#tblVehicleRouteMaster').DataTable().ajax.reload();
+                            $("#btnback").trigger("click");
+                            //$('#frmpopup').modal('toggle');
+                        } else {
+                            $("<div class='alert alert-danger overlay'><label>Route updated successfully.</label></div>").insertBefore(".portlet-body").fadeOut(3000);
+                            $('#tblVehicleRouteMaster').DataTable().ajax.reload();
+                            $("#btnback").trigger("click");
+                            //$('#frmpopup').modal('toggle');
+                        }
+                    },
+                    error: function (response) {
+                        if (response != null) {
+                            var obj = JSON.parse(response.responseText);
+
+                            if (obj.MsgSts == 'error') {
+                                $("<div class='alert alert-danger overlay'><label>" + obj.Msg + "</label></div>").insertBefore(".portlet-body").fadeOut(3000);
+                                $('#tblVehicleRouteMaster').DataTable().ajax.reload();
+                                $("#btnback").trigger("click");
+                                //$('#frmpopup').modal('toggle');
+                            }
+                        }
+                    }
+                });
+
+            }
+        }
+
+        function frmclear() {
+
+            $("#hdnrtid").val(0);
+            $('#VehicleId').val(0);
+            $("#RouteCode").val('');
+            $("#hdnfrm").val('');
+            $('#hdnto').val('');
+            $("#hdn_redius").val(0);
+            $("#hdn_center").val(0);
+            $("#hdn_Getbound").val(0);
+            $('#searchboxinput').val('');
+            $('#searchboxinput1').val('');
+            $('#start').val('');
+            $('#end').val('');
+
+            $('#smartwizard').smartWizard("reset");
+
+            $("#RouteCode").removeClass('field_error');
+            $("#Shiftid").removeClass('field_error');
+            $("#VehicleId").removeClass('field_error');
+            $("#Starttime").removeClass('field_error');
+            $("#Endtime").removeClass('field_error');
+            $("#DriverId").removeClass('field_error');
+            $("#Routetype").removeClass('field_error');
+
+            $("#Starttime").val(moment().format('HH:mm'));
+            $("#Endtime").val(moment().format('HH:mm'));
+            markers = [];
+            waypts = [];
+            busstoparray = [];
+            busstoparrayedit = [];
+            placearr = [];
+            waypoints = [];
+
+            $('#tblbusstopbody').empty();
+            
+            document.getElementById('total').innerHTML = '0 km';
+            document.getElementById('totaldu').innerHTML = '0 min';
+
+            //labelIndex = 0;
+
+        }
+
+        function fillSchooldll(selectedid) {
+            $('#Schoolid').empty();
+            $.ajax(
+			 {
+			     type: "GET",
+			     headers: { 'Authorization': '@_token' },
+			     url: '@_webapiurl' + "Master/CompanyGetAll",
+			     contentType: "application/json; charset=utf-8",
+			     dataType: "json",
+			     beforeSend: function () {
+			     },
+			     success: function (data) {
+			         if (data.isRedirect) {
+			             window.location.href = data.redirectUrl;
+			         }
+			         //$("#Schoolid").append("<option value='0'>Select School</option>");
+			         for (var x = 0; x < data.length; x++) {
+			             $("#Schoolid").append("<option value=" + data[x].CompanyID + ">" + data[x].CompanyName + "</option>");
+			         }
+			         $("#Schoolid option[value = '" + selectedid + "' ]").prop('selected', true);
+			     },
+			     error: function (jqXHR, ajaxOptions, thrownError) {
+			         if (jqXHR.status == 500) { //InternalServerError = 500,
+			             toastr.error("InternalServerError");
+			         } else if (jqXHR.status == 400) { //BadRequest = 400,
+			             toastr.error("BadRequest");
+			         } else if (jqXHR.status == 401) {
+			             window.location.href = "/PayTime/LoginPage";
+			         }
+			     }
+			 });
+        }
+
+        function fillDriverdll(selectedid) {
+            $('#DriverId').empty();
+            $.ajax(
+			 {
+			     type: "GET",
+			     headers: { 'Authorization': '@_token' },
+			     url: '@_webapiurl' + "/SchoolMaster/GetAllActiveDriver",
+			     contentType: "application/json; charset=utf-8",
+			     dataType: "json",
+			     beforeSend: function () {
+			     },
+			     success: function (data) {
+			         if (data.isRedirect) {
+			             window.location.href = data.redirectUrl;
+			         }
+			         $("#DriverId").append("<option value='0'>Select Driver</option>");
+			         for (var x = 0; x < data.length; x++) {
+			             $("#DriverId").append("<option value=" + data[x].DriverId + ">" + data[x].DriverName + "</option>");
+			         }
+			         $("#DriverId option[value = '" + selectedid + "' ]").prop('selected', true);
+			     },
+			     error: function (jqXHR, ajaxOptions, thrownError) {
+			         if (jqXHR.status == 500) { //InternalServerError = 500,
+			             toastr.error("InternalServerError");
+			         } else if (jqXHR.status == 400) { //BadRequest = 400,
+			             toastr.error("BadRequest");
+			         } else if (jqXHR.status == 401) {
+			             window.location.href = "/PayTime/LoginPage";
+			         }
+			     }
+			 });
+        }
+
+
+
+
+        function fillShiftdll(selectedid) {
+            $('#Shiftid').empty();
+            $.ajax(
+			 {
+			     type: "GET",
+			     headers: { 'Authorization': '@_token' },
+			     url: '@_webapiurl' + "Master/ShiftMasterGetAll",
+			     contentType: "application/json; charset=utf-8",
+			     dataType: "json",
+			     beforeSend: function () {
+			     },
+			     success: function (data) {
+			         if (data.isRedirect) {
+			             window.location.href = data.redirectUrl;
+			         }
+			         $("#Shiftid").append("<option value='0'>Select Shift</option>");
+			         for (var x = 0; x < data.length; x++) {
+			             $("#Shiftid").append("<option value=" + data[x].ShiftId + ">" + data[x].ShiftName + " (" + data[x].StartTime + "-" + data[x].EndTime + ")</option>");
+			         }
+			         $("#Shiftid option[value = '" + selectedid + "' ]").prop('selected', true);
+			     },
+			     error: function (jqXHR, ajaxOptions, thrownError) {
+			         if (jqXHR.status == 500) { //InternalServerError = 500,
+			             toastr.error("InternalServerError");
+			         } else if (jqXHR.status == 400) { //BadRequest = 400,
+			             toastr.error("BadRequest");
+			         } else if (jqXHR.status == 401) {
+			             window.location.href = "/PayTime/LoginPage";
+			         }
+			     }
+			 });
+        }
+
+        function fillVehicledll(selectedVehicleid) {
+            $('#VehicleId').empty();
+            $.ajax(
+			 {
+			     type: "GET",
+			     headers: { 'Authorization': '@_token' },
+			     url: '@_webapiurl' + "/SchoolMaster/GetAllActiveVehicle",
+			     contentType: "application/json; charset=utf-8",
+			     dataType: "json",
+			     beforeSend: function () {
+			     },
+			     success: function (data) {
+			         if (data.isRedirect) {
+			             window.location.href = data.redirectUrl;
+			         }
+			         $("#VehicleId").append("<option value='0'>Select Vehicle</option>");
+			         for (var x = 0; x < data.length; x++) {
+			             $("#VehicleId").append("<option value=" + data[x].VehicleId + ">" + data[x].VehicleNo + "</option>");
+			         }
+			         $("#VehicleId option[value = '" + selectedVehicleid + "' ]").prop('selected', true);
+			     },
+			     error: function (jqXHR, ajaxOptions, thrownError) {
+			         if (jqXHR.status == 500) { //InternalServerError = 500,
+			             toastr.error("InternalServerError");
+			         } else if (jqXHR.status == 400) { //BadRequest = 400,
+			             toastr.error("BadRequest");
+			         } else if (jqXHR.status == 401) {
+			             window.location.href = "/PayTime/LoginPage";
+			         }
+			     }
+			 });
+        }
+
+
+
+        // Step show event
+        $("#smartwizard").on("showStep", function (e, anchorObject, stepNumber, stepDirection, stepPosition) {
+
+            //alert(stepPosition);
+            if (stepPosition == 'first') {
+                $("#prev-btn").addClass('disabled');
+                $("#btnfin").hide();
+            } else if (stepPosition == 'final') {
+                $("#next-btn").addClass('disabled');
+                $("#btnfin").show();
+            } else {
+                $("#btnfin").hide();
+                $("#prev-btn").removeClass('disabled');
+                $("#next-btn").removeClass('disabled');
+            }
+        });
+
+        $("#smartwizard").on("leaveStep", function (e, anchorObject, stepNumber, stepDirection) {
+
+            //alert(stepNumber);
+            var res = validateSteps(stepNumber);
+            if (stepNumber == 0 && stepDirection == 'forward') {
+                if (res == true) {
+                    Busstopadd();
+                }
+                return res;
+            }
+            else {
+
+            }
+
+
+            if (stepNumber == 1) {
+
+                if (stepDirection == 'backward') {
+
+                    showroute();
+                }
+                else {
+
+                    Geofencingmap();
+                }
+
+            }
+            if (stepNumber == 2) {
+
+                if (stepDirection == 'backward') {
+                    Busstopadd();
+                }
+           }
+        });
+        $("#RouteCode").change(function () {
+            if ($("#RouteCode").val() == "") {
+                $("#RouteCode").addClass('field_error');
+                $("#RouteCode").focus();
+            }
+            else {
+                VlidateRoutename();
+                $("#RouteCode").removeClass('field_error');
+            }
+        });
+        $("#Routetype").change(function () {
+            if ($("#Routetype").val() == "0") {
+                $("#Routetype").addClass('field_error');
+                $("#Routetype").focus();
+            }
+            else {
+                $("#Routetype").removeClass('field_error');
+            }
+        });
+        $("#Schoolid").change(function () {
+            if ($("#Schoolid").val() == "0") {
+                $("#Schoolid").addClass('field_error');
+                $("#Schoolid").focus();
+            }
+            else {
+                Getschoollocation($("#Schoolid").val());
+                $("#Schoolid").removeClass('field_error');
+            }
+        });
+        $("#Shiftid").change(function () {
+            if ($("#Shiftid").val() == "0") {
+                $("#Shiftid").addClass('field_error');
+                $("#Shiftid").focus();
+            }
+            else {
+                $("#Shiftid").removeClass('field_error');
+            }
+        });
+        $("#VehicleId").change(function () {
+            if ($("#VehicleId").val() == "0") {
+                $("#VehicleId").addClass('field_error');
+                $("#VehicleId").focus();
+            }
+            else {
+                if ($("#hdnrtid").val() == 0) {
+                    //Validate Route Name on Vehical No change
+                    VlidateRoutename();
+                }
+                $("#VehicleId").removeClass('field_error');
+            }
+        });
+        $("#txtpname").on("change" ,function () {
+            if ($("#txtpname").val() != "") {
+                $("#lbltxtpname").hide();
+                $("#lbltxtpname").text('');
+            }
+        });
+
+
+        $("#Starttime").change(function () {
+            if ($("#Starttime").val() == "") {
+                $("#Starttime").addClass('field_error');
+                $("#Starttime").focus();
+            }
+            else {
+                $("#Starttime").removeClass('field_error');
+            }
+        });
+        $("#Endtime").change(function () {
+            if ($("#Endtime").val() == "") {
+                $("#Endtime").addClass('field_error');
+                $("#Endtime").focus();
+            }
+            else {
+                $("#Endtime").removeClass('field_error');
+            }
+
+        });
+        $('#Starttime').blur(function () {
+            if ($("#Starttime").val() == "") {
+                $("#Starttime").addClass('field_error');
+                $("#Starttime").focus();
+            }
+            else {
+                $("#Starttime").removeClass('field_error');
+            }
+        });
+        $('#Endtime').blur(function () {
+            if ($("#Endtime").val() == "") {
+                $("#Endtime").addClass('field_error');
+                $("#Endtime").focus();
+            }
+            else {
+                $("#Endtime").removeClass('field_error');
+            }
+        });
+
+        function validateTime() {
+            var selectedshift = $("#Shiftid option:selected").text();
+            var shifttime = selectedshift.substring(selectedshift.indexOf('(') + 1, selectedshift.indexOf(")"));
+            var arshifttime = shifttime.split('-');
+            var stime = arshifttime[0];
+            var etime = arshifttime[1];
+            var alertmessage = "";
+            if ($("#Routetype").val() == 'Pickup') {
+
+                if ($("#Endtime").val() > stime || stime < $("#Starttime").val()) {
+                    $("#Starttime").addClass('field_error');
+                    $("#Starttime").focus();
+                    alertmessage = 'Route End Time should be less than shift start time and greater than Route start time';
+
+                }
+            }
+            else if ($("#Routetype").val() == 'drop') {
+
+                if ($("#Starttime").val() > etime || etime < $("#Endtime").val()) {
+                    $("#Endtime").addClass('field_error');
+                    $("#Endtime").focus();
+                    alertmessage='Route End Time should be less than shift start time and greater than Route start time';
+                }
+            }
+            if ($("#Starttime").val() == $("#Endtime").val()) {
+                if ($("#Starttime").val('') != '' && $("#Endtime").val('')) {
+                    $("#Starttime").addClass('field_error');
+                    $("#Starttime").focus();
+                    alertmessage+='\n Route duration should be atleast 15 minutes!';
+                }
+            }
+            return alertmessage;
+        }
+
+       
+
+        $("#DriverId").change(function () {
+            if ($("#DriverId").val() == "0") {
+                $("#DriverId").addClass('field_error');
+                $("#DriverId").focus();
+            }
+            else {
+                $("#DriverId").removeClass('field_error');
+            }
+        });
+        function VlidateRoutename() {
+            var tbl = $('#tblVehicleRouteMaster').DataTable();
+            var data = tbl.rows().data();
+            //alert(data);
+            for (i = 0; i < data.length; i++) {
+                if ($("#VehicleId").val() == data[i].VehicleId && $("#RouteCode").val() == data[i].RouteCode) {
+                    $("#RouteCode").val('')
+                    $("#RouteCode").focus();
+                    alert('RouteName alredy Exist on this vehicle');
+                    return false;
+                }
+            }
+        }
+
+       
+        function validatesshifttime() {
+            var tbl = $('#tblVehicleRouteMaster').DataTable();
+            var data = tbl.rows().data();
+            for (i = 0; i < data.length; i++) {
+                if ($("#VehicleId").val() == data[i].VehicleId && (($("#Starttime").val() >= data[i].Starttime && $("#Starttime").val() <= data[i].Endtime) || ($("#Endtime").val() >= data[i].Starttime && $("#Endtime").val() <= data[i].Endtime))) {
+                    alert('This time slot alredy exist on this vehicle');
+                    $("#Starttime").val('');
+                    $("#Starttime").focus();
+
+                    $("#Endtime").val('');
+                    break;
+                    return false;
+                }
+            }
+        }
+
+        // Your Step validation logic
+        function validateSteps(stepnumber) {
+            var isStepValid = true;
+            if (stepnumber == 0) {
+                if ($("#RouteCode").val() == "") {
+                    $("#RouteCode").addClass('field_error');
+                    $("#RouteCode").focus();
+                    isStepValid = false;
+                }
+                else {
+                    $("#RouteCode").removeClass('field_error');
+                }
+
+                if ($("#Shiftid").val() == "0") {
+                    $("#Shiftid").addClass('field_error');
+                    $("#Shiftid").focus();
+                    isStepValid = false;
+                }
+                else {
+                    $("#Shiftid").removeClass('field_error');
+                }
+
+                if ($("#VehicleId").val() == "0") {
+                    $("#VehicleId").addClass('field_error');
+                    $("#VehicleId").focus();
+                    isStepValid = false;
+                }
+                else {
+                    $("#VehicleId").removeClass('field_error');
+                }
+
+                if ($("#Starttime").val() == "") {
+                    $("#Starttime").addClass('field_error');
+                    $("#Starttime").focus();
+                    isStepValid = false;
+                }
+                else {
+                    $("#Starttime").removeClass('field_error');
+                }
+
+                if ($("#Endtime").val() == "") {
+                    $("#Endtime").addClass('field_error');
+                    $("#Endtime").focus();
+                    isStepValid = false;
+                }
+                else {
+                    $("#Endtime").removeClass('field_error');
+                }
+
+                if ($("#DriverId").val() == "0") {
+                    $("#DriverId").addClass('field_error');
+                    $("#DriverId").focus();
+                    isStepValid = false;
+                }
+                else {
+                    $("#DriverId").removeClass('field_error');
+                }
+
+                if ($("#Schoolid").val() == "0") {
+                    $("#Schoolid").addClass('field_error');
+                    $("#Schoolid").focus();
+                    isStepValid = false;
+                }
+                else {
+                    $("#Schoolid").removeClass('field_error');
+                }
+                if ($("#Routetype").val() == "0") {
+                    $("#Routetype").addClass('field_error');
+                    $("#Routetype").focus();
+                    isStepValid = false;
+                }
+                else {
+                    $("#Routetype").removeClass('field_error');
+                }
+
+                var msg = validateTime();
+                if (msg != "") {
+                    alert(msg);
+                    isStepValid = false;
+                }
+               
+            }
+
+
+
+            return isStepValid;
+        }
+        // Toolbar extra buttons
+        var btnFinish = $('<button id="btnfin" style="display:none"></button>').text('Finish')
+						 .addClass('btn btn-info')
+						 .on('click', function () {
+
+						     Savedata();
+						 });
+        // Smart Wizard
+        $('#smartwizard').smartWizard({
+            selected: 0,
+            theme: 'default',
+            transitionEffect: 'fade',
+            showStepURLhash: false,
+            useURLhash: false,
+            toolbarSettings: {
+                toolbarPosition: 'bottom',
+                toolbarExtraButtons: [btnFinish]
+            }
+
+        });
+
+
+        function handleLocationError(browserHasGeolocation, infoWindow, pos) {
+            infoWindow.setPosition(pos);
+            infoWindow.setContent(browserHasGeolocation ?
+                                  'Error: The Geolocation service failed.' :
+                                  'Error: Your browser doesn\'t support geolocation.');
+            infoWindow.open(map);
+        }
+
+
+    });
+</script>

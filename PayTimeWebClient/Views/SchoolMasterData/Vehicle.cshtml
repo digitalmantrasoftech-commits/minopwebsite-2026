@@ -1,0 +1,1208 @@
+﻿@using System.Configuration;
+@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@{
+    ViewBag.Title = "Vehicle";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    string _companyCode = HttpContext.Current.Session["cmpcode"].ToString();
+    string _compcode = HttpContext.Current.Session["cmpcode"].ToString();
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+}
+<style>
+    .modal.in .modal-dialog {
+        width: 70% !important;
+    }
+</style>
+<script type="text/javascript">
+    $(document).ready(function () {
+        fillDeviceTypedll();
+        fillIMEIdll();
+        $("#Makeyear").datepicker({
+            autoclose: true,
+            format: "yyyy",
+            viewMode: "years",
+            minViewMode: "years",
+            endDate: '+0d'
+        })
+        $("#NoofSeats").keypress(function (e) {
+            if (this.value.length == 0 && e.which == 48) {
+                $("#NoofSeats").val();
+                return false;
+            }
+        });
+        $("#tblVehicleMaster").on('click', '.Inactiveclass', function () {
+            $("#Remarks").val("");
+            $("#Remarks").removeClass('field_error');
+            $(".Inactiveclass").attr("data-toggle", "modal");
+            $(".Inactiveclass").attr("data-target", "#frmInactiveVeh");
+            $("#VehicleId").val(t.row($(this).parent('td').parent('tr')).data()["VehicleId"]);
+        });
+
+        $("#btnIactivesubmit").click(function (event) {
+            if ($("#Remarks").val() == "") {
+                $("#Remarks").attr('required', true);
+                $("#Remarks").addClass('field_error');
+                event.preventDefault();//or return false
+                return false;
+            }
+            else {
+                $("#Remarks").removeClass('field_error');
+            }
+            var isactive = false;
+            var Remarks = $("#Remarks").val();
+            $.ajax({
+                url: '@_webapiurl' + 'SchoolMaster/ActiveInactiveVehicle?id=' + $("#VehicleId").val() + "&Isactive=" + isactive + "&Remarks=" + Remarks + "",
+                type: 'POST',
+                headers: { 'Authorization': '@_tokan' },
+                contentType: "application/json; charset=utf-8",
+                success: function (data) {
+                    if (data.MegSts == "Ok") {
+                        $('#frmInactiveVeh').modal('toggle');
+                        //$(".Inactiveclass").attr("data-toggle", "modal");
+                        //$(".Inactiveclass").attr("data-target", "#frmInactiveEmp");
+                        t.draw();
+                        //$(".alert-danger").hide();
+                        //$(".alert-success").text("Employee deactivated sucessfully.");
+                        //$('.alert-success').fadeIn('fast').delay(2000).fadeOut('slow');
+                        //window.location.href = "/MasterData/EmployeeMaster";
+                        window.location.href = "/SchoolMasterData/Vehicle";
+                    }
+                    else {
+                        $(".alert-success").hide();
+                        $(".alert-danger").text("Error in deactivating Employee.");
+                        $('.alert-danger').fadeIn('fast').delay(2000).fadeOut('slow');
+                    }
+                },
+                statusCode: {
+                    404: function (content) { alert('cannot find resource'); },
+                    500: function (content) { alert('internal server error'); }
+                },
+                error: function (req, status, errorObj) {
+                    // handle status === "timeout"
+                    // handle other errors
+                }
+            });
+        });
+
+        $("#tblVehicleMaster").on('click', '.Activeclass', function () {
+            $("#VehicleId").val(t.row($(this).parent('td').parent('tr')).data()["VehicleId"]);
+            var isactive = true;
+            $.ajax({
+                url: '@_webapiurl' + 'SchoolMaster/ActiveInactiveVehicle?id=' + $("#VehicleId").val() + "&Isactive=" + isactive + "&Remarks=",
+                type: 'POST',
+                headers: { 'Authorization': '@_tokan' },
+                contentType: "application/json; charset=utf-8",
+                success: function (data) {
+                    if (data.MegSts == "Ok") {
+                        t.draw();
+                        //$(".alert-danger").hide();
+                        //$(".alert-success").text("Employee Activated sucessfully.");
+                        //$('.alert-success').fadeIn('fast').delay(2000).fadeOut('slow');
+                        window.location.href = "/SchoolMasterData/Vehicle";
+                    }
+                    else {
+                        $(".alert-success").hide();
+                        $(".alert-danger").text("Error in activing Vehicle.");
+                        $('.alert-danger').fadeIn('fast').delay(2000).fadeOut('slow');
+                    }
+                },
+                statusCode: {
+                    404: function (content) { alert('cannot find resource'); },
+                    500: function (content) { alert('internal server error'); }
+                },
+                error: function (req, status, errorObj) {
+                    // handle status === "timeout"
+                    // handle other errors
+                }
+            });
+        });
+        $('#tblVehicleMaster').destroy;
+        var t = $('#tblVehicleMaster').DataTable({
+            processing: true,
+            "ajax": {
+                url: '@_webapiurl' + 'SchoolMaster/VehicleGetAll',
+                type: "GET",
+                headers: { 'Authorization': '@_tokan' },
+                dataSrc: '',
+            },
+            "columns": [
+                { "data": null },
+                { "data": "VehicleId" },
+                { "data": "VehicleNo" },
+                { "data": "VehicleType" },
+                { "data": "Imeinumber" },
+                { "data": "NoofSeats" },
+                { "data": "Simcardnumber" },
+                { "data": "Simphonenumber" },
+                { "data": "TrackingDevicetypeid" },
+                { "data": "Enginenumber" },
+                { "data": "Makeyear" },
+                { "data": "Insurancestartdate" },
+                { "data": "Insuranceenddate" },
+                { "data": "Registrationstartdate" },
+                { "data": "Registrationenddate" },
+                { "data": "Isownvehicle" },
+                { "data": "Fleetmanagerid" },
+                { "data": "ChassisVinnumber" },
+                { "data": "Fueltype" },
+                { "data": "IsActive" }
+            ],
+            "columnDefs": [
+                {
+                    "targets": [1, 6, 7, 8, 9, 10, 11, 12, 13, 14, 16, 17, 18, 19],
+                    "visible": false
+                },
+                {
+                    "targets": 20,
+                    "data": null,
+                    "render": function (data, type, full, meta) {
+                        if ('@obj.CanEdit.ToString()' == 'True') {
+                            if (data.IsActive == true) {
+                                data = "<a class='editclass btn btn-xs blue tooltips' title='Edit'><i class='fa fa-edit'></i></a><a class='Inactiveclass btn btn-xs blue tooltips' title='Blacklist'><i class='fa fa-times'></i></a>";
+                            }
+                            else {
+                                data = "<a class='editclass btn btn-xs blue tooltips' title='Edit'><i class='fa fa-edit'></i></a><a class='Activeclass btn btn-xs blue tooltips' title='Remove Blacklist'><i class='fa fa-check'></i></a>";
+                            }
+                        }
+                        else {
+                            data = "";
+                        }
+                        return data;
+                    }
+                },
+                {
+                    "targets": 3,
+                    "data": null,
+                    "render": function (data, type, full, meta) {
+                        if (full.VehicleType == 1) {
+                            data = 'BUS';
+                        }
+                        else if (full.VehicleType == 2) {
+                            data = 'AUTO';
+                        }
+                        else if (full.VehicleType == 3) {
+                            data = 'VAN';
+                        }
+                        else {
+                            data = "";
+                        }
+                        return data;
+                    }
+                },
+                {
+                    "targets": 15,
+                    "data": null,
+                    "render": function (data, type, full, meta) {
+                        if (full.Isownvehicle == true) {
+                            data = 'Yes';
+                        }
+                        else {
+                            data = 'No';
+                        }
+                        return data;
+                    }
+                },
+                 {
+                     "searchable": false,
+                     "orderable": false,
+                     "targets": 0
+                 }
+            ],
+            "order": [[1, 'asc']],
+        }
+        );
+        t.on('order.dt search.dt', function () {
+            t.column(0, { search: 'applied', order: 'applied' }).nodes().each(function (cell, i) {
+                cell.innerHTML = i + 1;
+            });
+        }).draw();
+        //$("#Imeinumber").keypress(function (e) {
+        //    $("#Imeinumber").removeClass('field_error');
+        //    if (e.which != 8 && e.which != 0 && (e.which < 48 || e.which > 57)) {
+        //        return false;
+        //    }
+        //    else {
+        //        return true;
+        //    }
+        //});
+        $("#Simcardnumber").keypress(function (e) {
+            $("#Simcardnumber").removeClass('field_error');
+            if (e.which != 8 && e.which != 0 && (e.which < 48 || e.which > 57)) {
+                return false;
+            }
+            else {
+                return true;
+            }
+        });
+        $("#Simphonenumber").keypress(function (e) {
+            $("#Simphonenumber").removeClass('field_error');
+            if (e.which != 8 && e.which != 0 && (e.which < 48 || e.which > 57)) {
+                return false;
+            }
+            else {
+                return true;
+            }
+        });
+
+        //$('#Imeinumber').bind('cut copy paste', function (e) {
+        //    e.preventDefault(); //disable cut,copy,paste
+        //});
+        $('#Simcardnumber').bind('cut copy paste', function (e) {
+            e.preventDefault(); //disable cut,copy,paste
+        });
+        $('#Simphonenumber').bind('cut copy paste', function (e) {
+            e.preventDefault(); //disable cut,copy,paste
+        });
+        $("#btnadd").on('click', function () {
+            fillDeviceTypedll();
+            fillIMEIdll();
+            frmClear();
+            $("#btnadd").attr("data-toggle", "modal");
+            $("#btnadd").attr("data-target", "#frmpopup");
+        });
+
+        $("#Imeiid").on('change', function () {
+            var imeino = $("#Imeiid option:selected").text();
+            var vid = 0;
+            vid = $('#VehicleId').val();
+            $.ajax({
+                type: "GET",
+                headers: { 'Authorization': '@_tokan' },
+                url: '@_webapiurl' + 'SchoolMaster/Checkimeino?vid=' + vid + '&imeino="' + imeino + '"',
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                success: function (response) {
+                    //var obj = JSON.parse(response);
+                    if (response.MsgSts == 'error') {
+                        $('#spImeiid').html(obj.Msg).show();
+                        $("#Imeiid").addClass('field_error');
+                        return false;
+                    }
+                    else {
+                        $('#spImeiid').html('').hide();
+                        return true;
+                    }
+                },
+                error: function (response) {
+                    if (response != null) {
+                        var obj = JSON.parse(response.responseText);
+                        if (obj.MsgSts == 'error') {
+                            $('#spImeiid').html(obj.Msg).show();
+                            $("#Imeiid").addClass('field_error');
+                            return false
+                        }
+                    }
+                }
+            });
+        });
+
+        $("#btnVehicleSubmit").click(function (event) {
+
+            if ($("#VehicleNo").val() == "") {
+                $("#VehicleNo").addClass('field_error');
+                $("#VehicleNo").focus();
+                event.preventDefault();
+                return false;
+            }
+            else {
+                $("#VehicleNo").removeClass('field_error');
+            }
+
+            if ($("#VehicleType").val() == 0) {
+                $(".divVehicle").addClass('field_error');
+                $(".divVehicle").focus();
+                event.preventDefault();//or return false
+                return false;
+            }
+            else {
+                $(".divVehicle").removeClass('field_error');
+            }
+
+            if ($("#NoofSeats").val() == "") {
+                $("#NoofSeats").addClass('field_error');
+                $("#NoofSeats").focus();
+                event.preventDefault();//or return false
+                return false;
+            }
+            else {
+                $("#NoofSeats").removeClass('field_error');
+            }
+
+            if ($("#Imeiid").val() == 0) {
+                $("#Imeiid").addClass('field_error');
+                $("#Imeiid").focus();
+                event.preventDefault();//or return false
+                return false;
+            }
+            else {
+                $("#Imeiid").removeClass('field_error');
+            }
+            if ($("#spImeiid").html() != "") {
+                $("#Imeiid").addClass('field_error');
+                event.preventDefault();//or return false
+                return false;
+            }
+            else {
+                $("#Imeiid").removeClass('field_error');
+            }
+            //if ($("#Simphonenumber").val() == "") {
+            //    $("#Simphonenumber").addClass('field_error');
+            //    $("#Simphonenumber").focus();
+            //    event.preventDefault();//or return false
+            //    return false;
+            //}
+            //else {
+            //    $("#Simphonenumber").removeClass('field_error');
+            //}
+            //if ($("#TrackingDevicetypeid").val() == 0) {
+            //    $(".divTrackingDevicetypeid").addClass('field_error');
+            //    $(".divTrackingDevicetypeid").focus();
+            //    event.preventDefault();//or return false
+            //    return false;
+            //}
+            //else {
+            //    $(".divTrackingDevicetypeid").removeClass('field_error');
+            //}
+
+            //if ($("#Enginenumber").val() == "") {
+            //    $("#Enginenumber").addClass('field_error');
+            //    $("#Enginenumber").focus();
+            //    event.preventDefault();//or return false
+            //    return false;
+            //}
+            //else {
+            //    $("#Enginenumber").removeClass('field_error');
+            //}
+
+            if ($("#Makeyear").val() == "") {
+                $("#Makeyear").addClass('field_error');
+                $("#Makeyear").focus();
+                event.preventDefault();//or return false
+                return false;
+            }
+            else {
+                $("#Makeyear").removeClass('field_error');
+            }
+            if ($("#Insurancestartdate").val() == "") {
+                $("#Insurancestartdate").addClass('field_error');
+                $("#Insurancestartdate").focus();
+                event.preventDefault();//or return false
+                return false;
+            }
+            else {
+                $("#Insurancestartdate").removeClass('field_error');
+            }
+            if ($("#Insuranceenddate").val() == "") {
+                $("#Insuranceenddate").addClass('field_error');
+                $("#Insuranceenddate").focus();
+                event.preventDefault();//or return false
+                return false;
+            }
+            else {
+                $("#Insuranceenddate").removeClass('field_error');
+            }
+
+            if ($("#Fleetmanagerid").val() == 0) {
+                $(".divFleetmanagerid").addClass('field_error');
+                $(".divFleetmanagerid").focus();
+                event.preventDefault();//or return false
+                return false;
+            }
+            else {
+                $(".divFleetmanagerid").removeClass('field_error');
+            }
+            //if ($("#ChassisVinnumber").val() == "") {
+            //    $("#ChassisVinnumber").addClass('field_error');
+            //    $("#ChassisVinnumber").focus();
+            //    event.preventDefault();//or return false
+            //    return false;
+            //}
+            //else {
+            //    $("#ChassisVinnumber").removeClass('field_error');
+            //}
+            //if ($("#Fueltype").val() == 0) {
+            //    $(".divFueltype").addClass('field_error');
+            //    $(".divFueltype").focus();
+            //    event.preventDefault();//or return false
+            //    return false;
+            //}
+            //else {
+            //    $(".divFueltype").removeClass('field_error');
+            //}
+
+            if ($("#Registrationstartdate").val() == "") {
+                $("#Registrationstartdate").addClass('field_error');
+                $("#Registrationstartdate").focus();
+                event.preventDefault();//or return false
+                return false;
+            }
+            else {
+                $("#Registrationstartdate").removeClass('field_error');
+            }
+            if ($("#Registrationenddate").val() == "") {
+                $("#Registrationenddate").addClass('field_error');
+                $("#Registrationenddate").focus();
+                event.preventDefault();//or return false
+                return false;
+            }
+            else {
+                $("#Registrationenddate").removeClass('field_error');
+            }
+
+            var selectedIsownvehicle = true;
+            if ($("#Isownvehicleno").is(":checked")) {
+                selectedIsownvehicle = false;
+            }
+            var obj = {
+                VehicleId: $('#VehicleId').val(),
+                VehicleNo: $("#VehicleNo").val(),
+                NoofSeats: $("#NoofSeats").val(),
+                VehicleType: $("#VehicleType").val(),
+                Imeinumber: $("#Imeiid option:selected").text(),
+                Simcardnumber: $("#Simcardnumber").val(),
+                Simphonenumber: $("#Simphonenumber").val(),
+                TrackingDevicetypeid: $("#TrackingDevicetypeid").val(),
+                Isownvehicle: selectedIsownvehicle,
+                Fleetmanagerid: $("#Fleetmanagerid").val(),
+                Enginenumber: $("#Enginenumber").val(),
+                Makeyear: $("#Makeyear").val(),
+                Insurancestartdate: $("#Insurancestartdate").val(),
+                Insuranceenddate: $("#Insuranceenddate").val(),
+                ChassisVinnumber: $("#ChassisVinnumber").val(),
+                Fueltype: $("#Fueltype").val(),
+                Registrationstartdate: $("#Registrationstartdate").val(),
+                Registrationenddate: $("#Registrationenddate").val(),
+                IsActive: $("#IsActive").val()
+            };
+
+            var name = $("#VehicleNo").val();
+            var vid = $("#VehicleId").val();
+
+
+            var table = $('#tblVehicleMaster').DataTable();
+            var i;
+
+            for (i = 0; i < table.data().count() ; i++) {
+                if (vid == "0") {
+                    if (table.data()[i].VehicleNo == name) {
+                        $('#spVehicleNo').html("VehicleNo already exists.").show();
+                        event.preventDefault();
+                        return false;
+                        break;
+                    }
+                }
+                else {
+                    if (table.data()[i].VehicleId != vid) {
+                        if (table.data()[i].VehicleNo == name) {
+                            $('#spVehicleNo').html("VehicleNo already exists.").show();
+                            event.preventDefault();
+                            return false;
+                            break;
+                        }
+                    }
+                }
+            }
+            $('#spVehicleNo').html('');
+            $('#spVehicleNo').hide();
+
+
+
+
+
+
+
+
+
+
+
+
+            if ($('#VehicleId').val() == "0") {
+
+                $.ajax({
+                    type: "POST",
+                    headers: { 'Authorization': '@_tokan' },
+                    url: '@_webapiurl' + 'SchoolMaster/VehicleCreate',
+                    data: JSON.stringify(obj),
+                    contentType: "application/json; charset=utf-8",
+                    dataType: "json",
+                    success: function (response) {
+                        if (response != null) {
+                            $("<div class='alert alert-success overlay'><label>Saved Successfully</label></div>").insertBefore(".portlet-body").fadeOut(3000);
+                            $('#tblVehicleMaster').DataTable().ajax.reload();
+                            $('#frmpopup').modal('toggle');
+                        } else {
+                            $("<div class='alert alert-danger overlay'><label>Error on save</label></div>").insertBefore(".portlet-body").fadeOut(3000);
+                            $('#tblVehicleMaster').DataTable().ajax.reload();
+                            $('#frmpopup').modal('toggle');
+                        }
+                    },
+                    error: function (response) {
+                        if (response != null) {
+                            var obj = JSON.parse(response.responseText);
+                            if (obj.MegSts == 'error') {
+                                $("<div class='alert alert-danger overlay'><label>" + obj.Meg + "</label></div>").insertBefore(".portlet-body").fadeOut(3000);
+                                $('#tblVehicleMaster').DataTable().ajax.reload();
+                                $('#frmpopup').modal('toggle');
+                            }
+                        }
+                    }
+                });
+            } else {
+
+
+                $.ajax({
+                    type: "POST",
+                    headers: { 'Authorization': '@_tokan' },
+                    url: '@_webapiurl' + 'SchoolMaster/VehicleUpdate',
+                    data: JSON.stringify(obj),
+                    contentType: "application/json; charset=utf-8",
+                    dataType: "json",
+                    success: function (response) {
+                        if (response != null) {
+                            $("<div class='alert alert-success overlay'><label>Updated Successfully</label></div>").insertBefore(".portlet-body").fadeOut(3000);
+                            $('#tblVehicleMaster').DataTable().ajax.reload();
+                            $('#frmpopup').modal('toggle');
+                        } else {
+                            $("<div class='alert alert-danger overlay'><label>Error on updation</label></div>").insertBefore(".portlet-body").fadeOut(3000);
+                            $('#tblVehicleMaster').DataTable().ajax.reload();
+                            $('#frmpopup').modal('toggle');
+                        }
+                    },
+                    error: function (response) {
+                        if (response != null) {
+                            var obj = JSON.parse(response.responseText);
+                            if (obj.MegSts == 'error') {
+                                $("<div class='alert alert-danger overlay'><label>" + obj.Meg + "</label></div>").insertBefore(".portlet-body").fadeOut(3000);
+                                $('#tblVehicleMaster').DataTable().ajax.reload();
+                                $('#frmpopup').modal('toggle');
+                            }
+                        }
+                    }
+                });
+            }
+        });
+        $("#VehicleNo").keypress(function (e) {
+            $("#VehicleNo").removeClass('field_error');
+        });
+        $("#tblVehicleMaster").on('click', '.editclass', function () {
+            $("#VehicleId").removeClass('field_error');
+            $("#NoofSeats").removeClass('field_error');;
+            $(".divVehicle").removeClass('field_error');
+            $("#Simcardnumber").removeClass('field_error');
+            $("#Simphonenumber").removeClass('field_error');
+            $(".divTrackingDevicetypeid").removeClass('field_error');
+            $(".divFleetmanagerid").removeClass('field_error');
+            $("#Enginenumber").removeClass('field_error');
+            $("#Makeyear").removeClass('field_error');
+            $("#Insurancestartdate").removeClass('field_error');
+            $("#Insuranceenddate").removeClass('field_error');
+            $("#ChassisVinnumber").removeClass('field_error');
+            $(".divFueltype").removeClass('field_error');
+            $("#Registrationstartdate").removeClass('field_error');
+            $("#Registrationenddate").removeClass('field_error');
+            $("#spVehicleNo").html('');
+            $("#spNoofSeats").html('');
+            $("#spVehicleType").html('');
+            $("#spNoofSeats").html('');
+            $("#spVehicleNo").hide();
+            $("#spNoofSeats").hide();
+            $("#spVehicleType").hide();
+            $("#spNoofSeats").hide();
+            $('#spImeiid').html('').hide();
+            $("#VehicleNo").removeClass('field_error');
+            var VehicleId = "";
+            VehicleId = t.row($(this).parent('td').parent('tr')).data()["VehicleId"];
+            $('#VehicleId').val(VehicleId);
+            $("#VehicleNo").val(t.row($(this).parent('td').parent('tr')).data()["VehicleNo"]);
+            $("#NoofSeats").val(t.row($(this).parent('td').parent('tr')).data()["NoofSeats"]);
+            $("#VehicleType").val(t.row($(this).parent('td').parent('tr')).data()["VehicleType"]);
+            var imei = t.row($(this).parent('td').parent('tr')).data()["Imeinumber"];
+            var imeiid = $('#Imeiid option').filter(function () { return $(this).html() == imei; }).val();
+            $("#Imeiid").val(imeiid);
+            $("#Simcardnumber").val(t.row($(this).parent('td').parent('tr')).data()["Simcardnumber"]);
+            $("#Simphonenumber").val(t.row($(this).parent('td').parent('tr')).data()["Simphonenumber"]);
+            $("#TrackingDevicetypeid").val(t.row($(this).parent('td').parent('tr')).data()["TrackingDevicetypeid"]);
+            $("#Enginenumber").val(t.row($(this).parent('td').parent('tr')).data()["Enginenumber"]);
+            $("#Makeyear").val(t.row($(this).parent('td').parent('tr')).data()["Makeyear"]);
+            var Makeyear = t.row($(this).parent('td').parent('tr')).data()["Makeyear"];
+            $("#Makeyear").datepicker({ format: 'yyyy' });
+            $("#Makeyear").datepicker('setDate', new Date("01/01/" + Makeyear));
+            $("#Insurancestartdate").val(t.row($(this).parent('td').parent('tr')).data()["Insurancestartdate"]);
+            var Insurancestartdate = t.row($(this).parent('td').parent('tr')).data()["Insurancestartdate"];
+            $("#Insurancestartdate").datepicker({ format: 'yyyy/mm/dd' });
+            $("#Insurancestartdate").datepicker('setDate', new Date(Insurancestartdate));
+            $("#Insuranceenddate").val(t.row($(this).parent('td').parent('tr')).data()["Insuranceenddate"]);
+            var Insuranceenddate = t.row($(this).parent('td').parent('tr')).data()["Insuranceenddate"];
+            $("#Insuranceenddate").datepicker({ format: 'yyyy/mm/dd' });
+            $("#Insuranceenddate").datepicker('setDate', new Date(Insuranceenddate));
+            $("#Registrationstartdate").val(t.row($(this).parent('td').parent('tr')).data()["Registrationstartdate"]);
+            var Registrationstartdate = t.row($(this).parent('td').parent('tr')).data()["Registrationstartdate"];
+            $("#Registrationstartdate").datepicker({ format: 'yyyy/mm/dd' });
+            $("#Registrationstartdate").datepicker('setDate', new Date(Registrationstartdate));
+            $("#Registrationenddate").val(t.row($(this).parent('td').parent('tr')).data()["Registrationenddate"]);
+            var Registrationenddate = t.row($(this).parent('td').parent('tr')).data()["Registrationenddate"];
+            $("#Registrationenddate").datepicker({ format: 'yyyy/mm/dd' });
+            $("#Registrationenddate").datepicker('setDate', new Date(Registrationenddate));
+            var Isownvehicle = t.row($(this).parent('td').parent('tr')).data()["Isownvehicle"];
+            if (Isownvehicle == true) {
+                $("#Isownvehicleyes").prop('checked', true);
+            }
+            if (Isownvehicle == false) {
+                $("#Isownvehicleno").prop('checked', true);
+            }
+            $("#Fleetmanagerid").val(t.row($(this).parent('td').parent('tr')).data()["Fleetmanagerid"]);
+            $("#ChassisVinnumber").val(t.row($(this).parent('td').parent('tr')).data()["ChassisVinnumber"]);
+            $("#Fueltype").val(t.row($(this).parent('td').parent('tr')).data()["Fueltype"]);
+            $("#IsActive").val(t.row($(this).parent('td').parent('tr')).data()["IsActive"]);
+
+            $(".editclass").attr("data-toggle", "modal");
+            $(".editclass").attr("data-target", "#frmpopup");
+        });
+
+
+
+
+        $("#VehicleNo").keypress(function (evt) {
+            $("#VehicleNo").removeClass('field_error');
+            var k;
+            if (evt.keyCode > 0) {
+                k = evt.keyCode;
+            }
+            else if (typeof (evt.charCode) != "undefined") {
+                k = evt.charCode;
+            }
+            return ((k > 64 && k < 91) || (k > 96 && k < 123) || k == 8 || (k >= 48 && k <= 57) || k == 32);
+        });
+
+    });
+
+    function frmClear() {
+        $("#VehicleId").val(0);
+        $("#VehicleNo").val("");
+        $("#NoofSeats").val("");
+        $("#VehicleType").val(0);
+        $("#Simphonenumber").val("");
+        $("#Simcardnumber").val("");
+        $("#Imeinumber").val(0);
+        $("#TrackingDevicetypeid").val(0);
+        $("#Fleetmanagerid").val(0);
+        $("#Enginenumber").val("");
+        $("#Makeyear").val("");
+        $("#Insurancestartdate").val("");
+        $("#Insuranceenddate").val("");
+        $("#ChassisVinnumber").val("");
+        $("#Fueltype").val(0);
+        $("#Registrationstartdate").val("");
+        $("#Registrationenddate").val("");
+
+
+        $("#Isownvehicleyes").prop('checked', true);
+        $("#VehicleId").removeClass('field_error');
+        $("#NoofSeats").removeClass('field_error');;
+        $(".divVehicle").removeClass('field_error');
+        $("#Simcardnumber").removeClass('field_error');
+        $("#Simphonenumber").removeClass('field_error');
+        $(".divTrackingDevicetypeid").removeClass('field_error');
+        $(".divFleetmanagerid").removeClass('field_error');
+        $("#Enginenumber").removeClass('field_error');
+        $("#Makeyear").removeClass('field_error');
+        $("#Insurancestartdate").removeClass('field_error');
+        $("#Insuranceenddate").removeClass('field_error');
+        $("#ChassisVinnumber").removeClass('field_error');
+        $(".divFueltype").removeClass('field_error');
+        $("#Registrationstartdate").removeClass('field_error');
+        $("#Registrationenddate").removeClass('field_error');
+
+
+        $("#spVehicleNo").hide();
+        $("#spNoofSeats").hide();
+        $("#spVehicleType").hide();
+
+    }
+    function fillDeviceTypedll(selectedDeviceTypeId) {
+        $('#TrackingDevicetypeid').empty();
+        $.ajax(
+         {
+             type: "GET",
+             headers: { 'Authorization': '@_tokan' },
+             url: '@_webapiurl' + "/Master/DeviceTypeGetAll",
+             contentType: "application/json; charset=utf-8",
+             dataType: "json",
+             beforeSend: function () {
+             },
+             success: function (data) {
+                 if (data.isRedirect) {
+                     window.location.href = data.redirectUrl;
+                 }
+                 $("#TrackingDevicetypeid").append("<option value='0'>Select Device Type</option>");
+                 for (var x = 0; x < data.length; x++) {
+                     $("#TrackingDevicetypeid").append("<option value=" + data[x].DeviceTypeCode + ">" + data[x].DeviceType + "</option>");
+                 }
+                 $("#TrackingDevicetypeid option[value = '" + selectedDeviceTypeId + "' ]").prop('selected', true);
+             },
+             error: function (jqXHR, ajaxOptions, thrownError) {
+                 if (jqXHR.status == 500) { //InternalServerError = 500,
+                     toastr.error("InternalServerError");
+                 } else if (jqXHR.status == 400) { //BadRequest = 400,
+                     toastr.error("BadRequest");
+                 } else if (jqXHR.status == 401) {
+                     window.location.href = "/PayTime/LoginPage";
+                 }
+             }
+         });
+    }
+
+    function fillIMEIdll(selectedImeiId) {
+        $('#Imeiid').empty();
+        $.ajax(
+         {
+             type: "GET",
+             headers: { 'Authorization': '@_tokan' },
+             url: '@_webapiurl' + "/Master/DeviceGetAllGrid?compCode='" + '@_compcode' + "'",
+             contentType: "application/json; charset=utf-8",
+             dataType: "json",
+             beforeSend: function () {
+             },
+             success: function (data) {
+                 if (data.isRedirect) {
+                     window.location.href = data.redirectUrl;
+                 }
+                 $("#Imeiid").append("<option value='0'>Select IMEI</option>");
+                 for (var x = 0; x < data.length; x++) {
+                     if (data[x].DeviceTypeCode == 35) {
+                         $("#Imeiid").append("<option value=" + data[x].DeviceId + ">" + data[x].DeviceSrNo + "</option>");
+                     }
+                 }
+                 $("#Imeiid option[value = '" + selectedImeiId + "' ]").prop('selected', true);
+             },
+             error: function (jqXHR, ajaxOptions, thrownError) {
+                 if (jqXHR.status == 500) { //InternalServerError = 500,
+                     toastr.error("InternalServerError");
+                 } else if (jqXHR.status == 400) { //BadRequest = 400,
+                     toastr.error("BadRequest");
+                 } else if (jqXHR.status == 401) {
+                     window.location.href = "/PayTime/LoginPage";
+                 }
+             }
+         });
+    }
+</script>
+<div class="page-bar">
+    <ul class="page-breadcrumb">
+        <li>
+            <a href="/School/AdminDashboard">Home</a>
+            <i class="fa fa-circle"></i>
+        </li>
+        <li>
+            <span>Vehicle</span>
+        </li>
+    </ul>
+
+    <div class="page-toolbar">
+        @if (obj.CanAdd && Convert.ToInt32(Session["IsSchool"]) == 1)
+        {
+            <div class="">
+                <a href="#" id="btnadd" class="btn btn-sm blue" style="float:right"> <i class="fa fa-plus"></i> Add Vehicle</a>
+            </div>
+        }
+
+    </div>
+</div>
+<h1 class="page-title">
+    <small></small>
+</h1>
+@if (obj.CanView && Convert.ToInt32(Session["IsSchool"]) == 1)
+{
+    <div class="row">
+        <div class="col-md-12">
+            <div class="portlet ">
+                <div class="portlet-body">
+                    <div>
+                        <table id="tblVehicleMaster" class="table table-striped table-bordered table-hover table-checkable order-column">
+                            <thead>
+                                <tr>
+                                    <th>Sr. No</th>
+                                    <th hidden>Vehicle ID</th>
+                                    <th>Vehicle No</th>
+                                    <th>Vehicle Type</th>
+                                    <th>IMEI</th>
+                                    <th>Seat Capacity</th>
+                                    <th hidden>Simcardnumber</th>
+                                    <th hidden>Simhonenumber</th>
+                                    <th hidden>Tracking Devicetype</th>
+                                    <th hidden>Engine Number</th>
+                                    <th hidden>Makeyear</th>
+                                    <th hidden>Insurance StartDate</th>
+                                    <th hidden>Insurance EndDate</th>
+                                    <th hidden>Registration StartDate</th>
+                                    <th hidden>Registration EndDate</th>
+                                    <th>Is Own Vehicle</th>
+                                    <th hidden>Fleet Manager</th>
+                                    <th hidden>Chassis Vin number</th>
+                                    <th hidden> Fuel Type</th>
+                                    <th hidden> Is Active</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                        </table>
+                    </div>
+                    <div id="ajax_loaderbranch" class="modal_bg loading" aria-hidden="true">
+                        <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading"/>
+                    </div>
+                    <div id="frmpopup" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+                        <div class="modal-dialog">
+                            <!-- Modal content-->
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                                    <h4 class="modal-title">Vehicle</h4>
+                                </div>
+                                <div class="modal-body">
+                                    <div class="row">
+                                        <div class="col-md-12">
+
+                                            <div class="row">
+                                                <div class="col-md-6">
+                                                    <fieldset class="form-horizontal">
+                                                        <legend class="header-container">General Information</legend>
+                                                        <div class="form-group">
+                                                            <div class="editor-label   col-md-4 control-label">
+                                                                @Html.Hidden("IsActive", true)
+                                                                Vehicle No <span class="required" aria-required="true"> * </span>
+                                                            </div>
+                                                            <div class="editor-field col-md-7">
+                                                                <input type="text" id="VehicleNo" name="VehicleNo" required="" class="form-control input-sm" placeholder="Enter Vehicle Number" onkeyup="this.value = this.value.replace(/[<>]/g, '').replace(/\//g, '')" maxlength="50">
+                                                                <span class="help-block" hidden id="spVehicleNo" style="color:red;"></span>
+                                                            </div>
+                                                        </div>
+                                                        <div class="form-group">
+                                                            <div class="editor-label   col-md-4 control-label">
+                                                                Vehicle Type <span class="required" aria-required="true"> * </span>
+                                                            </div>
+                                                            <div class="editor-field col-md-7 ">
+                                                                <select class="form-control input-sm divVehicle" id="VehicleType" name="VehicleType">
+                                                                    <option value=0 selected>Select Vehicle Type</option>
+                                                                    <option value=1>BUS</option>
+                                                                    <option value=2>AUTO</option>
+                                                                    <option value=3>VAN</option>
+                                                                </select>
+                                                                <span class="help-block" hidden id="spVehicleType" style="color:red;"></span>
+                                                            </div>
+                                                        </div>
+                                                        <div class="form-group">
+                                                            <div class=" col-md-4 control-label">
+                                                                @Html.Hidden("VehicleId")
+                                                                Seat Capacity <span class="required" aria-required="true"> * </span>
+                                                            </div>
+                                                            <div class="editor-field col-md-7">
+                                                                <input type="number" id="NoofSeats" name="NoofSeats" required="" class="form-control input-sm" placeholder="Enter No of Seats" pattern="/^-?\d+\.?\d*$/" onkeypress="if(this.value.length==3) return false;" min="1" max="999">
+                                                                <span class="help-block" hidden id="spNoofSeats" style="color:red;"></span>
+                                                            </div>
+                                                        </div>
+                                                    </fieldset>
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <fieldset class="form-horizontal">
+                                                        <legend class="header-container">Tracking Device Details</legend>
+                                                        <div class="form-group">
+                                                            <div class="editor-label   col-md-4 control-label">
+                                                                IMEI <span class="required" aria-required="true"> * </span>
+                                                            </div>
+                                                            @*<div class="editor-field col-md-7">
+                                                                    <input type="text" id="Imeinumber" name="Imeinumber" required="" class="form-control input-sm" placeholder="Enter IMEI Number" onkeyup="this.value = this.value.replace(/[<>]/g, '').replace(/\//g, '')" maxlength="50">
+                                                                    <span class="help-block" hidden id="spImeinumber" style="color:red;"></span>
+                                                                </div>*@
+                                                            <div class="editor-field col-md-7">
+                                                                <select id="Imeiid" class="form-control input-sm divImeiid">
+                                                                    <option value=0 selected>Select Imei</option>
+                                                                </select>
+                                                                <span class="help-block" hidden id="spImeiid" style="color:red;"></span>
+                                                            </div>
+                                                        </div>
+                                                        <div class="form-group" hidden>
+                                                            <div class="editor-label   col-md-4 control-label">
+                                                                Sim Card Number <span class="required" aria-required="true"> * </span>
+                                                            </div>
+                                                            <div class="editor-field col-md-7">
+                                                                <input type="text" id="Simcardnumber" name="Simcardnumber" required="" class="form-control input-sm" placeholder="Enter Sim Card Number" onkeyup="this.value = this.value.replace(/[<>]/g, '').replace(/\//g, '')" maxlength="50">
+                                                                <span class="help-block" hidden id="spSimcardnumber" style="color:red;"></span>
+                                                            </div>
+                                                        </div>
+                                                        <div class="form-group" hidden>
+                                                            <div class="editor-label   col-md-4 control-label">
+                                                                Sim Telephone Number <span class="required" aria-required="true"> * </span>
+                                                            </div>
+                                                            <div class="editor-field col-md-7">
+                                                                <input type="text" id="Simphonenumber" name="Simphonenumber" required="" class="form-control input-sm" placeholder="Enter Sim Telephone Number" onkeyup="this.value = this.value.replace(/[<>]/g, '').replace(/\//g, '')" maxlength="50">
+                                                                <span class="help-block" hidden id="spSimphonenumber" style="color:red;"></span>
+                                                            </div>
+                                                        </div>
+                                                        <div class="form-group" hidden>
+                                                            <div class="editor-label   col-md-4 control-label">
+                                                                Type of Device<span class="required" aria-required="true"> * </span>
+                                                            </div>
+                                                            <div class="editor-field col-md-7">
+                                                                <select id="TrackingDevicetypeid" class="form-control input-sm divTrackingDevicetypeid">
+                                                                    <option value=0 selected>Select Tracking Device Type</option>
+                                                                    <option value=1>Device1</option>
+                                                                    <option value=2>Device2</option>
+                                                                </select>
+                                                                <span class="help-block" hidden id="spTrackingDevicetypeid" style="color:red;"></span>
+                                                            </div>
+                                                        </div>
+                                                    </fieldset>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-12">
+                                            <div class="row">
+                                                <div class="col-md-6">
+                                                    <fieldset class="form-horizontal">
+                                                        <legend class="header-container">Additional information</legend>
+                                                        <div class="form-group">
+                                                            <div class="editor-label   col-md-4 control-label">
+                                                                School own vehicle?
+                                                            </div>
+                                                            <div class="editor-field col-md-7">
+                                                                <label class="radio-inline"><input type="radio" id="Isownvehicleyes" name="Isownvehicle" checked="checked">Yes</label>
+                                                                <label class="radio-inline"><input type="radio" id="Isownvehicleno" name="Isownvehicle">No</label>
+                                                            </div>
+                                                        </div>
+                                                        <div class="form-group">
+                                                            <div class="form-group">
+                                                                <div class="editor-label   col-md-4 control-label">
+                                                                    Engine Number
+                                                                </div>
+                                                                <div class="editor-field col-md-7">
+                                                                    <input type="text" id="Enginenumber" name="Enginenumber" class="form-control input-sm" placeholder="Enter Engine Number" onkeyup="this.value = this.value.replace(/[<>]/g, '').replace(/\//g, '')" maxlength="50">
+                                                                    <span class="help-block" hidden id="spEnginenumber" style="color:red;"></span>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        <div class="form-group">
+                                                            <div class="form-group">
+                                                                <div class="editor-label   col-md-4 control-label">
+                                                                    Make Year <span class="required" aria-required="true"> * </span>
+                                                                </div>
+                                                                @*<div class="editor-field col-md-7">
+                                                                        <input type="text" id="Makeyear" name="Makeyear" required="" class="form-control input-sm" placeholder="Enter Make Year" onkeyup="this.value = this.value.replace(/[<>]/g, '').replace(/\//g, '')" maxlength="50">
+                                                                        <span class="help-block" hidden id="spMakeyear" style="color:red;"></span>
+                                                                    </div>*@
+                                                                @*<div class="editor-field col-md-7 ">
+                                                                        <select class="form-control input-sm divMakeyear" id="Makeyear" name="Makeyear">
+                                                                            <option value=0 selected>Select Make Year</option>
+                                                                            <option value=1>BUS</option>
+                                                                            <option value=2>AUTO</option>
+                                                                            <option value=3>VAN</option>
+                                                                        </select>
+                                                                        <span class="help-block" hidden id="spMakeyear" style="color:red;"></span>
+                                                                    </div>*@
+                                                                <div class="editor-field col-md-7">
+                                                                    <input type="text" placeholder="YYYY" class="form-control input-sm" id="Makeyear" name="Makeyear">
+                                                                    @*<div class="input-group input-group-sm date date-picker col-md-7" data-date-format="yyyy" data-date-viewmode="years" data-date-end-date="y" data-date-minviewmode="years">
+                                                                            <span class="input-group-btn">
+                                                                                <button class="btn default" type="button">
+                                                                                    <i class="fa fa-calendar"></i>
+                                                                                </button>
+                                                                            </span>
+                                                                            <input type="text" placeholder="YYYY" class="form-control" id="Makeyear" name="Makeyear" required="">
+                                                                        </div>*@
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        <div class="form-group">
+                                                            <div class="form-group">
+                                                                <div class="editor-label   col-md-4 control-label">
+                                                                    Insurance Start Date <span class="required" aria-required="true"> * </span>
+                                                                </div>
+                                                                @*<div class="editor-field col-md-7">
+                                                                        <input type="text" id="Insurancestartdate" name="Insurancestartdate" required="" class="form-control input-sm" placeholder="Enter Insurance Start Date" onkeyup="this.value = this.value.replace(/[<>]/g, '').replace(/\//g, '')" maxlength="50">
+                                                                        <span class="help-block" hidden id="spInsurancestartdate" style="color:red;"></span>
+                                                                    </div>*@
+                                                                <div class="input-group input-group-sm date date-picker col-md-7" data-date="@DateTime.Now" data-date-format="yyyy/mm/dd" data-date-viewmode="years" data-date-end-date="0d">
+                                                                    <span class="input-group-btn">
+                                                                        <button class="btn default" type="button">
+                                                                            <i class="fa fa-calendar"></i>
+                                                                        </button>
+                                                                    </span>
+                                                                    <input type="text" placeholder="YYYY/MM/DD" class="form-control" id="Insurancestartdate" name="Insurancestartdate" required="">
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        <div class="form-group">
+                                                            <div class="form-group">
+                                                                <div class="editor-label   col-md-4 control-label">
+                                                                    Insurance Expiry Date <span class="required" aria-required="true"> * </span>
+                                                                </div>
+                                                                @*<div class="editor-field col-md-7">
+                                                                        <input type="text" id="Insuranceenddate" name="Insuranceenddate" required="" class="form-control input-sm" placeholder="Enter Insurance Expiry Date" onkeyup="this.value = this.value.replace(/[<>]/g, '').replace(/\//g, '')" maxlength="50">
+                                                                        <span class="help-block" hidden id="spInsuranceenddate" style="color:red;"></span>
+                                                                    </div>*@
+                                                                <div class="input-group input-group-sm date date-picker col-md-7" data-date="@DateTime.Now" data-date-format="yyyy/mm/dd" data-date-viewmode="years">
+                                                                    <span class="input-group-btn">
+                                                                        <button class="btn default" type="button">
+                                                                            <i class="fa fa-calendar"></i>
+                                                                        </button>
+                                                                    </span>
+                                                                    <input type="text" placeholder="YYYY/MM/DD" class="form-control" id="Insuranceenddate" name="Insuranceenddate" required="">
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </fieldset>
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <fieldset class="form-horizontal">
+                                                        <legend class="header-container">&nbsp;&nbsp;</legend>
+
+                                                        <div class="form-group" id="divContractor">
+                                                            <div class="editor-label   col-md-4 control-label">
+                                                                Fleet manager / Contractor<span class="required" aria-required="true"> * </span>
+                                                            </div>
+                                                            <div class="editor-field col-md-7 ">
+                                                                <select id="Fleetmanagerid" name="Fleetmanagerid" class="form-control input-sm divFleetmanagerid">
+                                                                    <option value=0 selected>Select Contractor</option>
+                                                                    <option value=1>Contractor1</option>
+                                                                    <option value=2>Contractor2</option>
+                                                                </select>
+                                                            </div>
+                                                        </div>
+                                                        <div class="form-group">
+                                                            <div class="form-group">
+                                                                <div class="editor-label   col-md-4 control-label">
+                                                                    Chassis number or VIN number
+                                                                </div>
+                                                                <div class="editor-field col-md-7">
+                                                                    <input type="text" id="ChassisVinnumber" name="ChassisVinnumber" required="" class="form-control input-sm" placeholder="Enter Chassis number or VIN number" onkeyup="this.value = this.value.replace(/[<>]/g, '').replace(/\//g, '')" maxlength="50">
+                                                                    <span class="help-block" hidden id="spChassisVinnumber" style="color:red;"></span>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        <div class="form-group">
+                                                            <div class="form-group">
+                                                                <div class="editor-label col-md-4 control-label">
+                                                                    Fuel Type
+                                                                </div>
+                                                                <div class="editor-field col-md-7">
+                                                                    <select id="Fueltype" name="Fueltype" class="form-control input-sm divFueltype">
+                                                                        <option value=0 selected>Select Fuel Type</option>
+                                                                        <option value=1>Pertrol</option>
+                                                                        <option value=2>Diesel</option>
+                                                                        <option value=3>CNG</option>
+                                                                    </select>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        <div class="form-group">
+                                                            <div class="form-group">
+                                                                <div class="editor-label   col-md-4 control-label">
+                                                                    Registration Start Date <span class="required" aria-required="true"> * </span>
+                                                                </div>
+                                                                @*<div class="editor-field col-md-7">
+                                                                        <input type="text" id="Registrationstartdate" name="Registrationstartdate" required="" class="form-control input-sm" placeholder="Enter Registration Start Date" onkeyup="this.value = this.value.replace(/[<>]/g, '').replace(/\//g, '')" maxlength="50">
+                                                                        <span class="help-block" hidden id="spRegistrationstartdate" style="color:red;"></span>
+                                                                    </div>*@
+                                                                <div class="input-group input-group-sm date date-picker col-md-7" data-date="@DateTime.Now" data-date-format="yyyy/mm/dd" data-date-viewmode="years" data-date-end-date="0d">
+                                                                    <span class="input-group-btn">
+                                                                        <button class="btn default" type="button">
+                                                                            <i class="fa fa-calendar"></i>
+                                                                        </button>
+                                                                    </span>
+                                                                    <input type="text" placeholder="YYYY/MM/DD" class="form-control" id="Registrationstartdate" name="Registrationstartdate" required="">
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        <div class="form-group">
+                                                            <div class="form-group">
+                                                                <div class="editor-label   col-md-4 control-label">
+                                                                    Registration Expiry Date <span class="required" aria-required="true"> * </span>
+                                                                </div>
+                                                                @*<div class="editor-field col-md-7">
+                                                                        <input type="text" id="Registrationenddate" name="Registrationenddate" required="" class="form-control input-sm" placeholder="Enter Registration Expiry Date" onkeyup="this.value = this.value.replace(/[<>]/g, '').replace(/\//g, '')" maxlength="50">
+                                                                        <span class="help-block" hidden id="spRegistrationenddate" style="color:red;"></span>
+                                                                    </div>*@
+                                                                <div class="input-group input-group-sm date date-picker col-md-7" data-date="@DateTime.Now" data-date-format="yyyy/mm/dd" data-date-viewmode="years">
+                                                                    <span class="input-group-btn">
+                                                                        <button class="btn default" type="button">
+                                                                            <i class="fa fa-calendar"></i>
+                                                                        </button>
+                                                                    </span>
+                                                                    <input type="text" placeholder="YYYY/MM/DD" class="form-control" id="Registrationenddate" name="Registrationenddate" required="">
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        <div class="form-group">
+                                                            <div class="editor-label   col-md-4 control-label">
+
+                                                            </div>
+                                                            <div class="editor-field col-md-7">
+                                                                <button type="button" class=" btn btn-sm blue" id="btnVehicleSubmit" style="float:right"> <i class="fa fa-check"></i> Save</button>
+                                                            </div>
+                                                        </div>
+                                                    </fieldset>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="frmInactiveVeh" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+                        <div class="modal-dialog  ">
+                            <!-- Modal content-->
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                                    <h4 class="modal-title">Inactive Vehicle</h4>
+                                </div>
+                                <div class="modal-body">
+                                    <fieldset>
+                                        <div class="row">
+                                            <div class="col-md-12">
+                                                <div class="form-group">
+                                                    <label>Reason<span class="required" aria-required="true"> * </span></label>
+                                                    @*<div class="input-group  input-group-sm  date date-picker" data-date="@DateTime.Now" data-date-format="yyyy-mm-dd" data-date-viewmode="years" id="inactiveresigndate">
+                                                            <span class="input-group-btn">
+                                                                <button class="btn default" type="button">
+                                                                    <i class="fa fa-calendar"></i>
+                                                                </button>
+                                                            </span>
+                                                            <input type="text" placeholder="YYYY-MM-DD" class="form-control" id="EmpInactiveResignDate" name="EmpInactiveResignDate">
+                                                        </div>*@
+                                                    <textarea class="form-control" rows="4" name="Remarks" id="Remarks" placeholder="Reason" maxlength="150" onkeyup="this.value = this.value.replace(/[<>]/g, '').replace(/\//g, '')"></textarea>
+                                                </div>
+                                                <div class="form-group form-group col-md-12 text-right">
+                                                    <button type="submit" class=" btn btn-sm blue" id="btnIactivesubmit"> <i class="fa fa-check"></i> Save</button>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                    </fieldset>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    <span style="color:red">Unauthorized Access.</span>
+}
+

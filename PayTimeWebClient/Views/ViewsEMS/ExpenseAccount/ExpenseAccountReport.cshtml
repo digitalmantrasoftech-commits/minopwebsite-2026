@@ -1,0 +1,469 @@
+﻿@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@using System.Configuration;
+@using EMSWebClient;
+@{
+    ViewBag.Title = "ExpenseAccountReport";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    string _Message = ViewBag.msg;
+    string _error = ViewBag.error;
+    //string _flgempover = ViewBag.flgempover;
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    int _UserId = Convert.ToInt32(HttpContext.Current.Session["UserId"]);
+    int _cmpid = Convert.ToInt32(HttpContext.Current.Session["CompanyId"]);
+    //int _islimit = ViewBag.Islimit;
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiEMSURL = ConfigurationManager.AppSettings["WebApiEMS"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    string _accountcd = HttpContext.Current.Session["cmpcode"].ToString();
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+    string _companyid = "0";
+    string _empid = "0";
+    string _empName = "0";
+
+    if (_RoleId != 1 && _RoleId != 6805 && _RoleId != 6806)
+    {
+        _empid = HttpContext.Current.Session["EmpId"].ToString();
+        _empName = HttpContext.Current.Session["EmpName"].ToString();
+
+    }
+    string _branchid = "0";
+    if (_RoleId == 6805)
+    {
+        _companyid = HttpContext.Current.Session["ClientCompanyId"].ToString();
+    }
+    if (_RoleId == 6806)
+    {
+        _companyid = HttpContext.Current.Session["ClientCompanyId"].ToString();
+        _branchid = HttpContext.Current.Session["BranchId"].ToString();
+    }
+    string _isPlanFace = HttpContext.Current.Session["isPlanFace"].ToString();
+    string _isdateformat = HttpContext.Current.Session["IsDateFormat"].ToString();
+    string _UserImg = HttpContext.Current.Session["photo"].ToString();
+    //if (_flgempover == "true")
+    //{
+    //    obj.CanAdd = false;
+
+    //}
+    string _CountryCode = HttpContext.Current.Session["CountryCode"].ToString();
+    string _AreaCode = HttpContext.Current.Session["AreaCode"].ToString();
+    string _dbName = HttpContext.Current.Session["DbName"].ToString();
+    //int _IsVerification = ViewBag.IsVerification;
+    string _isPlanId = HttpContext.Current.Session["planId"].ToString();
+    int _amount = 0;
+
+    string isClientDBMatchFlag = HttpContext.Current.Session["IsClientDBMatch"] != null
+? HttpContext.Current.Session["IsClientDBMatch"].ToString()
+: "false"; // Default to "false" if the session is null
+}
+
+
+<link href="/Newlayout/css/payrollstructure.css" rel="stylesheet">
+<link href="/Newlayout/css/emsstructure.css" rel="stylesheet">
+<script src="~/Newlayout/js/sweet_alert_payroll.js"></script>
+
+<style type="text/css">
+    .fixed-column {
+        width: 60px !important;
+        min-width: 60px !important;
+        right: 0px;
+        position: sticky !important;
+        background-color: #fff !important;
+    }
+
+    .fixed-column-1 {
+        width: 60px !important;
+        min-width: 60px !important;
+        right: 96px;
+        position: sticky !important;
+        background-color: #fff !important;
+        box-shadow: -1px 0px 3px 0px rgba(0, 0, 0, 0.20);
+    }
+</style>
+
+<script>
+    $(document).ready(function () {
+
+        // Create search inputs in footer
+        $("#ExpAccount_tbl tfoot th").each(function () {
+            var title = $(this).text();
+            $(this).html('<input type="text" class="search_input" placeholder="Search" /><i class="clm-search" id=""></i>');
+        });
+
+        // DataTable initialisation
+        var table = $("#ExpAccount_tbl").DataTable({
+            dom: _domCommon,
+            language: _languageCommon,
+            ordering: true,
+        });
+        setTimeout(function () {
+            $("#" + "ExpAccount_tbl" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+            $('.tooltips').tooltip();
+        }, 100);
+
+        // Apply the column Search
+        $("#ExpAccount_tbl thead").on("keyup", "input", function () {
+            table.column($(this).parent().index())
+                .search(this.value)
+                .draw();
+        });
+
+        // Filter Click Hide/Show Div
+        $("#Filter_search").click(function () {
+            const wrapper = $(".filter_portlet_wrapper");
+            wrapper.toggleClass("full-width");
+
+            var screenWidth = $(window).width();
+            if (screenWidth >= 300 && screenWidth <= 600) {
+                $('.filter_portlet_tbl').toggle();
+                $('.filter_portlet_wrapper .filter_boxModal').css('width', '100%');
+            }
+        });
+        // Close filter panel on close button click
+        $(".filterclose_btn").click(function () {
+            const wrapper = $(".filter_portlet_wrapper");
+            wrapper.addClass("full-width");
+
+            var screenWidth = $(window).width();
+            if (screenWidth >= 300 && screenWidth <= 600) {
+                $(".filter_portlet_tbl").css("display", "block");
+            }
+        });
+
+        // Reject Button Click Open Swal Modal
+        $("#Reject_Btn").on('click', function () {
+            Swal.fire({
+                html: '<div class="swal_title text-center">Reject Expense Account</div><div class="swal_subtitle grey_font text-center">Are you sure? Do you want to reject the expense account</div>',
+                closeOnConfirm: true,
+                showCloseButton: false,
+                showCancelButton: true,
+                focusConfirm: false,
+                cancelButtonColor: '#d33',
+                cancelButtonText: 'Back',
+                confirmButtonColor: '#2196F3',
+                confirmButtonText: 'Yes',
+                allowOutsideClick: false,
+                allowEscapeKey: false,
+                customClass: {
+                    confirmButton: 'swal-confirm-button-class',
+                    cancelButton: 'swal-cancel-button-class'
+                }
+            });
+        });
+
+
+    });
+</script>
+
+<!-- Page Bar : Begin -->
+<div class="page-bar">
+
+    @if (_RoleId == 1 || _RoleId == 6805 || _RoleId == 6806)
+    {
+        <ul class="page-breadcrumb" style="float: none">
+            <li>
+                @if (isClientDBMatchFlag == "True")
+                {
+                    <a href="/Admin/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+                }
+                else
+                {
+                    <a href="/Dashboard/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+                }
+            </li>
+            <li>
+                <span>Expense Account Report</span>
+            </li>
+        </ul>
+    }
+    else
+    {
+        <ul class="page-breadcrumb">
+            <li>
+                @if (isClientDBMatchFlag == "true")
+                {
+                    <a href="/Admin/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+                }
+                else
+                {
+                    <a href="/Dashboard/EmployeeDashboard"><i class="fa-regular fa-house"></i></a>
+                }
+            </li>
+            <li>
+                <span>Expense Account Report</span>
+            </li>
+        </ul>
+    }
+    <div class="page-toolbar">
+        <div class="text-right">
+            <a href="javascript:;" class="btn icon_transparent_btn tooltips" id="Filter_search" data-placement="left" data-original-title="Filter" data-toggle="tooltip"><i class="fa-light fa-filter" aria-hidden="true"></i> </a>
+        </div>
+    </div>
+</div>
+<!-- Page Bar : End -->
+@if (obj.CanView)
+{
+
+    <div class="filter_portlet_wrapper full-width">
+
+        <!-- Datatable Block : Begin -->
+        <div class="portlet filter_portlet_tbl">
+            <div class="portlet-body">
+                <div class="EMS_details_table">
+                    <!-- Datatable : Begin -->
+                    <div class="table-responsive" id="tableResponsive">
+                        <table id="ExpAccount_tbl" class="table new_datatbl table-striped table-bordered tbl_middle table-hover tbl_newdatatbl serch_datatable table-checkable order-column">
+                            <thead>
+                                <tr>
+                                    <th style="min-width: 100px">Expense ID</th>
+                                    <th style="min-width: 130px">Cheque No.</th>
+                                    <th style="min-width: 100px">Is Payment</th>
+                                    <th style="min-width: 140px">Request Details</th>
+                                    <th style="min-width: 80px">Amount</th>
+                                    <th style="min-width: 140px">Type</th>
+                                    <th style="min-width: 100px">Request ID</th>
+                                    <th style="min-width: 120px">Document</th>
+                                    <th class="fixed-column-1">Status</th>
+                                    <th class="fixed-column">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>EXP00092773</td>
+                                    <td>Nov 20 2023 12:55 PM</td>
+                                    <td>Yes (2023-11-20)</td>
+                                    <td>Water Bill</td>
+                                    <td>800.00</td>
+                                    <td>Conveyance Expense 1</td>
+                                    <td>6485197525</td>
+                                    <td>
+                                        <div class="d-flex align-items-center justify-content-between">
+                                            <span>View Receipts</span><a href="javascript:;"><img src="/assets/images/download_icon.svg" height="18" width="18" alt="download icon"></a>
+                                        </div>
+                                    </td>
+                                    <td class="fixed-column-1 text-center green_font">Approved</td>
+                                    <td class="fixed-column">
+                                        <a href="javascript:;" class="btn blue_btnnew tooltips" id="" data-placement="left" data-original-title="Approve" disabled="disabled"><i class="fa-solid fa-check "></i></a>
+                                        <a href="javascript:;" class="btn blue_btnnew tooltips" id="" data-placement="left" data-original-title="Reject" disabled="disabled"><i class="fa-solid fa-xmark "></i></a>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>EXP00064455</td>
+                                    <td>Dec 08 2023 01:30 PM</td>
+                                    <td>Yes (2023-12-08)</td>
+                                    <td>Taxi Bill</td>
+                                    <td>1250.00</td>
+                                    <td>Conveyance Expense 2</td>
+                                    <td>9542154654</td>
+                                    <td>
+                                        <div class="d-flex align-items-center justify-content-between">
+                                            <span>View Receipts</span><a href="javascript:;"><img src="/assets/images/download_icon.svg" height="18" width="18" alt="download icon"></a>
+                                        </div>
+                                    </td>
+                                    <td class="fixed-column-1 text-center grey_font">Pending</td>
+                                    <td class="fixed-column">
+                                        <a href="javascript:;" class="btn blue_btnnew tooltips" id="" data-placement="left" data-original-title="Approve" disabled="disabled"><i class="fa-solid fa-check "></i></a>
+                                        <a href="javascript:;" class="btn blue_btnnew tooltips" id="" data-placement="left" data-original-title="Reject" disabled="disabled"><i class="fa-solid fa-xmark "></i></a>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>EXP00046821</td>
+                                    <td>Dec 23 2023 11:45 PM</td>
+                                    <td>Yes (2023-12-23)</td>
+                                    <td>Food Bill</td>
+                                    <td>1080.00</td>
+                                    <td>Conveyance Expense 3</td>
+                                    <td>4632187620</td>
+                                    <td>
+                                        <div class="d-flex align-items-center justify-content-between">
+                                            <span>View Receipts</span><a href="javascript:;"><img src="/assets/images/download_icon.svg" height="18" width="18" alt="download icon"></a>
+                                        </div>
+                                    </td>
+                                    <td class="fixed-column-1 text-center grey_font">Pending</td>
+                                    <td class="fixed-column">
+                                        <a href="javascript:;" class="btn blue_btnnew tooltips" id="" data-placement="left" data-original-title="Approve"><i class="fa-solid fa-check "></i></a>
+                                        <a href="javascript:;" class="btn blue_btnnew tooltips" id="" data-placement="left" data-original-title="Reject"><i class="fa-solid fa-xmark "></i></a>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>EXP00035648</td>
+                                    <td>Jan 10 2024 11:25 PM</td>
+                                    <td>Yes (2024-01-10)</td>
+                                    <td>Water Bill</td>
+                                    <td>625.00</td>
+                                    <td>Conveyance Expense 4</td>
+                                    <td>3218747641</td>
+                                    <td>
+                                        <div class="d-flex align-items-center justify-content-between">
+                                            <span>View Receipts</span><a href="javascript:;"><img src="/assets/images/download_icon.svg" height="18" width="18" alt="download icon"></a>
+                                        </div>
+                                    </td>
+                                    <td class="fixed-column-1 text-center red_font">Rejected</td>
+                                    <td class="fixed-column">
+                                        <a href="javascript:;" class="btn blue_btnnew tooltips" id="" data-placement="left" data-original-title="Approve"><i class="fa-solid fa-check "></i></a>
+                                        <a href="javascript:;" class="btn blue_btnnew tooltips" id="" data-placement="left" data-original-title="Reject"><i class="fa-solid fa-xmark "></i></a>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>EXP00092773</td>
+                                    <td>Feb 16 2024 02:30 PM</td>
+                                    <td>Yes (2024-02-16)</td>
+                                    <td>Water Bill</td>
+                                    <td>800.00</td>
+                                    <td>Conveyance Expense 5</td>
+                                    <td>6485197590</td>
+                                    <td>
+                                        <div class="d-flex align-items-center justify-content-between">
+                                            <span>View Receipts</span><a href="javascript:;"><img src="/assets/images/download_icon.svg" height="18" width="18" alt="download icon"></a>
+                                        </div>
+                                    </td>
+                                    <td class="fixed-column-1 text-center grey_font">Pending</td>
+                                    <td class="fixed-column">
+                                        <a href="javascript:;" class="btn blue_btnnew tooltips" id="" data-placement="left" data-original-title="Approve" disabled="disabled"><i class="fa-solid fa-check "></i></a>
+                                        <a href="javascript:;" class="btn blue_btnnew tooltips" id="" data-placement="left" data-original-title="Reject" disabled="disabled"><i class="fa-solid fa-xmark "></i></a>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td>EXP00035648</td>
+                                    <td>Mar 20 2024 04:30 PM</td>
+                                    <td>No</td>
+                                    <td>Water Bill</td>
+                                    <td>530.00</td>
+                                    <td>Conveyance Expense 6</td>
+                                    <td>3218478795</td>
+                                    <td>
+                                        <div class="d-flex align-items-center justify-content-between">
+                                            <span>View Receipts</span><a href="javascript:;"><img src="/assets/images/download_icon.svg" height="18" width="18" alt="download icon"></a>
+                                        </div>
+                                    </td>
+                                    <td class="fixed-column-1 text-center red_font">Rejected</td>
+                                    <td class="fixed-column">
+                                        <a href="javascript:;" class="btn blue_btnnew tooltips" id="" data-placement="left" data-original-title="Approve"><i class="fa-solid fa-check"></i></a>
+                                        <a href="javascript:;" class="btn blue_btnnew tooltips" id="" data-placement="left" data-original-title="Reject"><i class="fa-solid fa-xmark"></i></a>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <!-- Datatable : End -->
+                </div>
+
+                <!-- No Data Block Design : Begin -->
+                <div class="nodata_block no_recoed" style="display:none">
+                    <div class="datanotfound">
+                        <img src="~/assets/images/emptyscreen_3.png" height="148" width="280" alt="No Data Icon" />
+                        <p class="datanotfound_title">No data found</p> <!-- titleText -->
+                        <p class=""> No matching records found for the selected filters.</p><!-- subText -->
+                    </div>
+                </div>
+                <div id="NotificationGrid-empty1" style="display:none">
+                    <div class="datanotfound">
+                        <img src="~/assets/images/emptyscreen_3.png" height="148" width="280" alt="Nodata Found Icon">
+                        <p class="datanotfound_title">No data show</p> <!-- titleText -->
+                        <p class="">Start by applying a filter to view relevant data.</p><!-- subText -->
+                    </div>
+                </div>
+                <!-- No Data Block Design : End -->
+
+            </div>
+        </div>
+        <!-- Datatable Block : End -->
+        <!-- Filter Block : Begin -->
+        <div class="portlet filter_boxModal">
+            <div class="filterbox_header">
+                <div class="d-flex align-items-center justify-content-between">
+                    <h4 class="filter-title">Filters</h4>
+                    <button type="button" class="filterclose_btn"><i class="fa-light fa-xmark"></i></button>
+                </div>
+            </div>
+            <div class="filterbox_body">
+                <div class="col-lg-12">
+                    <div class="form-group">
+                        <label>Employee</label>
+                        <select class="form-control input-sm select2" id="Emp_filter">
+                            <option value="1">All</option>
+                            <option value="2">Kashyap Dave</option>
+                            <option value="3">Hardik Darji</option>
+                            <option value="4">Arpit Patel</option>
+                            <option value="5">Jayesh Goswami</option>
+                            <option value="6">Balvant Katariya</option>
+                            <option value="7">Samit Patel</option>
+                            <option value="7">Anshuman Sutariya</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="col-lg-12">
+                    <div class="form-group">
+                        <label>Month-Year</label>
+                        <select class="form-control input-sm" id="Year_filter">
+                            <option value="1">All</option>
+                            <option value="2">2020</option>
+                            <option value="3">2021</option>
+                            <option value="4">2022</option>
+                            <option value="5">2023</option>
+                            <option value="6">2024</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="col-lg-12">
+                    <div class="form-group">
+                        <label>Status</label>
+                        <select class="form-control input-sm" id="Status_filter">
+                            <option value="0">All</option>
+                            <option value="1">Approved</option>
+                            <option value="2">Pending</option>
+                            <option value="3">Reject</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="filterbox_footer">
+                <div class="text-right">
+                    <button type="submit" id="clear_operation" class="clear_btn tooltips" data-placement="top" data-original-title="Clear Filters"><i class="fa-regular fa-eraser"></i></button>
+                    <button type="submit" id="btnSubmit" class="icon_btn margin-left-5 tooltips" data-placement="top" data-original-title="Search Filters"><i class="fa-solid fa-magnifying-glass"></i></button>
+                </div>
+            </div>
+        </div>
+        <!-- Filter Block : End -->
+    </div>
+}
+else
+{
+    <script>
+        Swal.fire({
+            title:
+                "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_info.svg' alt=''> Unauthorized Access",
+            html:
+                "<div class='swal_subtitle'>" +
+                "<b>Access denied. You don’t have the required permissions to view this page.</b>" +
+                "<p>Please contact your administrator if you believe this is a mistake.</p>" +
+                "</div>",
+            showCloseButton: true,
+            showCancelButton: false,
+            focusConfirm: false,
+            cancelButtonText: 'Close',
+            confirmButtonText: 'Go to Dashboard',
+            allowOutsideClick: false,
+            allowEscapeKey: false,
+            customClass: {
+                popup: 'swal_info',                     // <<-- Add class directly to popup
+                confirmButton: 'swal-confirm-button-class',
+                cancelButton: 'swal-cancel-button-class'
+            }
+        }).then(function (result) {
+            if (result.isConfirmed) {
+                window.location.href = "/MinopProduct/EMSDashboard";
+            }
+        });
+    </script>
+}

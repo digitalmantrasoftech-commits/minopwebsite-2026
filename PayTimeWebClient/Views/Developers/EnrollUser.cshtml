@@ -1,0 +1,679 @@
+﻿@using System.Configuration;
+@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@{
+    ViewBag.Title = "EnrollUser";
+    Layout = "~/Views/Shared/_LayoutDevelopers.cshtml";
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    string _compcode = HttpContext.Current.Session["cmpcode"].ToString();
+}
+<link href="~/Content/toastr.min.css" rel="stylesheet" />
+<script src="~/Scripts/toastr.min.js"></script>
+
+<script type="text/javascript">
+    var checkedEmpPunchIDs = [];
+    var checkedDeviceIDs = [];
+    var allEmp = [];
+    var DeviceFlags = [];
+    var isflagstep2 = false;
+    $(document).ready(function () {
+        var t = $('#tblEnrollUsers').DataTable(
+        {
+            'dom': _domCommon,
+            'language': _languageCommon,
+            "processing": true,
+            "ajax": {
+                url: '@_webapiurl' + 'DeviceDemo/FetchDeveloperEnrollmentDetails?deviceSrno=0&punchid=0',
+                type: "GET",
+                headers: { 'Authorization': '@_tokan' },
+                dataSrc: '',
+            },
+            "columns": [
+                { "data": null },
+                { "data": "EmpId" },
+                { "data": "EmpName" },
+                { "data": "DeviceSrNo" },
+                { "data": "DevId" },
+                { "data": "DeviceUserId" },
+                { "data": "PhotoPath" },
+                { "data": "status" },
+            ],
+            "columnDefs": [
+                {
+                    "targets": [1,4,5,6,8],
+                    "visible": false
+                },
+                {
+                    "targets": 8,
+                    "data": null,
+                    "defaultContent": '<a class="editclass btn blue_btnnew tooltips" data-placement="top" title="Edit"><i class="fa fa-edit"> </i></a>  <a class="uploadclass btn blue_btnnew tooltips" data-placement="bottom" title="upload"><i class="fa fa-upload"> </i></a>'
+                },
+                {
+                    "searchable": false,
+                    "orderable": false,
+                    "targets": 0
+                }],
+            "order": [[3, 'asc']],
+            }
+        );
+
+        setTimeout(function () {
+            $("#" + "tblEnrollUsers" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+            $('.tooltips').tooltip();
+        }, 100);
+
+        t.on('order.dt search.dt', function () {
+            t.column(0, { search: 'applied', order: 'applied' }).nodes().each(function (cell, i) {
+                cell.innerHTML = i + 1;
+            });
+        }).draw();
+
+
+            var navListItems = $('#frmpopup div.setup-panel div a'),
+            allWells = $('#frmpopup .setup-content'),
+            allNextBtn = $('#frmpopup .nextBtn'),
+            allPrevBtn = $('#frmpopup .prevbtn');
+            allWells.hide();
+            navListItems.click(function (e) {
+                e.preventDefault();
+                var $target = $($(this).attr('href')),
+                    $item = $(this);
+                if (!$item.hasClass('disabled')) {
+                    navListItems.removeClass('btn-primary').addClass('btn-default');
+                    $item.addClass('btn-primary');
+                    allWells.hide();
+                    $target.show();
+                }
+            });
+        allPrevBtn.click(function () {
+            var curStep1 = $(this).closest(".setup-content"),
+                curStepBtn1 = curStep1.attr("id"),
+                nextStepWizard1 = $('div.setup-panel div a[href="#' + curStepBtn1 + '"]').parent().prev().children("a"),
+                curInputs1 = curStep1.find("input[type='text'],input[type='url']"),
+                isValid1 = true;
+
+            $(".form-group").removeClass("has-error");
+            if (isValid1)
+                nextStepWizard1.removeAttr('disabled').trigger('click');
+        });
+        $(".close").click(function () {
+            $("#dataTables_tbl_header").show();
+        })
+        $("#EnrollUser").click(function () {
+            $("#dataTables_tbl_header").hide();
+            Step1ShowHide();
+            $("#selectall").prop('checked', false);
+            $("#selectalldevice").prop('checked', false);
+            $("#tblempmaster .clsChkEmp").each(function () {
+                $(this).prop('checked', false);
+            });
+            $("#tbldevice .clsChkDevice").each(function () {
+                $(this).prop('checked', false);
+            });
+            var nextStepWizard = $('div.setup-panel div a[href="#s-1"]').parent().children("a");
+            var nextStepWizard2 = $('div.setup-panel div a[href="#s-2"]').parent().children("a");
+            // Enable first wizard step and disable the second one
+            nextStepWizard.removeAttr('disabled').trigger('click');
+            nextStepWizard2.attr('disabled', 'disabled');
+            fillemployee();
+            $("#selectall").prop('checked', false);
+            allEmp = [];
+            $("#EnrollUser").attr("data-toggle", "modal");
+            $("#EnrollUser").attr("data-target", "#frmpopup");
+        });
+        $("#selectall").on("change", function (e) {
+            if ($(this).is(":checked")) {
+                $("#tblempmaster .clsChkEmp").each(function () {
+                    $(this).prop('checked', true);
+                });
+            } else {
+                $("#tblempmaster .clsChkEmp").each(function () {
+                    $(this).prop('checked', false);
+                });
+            }
+        });
+
+        $("#selectalldevice").on("change", function (e) {
+            if ($(this).is(":checked")) {
+                $("#tbldevice .clsChkDevice").each(function () {
+                    $(this).prop('checked', true);
+                });
+            } else {
+                $("#tbldevice .clsChkDevice").each(function () {
+                    $(this).prop('checked', false);
+                });
+            }
+        });
+        $("#s1").click(function (event) {
+            Step1ShowHide();
+            if (isflagstep2) {
+                $("#s2").removeClass("disabled");
+            } 
+        });
+        $("#s2").click(function (event) {
+            Step2ShowHide();
+        });
+        $("#Secondprev").click(function (event) {
+            isflagstep2 = true;
+            Step1ShowHide();
+            if (isflagstep2) {
+                $("#s2").removeClass("disabled");
+            } 
+        });
+        $("#btnEnrollsubmit").click(function (event) {
+            CheckSession();
+            var button = $(this);
+            button.prop('disabled', true);
+            setTimeout(function () { button.prop('disabled', false); }, 1500);
+            Deviceselect();
+            $(this).prop('checked', false);
+        });
+
+        $("#frstNext").click(function (event) {
+            isflagstep2= true;
+            // Disable the button to prevent multiple clicks
+            var $button = $(this);
+            $button.prop('disabled', true);
+
+            // Re-enable the button after 1.5 seconds
+            setTimeout(function () { $button.prop('disabled', false); }, 1500);
+
+            // Check if employee is selected
+            if (Employeeselect()) {
+                // Navigate to the next step in the wizard
+                var $currentStep = $("#frstNext").closest(".setup-content"),
+                    currentStepId = $currentStep.attr("id"),
+                    // find the next wizard id to the current stepid
+                    $nextStepButton = $('div.setup-panel div a[href="#' + currentStepId + '"]').parent().next().children("a"),
+                    $currentInputs = $currentStep.find("input[type='text'],input[type='url'],select"),
+                    isValid = true; // You can add validation logic here if needed
+                //$("#step2").removeClass("disabled");
+
+                if (isValid) {
+                    Step2ShowHide();
+                    filldevice();
+                }
+            } else {
+                // Show error if employee is not selected
+                toastr.remove();
+                toastr.error("Please select an employee.");
+                return false;
+            }
+        });
+
+    });
+    function Employeeselect() {
+        // Initialize the global `allEmp` array
+
+        // Iterate over each checkbox with class 'clsChkEmp'
+        $("#tblempmaster .clsChkEmp").each(function () {
+            var $row = $(this).closest('tr');
+            // Check if the checkbox is checked
+            if ($(this).is(':checked')) {
+                // Extract employee details from the row
+                var empPunchID = $row.find('td').eq(2).text(); // Correct index for EmpPunchID
+                var empName = $row.find('td').eq(3).text();   // Correct index for EmpName
+
+                // Create employee object
+                var objemp = {
+                    EmpPunchID: empPunchID,
+                    EmpName: empName,
+                    Deviceid: "" // Initialize Deviceid as an empty string
+                };
+
+                // Add employee object to the array if not already present
+                if (!allEmp.some(emp => emp.EmpPunchID === objemp.EmpPunchID)) {
+                    allEmp.push(objemp);
+                }
+            } else {
+                // Remove employee from the array if unchecked
+                var empPunchID = $row.find('td').eq(2).text();
+                allEmp = allEmp.filter(emp => emp.EmpPunchID !== empPunchID);
+            }
+        });
+
+        // Return true if at least one employee is selected
+        return allEmp.length > 0;
+    }
+
+    function filldevice() {
+      $.ajax({
+          type: "GET",
+          headers: { 'Authorization': '@_tokan' },
+          url: '@_webapiurl' + "Master/GetAllDeviceGridDeveloper?companyCode='" + '@_compcode' + "'",
+          contentType: "application/json; charset=utf-8",
+          datatype: "json",
+          async: "false",
+          success: function (response) {
+              if (response != null) {
+                  var table = "";
+                  var tbl = "";
+                  for (var i = 0; i < response.length; i++)
+                  {
+                      var flag = response[i].DeviceTypeCode == 39 ? 1 : 0;
+                      DeviceFlags.push(
+                      {
+                          DeviceTypeCode: response[i].DeviceTypeCode,
+                          Flag: flag,
+                          deviceSrno: response[i].DeviceSrNo
+                      });
+                      if (response[i].DeviceTypeCode == 34 && response[i].DeviceStatus == 'Online')
+                      {
+
+                          tbl = tbl + "<tr class='odd gradeX'>";
+                          tbl = tbl + "<td><input type='checkbox' class='clsChkDevice' id='chk_" + response[i].DeviceId + "'/></td>";
+                          tbl = tbl + "<td  hidden>" + response[i].DeviceId + "</td>";
+                          tbl = tbl + "<td>" + response[i].DeviceName + "</td>";
+                          tbl = tbl + "<td>" + response[i].DeviceSrNo + "</td>";
+                          tbl = tbl + "</tr>";
+
+                      }
+                      else if (response[i].DeviceTypeCode == 37) {
+
+                          tbl = tbl + "<tr class='odd gradeX'>";
+                          tbl = tbl + "<td><input type='checkbox' class='clsChkDevice' id='chk_" + response[i].DeviceId + "'/></td>";
+                          tbl = tbl + "<td  hidden>" + response[i].DeviceId + "</td>";
+                          tbl = tbl + "<td>" + response[i].DeviceName + "</td>";
+                          tbl = tbl + "<td>" + response[i].DeviceSrNo + "</td>";
+                          tbl = tbl + "</tr>";
+                      }
+                      else if (response[i].DeviceTypeCode == 39) {
+
+                          tbl = tbl + "<tr class='odd gradeX'>";
+                          tbl = tbl + "<td><input type='checkbox' class='clsChkDevice' id='chk_" + response[i].DeviceId + "'/></td>";
+                          tbl = tbl + "<td  hidden>" + response[i].DeviceId + "</td>";
+                          tbl = tbl + "<td>" + response[i].DeviceName + "</td>";
+                          tbl = tbl + "<td>" + response[i].DeviceSrNo + "</td>";
+                          tbl = tbl + "</tr>";
+                      }
+                  }
+                  table += tbl;
+                  if ($("#tableResponsive2").prev().attr('id') != undefined) {
+              /*        $("#tableResponsive2").prev().attr("id").remove();*/
+                  }
+                  $('#tbldevice').append(table);
+                  $('#tbldevice').DataTable({
+                      dom: _domCommon,
+                      language: _languageCommon,
+                      "searching": true,// Enables the search functionality
+                      "destroy": true, // Allows the table to be destroyed and re-initialized
+                      "info": true,// Allows the table to display the information
+                      "columnDefs": [
+                          {
+                              "orderable": false,
+                              "searchable": false,
+                              "targets": 0
+                          }, // Disable sorting and searching for the checkbox column
+                          {
+                              "targets": 1,
+                              "visible":"false"
+                          }
+                      ],
+                      "order": [[2, "asc"]], // Order by the 4th column (EmpName) in ascending order
+                      "lengthChange": true, // // show the length menu,
+                      "drawCallback": function (settings) {
+                          $("#selectalldevice").prop('checked', false)
+                          // Add event listener to checkboxes
+                          $('#tbldevice .ClsChkDevice').off('change').on('change', function () {
+                              if ($(this).is(':checked')) {
+                                  var DeviceID = $(this).attr('id').replace('chk_', '');
+                                  if (!checkedDeviceIDs.includes(DeviceID)) {
+                                      checkedDeviceIDs.push(DeviceID);
+                                  }
+                              }
+                          });
+                      }
+                  });
+                  setTimeout(function () {
+                      $("#" + "tbldevice" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive2"));
+                      $('.tooltips').tooltip();
+                  }, 100);
+              }
+          },
+          error: function () {
+              if (jqXHR.status == 500) { //InternalServerError = 500,
+                  //toastr.error("InternalServerError");
+              } else if (jqXHR.status == 400) { //BadRequest = 400,
+                  //toastr.error("BadRequest");
+              } else if (jqXHR.status == 401) {
+                  window.location.href = "/PayTime/LoginPage";
+              }
+          }
+      });
+    }
+    function fillemployee() {
+        $.ajax({
+            type: "GET",
+            headers: { 'Authorization': '@_tokan' },
+            url: '@_webapiurl' + "Master/GetDeveloperEmployeeData",
+            contentType: "application/json; charset=utf-8",
+            datatype: "json",
+            async: "false",
+            success: function (response) {
+                var tbl = "";
+                var table = "";
+                if (response != null) {
+                    for (var i = 0; i < response.length; i++) {
+                        tbl = tbl + "<tr class='odd gradeX'>";
+                        tbl = tbl + "<td><input type='checkbox' class='clsChkEmp' id='chk_" + response[i].EmpPunchID + "'/></td>";
+                        tbl = tbl + "<td  hidden>" + response[i].EmpId + "</td>";
+                        tbl = tbl + "<td>" + response[i].EmpPunchID + "</td>";
+                        tbl = tbl + "<td>" + response[i].EmpName + "</td>";
+                        tbl = tbl + "</tr>";
+                    }
+                    table += tbl;
+                    if ($("#tableResponsive1").prev().attr('id') != undefined) {                       
+                        $("#tableResponsive1").prev().attr("id").remove();
+                    }
+                    $('#tblempmaster').append(table); // Replace the table content
+                    // Initialize DataTable with specific option
+                    $('#tblempmaster').DataTable({
+                        dom: _domCommon,
+                        language: _languageCommon,
+                        "searching": true,// Enables the search functionality
+                        "destroy": true, // Allows the table to be destroyed and re-initialized
+                        "info": true,// Allows the table to display the information
+                        "columnDefs": [
+                            {
+                                "orderable": false,
+                                "searchable": false,
+                                "targets": 0
+                            }, // Disable sorting and searching for the checkbox column
+                        ],
+                        buttons: [
+                            {
+                                extend: 'excelHtml5',
+                                text: 'Excel',
+                                titleAttr: 'Download Excel',
+                                className: 'buttons-excel',
+                                exportOptions: {
+                                    columns: ':visible'
+                                },
+                            }
+                        ],
+                        "order": [[2, "asc"]], // Order by the 4th column (EmpName) in ascending order
+                        "lengthChange": true, // // show the length menu,
+                        "drawCallback": function (settings) {
+                            $("#selectall").prop('checked', false)
+                            // Add event listener to checkboxes
+                            $('#tblempmaster .clsChkEmp').off('change').on('change', function () {
+                                if ($(this).is(':checked')) {
+                                    var empPunchID = $(this).attr('id').replace('select_', '');
+                                    if (!checkedEmpPunchIDs.includes(empPunchID)) {
+                                        checkedEmpPunchIDs.push(empPunchID);
+                                    }
+                                    Employeeselect();
+                                }
+                            });
+                        }
+                    });
+
+                    setTimeout(function () {
+                        $("#" + "tblempmaster" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive1"));
+                        $('.tooltips').tooltip();
+                  
+                    }, 100);
+                }
+            },
+            error: function (jqXHR, ajaxOptions, thrownError) {
+                if (jqXHR.status == 500) { //InternalServerError = 500,
+                    //toastr.error("InternalServerError");
+                } else if (jqXHR.status == 400) { //BadRequest = 400,
+                    //toastr.error("BadRequest");
+                } else if (jqXHR.status == 401) {
+                    window.location.href = "/PayTime/LoginPage";
+                }
+            },
+        });
+    }
+    function CheckSession() {
+        $.ajax({
+            type: "GET",
+            async: false,
+            url: "/ESS/checkSession",
+            contentType: "application/json; charset=utf-8",
+            success: function (data) {
+                if (data.isRedirect) {
+                    window.location.href = data.redirectUrl;
+                }
+            },
+            error: function (data) {
+                window.location.href = data;
+            }
+        });
+    }
+   function Deviceselect()
+   {
+       var device = [];
+       $("#tbldevice .clsChkDevice").each(function (key, value)
+        {
+            if ($(this).is(':checked') == true)
+            {
+                device.push($(this).parent('td').parent('tr').children(key)[3].innerText);
+            }
+        });
+       if (device.length == 0) {
+           toastr.remove();
+           toastr.error("Please select device.");
+            return false;
+        }
+       var Emp = [];
+        for (d = 0; d < device.length; d++)
+        {
+            for (i = 0; i < allEmp.length; i++)
+            {
+                var FinallEmp = {};
+                FinallEmp.EmpId = allEmp[i].EmpPunchID;
+                FinallEmp.EmpName = allEmp[i].EmpName;
+                FinallEmp.DeviceId = device[d];
+                var matchedDevice = DeviceFlags.find(function (dev) {
+                    return dev.deviceSrno === device[d];
+                });
+                if (matchedDevice) {
+                    FinallEmp.FlageDeviceCodeTypeCheck = matchedDevice.DeviceTypeCode;
+                }
+                else {
+                    FinallEmp.FlageDeviceCodeTypeCheck = 0; // Default flag value if no match found
+                }
+                Emp.push(FinallEmp);
+            }
+        }
+       var request =
+        {
+            ObjEmp: Emp
+        }
+        $.ajax({
+            type: "POST",
+            headers: { 'Authorization': '@_tokan' },
+            url: '@_webapiurl' + 'DeviceDemo/EnrollDeveloper',
+            data: JSON.stringify(request),
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            beforeSend: function () {
+                $(".loading").show();
+            },
+            success: function (response) {
+                if (response != null) {
+                    toastr.remove();
+                    toastr.success(response.Msg);
+                    $('#tblEnrollUsers').DataTable().ajax.reload();
+                    $('#frmpopup').modal('toggle');
+                }
+            },
+            complete: function () {
+                $(".loading").hide();
+            },
+            error: function (response) {
+                if (response != null) {
+                    var obj = JSON.parse(response.responseText);
+
+                    if (obj.MsgSts == 'error') {
+                        toastr.remove();
+                        toastr.error(obj.Msg);
+                        $('#tblEnrollUsers').DataTable().ajax.reload();
+                        $('#frmpopup').modal('toggle');
+
+                    }
+                }
+            }
+        });
+    }
+    function Step1ShowHide() {
+        //*****show/Hide setup-content perticular step*****//
+        $("#s-1").css("display", "block");
+        $("#s-2").css("display", "none");
+
+        //For Highlight pericualr stepwizard-step
+        $("#s1").addClass("btn-primary");
+        $("#s2").removeClass("btn-primary");
+
+        //For click perticular stepwizard-step
+        $("#s1").removeClass("disabled");
+        $("#s2").addClass("disabled");
+
+        //*****Show/Hide Step perticular step Btntab*****//
+        $("#FrstTabBtnDiv").css("display", "block");
+        $("#SecondTabBtnDiv").css("display", "none");
+    }
+    function Step2ShowHide() {
+        //*****show/Hide setup-content perticular step*****//
+        $("#s-2").css("display", "block");
+        $("#s-1").css("display", "none");
+
+        //For Highlight pericualr stepwizard-step
+        $("#s2").addClass("btn-primary");
+        $("#s1").removeClass("btn-primary");
+
+        //For click perticular stepwizard-step
+        $("#s2").removeClass("disabled");
+        $("#s1").removeClass("disabled");
+
+        //*****Show/Hide Step perticular step Btntab*****//
+        $("#SecondTabBtnDiv").css("display", "block");
+        $("#FrstTabBtnDiv").css("display", "none");
+    }
+
+</script>
+
+<div class="page-bar">
+    <ul class="page-breadcrumb">
+        <li>
+            <a href="/Developers/DevelopersDashboard">@PayTimeWebClient.Resource.Resource.mnuHome</a>
+            <i class="fa fa-circle"></i>
+        </li>
+        <li>
+            <span>Enroll User</span>
+        </li>
+    </ul>
+    <div class="page-toolbar">
+        <div class="">
+            <a href="#" id="EnrollUser" class="btn icon_transparent_btn tooltips" data-placement="left" data-original-title="Enroll User" style="float:right"><i class="fa-solid fa-plus"></i></a>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-12">
+        <div class="portlet">
+            <div class="portlet-body">
+                <div class="table-responsive" id="tableResponsive">
+                    <table id="tblEnrollUsers" class="table new_datatbl table-striped table-bordered table-hover table-checkable order-column">
+                        <thead>
+                            <tr>
+                                <th>Sr. No</th>
+                                <th>Punch ID</th>
+                                <th>Employee Name</th>
+                                <th>Serial No</th>
+                                <th hidden>DevId</th>
+                                <th hidden>DeviceUserId</th>
+                                <th hidden>PhotoPath</th>
+                                <th>Status</th>
+                                <th hidden>Action</th>
+                            </tr>
+                        </thead>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="frmpopup" class="modal fade bs-modal-lg" role="dialog" data-keyboard="false" data-backdrop="static">
+    <div class="modal-dialog modal-lg">
+        <!-- Modal content-->
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal">&times;</button>
+                <h4 class="modal-title">Enroll User</h4>
+            </div>
+            <div class="modal-body">
+                <div class="stepwizard">
+                    <div class=" stepwizard-row setup-panel">
+                        <div class="stepwizard-step">
+                            <a href="#s-1" id="s1" type="button" class="btn btn-primary btn-circle"><i class="fa fa-user "></i>Select Employee</a>
+                        </div>
+                        <div class="stepwizard-step">
+                            <a href="#s-2"  id="s2" type="button" class="btn btn-default btn-circle" disabled="disabled"><i class="fa fa-exchange"></i>Select Devices</a>
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="setup-content" id="s-1">
+                        <div class="col-md-12">
+                            <div class="form-group">
+                                <div class="table-responsive" id="tableResponsive1">
+                                    <table id="tblempmaster" class="new_datatbl table table-striped table-bordered table-hover table-checkable order-column">
+                                        <thead>
+                                            <tr>
+                                                <th style="align-content:center"><input type="checkbox" id="selectall"> </th>
+                                                <th hidden>EmpId</th>
+                                                <th>EmpPunchID</th>
+                                                <th>EmpName</th>
+                                            </tr>
+                                        </thead>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="setup-content" id="s-2">
+                        <div class="col-md-12">
+                            <div class="table-responsive" id="tableResponsive2">
+                                <table class="table new_datatbl table-striped table-bordered table-hover order-column" id="tbldevice">
+                                    <thead>
+                                        <tr>
+                                            <th><input type="checkbox" id="selectalldevice"> </th>
+                                            <th hidden>Device ID</th>
+                                            <th>Device Name</th>
+                                            <th>Device SrNo</th>
+                                        </tr>
+                                    </thead>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <div class="col-lg-12 text-right">
+                    <!-- First Tab Button -->
+                    <div class="row" id="FrstTabBtnDiv" style="display:none;">
+                        <div class="col-md-12 text-right">
+                            <button class="btn blue btn-sm prevbtn" type="button"><i class="fa fa-angle-left"></i> Prev</button>&nbsp;
+                            <button class="btn blue btn-sm nextBtn pull-right" type="button" id="frstNext">Next<i class="fa fa-angle-right"></i></button>
+                        </div>
+                    </div>
+                    <!-- Second Tab Button -->
+                    <div class="row" id="SecondTabBtnDiv" style="display:none;">
+                        <div class="col-md-12 text-right">
+                            <button class="btn blue btn-sm prevbtn" type="button" id="Secondprev"><i class="fa fa-angle-left"></i> Prev</button>
+                            <button type="submit" class=" btn btn-sm blue" id="btnEnrollsubmit"> <i class="fa fa-check"></i> Enroll</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+

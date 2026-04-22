@@ -1,0 +1,1153 @@
+@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@using System.Configuration;
+@{
+    ViewBag.Title = "CMS Policy";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    int _UserId = Convert.ToInt32(HttpContext.Current.Session["UserId"]);
+    int _cmpid = Convert.ToInt32(HttpContext.Current.Session["CompanyId"]);
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapicms"].ToString();
+    string _webapiurlMain = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    string _ChunkSize = HttpContext.Current.Session["DataDropDownThreShold"] != null
+        ? HttpContext.Current.Session["DataDropDownThreShold"].ToString()
+        : "500";
+
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+
+    string _companyid = "0";
+    if (_RoleId == 6805)
+    {
+        _companyid = HttpContext.Current.Session["ClientCompanyId"].ToString();
+    }
+    if (_RoleId == 6806)
+    {
+        _companyid = HttpContext.Current.Session["ClientCompanyId"].ToString();
+    }
+
+    string isClientDBMatchFlag = HttpContext.Current.Session["IsClientDBMatch"] != null
+        ? HttpContext.Current.Session["IsClientDBMatch"].ToString()
+        : "false";
+}
+
+<script src="~/Pages_JS/VirtuallScroll/NormalDropDownVirtualClientServer.js"></script>
+
+<style>
+    .field_error {
+        border-color: #dc3545 !important;
+    }
+
+    .subsidy-slot-section {
+        padding: 10px;
+        border: 1px solid #e7ecf1;
+        border-radius: 4px !important;
+        background: #ffffff;
+    }
+
+    .subsidy-slot-label {
+        font-weight: 500;
+        margin-bottom: 5px;
+    }
+
+    .section-divider {
+        font-size: 14px;
+        font-weight: 500;
+        color: #295097;
+        margin-bottom: 10px;
+        margin-top: 10px;
+    }
+</style>
+
+<script>
+    let RoleId = '@_RoleId';
+    let UserId = '@_UserId';
+    let CompanyId = '@_companyid';
+    let isedit = '@obj.CanEdit';
+    let isdelete = '@obj.CanDelete';
+    let canadd = '@obj.CanAdd';
+    const SLOT_CATEGORIES = [
+        { slotCategoryId: 1, slotCategoryName: 'Breakfast' },
+        { slotCategoryId: 2, slotCategoryName: 'Lunch' },
+        { slotCategoryId: 3, slotCategoryName: 'Snacks' },
+        { slotCategoryId: 4, slotCategoryName: 'Dinner' }
+    ];
+    let PolicyData = [];
+    let policyTable = null;
+    let currentCompanyId = null;
+    let CompanyFilterDropdown = null;
+
+    $(document).ready(function () {
+
+        setTimeout(function () {
+            initializeFilterDropdown();
+        }, 100);
+
+        if (RoleId == '1') {
+            $('#tblPolicyBlock').hide();
+            $('#NotificationGrid-empty').show();
+            $('#emptyMessage').text('Please select a company to view policies.');
+        }
+
+        // Filter company change (SA) - reload table
+        $('#FilterCompanyId').change(function () {
+            var companyId = $(this).val();
+            if (companyId) {
+                currentCompanyId = companyId;
+                loadPolicies(companyId);
+            } else {
+                currentCompanyId = null;
+                destroyTable();
+                $('#tblPolicyBlock').hide();
+                $('#NotificationGrid-empty').show();
+                $('#emptyMessage').text('Please select a company to view policies.');
+            }
+        });
+
+        if (RoleId != '1' && CompanyId != '0') {
+            currentCompanyId = CompanyId;
+            loadPolicies(CompanyId);
+        }
+
+        // Add Policy button
+        $('#Addpolicy_btn').click(function () {
+            checkSession();
+            if (RoleId == '1' && !$('#FilterCompanyId').val()) {
+                toastr.warning("Please select a Company first");
+                $(".filter_portlet_wrapper").removeClass("full-width");
+                return;
+            }
+            frmClear();
+            renderSubsidySections(SLOT_CATEGORIES, null);
+            $('#modalTitle').text('Add Pricing Policy');
+            $('#btnSaveText').text('Add Policy');
+            $('#policyModal').modal('show');
+        });
+
+        // Save Policy
+        $('#btnPolicySubmit').click(savePolicy);
+
+        // Keypress validation for text fields
+        $('#PolicyName').on('keypress', function (e) {
+            return validateKeyPress(e.which);
+        });
+        $('#PolicyDescription').on('keypress', function (e) {
+            return validateAddress(e.which);
+        });
+
+        // PolicyName blur validation
+        $('#PolicyName').blur(function () {
+            validateField('PolicyName');
+        });
+
+        // Filter panel toggle
+        $("#Filter_search").click(function () {
+            var wrapper = $(".filter_portlet_wrapper");
+            wrapper.toggleClass("full-width");
+            var screenWidth = $(window).width();
+            if (screenWidth >= 300 && screenWidth <= 600) {
+                $('.filter_portlet_tbl').toggle();
+                $('.filter_portlet_wrapper .filter_boxModal').css('width', '100%');
+            }
+        });
+
+        $(".filterclose_btn").click(function () {
+            var wrapper = $(".filter_portlet_wrapper");
+            wrapper.addClass("full-width");
+            var screenWidth = $(window).width();
+            if (screenWidth >= 300 && screenWidth <= 600) {
+                $(".filter_portlet_tbl").css("display", "block");
+            }
+        });
+
+        // Filter search
+        $("#Search_OPration").click(function () {
+            reloadTable();
+        });
+
+        // Filter clear
+        $("#Clear_OPration").click(function () {
+            $("#FilterStatusId").val("");
+            if (RoleId == '1') {
+                if (CompanyFilterDropdown) CompanyFilterDropdown.clearDropdown();
+                initializeFilterDropdown();
+                currentCompanyId = null;
+                destroyTable();
+                $('#tblPolicyBlock').hide();
+                $('#NotificationGrid-empty').show();
+                $('#emptyMessage').text('Please select a company to view policies.');
+            } else {
+                reloadTable();
+            }
+        });
+
+        // Subsidy type radio change (delegated)
+        $(document).on('change', 'input[name^="subsidy_"]', function () {
+            var section = $(this).closest('.subsidy-slot-section');
+            var val = $(this).val();
+            section.find('.fixed-input').toggle(val == '1');
+            section.find('.percent-input, .maxcap-input').toggle(val == '2');
+            if (val != '1') section.find('.fixed-amount').val('');
+            if (val != '2') {
+                section.find('.percentage-val').val('');
+                section.find('.maxcap-val').val('');
+            }
+        });
+
+        // Warning type radio change
+        $(document).on('change', 'input[name="warningType"]', function () {
+            var val = $(this).val();
+            if (val == 'amount') {
+                $('#WarningAmount').prop('disabled', false);
+                $('#WarningPercentage').val('').prop('disabled', true);
+            } else if (val == 'percentage') {
+                $('#WarningPercentage').prop('disabled', false);
+                $('#WarningAmount').val('').prop('disabled', true);
+            }
+        });
+
+        // Monthly limit change - disable/enable warning
+        $(document).on('input', '#MonthlyLimit', function () {
+            var val = $(this).val();
+            if (!val || val === '' || parseFloat(val) <= 0) {
+                $('input[name="warningType"]').prop('checked', false);
+                $('#WarningAmount, #WarningPercentage').val('').prop('disabled', true);
+            }
+        });
+
+        // Validation on blur
+        $('#PolicyName').blur(function () { validateField('PolicyName'); });
+    });
+
+    // ===================== Initialize Filter Dropdown =====================
+    function initializeFilterDropdown() {
+        if (RoleId == '1') {
+            CompanyFilterDropdown = new Select2Dropdown({
+                dropdownId: "FilterCompanyId",
+                apiUrl: '@_webapiurlMain' + "DataDropDownOptimize/GetCompanyDropDownPaginated",
+                dataKey: "Id",
+                labelKey: "Name",
+                chunkSize: '@_ChunkSize',
+                token: '@_tokan',
+                extraParams: { RoleId: '@_RoleId', CompanyID: '@_cmpid' }
+            });
+            // Auto-open filter panel so SA can select company immediately
+            $(".filter_portlet_wrapper").removeClass("full-width");
+        }
+    }
+
+    // ===================== Load Policies =====================
+    function loadPolicies(companyId) {
+        checkSession();
+        $("#ajax_loader").show();
+        initPolicyTable(companyId);
+    }
+
+    // ===================== Init DataTable =====================
+    function initPolicyTable(companyId) {
+        $("#ajax_loader").show();
+        destroyTable();
+        $('#NotificationGrid-empty').hide();
+
+        var columns = buildColumns();
+        if ($.fn.dataTable.isDataTable('#tblPolicy')) {
+            $('#tblPolicy').DataTable().clear().destroy();
+        }
+        $("#dataTables_tbl_header").remove();
+        policyTable = $('#tblPolicy').DataTable({
+            dom: _domCommon,
+            language: _languageCommon,
+            processing: true,
+            serverSide: true,
+            searching: true,
+            searchDelay: 500,
+            ordering: true,
+            order: [[0, 'asc']],
+            ajax: {
+                url: '@_webapiurl' + "policies",
+                type: "GET",
+                headers: { 'Authorization': 'Bearer ' + '@_tokan' },
+                data: function (d) {
+                    // Map DataTable params to API query params
+                    var sortBy = 'policyName';
+                    if (d.order && d.order.length > 0) {
+                        var colIdx = d.order[0].column;
+                        if (colIdx === 0) sortBy = 'policyName';
+                        else if (colIdx === SLOT_CATEGORIES.length + 1) sortBy = 'monthlyLimit';
+                    }
+
+                    var params = {
+                        companyId: parseInt(companyId),
+                        pageNumber: Math.floor(d.start / d.length) + 1,
+                        pageSize: d.length,
+                        sortBy: sortBy,
+                        sortDirection: (d.order && d.order.length > 0) ? d.order[0].dir : 'asc'
+                    };
+
+                    if (d.search && d.search.value) {
+                        params.searchTerm = d.search.value;
+                    }
+
+                    var filterStatus = $('#FilterStatusId').val();
+                    if (filterStatus !== '') {
+                        params.isActive = (filterStatus === 'true');
+                    }
+
+                    return params;
+                },
+                dataFilter: function (rawData) {
+                    // Transform API response to DataTable format
+                    var json = JSON.parse(rawData);
+                    var dtResponse = {
+                        recordsTotal: json.totalCount || 0,
+                        recordsFiltered: json.totalCount || 0,
+                        data: json.policies || []
+                    };
+                    return JSON.stringify(dtResponse);
+                },
+                complete: function () {
+                    $('#ajax_loader').hide();
+                },
+                dataSrc: function (response) {
+                    var policies = response.data || [];
+                    PolicyData = policies;
+                    var hasSearch = policyTable && policyTable.search();
+
+                    if (response.recordsTotal === 0 && !hasSearch) {
+                        $('#tblPolicyBlock').hide();
+                        $('#NotificationGrid-empty').show();
+                    } else {
+                        $('#tblPolicyBlock').show();
+                        $('#NotificationGrid-empty').hide();
+                    }
+
+                    return policies;
+                },
+                error: function (xhr) {
+                    var errorMsg = "Error loading policies";
+                    if (xhr.responseJSON && xhr.responseJSON.detail) errorMsg = xhr.responseJSON.detail;
+                    toastr.error(errorMsg);
+                    $('#tblPolicyBlock').hide();
+                    $('#NotificationGrid-empty').show();
+                }
+            },
+            columns: columns,
+            initComplete: function () {
+                var visibleTable = 'tblPolicy';
+                if ($('#buttons').length) {
+                    if ($('#buttons').children().length != 0) { $("#buttons").empty(); }
+                    $("#buttons").append(
+                        '<div id="export-button1" class="export-button tooltips" data-placement="bottom" data-original-title="Download" data-table-id="' + visibleTable + '">' +
+                        '<img src="../Newlayout/images/download_icon.svg" alt="Download icon">' +
+                        '</div>'
+                    );
+                }
+
+                // Custom debounce: unbind default search and add 500ms delay
+                var searchTimer = null;
+                var $searchInput = $('#tblPolicy_wrapper .dataTables_filter input');
+                $searchInput.unbind();
+                $searchInput.on('keyup search input paste cut', function () {
+                    var value = this.value;
+                    clearTimeout(searchTimer);
+                    searchTimer = setTimeout(function () {
+                        policyTable.search(value).draw();
+                    }, 500);
+                });
+                $searchInput.on('keypress', function (e) {
+                    if (e.keyCode === 13) return false;
+                });
+            },
+            drawCallback: function () {
+                $('.tooltips').tooltip();
+                setTimeout(function () {
+                    $("#tblPolicy_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+                }, 100);
+            }
+        });
+
+        $(document).off('click', '#export-button1').on('click', '#export-button1', function () {
+            GeneratePolicyExcelFile();
+        });
+    }
+
+    // ===================== Build Columns =====================
+    function buildColumns() {
+        var columns = [];
+
+        // Policy Name
+        columns.push({ title: "Policy Name", data: "policyName", orderable: true, createdCell: function (td) { $(td).css("min-width", "120px"); } });
+
+        // Fixed slot category columns (Breakfast, Lunch, Snacks, Dinner)
+        for (var i = 0; i < SLOT_CATEGORIES.length; i++) {
+            (function (cat) {
+                columns.push({
+                    title: cat.slotCategoryName,
+                    data: null,
+                    orderable: false,
+                    render: function (data, type, row) {
+                        var details = row.slotDetails || [];
+                        var sub = null;
+                        for (var j = 0; j < details.length; j++) {
+                            if (details[j].slotCategoryId === cat.slotCategoryId) { sub = details[j]; break; }
+                        }
+                        return sub ? sub.subsidyDisplay : '-';
+                    }
+                });
+            })(SLOT_CATEGORIES[i]);
+        }
+
+        // Monthly Limit
+        columns.push({ title: "Monthly Limit", data: "monthlyLimitDisplay", orderable: true });
+
+        // Warning
+        columns.push({ title: "Warning", data: "warningDisplay", orderable: false });
+
+        // Status
+        columns.push({
+            title: "Status",
+            data: "isActive",
+            orderable: false,
+            render: function (data) {
+                return data ? '<span class="green_font">Active</span>' : '<span class="red_font">Inactive</span>';
+            }
+        });
+
+        // Action
+        columns.push({
+            title: "Action",
+            data: null,
+            orderable: false,
+            createdCell: function (td) { $(td).css("min-width", "128px"); },
+            render: function (data, type, row) {
+                var str = '';
+                if (isedit == "True" && RoleId != '6811' && RoleId != '6806') {
+                    str += '<a class="btn seagreen_btnnew tooltips" data-placement="top" data-original-title="Edit" onclick="openEditModal(' + row.policyId + ')"><i class="fa-regular fa-pen-to-square"></i></a> ';
+                    if (row.isActive) {
+                        str += '<a class="btn red_btnnew tooltips" data-placement="top" data-original-title="Inactive" onclick="statusChange(' + row.policyId + ')"><i class="fa-solid fa-xmark"></i></a> ';
+                    } else {
+                        str += '<a class="btn green_btnnew tooltips" data-placement="top" data-original-title="Active" onclick="statusChange(' + row.policyId + ')"><i class="fa-solid fa-check"></i></a> ';
+                    }
+                }
+                if (isdelete == "True" && RoleId != '6811' && RoleId != '6806') {
+                    str += '<a class="btn red_btnnew tooltips" data-placement="top" data-original-title="Delete" onclick="deletePolicy(' + row.policyId + ')"><i class="fa-regular fa-trash-can"></i></a>';
+                }
+                return str;
+            }
+        });
+
+        return columns;
+    }
+
+    // ===================== Destroy Table =====================
+    function destroyTable() {
+        if (policyTable) {
+            policyTable.destroy();
+            $('#tblPolicy').empty();
+            policyTable = null;
+        }
+    }
+
+    // ===================== Reload Table =====================
+    function reloadTable() {
+        if (policyTable) {
+            policyTable.ajax.reload();
+        }
+    }
+
+    // ===================== Render Subsidy Sections =====================
+    function renderSubsidySections(slotCategories, existingDetails) {
+        var html = '';
+        for (var i = 0; i < slotCategories.length; i++) {
+            var cat = slotCategories[i];
+            var detail = null;
+            if (existingDetails) {
+                for (var j = 0; j < existingDetails.length; j++) {
+                    if (existingDetails[j].slotCategoryId === cat.slotCategoryId) { detail = existingDetails[j]; break; }
+                }
+            }
+            var st = detail ? detail.subsidyType : 0;
+            var fa = detail && detail.fixedAmount ? detail.fixedAmount : '';
+            var pct = detail && detail.percentage ? detail.percentage : '';
+            var mc = detail && detail.maxCap ? detail.maxCap : '';
+
+            html += '<div class="subsidy-slot-section margin-bottom-15" data-slot-id="' + cat.slotCategoryId + '">';
+            html += '  <label class="control-label subsidy-slot-label">' + cat.slotCategoryName + '</label>';
+            html += '  <div class="row">';
+            html += '    <div class="col-md-12">';
+            html += '      <label class="radio-inline"><input type="radio" name="subsidy_' + cat.slotCategoryId + '" value="0"' + (st == 0 ? ' checked' : '') + '> None</label>';
+            html += '      <label class="radio-inline"><input type="radio" name="subsidy_' + cat.slotCategoryId + '" value="1"' + (st == 1 ? ' checked' : '') + '> Fixed (\u20B9)</label>';
+            html += '      <label class="radio-inline"><input type="radio" name="subsidy_' + cat.slotCategoryId + '" value="2"' + (st == 2 ? ' checked' : '') + '> Percentage (%)</label>';
+            html += '    </div>';
+            html += '  </div>';
+            html += '  <div class="row margin-top-10">';
+            html += '    <div class="col-md-4 fixed-input"' + (st != 1 ? ' style="display:none;"' : '') + '>';
+            html += '      <input type="number" class="form-control input-sm fixed-amount" placeholder="Amount (\u20B9)" value="' + fa + '" min="0" step="0.01">';
+            html += '    </div>';
+            html += '    <div class="col-md-4 percent-input"' + (st != 2 ? ' style="display:none;"' : '') + '>';
+            html += '      <input type="number" class="form-control input-sm percentage-val" placeholder="Percentage (%)" value="' + pct + '" min="1" max="100" step="0.01">';
+            html += '    </div>';
+            html += '    <div class="col-md-4 maxcap-input"' + (st != 2 ? ' style="display:none;"' : '') + '>';
+            html += '      <input type="number" class="form-control input-sm maxcap-val" placeholder="Max Cap (\u20B9)" value="' + mc + '" min="0" step="0.01">';
+            html += '    </div>';
+            html += '  </div>';
+            html += '</div>';
+        }
+        $('#subsidySectionsContainer').html(html);
+    }
+
+    // ===================== Open Edit Modal =====================
+    function openEditModal(policyId) {
+        checkSession();
+        frmClear();
+        $("#ajax_loader").show();
+
+        $.ajax({
+            type: "GET",
+            url: '@_webapiurl' + "policies/" + policyId,
+            headers: { 'Authorization': 'Bearer ' + '@_tokan' },
+            dataType: "json",
+            complete: function () { $('#ajax_loader').hide(); },
+            success: function (p) {
+                if (!p || !p.policyId) {
+                    toastr.error("Policy not found");
+                    return;
+                }
+                var details = p.slotDetails || [];
+
+                $('#PolicyId').val(p.policyId);
+                $('#PolicyName').val(p.policyName);
+                $('#PolicyDescription').val(p.policyDescription || '');
+                $('#MonthlyLimit').val(p.monthlyLimit || '');
+                $('#AllowOrderCancel').prop('checked', p.allowOrderCancel);
+                $('#AllowMultipleOrders').prop('checked', p.allowMultipleOrders);
+
+                // Warning threshold
+                if (p.warningThreshold) {
+                    $('input[name="warningType"][value="amount"]').prop('checked', true);
+                    $('#WarningAmount').val(p.warningThreshold).prop('disabled', false);
+                    $('#WarningPercentage').val('').prop('disabled', true);
+                } else if (p.warningPercentage) {
+                    $('input[name="warningType"][value="percentage"]').prop('checked', true);
+                    $('#WarningPercentage').val(p.warningPercentage).prop('disabled', false);
+                    $('#WarningAmount').val('').prop('disabled', true);
+                }
+
+                // Use fixed slot categories for available slots, details for existing values
+                renderSubsidySections(SLOT_CATEGORIES, details);
+
+                $('#modalTitle').text('Edit Pricing Policy');
+                $('#btnSaveText').text('Update Policy');
+                $('#policyModal').modal('show');
+            },
+            error: function (xhr) {
+                var errorMsg = "Error loading policy";
+                if (xhr.responseJSON && xhr.responseJSON.detail) errorMsg = xhr.responseJSON.detail;
+                toastr.error(errorMsg);
+            }
+        });
+    }
+
+    // ===================== Save Policy =====================
+    function savePolicy() {
+        checkSession();
+
+        if (!validatePolicyForm()) return;
+
+        var policyId = $('#PolicyId').val();
+        var isUpdate = policyId && policyId !== "" && policyId !== "0";
+
+        var slotDetails = collectSlotDetails();
+
+        var policyObj = {
+            policyName: $('#PolicyName').val().trim(),
+            policyDescription: $('#PolicyDescription').val().trim() || null,
+            monthlyLimit: $('#MonthlyLimit').val() ? parseFloat($('#MonthlyLimit').val()) : null,
+            warningThreshold: null,
+            warningPercentage: null,
+            allowOrderCancel: $('#AllowOrderCancel').is(':checked'),
+            allowMultipleOrders: $('#AllowMultipleOrders').is(':checked'),
+            isActive: true,
+            slotDetails: slotDetails
+        };
+
+        // Warning
+        var warningType = $('input[name="warningType"]:checked').val();
+        if (warningType === 'amount' && $('#WarningAmount').val()) {
+            policyObj.warningThreshold = parseFloat($('#WarningAmount').val());
+        } else if (warningType === 'percentage' && $('#WarningPercentage').val()) {
+            policyObj.warningPercentage = parseFloat($('#WarningPercentage').val());
+        }
+
+        var url, method;
+        if (isUpdate) {
+            url = '@_webapiurl' + "policies/" + policyId;
+            method = "PUT";
+        } else {
+            policyObj.companyId = parseInt(currentCompanyId);
+            url = '@_webapiurl' + "policies";
+            method = "POST";
+        }
+
+        $.ajax({
+            type: method,
+            url: url,
+            headers: { 'Authorization': 'Bearer ' + '@_tokan' },
+            data: JSON.stringify(policyObj),
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            success: function (response) {
+                toastr.success(isUpdate ? "Policy updated successfully" : "Policy created successfully");
+                $('#policyModal').modal('hide');
+                reloadTable();
+            },
+            error: function (xhr) {
+                var errorMsg = "Error during save";
+                if (xhr.responseJSON) {
+                    if (xhr.responseJSON.detail) errorMsg = xhr.responseJSON.detail;
+                    if (xhr.responseJSON.errors) {
+                        for (var field in xhr.responseJSON.errors) {
+                            errorMsg = xhr.responseJSON.errors[field].join(", ");
+                            break;
+                        }
+                    }
+                }
+                toastr.error(errorMsg);
+            }
+        });
+    }
+
+    // ===================== Collect Slot Details =====================
+    function collectSlotDetails() {
+        var details = [];
+        $('.subsidy-slot-section').each(function () {
+            var slotId = parseInt($(this).data('slot-id'));
+            var subsidyType = parseInt($(this).find('input[name^="subsidy_"]:checked').val());
+            details.push({
+                slotCategoryId: slotId,
+                subsidyType: subsidyType,
+                fixedAmount: subsidyType == 1 ? (parseFloat($(this).find('.fixed-amount').val()) || null) : null,
+                percentage: subsidyType == 2 ? (parseFloat($(this).find('.percentage-val').val()) || null) : null,
+                maxCap: subsidyType == 2 ? (parseFloat($(this).find('.maxcap-val').val()) || null) : null
+            });
+        });
+        return details;
+    }
+
+    // ===================== Delete Policy =====================
+    function deletePolicy(policyId) {
+        checkSession();
+
+        Swal.fire({
+            html: '<div class="swal_subtitle"><b>You want to delete this policy?</b></div>',
+            title: "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_error.svg' alt=''>Are you sure?",
+            showCloseButton: true,
+            showCancelButton: true,
+            focusConfirm: false,
+            cancelButtonText: 'Cancel',
+            confirmButtonText: 'Yes, delete it!',
+            allowOutsideClick: false,
+            allowEscapeKey: false,
+            customClass: {
+                confirmButton: 'swal-confirm-button-class',
+                cancelButton: 'swal-cancel-button-class'
+            }
+        }).then(function (result) {
+            if (result.isConfirmed) {
+                $.ajax({
+                    type: "DELETE",
+                    url: '@_webapiurl' + "policies/" + policyId,
+                    headers: { 'Authorization': 'Bearer ' + '@_tokan' },
+                    success: function (response, textStatus, xhr) {
+                        Swal.fire({
+                            html: '<div class="swal_subtitle"><b>Policy has been deleted.</b></div>',
+                            title: "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_success.svg' alt=''>Deleted!",
+                            showCloseButton: true,
+                            confirmButtonText: 'OK',
+                            allowOutsideClick: false,
+                            allowEscapeKey: false,
+                            customClass: { confirmButton: 'swal-confirm-button-class' }
+                        });
+                        $('img[src="/assets/images/icons/swal_icon/icon_success.svg"]').parent().parent().parent().addClass('swal_success');
+                        reloadTable();
+                    },
+                    error: function (xhr) {
+                        var errorMsg = "Error during delete";
+                        if (xhr.responseJSON && xhr.responseJSON.detail) errorMsg = xhr.responseJSON.detail;
+                        Swal.fire({
+                            html: '<div class="swal_subtitle"><b>' + errorMsg + '</b></div>',
+                            title: "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_error.svg' alt=''>Error!",
+                            showCloseButton: true,
+                            confirmButtonText: 'OK',
+                            allowOutsideClick: false,
+                            allowEscapeKey: false,
+                            customClass: { confirmButton: 'swal-confirm-button-class' }
+                        });
+                        $('img[src="/assets/images/icons/swal_icon/icon_error.svg"]').parent().parent().parent().addClass('swal_error');
+                    }
+                });
+            }
+        });
+        $('img[src="/assets/images/icons/swal_icon/icon_error.svg"]').parent().parent().parent().addClass('swal_error');
+    }
+
+    // ===================== Status Change =====================
+    function statusChange(policyId) {
+        checkSession();
+
+        var policy = null;
+        for (var i = 0; i < PolicyData.length; i++) {
+            if (PolicyData[i].policyId == policyId) { policy = PolicyData[i]; break; }
+        }
+        if (!policy) { toastr.error("Policy not found"); return; }
+
+        var newStatus = !policy.isActive;
+        var actionText = newStatus ? "active" : "inactive";
+        var confirmIcon = newStatus ? 'icon_success.svg' : 'icon_error.svg';
+        var confirmClass = newStatus ? 'swal_success' : 'swal_error';
+        var impactText = newStatus ? '' : '<br><small class="text-danger">Employees assigned to this policy will not be able to place orders.</small>';
+
+        Swal.fire({
+            html: '<div class="swal_subtitle"><b>You want to ' + actionText + ' this policy?</b>' + impactText + '</div>',
+            title: "<img class='margin-right-5' src='/assets/images/icons/swal_icon/" + confirmIcon + "' alt=''>Are you sure?",
+            showCloseButton: true,
+            showCancelButton: true,
+            focusConfirm: false,
+            cancelButtonText: 'Cancel',
+            confirmButtonText: 'Yes, ' + actionText + ' it!',
+            allowOutsideClick: false,
+            allowEscapeKey: false,
+            customClass: {
+                confirmButton: 'swal-confirm-button-class',
+                cancelButton: 'swal-cancel-button-class'
+            }
+        }).then(function (result) {
+            if (result.isConfirmed) {
+                $.ajax({
+                    type: "PATCH",
+                    url: '@_webapiurl' + "policies/" + policyId + "/status",
+                    headers: { 'Authorization': 'Bearer ' + '@_tokan' },
+                    data: JSON.stringify({ isActive: newStatus }),
+                    contentType: "application/json; charset=utf-8",
+                    dataType: "json",
+                    success: function (response) {
+                        Swal.fire({
+                            html: '<div class="swal_subtitle"><b>Policy has been ' + (newStatus ? "active" : "inactive") + '.</b></div>',
+                            title: "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_success.svg' alt=''>Success!",
+                            showCloseButton: true,
+                            confirmButtonText: 'OK',
+                            allowOutsideClick: false,
+                            allowEscapeKey: false,
+                            customClass: { confirmButton: 'swal-confirm-button-class' }
+                        });
+                        $('img[src="/assets/images/icons/swal_icon/icon_success.svg"]').parent().parent().parent().addClass('swal_success');
+                        reloadTable();
+                    },
+                    error: function (xhr) {
+                        var errorMsg = "Error during status change";
+                        if (xhr.responseJSON && xhr.responseJSON.detail) errorMsg = xhr.responseJSON.detail;
+                        Swal.fire({
+                            html: '<div class="swal_subtitle"><b>' + errorMsg + '</b></div>',
+                            title: "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_error.svg' alt=''>Error!",
+                            showCloseButton: true,
+                            confirmButtonText: 'OK',
+                            allowOutsideClick: false,
+                            allowEscapeKey: false,
+                            customClass: { confirmButton: 'swal-confirm-button-class' }
+                        });
+                        $('img[src="/assets/images/icons/swal_icon/icon_error.svg"]').parent().parent().parent().addClass('swal_error');
+                    }
+                });
+            }
+        });
+        $('img[src="/assets/images/icons/swal_icon/' + confirmIcon + '"]').parent().parent().parent().addClass(confirmClass);
+    }
+
+    // ===================== Export Excel =====================
+    function GeneratePolicyExcelFile() {
+        checkSession();
+        if (!policyTable) return;
+
+        var searchTerm = policyTable.search() || "";
+        var filterStatus = $('#FilterStatusId').val() || "";
+
+        var mainObj = {
+            companyId: currentCompanyId,
+            searchTerm: searchTerm,
+            isActive: filterStatus
+        };
+
+        $.ajax({
+            url: '/cms/ExportPoliciesExcel',
+            type: 'POST',
+            data: JSON.stringify(mainObj),
+            contentType: 'application/json',
+            beforeSend: function () {
+                $("#ajax_loader").show();
+            },
+            success: function (response) {
+                if (response.success && response.filePath) {
+                    window.location.href = response.filePath;
+                } else {
+                    toastr.error(response.message || "Failed to generate export file.");
+                }
+            },
+            error: function () {
+                toastr.error("An error occurred while exporting data.");
+            },
+            complete: function () {
+                $("#ajax_loader").hide();
+            }
+        });
+    }
+
+    // ===================== Validation =====================
+    function validatePolicyForm() {
+        if (!validateField('PolicyName')) return false;
+
+        // Validate subsidy details
+        var hasSubsidy = false;
+        var valid = true;
+        $('.subsidy-slot-section').each(function () {
+            var subsidyType = parseInt($(this).find('input[name^="subsidy_"]:checked').val());
+            if (subsidyType > 0) hasSubsidy = true;
+
+            if (subsidyType == 1) {
+                var amt = $(this).find('.fixed-amount').val();
+                if (!amt || parseFloat(amt) <= 0) {
+                    $(this).find('.fixed-amount').addClass('field_error');
+                    toastr.warning("Fixed amount is required for " + $(this).find('.subsidy-slot-label').text());
+                    valid = false;
+                    return false;
+                }
+                $(this).find('.fixed-amount').removeClass('field_error');
+            }
+            if (subsidyType == 2) {
+                var pct = $(this).find('.percentage-val').val();
+                if (!pct || parseFloat(pct) < 1 || parseFloat(pct) > 100) {
+                    $(this).find('.percentage-val').addClass('field_error');
+                    toastr.warning("Percentage must be between 1 and 100 for " + $(this).find('.subsidy-slot-label').text());
+                    valid = false;
+                    return false;
+                }
+                $(this).find('.percentage-val').removeClass('field_error');
+            }
+        });
+        if (!valid) return false;
+
+        // Warning validation
+        var monthlyLimit = parseFloat($('#MonthlyLimit').val());
+        var warningType = $('input[name="warningType"]:checked').val();
+        if (warningType === 'amount' && monthlyLimit) {
+            var warnAmt = parseFloat($('#WarningAmount').val());
+            if (warnAmt && warnAmt >= monthlyLimit) {
+                $('#WarningAmount').addClass('field_error');
+                toastr.warning("Warning threshold must be less than monthly limit");
+                return false;
+            }
+        }
+        if (warningType === 'percentage') {
+            var warnPct = parseFloat($('#WarningPercentage').val());
+            if (warnPct && (warnPct < 1 || warnPct > 100)) {
+                $('#WarningPercentage').addClass('field_error');
+                toastr.warning("Warning percentage must be between 1 and 100");
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    function validateField(fieldId) {
+        var value = $('#' + fieldId).val();
+        if (!value || value.trim() === "") {
+            $("#" + fieldId).addClass('field_error');
+            $("#" + fieldId).focus();
+            return false;
+        }
+        $("#" + fieldId).removeClass('field_error');
+        return true;
+    }
+
+    // ===================== Form Clear =====================
+    function frmClear() {
+        $('#PolicyId').val('');
+        $('#PolicyName').val('');
+        $('#PolicyDescription').val('');
+        $('#MonthlyLimit').val('');
+        $('#WarningAmount').val('').prop('disabled', true);
+        $('#WarningPercentage').val('').prop('disabled', true);
+        $('input[name="warningType"]').prop('checked', false);
+        $('#AllowOrderCancel').prop('checked', true);
+        $('#AllowMultipleOrders').prop('checked', true);
+        $('#subsidySectionsContainer').html('');
+        $('.field_error').removeClass('field_error');
+    }
+
+    // ===================== Utilities =====================
+    function escapeHtml(text) {
+        if (!text) return '';
+        var map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
+        return text.replace(/[&<>"']/g, function (m) { return map[m]; });
+    }
+
+    function checkSession() {
+        $.ajax({
+            type: "GET",
+            async: false,
+            url: "/ESS/checkSession",
+            contentType: "application/json; charset=utf-8",
+            success: function (data) {
+                if (data.isRedirect) {
+                    window.location.href = data.redirectUrl;
+                }
+            },
+            error: function (data) {
+                window.location.href = data;
+            }
+        });
+    }
+</script>
+
+@if (obj.CanView)
+{
+    <!-- Page Bar : Begin -->
+    <div class="page-bar">
+        @if (_RoleId == 1 || _RoleId == 6805 || _RoleId == 6806 || _RoleId == 6811)
+        {
+            <ul class="page-breadcrumb">
+                <li>
+                    @if (isClientDBMatchFlag == "True")
+                    {
+                        <a href="/Admin/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+                    }
+                    else
+                    {
+                        <a href="/Dashboard/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+                    }
+                </li>
+                <li>
+                    <span><i class="fa-light fa-angle-right"></i> Canteen Management</span>
+                </li>
+                <li>
+                    <span><i class="fa-light fa-angle-right"></i> CMS Policy</span>
+                </li>
+            </ul>
+        }
+        else
+        {
+            <ul class="page-breadcrumb">
+                <li>
+                    @if (isClientDBMatchFlag == "true")
+                    {
+                        <a href="/Admin/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+                    }
+                    else
+                    {
+                        <a href="/Dashboard/EmployeeDashboard"><i class="fa-regular fa-house"></i></a>
+                    }
+                </li>
+                <li>
+                    <span><i class="fa-light fa-angle-right"></i> CMS Policy</span>
+                </li>
+            </ul>
+        }
+        <div class="page-toolbar text-right">
+            <a href="javascript:;" class="btn icon_transparent_btn tooltips" id="Filter_search" data-placement="left" data-original-title="Filter"><i class="fa-light fa-filter"></i></a>
+            @if (obj.CanAdd && _RoleId != 6806 && _RoleId != 6811)
+            {
+                <a href="javascript:;" class="btn icon_transparent_btn tooltips" id="Addpolicy_btn" data-placement="left" data-original-title="Add Pricing Policy"><i class="fa-solid fa-plus"></i></a>
+            }
+        </div>
+    </div>
+    <!-- Page Bar : End -->
+
+    <!-- Ajax Loader : Begin -->
+    <div id='ajax_loader' class="modal_bg loading" aria-hidden="true">
+        <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" />
+    </div>
+    <!-- Ajax Loader : End -->
+
+    <!-- DataTable Wrapper : Begin -->
+    <div class="filter_portlet_wrapper full-width">
+
+        <!-- Content Block : Begin -->
+        <div class="portlet filter_portlet_tbl">
+            <div class="portlet-body">
+
+                <div class="row">
+                    <div class="col-lg-12">
+                        <div class="table-scrollable">
+                            <div id="tblPolicyBlock" style="display:none;">
+                                <div class="table-responsive" id="tableResponsive">
+                                    <table id="tblPolicy" class="new_datatbl table table-striped table-bordered table-hover table-checkable order-column"></table>
+                                </div>
+                            </div>
+                            <div id="NotificationGrid-empty" style="display: none">
+                                <div class="datanotfound">
+                                    <img src="~/assets/images/emptyscreen_1.png" height="148" width="280" alt="No Data Found Icon">
+                                    <p class="datanotfound_title">No data found</p>
+                                    <p id="emptyMessage">No policies have been configured yet.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Content Block : End -->
+        <!-- Filter Block : Begin -->
+        <div class="portlet filter_boxModal">
+            <div class="filterbox_header">
+                <div class="d-flex align-items-center justify-content-between">
+                    <h4 class="filter-title">Filters</h4>
+                    <button type="button" class="filterclose_btn"><i class="fa-light fa-xmark"></i></button>
+                </div>
+            </div>
+            <div class="filterbox_body">
+                @if (_RoleId == 1)
+                {
+                    <div class="col-lg-12">
+                        <div class="form-group">
+                            <label>Company</label>
+                            <select class="form-control" id="FilterCompanyId"></select>
+                        </div>
+                    </div>
+                }
+                <div class="col-lg-12">
+                    <div class="form-group">
+                        <label>Status</label>
+                        <select class="form-control input-sm" id="FilterStatusId">
+                            <option value="">All</option>
+                            <option value="true">Active</option>
+                            <option value="false">Inactive</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="filterbox_footer">
+                <div class="text-right">
+                    <button type="button" id="Clear_OPration" class="btn clear_btn margin-left-5 tooltips" data-placement="top" data-original-title="Clear filters"><i class="fa-regular fa-eraser"></i></button>
+                    <button type="button" id="Search_OPration" class="btn icon_btn margin-left-5 tooltips" data-placement="top" data-original-title="Search filters"><i class="fa-solid fa-magnifying-glass"></i></button>
+                </div>
+            </div>
+        </div>
+        <!-- Filter Block : End -->
+
+    </div>
+    <!-- DataTable Wrapper : End -->
+
+    <!-- Add/Edit Policy Modal : Begin -->
+    <div id="policyModal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    <h4 class="modal-title" id="modalTitle">Add Pricing Policy</h4>
+                </div>
+                <div class="modal-body">
+                    <div class="modal-card">
+                        <div class="row">
+                            <input type="hidden" id="PolicyId" value="">
+
+                            <div class="col-lg-6 col-md-6">
+                                <div class="form-group">
+                                    <label class="control-label">Policy Name <span class="required" style="color:red;">*</span></label>
+                                    <input type="text" class="form-control input-sm" id="PolicyName" placeholder="Enter policy name" maxlength="100">
+                                </div>
+                            </div>
+
+                            <div class="col-lg-6 col-md-6">
+                                <div class="form-group">
+                                    <label>Policy Description</label>
+                                    <input type="text" class="form-control input-sm" id="PolicyDescription" placeholder="Optional description" maxlength="500">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Subsidy Settings Section -->
+                        <div class="section-divider">Subsidy Settings (per Slot Category)</div>
+                        <div id="subsidySectionsContainer"></div>
+
+                        <!-- Credit Limit Section -->
+                        <div class="section-divider">Credit Limit</div>
+                        <div class="row">
+                            <div class="col-lg-6 col-md-6">
+                                <div class="form-group">
+                                    <label>Monthly Credit Limit</label>
+                                    <input type="number" class="form-control input-sm" id="MonthlyLimit" placeholder="Leave empty for unlimited" min="0" step="0.01">
+                                </div>
+                            </div>
+                            <div class="col-lg-6 col-md-6">
+                                <div class="form-group">
+                                    <label>Warning Threshold</label>
+                                    <div>
+                                        <label class="radio-inline">
+                                            <input type="radio" name="warningType" value="amount"> Amount
+                                        </label>
+                                        <label class="radio-inline">
+                                            <input type="radio" name="warningType" value="percentage"> Percentage
+                                        </label>
+                                    </div>
+                                    <div class="row margin-top-10">
+                                        <div class="col-md-6">
+                                            <input type="number" class="form-control input-sm" id="WarningAmount" placeholder="Amount" min="0" step="0.01" disabled>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <input type="number" class="form-control input-sm" id="WarningPercentage" placeholder="%" min="1" max="100" step="0.01" disabled>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Order Settings Section -->
+                        <div class="section-divider">Order Settings</div>
+                        <div class="row">
+                            <div class="col-lg-6 col-md-6">
+                                <div class="form-group">
+                                    <label>
+                                        <input type="checkbox" id="AllowOrderCancel" checked> Allow Order Cancellation
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-lg-6 col-md-6">
+                                <div class="form-group">
+                                    <label>
+                                        <input type="checkbox" id="AllowMultipleOrders" checked> Allow Multiple Orders per Slot per Day
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <div class="row">
+                        <div class="col-lg-12 text-right">
+                            <button type="button" class="btn clear_btn" data-dismiss="modal"><i class="fa-light fa-xmark"></i> Cancel</button>
+                            <button type="button" class="btn save_btn" id="btnPolicySubmit"><i class="fa-light fa-floppy-disk"></i> <span id="btnSaveText">Add Policy</span></button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Add/Edit Policy Modal : End -->
+}
+else
+{
+    <div class="alert alert-danger">
+        <strong>Unauthorized Access.</strong> You do not have permission to view this page.
+    </div>
+}

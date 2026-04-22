@@ -1,0 +1,706 @@
+﻿@using System.Configuration;
+@{
+    ViewBag.Title = "AdvanceSalaryRequest";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    string _isdateformat = HttpContext.Current.Session["IsDateFormat"].ToString();
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiurlpayroll = ConfigurationManager.AppSettings["webapipaytimePayroll"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+}
+<link href="/Newlayout/css/payrollstructure.css" rel="stylesheet">
+<script>
+    var EmpId =  @Convert.ToInt32(Session["EmpId"]);
+    $(document).ready(function () {
+
+        // Create search inputs in footer
+        $("#tbladvsalary tfoot th").each(function () {
+            var title = $(this).text();
+            $(this).html('<input type="text" class="search_input" placeholder="Search" /><i class="clm-search" id=""></i>');
+        });
+
+        function getRequest() {
+        checkSession()
+        $.ajax({
+        type: "GET",
+        headers: { 'Authorization': '@_tokan' },
+        url: '@_webapiurlpayroll' + 'AdvanceSalaryRequest/GetAdvanceSalaryRequestByEmpId?EmpId=' + parseInt(EmpId),
+        contentType: "application/json",
+        dataType: "json",
+        beforeSend: function () {
+            $('#ajax_loader').show();
+        },
+        complete: function () {
+            $('#ajax_loader').hide();
+        },
+            success: function (response) {
+                if (response.length === 0) {
+                    $("#request-empty").show();
+                    $("#tableResponsive").hide();
+                    $("#dataTables_tbl_header").hide();
+                }
+
+           if (response && response.length > 0) {
+                // Destroy old instance if already initialized
+                if ($.fn.DataTable.isDataTable("#tbladvsalary")) {
+                    $("#tbladvsalary").DataTable().clear().destroy();
+                }
+
+               // DataTable initialisation
+               var table = $("#tbladvsalary").DataTable({
+                   dom: _domCommon,
+                   language: _languageCommon,
+                   data: response,
+                   columns: [
+                           { data: 'amount' },
+                           { data: 'reason' },
+                           { data: 'prefer_date' },
+                           { data: 'status' },
+                           {
+                           data: 'request_id',   // bind primary key (or null if not needed)
+                               render: function (data, type, row) {
+                                   let btn = ``;
+                               if (row.status == 1) {
+                                    btn += `
+                                        <a class="btn btn-xs red_btnnew tooltips cancelBtn"
+                                           data-id="${data}"
+                                           data-placement="top"
+                                           title="Cancel Request">
+                                           <i class="fa-regular fa-ban"></i>
+                                        </a>
+                                    `;
+                               }else
+                               {
+                                   if (row.is_workflow_set && row.status != 5) {
+                                       btn += `<a class="btn btn-xs blue_btnnew tooltips approvalTimelineBtn"
+                                        data-id="${row.request_id}"
+                                        title="View Approval Timeline">
+                                        <i class="fa-regular fa-info-circle"></i>
+                                     </a>`
+                                       if (row.status == 6) {
+                                           btn += `<a class="btn btn-xs red_btnnew tooltips installmentifno"
+                                           data-id="${row.request_id}"
+                                           data-placement="top"
+                                           title="Installment Details" >
+                                           <i class="fa-regular fa-eye"></i>
+                                       </a >`
+                                       }
+                                   } 
+                                   }
+                                   return btn;
+                           }
+                       }
+
+                       ],
+                    "columnDefs": [
+                         {
+                             targets: 2,
+                             render: function (data, tyre, row, meta) {
+                                 var dateformat = "@_isdateformat";
+                                 var parsedDate = data ? new Date(data) : null;
+                                 return formatDate(parsedDate, dateformat);
+                             }
+                         },
+                       {
+                           "targets": 3,
+                           "render": function (data, type, row) {
+                               let statusText = "";
+                               let statusClass = "";
+                               status = row["status"];
+                               switch (row["status"]) {
+                                   case 1:
+                                       statusText = "Pending";
+                                       statusClass += 'orange_font';
+                                       break;
+                                   case 2:
+                                       statusText = "Approved";
+                                       statusClass += 'green_font';
+                                       break;
+                                   case 3:
+                                       statusText = "Rejected";
+                                       statusClass += 'red_font';
+                                       break;
+                                   case 5:
+                                       statusText = "Canceled";
+                                       //statusClass += 'red_font';
+                                       break;
+                                   case 6:
+                                       statusText = "Received";
+                                       statusClass += 'orange_font';
+                                       break;
+                                   default:
+                                       statusText = "Pending";
+                                       statusClass += 'orange_font';
+                               }
+                               return `<div class='${statusClass}'>${statusText}</div>`;
+                           }
+
+                        },
+                        {
+                            "targets": 4,
+                            orderable: false,
+                        }
+                       ],
+                         initComplete: function (settings, json) {
+                              const visibleTable = $('table:visible').attr('id');
+                              $("#buttons").append(`
+                              <div id="export-button" class="export-button tooltips" data-placement="bottom" data-original-title="Download" data-table-id="${visibleTable}">
+                                  <img src="../Newlayout/images/download_icon.svg" alt="Download icon">
+                              </div>`)
+                          }
+
+               });
+               setTimeout(function () {
+                   $("#" + "tbladvsalary" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+                   $('.tooltips').tooltip();
+               }, 100);
+            }
+            }
+        })
+      }
+
+        // Apply the column Search
+        $("#tbladvsalary thead").on("keyup", "input", function () {
+            table.column($(this).parent().index())
+                .search(this.value)
+                .draw();
+        });
+
+        // Filter Click Open Modal Code =========================
+        $("#Addrequest").on('click', function () {
+            checkSession()
+            $("#Addrequest").attr("data-toggle", "modal");
+            $("#Addrequest").attr("data-target", "#Addrequest_modal");
+        });
+
+        $("#btncomment").on('click', function () {
+            $("#btncomment").attr("data-toggle", "modal");
+            $("#btncomment").attr("data-target", "#btncomment_modal");
+        });
+
+        $("#btnSubmit").on('click', function () {
+            RequestSave();
+        })
+
+        $('#reqAmount').on('input', function () {
+            this.value = this.value.replace(/[^0-9]/g, '');
+        });
+
+        function RequestSave() {
+            checkSession()
+            var Amount = $("#reqAmount").val();
+            var preferDate = $("#preDate").val();
+            var reason = $("#reason").val();
+            var IsFlag = 0;
+
+            if ($.trim(Amount) === "") {   // if using jQuery
+                $("#reqAmount").addClass('field_error');
+                IsFlag = 1;
+                return false;
+            } else {
+                removeErrorOnInput("#reqAmount");
+            }
+
+            if ($.trim(preferDate) === "") {   // if using jQuery
+                $("#preDate").addClass('field_error');
+                IsFlag = 1;
+                return false;
+            }
+            else {
+                removeErrorOnInput("#preDate");
+            }
+            if ($.trim(reason) === "") {   // if using jQuery
+                $("#reason").addClass('field_error');
+                IsFlag = 1;
+                return false;
+            } else {
+            removeErrorOnInput("#reason");
+            }
+            var formData = new FormData();
+            if (IsFlag == 0) {
+
+                var requestObj = {
+                    EmpId : EmpId,
+                    Amount : Amount,
+                    Reason  : reason.toString(),
+                    PreferDate  : preferDate
+                }
+
+                for (var key in requestObj) {
+                    formData.append(key, requestObj[key]);
+                }
+                $.ajax({
+                    type: "POST",
+                    headers: { 'Authorization': '@_tokan' },
+                    url: '@_webapiurlpayroll' + 'AdvanceSalaryRequest/CreateAdvanceSalaryRequest',
+                    processData: false, // Prevent jQuery from automatically transforming the data
+                    contentType: false, // Ensure content type is multipart/form-data
+                    data: formData,
+                    dataType: "json",
+                    beforeSend: function () {
+                        $('#ajax_loader').show();
+                    },
+                    complete: function () {
+                        $('#ajax_loader').hide();
+                    },
+                    success: function (response) {
+                        if (response != null) {
+                            if (response.Success == true) {
+                                toastr.remove();
+                                toastr.success(response.Message);
+                                  setTimeout(function () {
+                                      window.location.reload();
+                                  }, 2500);
+                            } else {
+                                $('#ajax_loader').hide();
+                                toastr.remove();
+                                toastr.error(response.Message);
+                            }
+                        }
+                    }
+                })
+            }
+        }
+        $("#tbladvsalary").on('click', '.cancelBtn', function () {
+            checkSession()
+            let requestId = $(this).data("id");
+            $.ajax({
+            type: "POST",
+            headers: { 'Authorization': '@_tokan' },
+            url: '@_webapiurlpayroll' + 'AdvanceSalaryRequest/CancelAdvanceSalaryRequest?id= ' + requestId + '',
+            processData: false,
+            contentType: false,
+            dataType: "json",
+            beforeSend: function () {
+                $('#ajax_loader').show();
+            },
+            complete: function () {
+                $('#ajax_loader').hide();
+            },
+                success: function (response) {
+                if (response != null) {
+                    if (response.success == true) {
+                        toastr.remove();
+                        toastr.success(response.message);
+                        $("#Addrequest_modal").hide();
+                          setTimeout(function () {
+                              window.location.reload();
+                          }, 2500);
+                    } else {
+                        $('#ajax_loader').hide();
+                        toastr.remove();
+                        toastr.error(response.Message);
+                    }
+                }
+            }
+        })
+
+        });
+
+        getRequest();
+        removeErrorOnInput("#reqAmount");
+        removeErrorOnInput("#preDate");
+        removeErrorOnInput("#reason");
+        function removeErrorOnInput(selector) {
+            $(selector).on("input change", function () {
+                if ($.trim($(this).val()) !== "") {
+                    $(this).removeClass("field_error");
+                }
+            });
+        }
+
+        $(document).on("click", ".approvalTimelineBtn", function () {
+            var requestId = $(this).data("id");
+
+            $('#advanceSalaryTimelineModal').modal('show');
+
+            loadAdvanceSalaryTimeline(requestId);
+        });
+
+            function loadAdvanceSalaryTimeline(requestId) {
+              $.ajax({
+                  type: "GET",
+                  headers: { 'Authorization': '@_tokan' }, // Replace with actual if needed
+                  url: '@_webapiurlpayroll' + 'AdvanceSalaryResponse/GetAdvanceSalaryRequestTimeline?requestId=' + requestId,
+                  contentType: "application/json",
+                  dataType: "json",
+                  success: function (response) {
+                      let html = "";
+                      if (response.timeline && response.timeline.length > 0) {
+                          $.each(response.timeline, function (index, item) {
+                              let statusText = getStatusText(item.status);
+                              let statusClass = getStatusClass(item.status);
+                              let formattedDate = formatDate(item.createdDate);
+
+                              html += `
+                                  <div class="clearance-level-block">
+                                      <div>Level <span>${item.levelId}</span></div>
+                                      <div class="level-approval">
+                                          Name: <span class="margin-left-5 margin-right-5">${item.levelUname}</span>
+                                          <div class="level-date">${formattedDate}</div>
+                                      </div>
+                                      <div class="level-data">
+                                          <div>Department: <span>${item.departmentName || '-'}</span></div>
+                                          <div class="level-status">Status: <span class="${statusClass}">${statusText}</span></div>
+                                      </div>
+                                  </div>`;
+
+                          });
+                          } else {
+                              html = `<div class="text-center">No timeline data available.</div>`;
+                          }
+
+                      $("#timeline-container").html(html);
+                  },
+                  error: function () {
+                      $("#timeline-container").html('<div class="text-danger">Failed to load timeline.</div>');
+                  }
+              });
+            }
+
+       $('#preferDate').datepicker({
+        format: "@_isdateformat", // Example: "dd-mm-yyyy"
+        startDate: new Date(),  // Disable all past dates, start from today
+        autoclose: true      // Automatically close after date selection
+      })
+
+        $("#tbladvsalary").on('click', '.installmentifno', function () {
+            var requestId = $(this).data("id");
+
+            $('#InstallmentDetailsModal').modal('show');
+            GetInstallmentDetails(requestId);
+
+        })
+
+        function GetInstallmentDetails(requestId) {
+            $("#tblinstallmentinfo tfoot th").each(function () {
+                var title = $(this).text();
+                $(this).html('<input type="text" class="search_input" placeholder="Search" /><i class="clm-search" id=""></i>');
+            });
+         checkSession()
+            $.ajax({
+                type: "GET",
+                headers: { 'Authorization': '@_tokan' },
+                url: '@_webapiurlpayroll' + 'AdvanceSalaryRequest/GetAdvanceSalaryRefundDetails?empid=' + parseInt(EmpId) + '&requestId=' + requestId,
+                contentType: "application/json",
+                dataType: "json",
+                beforeSend: function () {
+                    $('#ajax_loader').show();
+                },
+                complete: function () {
+                    $('#ajax_loader').hide();
+                },
+                success: function (response) {
+                    if (response && response.length > 0) {
+                        if ($.fn.DataTable.isDataTable("#tblinstallmentinfo")) {
+                            $("#tblinstallmentinfo").DataTable().clear().destroy();
+                        }
+
+                        let headerDiv = $("#tableResponsivedeviceinfo").prev("#dataTables_tbl_header");
+                        headerDiv.remove();
+                        // DataTable initialisation
+                        var table = $("#tblinstallmentinfo").DataTable({
+                            dom: _domCommon,
+                            language: _languageCommon,
+                            data: response,
+                            columns: [
+                                { data: 'transaction_effective_date' },
+                                { data: 'transaction_emi_amount' },
+                                { data: 'is_processed' },
+                            ],
+                            "columnDefs": [
+                                  {
+                                      targets: 0,
+                                      render: function (data, tyre, row, meta) {
+                                          var dateformat = "@_isdateformat";
+                                          var parsedDate = data ? new Date(data) : null;
+                                          return formatDate(parsedDate, dateformat);
+                                      }
+                                  },
+                                {
+                                    targets: 2,
+                                    render: function (data, tyre, row, meta) {
+                                        let statusText = "";
+                                         let statusClass = "";
+                                        status = row["is_processed"];
+                                        switch (row["is_processed"]) {
+                                             case 0:
+                                                 statusText = "Pending";
+                                                 statusClass += 'orange_font';
+                                                 break;
+                                             case 1:
+                                                 statusText = "Paid Up";
+                                                 statusClass += 'green_font';
+                                                break;
+                                            default:
+                                                statusText = "Pending";
+                                                statusClass += 'orange_font';
+                                                break;
+                                         }
+                                         return `<div class='${statusClass}'>${statusText}</div>`;
+                                    }
+                                }
+                             ]
+
+                        })
+
+                            setTimeout(function() {
+                                $("#" + "tblinstallmentinfo" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsivedeviceinfo"));
+                                $('.tooltips').tooltip();
+                            }, 100);
+
+                        $("#tblinstallmentinfo thead").on("keyup", "input", function () {
+                            table.column($(this).parent().index())
+                                .search(this.value)
+                                .draw();
+                        });
+                    }
+                }
+            })
+}
+        // ========================== Installment info Table Code ==========================
+        //// Create search inputs in footer
+        //$("#tblinstallmentinfo tfoot th").each(function () {
+        //    var title = $(this).text();
+        //    $(this).html('<input type="text" class="search_input" placeholder="Search" /><i class="clm-search" id=""></i>');
+        //});
+
+        //// DataTable initialisation
+        //var table = $("#tblinstallmentinfo").DataTable({
+        //    dom: _domCommon,
+        //    language: _languageCommon,
+        //    ordering: false,
+        //});
+        //setTimeout(function () {
+        //    $("#" + "tblinstallmentinfo" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsivedeviceinfo"));
+        //    $('.tooltips').tooltip();
+        //}, 100);
+
+        //// Apply the column Search
+        //$("#tblinstallmentinfo thead").on("keyup", "input", function () {
+        //    table.column($(this).parent().index())
+        //        .search(this.value)
+        //        .draw();
+        //});
+
+
+        function getStatusText(status) {
+            switch (status) {
+                case "1":
+                    return "Pending";
+                case "2":
+                    return "Approved";
+                case "3":
+                    return "Rejected";
+                case "4":
+                    return "Sent for Approval";
+                case "6":
+                    return "Disburse";
+                default:
+                    return "Unknown";
+            }
+        }
+
+        function getStatusClass(status) {
+            switch (status) {
+                case "1":
+                    return "orange_font";
+                case "2":
+                    return "green_font";
+                case "3":
+                    return "red_font";
+                case "4":
+                    return "purple_font";
+                case "6":
+                    return "orange_font";
+                default:
+                    return "blue_font";
+            }
+        }
+
+     function formatDate(date, format) {
+      if (isNaN(date)) return '';
+      const monthNames = [
+          "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+          "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+      ];
+      const map = {
+          yyyy: date.getFullYear(),
+          yy: String(date.getFullYear()).slice(-2),
+          M: monthNames[date.getMonth()],
+          mm: String(date.getMonth() + 1).padStart(2, '0'),
+          dd: String(date.getDate()).padStart(2, '0')
+      };
+      return format.replace(/yyyy|M|mm|dd|yy/g, matched => map[matched]);
+        }
+
+        function checkSession() {
+
+            $.ajax({
+                type: "GET",
+                async: false,
+                url: "/ESS/checkSession",
+                contentType: "application/json; charset=utf-8",
+                success: function (data) {
+                    if (data.isRedirect) {
+                        window.location.href = data.redirectUrl;
+                    }
+                },
+                error: function (data) {
+                    window.location.href = data;
+                }
+            });
+        }
+
+    });
+</script>
+
+<!-- Page Bar : Begin -->
+<div class="page-bar">
+    <ul class="page-breadcrumb">
+        <li>
+            <a href="/Admin/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+        </li>
+        <li>
+            <span><i class="fa-light fa-angle-right"></i> Advance Salary Request</span>
+        </li>
+    </ul>
+    <div class="page-toolbar">
+        <div class="text-right">
+            <a href="javascript:;" class="btn icon_transparent_btn tooltips" id="Addrequest" data-placement="left" data-original-title="Add Advance Salary Request" data-toggle="tooltip"><i class="fa-solid fa-plus"></i></a>
+        </div>
+    </div>
+</div>
+<!-- Page Bar : End -->
+<!-- Ajax Loader : Begin -->
+<div id='ajax_loader' class="modal_bg loading" aria-hidden="true">
+    <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" />
+</div>
+<!-- Ajax Loader : End -->
+<!-- Datatable Block : Begin -->
+<div class="row">
+    <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+        <div class="portlet">
+            <div class="portlet-body">
+                <div class="table-responsive" id="tableResponsive">
+                    <table class="new_datatbl table table-striped table-bordered table-hover table-checkable order-column" id="tbladvsalary">
+                        <thead>
+                            <tr>
+                                <th style="min-width:100px;">Amount</th>
+                                <th style="min-width:250px;">Reason</th>
+                                <th>Prefer Date</th>
+                                <th style="min-width:100px;">Status</th>
+                                <th style="min-width: 100px; width: 100px;">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+                <div id="request-empty" style="display:none;">
+                    <div class="empty_block no_record datanotfound">
+                        <img src="~/assets/images/emptyscreen_1.png" height="122" width="230" alt="No Records Found">
+                        <p class="datanotfound_title">No Data Found.</p>
+                        <p>No entries found. Please add a record to get started.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Datatable Block : End -->
+<!-- Add Feedback Modal : Begin -->
+<div id="Addrequest_modal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+    <div class="modal-dialog w-500">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal">&times;</button>
+                <h4 class="modal-title">Advance Salary Request</h4>
+            </div>
+            <div class="modal-body">
+                <div class="modal-card">
+                    <fieldset>
+                        <div class="row">
+                            <div class="col-sm-6">
+                                <div class="form-group">
+                                    <label class="control-label">Amount <span class="required" aria-required="true">*</span></label>
+                                    <input type="text" id="reqAmount" placeholder="Please Enter" class="form-control" name="Value" />
+                                </div>
+                            </div>
+                            <div class="col-sm-6">
+                                <div class="form-group data_picker_box">
+                                    <label class="control-label">Prefer Date<span class="required" aria-required="true">*</span></label>
+                                    <div class="input-group input-group-sm date date-picker" id="preferDate" data-date="@DateTime.Now" data-date-format="@_isdateformat" data-date-viewmode="years">
+                                        <span class="input-group-btn">
+                                            <button class="btn default" type="button">
+                                                <i class="fa-light fa-calendar-days"></i>
+                                            </button>
+                                        </span>
+                                        <input type="text" class="form-control" id="preDate" data-date-format="@_isdateformat" placeholder="@_isdateformat.Replace("M","MMM")" autocomplete="off">
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-xs-12">
+                                <div class="form-group">
+                                    <label>Reason <span class="required" aria-required="true">*</span></label>
+                                    <textarea class="form-control" rows="5" name="" maxlength="100" id="reason" placeholder="Please Enter Reason" style="resize: vertical;"></textarea>
+                                </div>
+                            </div>
+                        </div>
+                    </fieldset>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <div class="row">
+                    <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                        <button type="button" class="btn save_btn" id="btnSubmit">Submit</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Add Feedback Modal : End -->
+<!-- Request Timeline Modal : Begin -->
+<div id="advanceSalaryTimelineModal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal">×</button>
+                <h4 class="modal-title">Policy Appraisal Timeline</h4>
+            </div>
+            <div class="modal-body nomodalfooter">
+                <div class="modal-card" id="timeline-container">
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Request Timeline Modal : End -->
+<!-- Installment Details Modal : Begin -->
+<div id="InstallmentDetailsModal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal">×</button>
+                <h4 class="modal-title">Policy Appraisal Timeline</h4>
+            </div>
+            <div class="modal-body nomodalfooter">
+                <fieldset>
+                    <div class="table-responsive" id="tableResponsivedeviceinfo">
+                        <table id="tblinstallmentinfo" class="new_datatbl table table-striped table-bordered table-hover table-checkable order-column">
+                            <thead>
+                                <tr>
+                                    <th style="min-width: 100px">Installment Date</th>
+                                    <th>Installment Amount</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                            </tbody>
+                        </table>
+                    </div>
+                </fieldset>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Installment Details Modal : End -->

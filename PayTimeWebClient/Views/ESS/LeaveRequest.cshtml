@@ -1,0 +1,1617 @@
+﻿@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@using System.Configuration;
+@{
+    ViewBag.Title = "LeaveRequest";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    string _Message = ViewBag.msg;
+    string _error = ViewBag.error;
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    int _EmpId = Convert.ToInt32(HttpContext.Current.Session["EmpId"]);
+    int _PlanId = Convert.ToInt32(HttpContext.Current.Session["PlanId"]);
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+    string _isdateformat = ViewBag.Getsystemsettingdateformatupdated[0].ISDateFormat;
+    string _dbName = HttpContext.Current.Session["DbName"].ToString();
+    string _lockAttendanceDay = HttpContext.Current.Session["lockAttendanceDay"].ToString();
+
+    string isClientDBMatchFlag = HttpContext.Current.Session["IsClientDBMatch"] != null
+                    ? HttpContext.Current.Session["IsClientDBMatch"].ToString()
+                    : "false"; // Default to "false" if the session is null
+}
+<style>
+    .disabledPopup {
+        pointer-events: none;
+        opacity: 0.4;
+    }
+
+    .swal2-container {
+        z-index: 10000;
+    }
+</style>
+@*<script async defer src="https://maps.googleapis.com/maps/api/js?v=3&key=AIzaSyArRiZ6rJGsALUVVJy80SRx0Wkz_JCwQgw&callback=initMap">
+</script>*@
+<script async defer src="https://maps.googleapis.com/maps/api/js?v=3&key=&callback=initMap">
+</script>
+<script src="~/AssetsNew/js/CommonValidation.js"></script>
+<script src="~/Scripts/timeme.js"></script>
+
+<script>
+    var isDateFormat = "@_isdateformat";
+    var locationenabled = "";
+    var pkloginemployeeid =  @Convert.ToInt32(Session["EmpId"]);
+    var _EmpName = "";
+
+    function initMap() {
+
+    }
+    $(document).ready(function ()
+    {
+        _EmpName = "@Session["EmpName"].ToString()";
+
+        $("#latlagAddress").val("");
+        $("#latlag").val("");
+        var id =  @Convert.ToInt32(Session["EmpId"])
+        $("#chkIsHalfLeave").prop('disabled', true);
+        $("#btnSave").click(function () {
+            save();
+        });
+        $("#btnAddLeave").click(function () {
+            Clear();
+            $("#btnAddLeave").attr("data-toggle", "modal");
+            $("#btnAddLeave").attr("data-target", "#frmpopup");
+        });
+        $("#txtReason").blur(function () {
+            var reason = removeTags($("#txtReason").val());
+            $("#txtReason").val(reason);
+        });
+        $(".alert").hide();
+        if ("@_Message" != "") {
+            toastr.remove();
+            toastr.success("@_Message");
+        }
+        if ('@_error' != "") {
+            toastr.remove();
+            toastr.error("@_error");
+        }
+        GetLeaveBalance();
+        CheckDocumentRequire();
+        getLocation();
+        $("#ddlLeaveType").change(function () {
+            $("#ddlLeaveType").removeClass('field_error');
+            $(".popMsg").hide();
+            CheckHalfLeave();
+            GetLeaveBalance();
+            CheckDocumentRequire();
+            CheckLocationEnabled();
+            $("#leaveTypeDurationBlock").hide();
+        });
+        $("#chkIsHalfLeave").on("change", function () {
+            if ($(this).is(":checked"))
+            {
+                CheckDocumentRequire();
+                $("#leaveTypeDurationBlock").show();
+            }
+            else
+            {
+                CheckDocumentRequire();
+                $("#leaveTypeDurationBlock").hide();
+                $("#ddlLeaveDuration").val("1");
+            }
+        });
+        $("#txtReason").change(function () {
+            $("#txtReason").removeClass('field_error');
+        });
+        $("#txtFromDate").change(function () {            
+            $("#txtFromDate").removeClass('field_error');
+            $("#txtToDate").val("");
+            if (isDateFormat == "dd-mm-yyyy") {
+                var fromDate = $("#txtFromDate").val().split("-");
+                var newdate = new Date(fromDate[2], fromDate[1] - 1, fromDate[0]);
+            }
+            else if (isDateFormat == "mm-dd-yyyy") {
+                var fromDate = moment($('#txtFromDate').val(), 'MM-DD-YYYY');
+                var newdate = new Date(fromDate);
+            }
+            else if (isDateFormat == "yyyy-M-dd") {
+                var fromDate = moment($('#txtFromDate').val(), 'YYYY-MMM-DD');
+                var newdate = new Date(fromDate);
+            }
+            else if (isDateFormat == "M-dd-yyyy") {
+                var fromDate = moment($('#txtFromDate').val(), 'MMM-DD-YYYY');
+                var newdate = new Date(fromDate);
+            }
+            else if (isDateFormat == "dd-M-yyyy") {
+                var fromDate = moment($('#txtFromDate').val(), 'DD-MMM-YYYY');
+                var newdate = new Date(fromDate);
+            }
+            else {
+                var fromDate = $("#txtFromDate").val();
+                var newdate = new Date(fromDate);
+            }
+            $('#txtToDate').datepicker("remove");
+            $("#txtToDate").datepicker({
+                startDate: newdate,
+                autoclose: true
+            }).on('changeDate', function (ev) {
+            }).data('datepicker');
+            GetLeaveBalance();
+            CheckDocumentRequire();
+        });
+
+        //  Reusable AJAX Function for Reminder Notification
+        function sendReminderNotification(params, successCallback, errorCallback) {
+            const requestData = {
+                EmpId: params.EmpId,
+                roleid: params.RoleId,
+                EventId: params.EventId,
+                LeaveId: params.LeaveId
+            };
+
+            $.ajax({
+                url: '@_webapiurl' + "NotificationRuleDetails/Remindernotification",
+                type: 'POST',
+                headers: { 'Authorization': '@_tokan' },
+                contentType: "application/json; charset=utf-8",
+                data: JSON.stringify(requestData),
+                success: function (response) {
+                    console.log(" Notification sent successfully:", response);
+                    if (typeof successCallback === 'function') {
+                        successCallback(response);
+                    }
+                },
+                error: function (xhr, status, error) {
+                    console.error(" Notification sending failed:", error);
+                    console.warn("Response:", xhr.responseText);
+                    if (typeof errorCallback === 'function') {
+                        errorCallback(xhr, status, error);
+                    }
+                }
+            });
+        }
+        // Button Click Handler
+        $(document).on('click', '.btnnotification', function ()
+        {
+            var $row = $(this).closest('tr');
+            var leaveID = $row.find('td:eq(1)').text().trim();
+
+            Swal.fire({
+                title: `<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_info.svg' alt=''>Notification`,
+                html: `
+                    <div class="swal_subtitle">
+                        <b>Are you sure you want to send this notification?</b>
+                        <p>Once sent, the selected user will immediately receive this notification.</p>
+                        <p><b>Note:</b> This action cannot be undone.</p>
+                    </div>
+                `,
+                showCloseButton: true,
+                showCancelButton: true,
+                focusConfirm: false,
+                cancelButtonText: 'No, Cancel',
+                confirmButtonText: 'Yes, Send Notification',
+                allowOutsideClick: false,
+                allowEscapeKey: false,
+                customClass: {
+                    confirmButton: 'swal-confirm-button-class',
+                    cancelButton: 'swal-cancel-button-class'
+                }
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    const $btn = $('#btnnotification');
+                    $btn.prop('disabled', true);
+
+                    const notifyParams =
+                    {
+                        EmpId: '@_EmpId',
+                        RoleId: '@_RoleId',
+                        LeaveId: leaveID,
+                        EventId: 1
+                    };
+
+                    sendReminderNotification(
+                        notifyParams,
+                        function (response) {
+
+                            toastr.remove();
+
+                            if (response.status === "Success") {
+                                toastr.success("Reminder notification sent successfully.");
+                            }
+                            else if (response.status === "Already") {
+                                toastr.info("Reminder already sent today.");
+                            }
+                            else if (response.status === "Fail") {
+                                toastr.error("Failed to send reminder notification.");
+                            }
+                            else {
+                                toastr.warning("Something went wrong. Please try again.");
+                            }
+
+                        },
+                        function (xhr, status, error) {
+                            toastr.remove();
+                            toastr.error("Failed to send notification");
+                        }
+
+                    );
+                    setTimeout(() => $btn.prop('disabled', false), 2000);
+                }
+            });
+        });
+
+
+
+
+
+
+        $("#tblOnDutyLeave").on('click', '.cancel', function (e)
+        {
+            e.preventDefault();
+            lst = [];
+            var leaveID = $(this).parent('td').parent('tr').children(1)[1].innerText;
+            var fromDate = $(this).parent('td').parent('tr').children(1)[3].innerText;
+            if (isDateFormat == "dd-mm-yyyy") {
+                var fromDate = fromDate.split("-");
+                var newdate = fromDate[2] + "-" + fromDate[1] + "-" + fromDate[0];
+            }
+            else if (isDateFormat == "mm-dd-yyyy") {
+                var fromDate = fromDate.split("-");
+                var newdate = fromDate[2] + "-" + fromDate[0] + "-" + fromDate[1];
+            }
+            else if (isDateFormat == "yyyy-M-dd") {
+                var fromDate = fromDate.split("-");
+                var getMonth = fromDate[1];
+                var newdate = fromDate[0] + "-" + (GetMonthNumber(getMonth).toString().length > 1 ? GetMonthNumber(getMonth) : "0" + GetMonthNumber(getMonth)) + "-" + fromDate[2];
+            }
+            else if (isDateFormat == "M-dd-yyyy") {
+                var fromDate = fromDate.split("-");
+                var getMonth = fromDate[0];
+                var newdate = fromDate[2] + "-" + (GetMonthNumber(getMonth).toString().length > 1 ? GetMonthNumber(getMonth) : "0" + GetMonthNumber(getMonth)) + "-" + fromDate[1];
+            }
+            else if (isDateFormat == "dd-M-yyyy") {
+                var fromDate = fromDate.split("-");
+                var getMonth = fromDate[1];
+                var newdate =  fromDate[2]+ "-" + (GetMonthNumber(getMonth).toString().length > 1 ? GetMonthNumber(getMonth) : "0" + GetMonthNumber(getMonth)) + "-" + fromDate[0];
+            }
+            else {
+                var fromDate = fromDate.split("-");
+                var newdate = fromDate[0] + "-" + fromDate[1] + "-" + fromDate[2];
+            }
+            var toDate = $(this).parent('td').parent('tr').children(1)[4].innerText;
+            if (isDateFormat == "dd-mm-yyyy") {
+                var toDate = toDate.split("-");
+                var newtodate = toDate[2] + "-" + toDate[1] + "-" + toDate[0];
+            }
+            else if (isDateFormat == "mm-dd-yyyy") {
+                var toDate = toDate.split("-");
+                var newtodate = toDate[2] + "-" + toDate[0] + "-" + toDate[1];
+            }
+            else if (isDateFormat == "yyyy-M-dd") {
+                var toDate = toDate.split("-");
+                var getMonth = toDate[1];
+                var newtodate = toDate[0] + "-" + (GetMonthNumber(getMonth).toString().length > 1 ? GetMonthNumber(getMonth) : "0" + GetMonthNumber(getMonth)) + "-" + toDate[2];
+            }
+            else if (isDateFormat == "M-dd-yyyy") {
+                var toDate = toDate.split("-");
+                var getMonth = toDate[0];
+                var newtodate = toDate[2] + "-" + (GetMonthNumber(getMonth).toString().length > 1 ? GetMonthNumber(getMonth) : "0" + GetMonthNumber(getMonth)) + "-" + toDate[1];
+            }
+            else if (isDateFormat == "dd-M-yyyy") {
+                var toDate = toDate.split("-");
+                var getMonth = toDate[1];
+                var newtodate = toDate[2] + "-" + (GetMonthNumber(getMonth).toString().length > 1 ? GetMonthNumber(getMonth) : "0" + GetMonthNumber(getMonth)) + "-" + toDate[0];
+            }
+            else {
+                var toDate = toDate.split("-");
+                var newtodate = toDate[0] + "-" + toDate[1] + "-" + toDate[2];
+            }
+            var applyReason = $(this).parent('td').parent('tr').children(1)[5].innerText;
+            var approvalReason = "Canceled";
+            var LeaveDoc = $(this).parent('td').parent('tr').children(1)[10].innerText;
+            var leaveTypeId = $(this).parent('td').parent('tr').children(1)[7].innerText;
+            var leavePaid = $(this).parent('td').parent('tr').children(1)[8].innerText;
+            var IsHalfLeave = $(this).parent('td').parent('tr').children(1)[9].innerText;
+            var _leaveTypeName = $(this).parent('td').parent('tr').children(1)[2].innerText;
+
+            var obj =
+            {
+                LeaveId: leaveID,
+                EmpId: id,
+                FromDate: newdate,
+                ToDate: newtodate,
+                ApplyReason: applyReason,
+                LeaveTypeId: leaveTypeId,
+                LeavePaid: leavePaid,
+                LeaveStatus: 4,
+                ApprovalReason: approvalReason,
+                IsHalfLeave: IsHalfLeave,
+                LeaveDoc: LeaveDoc
+
+            };
+            var notificationParams =
+            {
+                EmpId: id,
+                InPunchTime: newdate,
+                OutPunchTime: newtodate,
+                ApplyReason: applyReason,
+                LeaveTypeName: _leaveTypeName,
+                EmployeeName: _EmpName,
+                EventId:3
+            };
+            lst.push(obj);
+            $.ajax({
+                url: '/ESS/ApproveLeaveUpdate',
+                type: 'POST',
+                headers: { 'Authorization': '@_tokan' },
+                data: JSON.stringify(lst),
+                contentType: "application/json; charset=utf-8",
+                beforeSend: function () {
+                    $(".loading").show();
+                },
+                success: function (data)
+                {
+                    if (data.isRedirect) {
+                        window.location.href = data.redirectUrl;
+                    }
+                    if (data = "OK")
+                    {
+                        toastr.success("Leave canceled successfully.");
+                        $(".loading").hide();
+                        // 📤 Send notification in background (non-blocking)
+                        setTimeout(function () {
+                            //sendLeaveRequestNotification(notificationParams);
+                            window.location.href = "/ESS/LeaveRequest";
+                        }, 1000);
+
+                    }
+                    else
+                    {
+                        toastr.remove();
+                        toastr.error("Error in canceled Leave.");
+                        $(".loading").hide();
+                    }
+                },
+                statusCode:
+                {
+                    404: function (content) { alert('cannot find resource'); },
+                    500: function (content) { alert('internal server error'); }
+                },
+                error: function (jqXHR, ajaxOptions, thrownError) {
+                    $(".loading").hide();
+
+                    if (jqXHR.status == 500) { //InternalServerError = 500,
+                        toastr.error("InternalServerError");
+                    } else if (jqXHR.status == 400) { //BadRequest = 400,
+                        toastr.error("BadRequest");
+                    } else if (jqXHR.status == 401) {
+                        window.location.href = "/PayTime/LoginPage";
+                    }
+                }
+            });
+
+        });
+        $("#txtToDate").change(function () {
+            $("#txtToDate").removeClass('field_error');
+            GetLeaveBalance();
+            CheckDocumentRequire();
+        });
+        $('#txtReason').on('paste', function (e) {
+            e.preventDefault();
+        });
+        $("#UploadLeaveDoc").change(function () {
+            var GetfileName = document.getElementById('UploadLeaveDoc');
+            if ($("#UploadLeaveDoc").val() != null) {
+                var selectedfile = GetfileName.files[0].size;
+                //var validFileSize = 5 * 1024;
+                var validFileSize = 5 * 1024 * 1024; // 5 MB in bytes
+                if (selectedfile > validFileSize) {
+                    toastr.remove();
+                    toastr.error("File size exceeds the maximum allowed size of 5 MB.");
+                    $(this).val("");
+                    return false;
+                }
+                var validExts = new Array(".pdf", ".png", ".jpg", ".jpeg");
+                var fileExt = $("#UploadLeaveDoc").val();
+                if (fileExt != "") {
+                    fileExt = fileExt.substring(fileExt.lastIndexOf('.')).toLowerCase();
+                    if (validExts.indexOf(fileExt) < 0) {
+                        toastr.remove();
+                        toastr.error("Invalid file selected, valid files are of " + validExts.join(", ") + " types.");
+                        $("#UploadLeaveDoc").val("");
+                        return false;
+                    }
+                }
+            }
+            var fileName = $(this).val().split('\\').pop(); // Get the file name without the full path
+            $('#UploadLeaveDoc').text(fileName);
+        });
+
+        $('#tblOnDutyLeave').DataTable({
+            dom: _domCommon,
+            language: _languageCommon,
+        });
+        setTimeout(function () {
+            $("#" + "tblOnDutyLeave" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive_leave_request"));
+            $('.tooltips').tooltip();
+        }, 100);
+        function CheckHalfLeave() {
+            var ltype = $("#ddlLeaveType").val();
+            $.ajax({
+                type: "GET",
+                url: "/Transactions/HalfLeaveValidate?LeaveType=" + parseInt(ltype),
+                contentType: "application/json; charset=utf-8",
+                datatype: "json",
+                async: "false",
+                success: function (response) {
+                    if (response.isRedirect) {
+                        window.location.href = response.redirectUrl;
+                    }
+                    if (response != null) {
+                        if (response == "yes") {
+                            $("#chkIsHalfLeave").prop('disabled', false);
+                            $("#chkIsHalfLeave").prop('checked', false);
+                        }
+                        else {
+                            $("#chkIsHalfLeave").prop('disabled', true);
+                            $("#chkIsHalfLeave").prop('checked', false);
+                        }
+                    }
+                    $(".loading").hide();
+                },
+                beforeSend: function () {
+                    $(".loading").show();
+                },
+                error: function (jqXHR, ajaxOptions, thrownError) {
+                    $(".loading").hide();
+
+                    if (jqXHR.status == 500) { //InternalServerError = 500,
+                        toastr.error("InternalServerError");
+                    } else if (jqXHR.status == 400) { //BadRequest = 400,
+                        toastr.error("BadRequest");
+                    } else if (jqXHR.status == 401) {
+                        window.location.href = "/PayTime/LoginPage";
+                    }
+                }
+            });
+        }
+        $("#uploadDoc").hide();
+        function CheckDocumentRequire() {
+            var ltype = $("#ddlLeaveType").val();
+            $.ajax({
+                type: "GET",
+                url: "/Transactions/DocumentRequireForLeave?LeaveType=" + parseInt(ltype),
+                contentType: "application/json; charset=utf-8",
+                datatype: "json",
+                async: "false",
+                success: function (response) {
+                    if (response.isRedirect) {
+                        window.location.href = response.redirectUrl;
+                    }
+                    if (response != null && response.length > 0) {
+                        if (response[0].IsDocRequire)
+                        {
+                            if ("@_isdateformat" == "dd-mm-yyyy") {
+                                var fromDate = $("#txtFromDate").val().split("-");
+                                var _Fromdate = fromDate[2] + "-" + fromDate[1] + "-" + fromDate[0];
+                                var toDate = $("#txtToDate").val().split("-");
+                                var _toDate = toDate[2] + "-" + toDate[1] + "-" + toDate[0];
+                            }
+                            else if ("@_isdateformat" == "mm-dd-yyyy") {
+                                var fromDate = $("#txtFromDate").val().split("-");
+                                var _Fromdate = fromDate[2] + "-" + fromDate[0] + "-" + fromDate[1];
+                                var toDate = $("#txtToDate").val().split("-");
+                                var _toDate = toDate[2] + "-" + toDate[0] + "-" + toDate[1];
+                            }
+                            else if ("@_isdateformat" == "yyyy-mm-dd") {
+                                var fromDate = $("#txtFromDate").val().split("-");
+                                var _Fromdate = fromDate[0] + "-" + fromDate[1] + "-" + fromDate[2];
+                                var toDate = $("#txtToDate").val().split("-");
+                                var _toDate = toDate[0] + "-" + toDate[1] + "-" + toDate[2];
+                            }
+                            else if ("@_isdateformat" == "yyyy-M-dd") {
+                                var fromDate = $("#txtFromDate").val().split("-");
+                                var _Fromdate = fromDate[0] + "-" + fromDate[1] + "-" + fromDate[2];
+                                var toDate = $("#txtToDate").val().split("-");
+                                var _toDate = toDate[0] + "-" + toDate[1] + "-" + toDate[2];
+                            }
+                            else if ("@_isdateformat" == "M-dd-yyyy") {
+                                var fromDate = $("#txtFromDate").val().split("-");
+                                var _Fromdate = fromDate[2] + "-" + fromDate[0] + "-" + fromDate[1];
+                                var toDate = $("#txtToDate").val().split("-");
+                                var _toDate = toDate[2] + "-" + toDate[0] + "-" + toDate[1];
+                            }
+                            else if ("@_isdateformat" == "dd-M-yyyy") {
+                                var fromDate = $("#txtFromDate").val().split("-");
+                                var _Fromdate = fromDate[2] + "-" + fromDate[1] + "-" + fromDate[0];
+                                var toDate = $("#txtToDate").val().split("-");
+                                var _toDate = toDate[2] + "-" + toDate[1] + "-" + toDate[0];
+                            }
+                            if ($("#chkIsHalfLeave").prop("checked")) {
+                                var diff = Date.parse(_toDate) - Date.parse(_Fromdate);
+                                days = diff / 1000 / 60 / 60 / 24;
+                                daysDiff = (days + 1) / 2;
+                                if (daysDiff >= 0.5 && daysDiff >= response[0].LimitDays) {
+                                    $("#uploadDoc").show();
+                                } else {
+                                    $("#uploadDoc").hide();
+                                    $("#UploadLeaveDoc").text("");
+                                    $("#UploadLeaveDoc").val("");
+                                }
+                            }
+                            else {
+                                var dateDiff = Math.abs(new Date(_toDate) - new Date(_Fromdate));
+                                var daysDiff = Math.ceil(dateDiff / (1000 * 60 * 60 * 24));
+                                if (daysDiff === response[0].LimitDays - 1 || daysDiff >= response[0].LimitDays - 1) {
+                                    $("#uploadDoc").show();
+                                }
+                                else {
+                                    $("#uploadDoc").hide();
+                                    $("#UploadLeaveDoc").text("");
+                                    $("#UploadLeaveDoc").val("");
+                                }
+                            }
+                        }
+                    }
+                    else {
+                        $("#uploadDoc").hide();
+                    }
+                    $(".loading").hide();
+                },
+                beforeSend: function () {
+                    $(".loading").show();
+                },
+                error: function (jqXHR, ajaxOptions, thrownError) {
+                    $(".loading").hide();
+
+                    if (jqXHR.status == 500) { //InternalServerError = 500,
+                        toastr.error("InternalServerError");
+                    } else if (jqXHR.status == 400) { //BadRequest = 400,
+                        toastr.error("BadRequest");
+                    } else if (jqXHR.status == 401) {
+                        window.location.href = "/PayTime/LoginPage";
+                    }
+                }
+            });
+        }
+        function CheckLocationEnabled() {
+            var ltype = $("#ddlLeaveType").val();
+            $.ajax({
+                type: "GET",
+                url: "/Transactions/DocumentRequireForLeave?LeaveType=" + parseInt(ltype),
+                contentType: "application/json; charset=utf-8",
+                datatype: "json",
+                async: "false",
+                success: function (response) {
+                    if (response.isRedirect) {
+                        window.location.href = response.redirectUrl;
+                    }
+                    if (response != null && response.length > 0) {
+                        locationenabled = response[0].IsLocationEnabled;
+                        if (locationenabled != 0) {
+                            Gcode();
+                        }
+                    }
+                    $(".loading").hide();
+                },
+                beforeSend: function () {
+                    $(".loading").show();
+                },
+                error: function (jqXHR, ajaxOptions, thrownError) {
+                    $(".loading").hide();
+
+                    if (jqXHR.status == 500) { //InternalServerError = 500,
+                        toastr.error("InternalServerError");
+                    } else if (jqXHR.status == 400) { //BadRequest = 400,
+                        toastr.error("BadRequest");
+                    } else if (jqXHR.status == 401) {
+                        window.location.href = "/PayTime/LoginPage";
+                    }
+                }
+            });
+        }
+        function GetLeaveBalance() {
+            var EmpCode;
+            if ($("#hfEmpCode").val() == "0") {
+                EmpCode = id;
+            }
+            else {
+                EmpCode = id;
+            }
+            if ("@_isdateformat" == "dd-mm-yyyy") {
+                var fromDate = $("#txtFromDate").val().split("-");
+                var _Fromdate = fromDate[2] + "-" + fromDate[1] + "-" + fromDate[0];
+                var toDate = $("#txtToDate").val().split("-");
+                var _toDate = toDate[2] + "-" + toDate[1] + "-" + toDate[0];
+            }
+            else if ("@_isdateformat" == "mm-dd-yyyy") {
+                var fromDate = $("#txtFromDate").val().split("-");
+                var _Fromdate = fromDate[2] + "-" + fromDate[0] + "-" + fromDate[1];
+                var toDate = $("#txtToDate").val().split("-");
+                var _toDate = toDate[2] + "-" + toDate[0] + "-" + toDate[1];
+            }
+            else if ("@_isdateformat" == "yyyy-mm-dd") {
+                var fromDate = $("#txtFromDate").val().split("-");
+                var _Fromdate = fromDate[0] + "-" + fromDate[1] + "-" + fromDate[2];
+                var toDate = $("#txtToDate").val().split("-");
+                var _toDate = toDate[0] + "-" + toDate[1] + "-" + toDate[2];
+            }
+            else if ("@_isdateformat" == "yyyy-M-dd") {
+                var fromDate = $("#txtFromDate").val().split("-");
+                var _Fromdate = fromDate[0] + "-" + fromDate[1] + "-" + fromDate[2];
+                var toDate = $("#txtToDate").val().split("-");
+                var _toDate = toDate[0] + "-" + toDate[1] + "-" + toDate[2];
+            }
+            else if ("@_isdateformat" == "M-dd-yyyy") {
+                var fromDate = $("#txtFromDate").val().split("-");
+                var _Fromdate = fromDate[2] + "-" + fromDate[0] + "-" + fromDate[1];
+                var toDate = $("#txtToDate").val().split("-");
+                var _toDate = toDate[2] + "-" + toDate[0] + "-" + toDate[1];
+            }
+            else if ("@_isdateformat" == "dd-M-yyyy") {
+                var fromDate = $("#txtFromDate").val().split("-");
+                var _Fromdate = fromDate[2] + "-" + fromDate[1] + "-" + fromDate[0];
+                var toDate = $("#txtToDate").val().split("-");
+                var _toDate = toDate[2] + "-" + toDate[1] + "-" + toDate[0];
+            }
+            var OnDutyLeave = {
+                "EmpId": parseInt(EmpCode),
+                "LeaveTypeId": parseInt($("#ddlLeaveType").val()),
+                "FromDate": _Fromdate,
+                "ToDate": _toDate,
+                "PkEmpId": pkloginemployeeid,
+            };
+            $.ajax({
+                type: "POST",
+                url: "/Transactions/GetBalanceByLeaveType?OnDutyLeave=" + JSON.stringify(OnDutyLeave),
+                contentType: "application/json; charset=utf-8",
+                datatype: "json",
+                async: "false",
+                success: function (response) {                    
+                    if (response.isRedirect) {
+                        window.location.href = response.redirectUrl;
+                    }
+                    if (response.Msg == "Un Authorized Access") {
+                        window.setTimeout(function () {
+                            toastr.remove();
+                            toastr.error("No entry! This is a restricted area, even for ninjas like you.");
+                            window.setTimeout(function () {
+                                window.location.href = "/PayTime/LoginPage";
+                            }, 2000);
+                            return false;
+                        }, 1000);
+                    }
+                    else if (response != null) {
+                        $("#lblLeaveBalance").text(response.LeaveBalance);
+                        $("#lblTotalBalance").text(response.Total);
+                        var lv = $("#lblLeaveBalance").text();
+                        var a = lv.indexOf("-");
+                        if (a != '-1') {
+                            $("#lblLeaveBalance").text("0");
+                            $("#lblTotalBalance").text("0");
+                        }
+                        var _lv = $("#lblTotalBalance").text();
+                        var b = _lv.indexOf("-");
+                        if (b != '-1') {
+                            $("#lblTotalBalance").text("0");
+                            $("#hfAvailBal").val(parseFloat(response.Total));
+                        }
+                        $("#lblEncashLeave").text(response.EncashLeaveBalance);
+
+                        $("#hfAvailBal").val(parseFloat(response.Total));
+                    }
+                    else {
+                        $("#lblLeaveBalance").text("0");
+                        $("#lblEncashLeave").text("0");
+                        $("#lblTotalBalance").text("0");
+                        $("#hfAvailBal").val("0");
+                    }
+                    var leavebalance = $('#lblLeaveBalance').text();
+                    var ddlLeaveType = $("#ddlLeaveType").val();
+                    if (ddlLeaveType == 1) {
+                        $("#ddlLeavePaid").empty();
+                        $("#ddlLeavePaid").append("<option value='1' selected> Paid </option>");
+                    }
+                    else {
+                        if (leavebalance > 0) {
+                            $("#ddlLeavePaid").empty();
+                            $("#ddlLeavePaid").append("<option value='1' selected> Paid </option>");
+                        }
+                        else {
+                            $("#ddlLeavePaid").empty();
+                            $("#ddlLeavePaid").append("<option value='0' selected> Unpaid </option>");
+                        }
+                    }
+                    if (response.Total > 0) {
+                        $("#IsPaidFlag").val("1");
+                    } else {
+                        $("#IsPaidFlag").val("0");
+                    }
+                    $(".loading").hide();
+                },
+                beforeSend: function () {
+                    $(".loading").show();
+                },
+                error: function (jqXHR, ajaxOptions, thrownError) {
+                    $(".loading").hide();
+
+                    if (jqXHR.status == 500) { //InternalServerError = 500,
+                        toastr.error("InternalServerError");
+                    } else if (jqXHR.status == 400) { //BadRequest = 400,
+                        toastr.error("BadRequest");
+                    } else if (jqXHR.status == 401) {
+                        window.location.href = "/PayTime/LoginPage";
+                    }
+                }
+            });
+        }
+        function save() {            
+            checkSession();
+            
+            if ("@_isdateformat" == "dd-mm-yyyy") {
+                var fromDate = $("#txtFromDate").val().split("-");
+                var _Fromdate = fromDate[2] + "-" + fromDate[1] + "-" + fromDate[0];
+                var toDate = $("#txtToDate").val().split("-");
+                var _toDate = toDate[2] + "-" + toDate[1] + "-" + toDate[0];
+            }
+            else if ("@_isdateformat" == "mm-dd-yyyy") {
+                var fromDate = $("#txtFromDate").val().split("-");
+                var _Fromdate = fromDate[2] + "-" + fromDate[0] + "-" + fromDate[1];
+                var toDate = $("#txtToDate").val().split("-");
+                var _toDate = toDate[2] + "-" + toDate[0] + "-" + toDate[1];
+            }
+            else if ("@_isdateformat" == "yyyy-mm-dd") {
+                var fromDate = $("#txtFromDate").val().split("-");
+                var _Fromdate = fromDate[0] + "-" + fromDate[1] + "-" + fromDate[2];
+                var toDate = $("#txtToDate").val().split("-");
+                var _toDate = toDate[0] + "-" + toDate[1] + "-" + toDate[2];
+            }
+            else if ("@_isdateformat" == "yyyy-M-dd") {
+                var fromDate = $("#txtFromDate").val().split("-");
+                var _Fromdate = fromDate[0] + "-" + fromDate[1] + "-" + fromDate[2];
+                var toDate = $("#txtToDate").val().split("-");
+                var _toDate = toDate[0] + "-" + toDate[1] + "-" + toDate[2];
+            }
+            else if ("@_isdateformat" == "M-dd-yyyy") {
+                var fromDate = $("#txtFromDate").val().split("-");
+                var _Fromdate = fromDate[2] + "-" + fromDate[0] + "-" + fromDate[1];
+                var toDate = $("#txtToDate").val().split("-");
+                var _toDate = toDate[2] + "-" + toDate[0] + "-" + toDate[1];
+            }
+            else if ("@_isdateformat" == "dd-M-yyyy") {
+                var fromDate = $("#txtFromDate").val().split("-");
+                var _Fromdate = fromDate[2] + "-" + fromDate[1] + "-" + fromDate[0];
+                var toDate = $("#txtToDate").val().split("-");
+                var _toDate = toDate[2] + "-" + toDate[1] + "-" + toDate[0];
+            }
+            if (valid()) {
+                var IsHalfLeave = 0;
+                var ddlLeaveDuration = 0;
+                if ($('#chkIsHalfLeave').is(':checked') == true) {
+                    IsHalfLeave = true;
+                }
+                else {
+                    IsHalfLeave = false;
+                }
+                var Empcodee = 0;
+                if ($("#OnDutyLeaveId").val() == "0") {
+                    Empcodee = parseInt(id);
+                }
+                else {
+                    Empcodee = parseInt($("#hfEmpCode").val());
+                }
+                var days;
+                var start1 = _Fromdate;
+                var end1 = _toDate;
+
+                if (IsHalfLeave == 1) {
+                    var diff = Date.parse(end1) - Date.parse(start1);
+                    days = diff / 1000 / 60 / 60 / 24;
+                    days = (days + 1) / 2;
+                    ddlLeaveDuration = parseInt($("#ddlLeaveDuration").val());
+                }
+                else {
+                    var diff = Date.parse(end1) - Date.parse(start1);
+                    days = diff / 1000 / 60 / 60 / 24;
+                    days = days + 1;
+                }
+
+                var LeaveDoc = $("#UploadLeaveDoc").text();
+                var dt = new Date();
+
+                  //LeaveTypeDuration values First Half:1,Second Half:2 defaults:0
+
+                var notificationParams =
+                {
+                    EmpId: id,
+                    InPunchTime: _Fromdate,
+                    OutPunchTime: _toDate,
+                    ApplyReason: $("#txtReason").val(),
+                    LeaveTypeName: $("#ddlLeaveType option:selected").text(),
+                    EmployeeName: _EmpName,
+                    EventId: 1,
+                    LeavePaid: parseInt($("#IsPaidFlag").val()),
+                    LeaveTypeId: parseInt($("#ddlLeaveType").val()),
+                    IsHalfLeave: IsHalfLeave
+                };
+
+                var OnDutyLeave =
+                {
+                    "EmpId": Empcodee,
+                    "LeaveTypeId": parseInt($("#ddlLeaveType").val()),
+                    "FromDate": _Fromdate,
+                    "ToDate": _toDate,
+                    "ApplyReason": $("#txtReason").val(),
+                    "LeaveStatus": 3,
+                    "IsHalfLeave": IsHalfLeave,
+                    "LeavePaid": parseInt($("#IsPaidFlag").val()),
+                    "CreatedDate": dt,
+                    "CreatedBy": Empcodee,
+                    "LeaveDoc": LeaveDoc,
+                    "Location": $("#latlag").val(),
+                    "LocAddress": $("#latlagAddress").val(),
+                    "LeaveTypeDuration": parseInt(ddlLeaveDuration)
+                };
+
+                var LeaveType = $("#ddlLeavePaid").val();
+                if (LeaveType==0) {
+                    Swal.fire({
+                        title: `<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_info.svg' alt=''> Unpaid Leave`,
+                        html: `
+                            <div class="swal_subtitle">
+                                <b>This is an UNPAID leave.</b>
+                                <p>Are you sure you want to continue?</p>
+                            </div>
+                        `,
+                        showCloseButton: true,
+                        showCancelButton: true,
+                        focusConfirm: false,
+                        cancelButtonText: 'No, Cancel',
+                        confirmButtonText: 'Yes, Continue',
+                        allowOutsideClick: false,
+                        allowEscapeKey: false,
+                        customClass: {
+                            confirmButton: 'swal-confirm-button-class',
+                            cancelButton: 'swal-cancel-button-class'
+                        }
+                    }).then((result) => {
+                        if (result.isConfirmed) {
+                            debugger
+                            LeaveAdd(OnDutyLeave,notificationParams);                            
+                        } else {
+                            return false;
+                        }
+                    });
+                    $('img[src="/assets/images/icons/swal_icon/icon_info.svg"]')
+                       .parent().parent().parent()
+                       .addClass('swal_info');
+                    return;
+                }
+
+                LeaveAdd(OnDutyLeave, notificationParams);
+                
+            }
+        }
+        function LeaveAdd(OnDutyLeave, notificationParams) {
+            
+            $.ajax({
+                type: "POST",
+                url: "/ESS/LeaveCreate?OnDutyLeave=" + JSON.stringify(OnDutyLeave),
+                contentType: "application/json",
+                success: function (response) {
+
+                    if (response.isRedirect) {
+                        window.location.href = response.redirectUrl;
+                    }
+                    //if (response.startsWith('\r\n\r')) {
+                    //    window.location = "/PayTime/Index";
+                    //}
+                    if (response != null) {
+                        var message = response.message;
+                        var leaveId = response.leaveId;
+                        var _Meg = response.Meg;
+
+                        if (message === "ok") {
+                            $('#frmpopup').modal('toggle');
+                            toastr.remove();
+                            toastr.success("Leave added successfully.");
+                            var uploaddoc = $("#UploadLeaveDoc").val();
+                            $("#leaveTypeDurationBlock").hide();
+                            if (uploaddoc != null && uploaddoc !== "") {
+                                window.setTimeout(function () {
+                                    $("#frmupload").submit();
+                                }, 1000);
+                            }
+                            else {
+                                setTimeout(function () {
+                                    Clear();
+                                    window.location.href = "/ESS/LeaveRequest";
+                                }, 1000);
+                            }
+                            // ✅ Add leaveId into notificationParams here
+                            if (leaveId != 0) {
+                                notificationParams.LeaveCorrectionID = leaveId;
+                            }
+                            //// 📤 Send notification in background (non-blocking)
+                            setTimeout(function () {
+                                sendLeaveRequestNotification(notificationParams);
+                            }, 1000);
+                        }
+                        else {
+                            toastr.remove();
+                            toastr.error(_Meg);
+                        }
+
+                    }
+                },
+                beforeSend: function () {
+                    $("#ajax_loaderCompany").show();
+                },
+                complete: function () {
+                    $("#ajax_loaderCompany").hide();
+                },
+                error: function (jqXHR, ajaxOptions, thrownError) {
+                    $(".loading").hide();
+
+                    if (jqXHR.status == 500) { //InternalServerError = 500,
+                        toastr.error("InternalServerError");
+                    } else if (jqXHR.status == 400) { //BadRequest = 400,
+                        toastr.error("BadRequest");
+                    } else if (jqXHR.status == 401) {
+                        window.location.href = "/PayTime/LoginPage";
+                    } else {
+                        toastr.error("An error occurred while processing your request.");
+                    }
+                }
+            });
+        }
+        function valid() {
+            var Employee = id;
+            var Leave = $("#ddlLeaveType").val();
+            var FromDate = $("#txtFromDate").val();
+            var ToDate = $("#txtToDate").val();
+            var Reason = $("#txtReason").val();
+            var IsHalfLeave = 0;
+            if ($('#chkIsHalfLeave').is(':checked') == true) {
+                IsHalfLeave = true;
+            }
+            else {
+                IsHalfLeave = false;
+            }
+            var days;
+            if ("@_isdateformat" == "dd-mm-yyyy") {
+                var fromDate = $("#txtFromDate").val().split("-");
+                var _Fromdate = fromDate[2] + "-" + fromDate[1] + "-" + fromDate[0];
+                var toDate = $("#txtToDate").val().split("-");
+                var _toDate = toDate[2] + "-" + toDate[1] + "-" + toDate[0];
+            }
+            else if ("@_isdateformat" == "mm-dd-yyyy") {
+                var fromDate = $("#txtFromDate").val().split("-");
+                var _Fromdate = fromDate[2] + "-" + fromDate[0] + "-" + fromDate[1];
+                var toDate = $("#txtToDate").val().split("-");
+                var _toDate = toDate[2] + "-" + toDate[0] + "-" + toDate[1];
+            }
+            else if ("@_isdateformat" == "yyyy-mm-dd") {
+                var fromDate = $("#txtFromDate").val().split("-");
+                var _Fromdate = fromDate[0] + "-" + fromDate[1] + "-" + fromDate[2];
+                var toDate = $("#txtToDate").val().split("-");
+                var _toDate = toDate[0] + "-" + toDate[1] + "-" + toDate[2];
+            }
+            else if ("@_isdateformat" == "yyyy-M-dd") {
+                var fromDate = $("#txtFromDate").val().split("-");
+                var _Fromdate = fromDate[0] + "-" + fromDate[1] + "-" + fromDate[2];
+                var toDate = $("#txtToDate").val().split("-");
+                var _toDate = toDate[0] + "-" + toDate[1] + "-" + toDate[2];
+            }
+            else if ("@_isdateformat" == "M-dd-yyyy") {
+                var fromDate = $("#txtFromDate").val().split("-");
+                var _Fromdate = fromDate[2] + "-" + fromDate[0] + "-" + fromDate[1];
+                var toDate = $("#txtToDate").val().split("-");
+                var _toDate = toDate[2] + "-" + toDate[0] + "-" + toDate[1];
+            }
+            else if ("@_isdateformat" == "dd-M-yyyy") {
+                var fromDate = $("#txtFromDate").val().split("-");
+                var _Fromdate = fromDate[2] + "-" + fromDate[1] + "-" + fromDate[0];
+                var toDate = $("#txtToDate").val().split("-");
+                var _toDate = toDate[2] + "-" + toDate[1] + "-" + toDate[0];
+            }
+            var start1 = _Fromdate;
+            var end1 = _toDate;
+            if ($("#hfAvailBal").val().indexOf("-") != -1) {
+            }
+            else {
+
+                if (IsHalfLeave == 1) {
+                    var diff = Date.parse(end1) - Date.parse(start1);
+                    days = diff / 1000 / 60 / 60 / 24;
+                    days = (days + 1) / 2;
+                }
+                else {
+                    var diff = Date.parse(end1) - Date.parse(start1);
+                    days = diff / 1000 / 60 / 60 / 24;
+                    days = days + 1;
+                }
+
+                if ($("#hfAvailBal").val() != 0) {
+                    var _dydif = parseFloat($("#hfAvailBal").val()) >= parseFloat(days);
+                    if (_dydif != "1") {
+                        toastr.remove();
+                        toastr.error("You have not enough leave balanace..!!");
+                        return false;
+                    }
+                }
+            }
+            if ($("#OnDutyLeaveId").val() == "0") {
+                if (Employee == "0") {
+                    toastr.remove();
+                    toastr.error("Please select employee.");
+                    return false;
+                }
+            }
+
+            if ($("#fromdate").val() > $("#todate").val()) {
+                toastr.remove();
+                toastr.error("To date should be greater than from date.");
+                event.preventDefault();
+                return false;
+            }
+
+            if (Leave == "0") {
+                $("#ddlLeaveType").addClass('field_error');
+
+                return false;
+            }
+            if (FromDate.trim() == "") {
+                $("#txtFromDate").addClass('field_error');
+
+                return false;
+            }
+            else if ($("#txtFromDate").val() != "" && '@_lockAttendanceDay' != "" && ('@_PlanId' == '6' || '@_PlanId' == '5' || '@_PlanId' == '3')) {
+                var _data = $("#txtFromDate").val();
+                var date = _data.split('-');
+                if ("@_isdateformat" == "dd-mm-yyyy") {
+                    var firstValue = date[2] + "-" + date[1] + "-" + date[0] //yyyy-mm-dd
+                }
+                else if ("@_isdateformat" == "yyyy-mm-dd") {
+                    var firstValue = date[0] + "-" + date[1] + "-" + date[2] //yyyy-mm-dd
+                }
+                else if ("@_isdateformat" == "mm-dd-yyyy") {
+                    var firstValue = date[2] + "-" + date[1] + "-" + date[0] //yyyy-mm-dd
+                }
+                else if ("@_isdateformat" == "yyyy-M-dd") {
+                    var _date = new Date(date[2] + " " + date[1] + " " + date[0]);
+                    var locale = "en-us";
+                    var month = _date.toLocaleString(locale, { month: "numeric" });
+                    var firstValue = date[0] + "-" + month + "-" + date[2] //yyyy-mm-dd
+                }
+                else if ("@_isdateformat" == "M-dd-yyyy") {
+                    var _date = new Date(date[1] + " " + date[0] + " " + date[2]);
+                    var locale = "en-us";
+                    var month = _date.toLocaleString(locale, { month: "numeric" });
+                    var firstValue = date[2] + "-" + month + "-" + date[1] //yyyy-mm-dd
+                }
+                else if ("@_isdateformat" == "dd-M-yyyy") {
+                    var _date = new Date(date[0] + " " + date[1] + " " + date[2]);
+                    var locale = "en-us";
+                    var month = _date.toLocaleString(locale, { month: "numeric" });
+                    var firstValue = date[2] + "-" + month + "-" + date[0] //yyyy-mm-dd
+                }
+                firstValue = firstValue.split('-');
+                var s_date = new Date();
+                var secondValue = (s_date.getFullYear() + "-" + (s_date.getMonth() + 1) + "-" + '@_lockAttendanceDay').split('-');
+                var firstDate = new Date();
+                firstDate.setFullYear(firstValue[0], (firstValue[1] - 1), firstValue[2]);
+                var secondDate = new Date();
+                secondDate.setFullYear(secondValue[0], (secondValue[1] - 1), 1);
+                var secondDate_pev_month = new Date();
+                secondDate_pev_month.setFullYear(secondValue[0], (secondValue[1] - 2), 1);
+                var Current_date = new Date();
+                var Lock_date_day = new Date();
+                Lock_date_day.setFullYear(secondValue[0], (secondValue[1] - 1), '@_lockAttendanceDay');
+                if (firstDate < secondDate) {
+                    if (firstDate >= secondDate_pev_month && Current_date <= Lock_date_day) {
+
+                    } else {
+                        toastr.remove();
+                        toastr.error("Please change the date because your attendance is locked on this date");
+                        event.preventDefault();
+                        $("#txtFromDate").addClass('field_error');
+                        return false;
+                    }
+                }
+            }
+            if (ToDate.trim() == "") {
+                $("#txtToDate").addClass('field_error');
+                return false;
+            }
+            if (Reason.trim() == "") {
+                $("#txtReason").addClass('field_error');
+                return false;
+            }
+            else {
+                $(".popMsg").hide();
+            }
+            if ($("#uploadDoc").is(":visible") && $("#UploadLeaveDoc").val() == "") {
+                toastr.remove();
+                toastr.error("Please upload document.");
+                return false;
+            }
+            return true;
+        }
+        function Clear() {
+            $("#ddlLeaveType").val("0");
+            $("#ddlLeavePaid").val("0");
+            $("#OnDutyLeaveId").val("0");
+            $("#txtFromDate").val("");
+            $("#txtToDate").val("");
+            $("#txtReason").val("");
+            $("#chkIsHalfLeave").prop('checked', false);
+            $(".alert-danger").hide();
+            $(".alert-success").hide();
+            $(".alert-danger").text("");
+            $(".alert-success").text("");
+            $("#lblLeaveBalance").text("0");
+            $("#lblEncashLeave").text("0");
+            $("#lblTotalBalance").text("0");
+            $("#hfAvailBal").val(0);
+            $("#hfEmpCode").val("0");
+            $("#chkIsHalfLeave").prop('disabled', true);
+            $("#uploadDoc").hide();
+            $('#UploadLeaveDoc').val('');
+            $("#leaveTypeDurationBlock").hide();
+        }
+
+    });
+    function getLocation() {
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(showPosition, showError);
+        } else {
+            x.innerHTML = "Geolocation is not supported by this browser.";
+        }
+    }
+    function showPosition(position) {
+        var lat = position.coords.latitude;
+        var long = position.coords.longitude;
+        $("#lat").val(lat);
+        $("#lag").val(long);
+        var LatLng = new google.maps.LatLng(lat, long);
+        $("#latlag").val(LatLng);
+    }
+    function showError(error) {
+        switch (error.code) {
+            case error.PERMISSION_DENIED:
+                showerrormsg("Geolocation is unavailable or user denied the request for geolocation.");
+                break;
+            case error.POSITION_UNAVAILABLE:
+                showerrormsg("Location information is unavailable.");
+                break;
+            case error.TIMEOUT:
+                showerrormsg("The request to get user location timed out.");
+                break;
+            case error.UNKNOWN_ERROR:
+                showerrormsg("An unknown error occurred.");
+                break;
+        }
+    }
+    function showerrormsg(errormsg) {
+        toastr.remove();
+        toastr.warning(errormsg);
+    }
+    function Gcode() {
+        var latitude = $("#lat").val();
+        var longitude = $("#lag").val();
+        var LatLng = new google.maps.LatLng(latitude, longitude);
+        var geocoder = new google.maps.Geocoder;
+        geocoder.geocode({ 'location': LatLng }, function (results, status) {
+            if (status === 'OK') {
+                if (results[0]) {
+                    $("#latlagAddress").val(results[0].formatted_address);
+                } else {
+                    window.alert('No results found');
+                }
+            } else {
+                var apikey = 'AIzaSyDAtmmQTRUSi5Yc5X_09t-HW6fBbQaUjMQ';
+                var query = 'https://maps.googleapis.com/maps/api/geocode/json?address=' + latitude + ',' + longitude + '&key=' + apikey;
+                $.getJSON(query, function (data) {
+                    if (data.status === 'OK') {
+                        $("#latlagAddress").val(data.results[0].formatted_address);
+                    }
+                });
+            }
+        });
+    }
+    function checkSession() {
+        $.ajax({
+            type: "GET",
+            async: false,
+            url: "/ESS/checkSession",
+            contentType: "application/json; charset=utf-8",
+            success: function (data) {
+                if (data.isRedirect) {
+                    window.location.href = data.redirectUrl;
+                }
+            },
+            error: function (data) {
+                window.location.href = data;
+            }
+        });
+    }
+    function sendLeaveRequestNotification(params, successCallback, errorCallback)
+    {
+        //?? Call to send notification (Backend API call)
+        $.ajax({
+            url:'@_webapiurl' + "NotificationRuleDetails/LeaveRequestNotification",
+            type: 'POST',
+            headers: { 'Authorization': '@_tokan' },
+            dataType: "json",
+            data: {
+                EmpId: params.EmpId,
+                InPunchTime: params.InPunchTime,
+                OutPunchTime: params.OutPunchTime,
+                ApplyReason: params.ApplyReason,
+                LeaveTypeName: params.LeaveTypeName,
+                EmployeeName: params.EmployeeName,
+                EventId: params.EventId,
+                LeaveCorrectionID: params.LeaveCorrectionID,
+            },
+            success: function (response) {
+                console.log("Notification sent successfully:", response);
+                if (typeof successCallback === 'function') {
+                    successCallback(response);
+                }
+            },
+            error: function (xhr, status, error) {
+                // Do not show error to user; log for dev
+                console.warn("Notification sending failed:", error);
+                if (typeof errorCallback === 'function') {
+                    errorCallback(xhr, status, error);
+                }
+            }
+        });
+    }
+
+</script>
+
+<div class="page-bar">
+    @if (_RoleId == 1 || _RoleId == 6805 || _RoleId == 6806)
+    {
+        <ul class="page-breadcrumb">
+            <li>
+                @if (isClientDBMatchFlag == "True")
+                {
+                    <a href="/Admin/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+                }
+                else
+                {
+                    <a href="/Dashboard/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+                }
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> Leave Request</span>
+            </li>
+        </ul>
+    }
+    else
+    {
+        <ul class="page-breadcrumb">
+            <li>
+                <a href="/Dashboard/EmployeeDashboard"><i class="fa-regular fa-house"></i></a>
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> Leave Request</span>
+            </li>
+        </ul>
+    }
+    @if (obj.CanAdd)
+    {
+        <div class="page-toolbar text-right">
+            <a href="#" id="btnAddLeave" class="btn icon_transparent_btn tooltips" data-placement="left" data-original-title="Add Leave"><i class="fa-solid fa-plus"></i></a>
+        </div>
+    }
+</div>
+
+@if (obj.CanView)
+{
+    <div class="row">
+        @*<div id='ajax_loader' class="loading" style="display: none;">
+                <img src="~/LandingAssets/images/loading.gif" style="margin-top: 8%; cursor: auto; width: 30%; vertical-align: text-bottom;" />
+            </div>*@
+        <div class="col-md-12">
+            <div class="portlet">
+
+
+                <div class="portlet-body">
+                    @if (ViewBag.allemp.Count != 0)
+                    {
+                        <div class="table-responsive" id="tableResponsive_leave_request">
+                            <table id="tblOnDutyLeave" class="table new_datatbl table-striped table-bordered table-hover table-checkable order-column ">
+                                <thead>
+                                    <tr>
+                                        <th hidden>Sr. No</th>
+                                        <th hidden>Leave ID</th>
+                                        <th>Leave Type</th>
+                                        <th>From Date <i class='fa-regular fa-circle-info tooltips' data-placement='bottom' title='Date format is : @_isdateformat.ToUpper()' style='color: #295097;'></i></th>
+                                        <th>To Date <i class='fa-regular fa-circle-info tooltips' data-placement='bottom' title='Date format is : @_isdateformat.ToUpper()' style='color: #295097;'></i></th>
+                                        <th>Reason</th>
+                                        <th>Leave Status</th>
+                                        <th hidden> LeaveTypeId </th>
+                                        <th > Is HalfLeave </th>
+                                        <th > Leave Paid </th>
+                                        <th hidden> LeaveDoc </th>
+                                        <th>Action</th>
+                                    </tr>
+                                </thead>
+                                @{
+                                    int n = 1;
+                                }
+                                <tbody>
+                                    @if (ViewBag.allemp != null)
+                                    {
+                                        foreach (var item in ViewBag.allemp)
+                                        {
+                                            <tr>
+                                                <td hidden>@n</td>
+                                                <td hidden>@item.LeaveId</td>
+                                                <td>@item.LeaveTypeName</td>
+                                                <td>@item.FromDate</td>
+                                                <td>@item.ToDate</td>
+                                                <td>@item.ApplyReason</td>
+                                                <td>@item.LeaveStatusName</td>
+                                                <td hidden>@item.LeaveTypeId </td>
+                                                <td >@item.IsHalfLeave </td>
+                                                <td>@(item.LeavePaid == 0 ? "Unpaid" : "Paid")</td>
+                                                <td hidden>@item.LeaveDoc </td>
+                                                <td id="Col_@item.LeaveId">
+
+                                                    @{
+                                                        DateTime? fromdate = null; // Declare fromdate at a higher scope and initialize it as nullable
+
+                                                        if (_isdateformat == "yyyy-mm-dd")
+                                                        {
+                                                            fromdate = DateTime.ParseExact(item.FromDate, "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture);
+                                                        }
+                                                        else if (_isdateformat == "mm-dd-yyyy")
+                                                        {
+                                                            fromdate = DateTime.ParseExact(item.FromDate, "MM-dd-yyyy", System.Globalization.CultureInfo.InvariantCulture);
+                                                        }
+                                                        else if (_isdateformat == "dd-mm-yyyy")
+                                                        {
+                                                            fromdate = DateTime.ParseExact(item.FromDate, "dd-MM-yyyy", System.Globalization.CultureInfo.InvariantCulture);
+                                                        }
+                                                        else if (_isdateformat == "yyyy-M-dd")
+                                                        {
+                                                            fromdate = DateTime.ParseExact(item.FromDate, "yyyy-MMM-dd", System.Globalization.CultureInfo.InvariantCulture);
+                                                        }
+                                                        else if (_isdateformat == "M-dd-yyyy")
+                                                        {
+                                                            fromdate = DateTime.ParseExact(item.FromDate, "MMM-dd-yyyy", System.Globalization.CultureInfo.InvariantCulture);
+                                                        }
+                                                        else if (_isdateformat == "dd-M-yyyy")
+                                                        {
+                                                            fromdate = DateTime.ParseExact(item.FromDate, "dd-MMM-yyyy", System.Globalization.CultureInfo.InvariantCulture);
+                                                        }
+                                                    }
+
+                                                    @if (fromdate.HasValue && fromdate.Value.ToString("yyyy-MM") == DateTime.Now.ToString("yyyy-MM"))
+                                                    {
+                                                        if (_RoleId == 1 && @item.LeaveStatus == 3)
+                                                        {
+                                                            <a href="javascript:;" class="btn red_btnnew tooltips btnnotification" data-placement="top" title="Notification" data-id="@item.LeaveId" ><i class="fa-light fa-bell"></i></a>
+                                                            <a href="javascript:;" class="btn red_btnnew tooltips cancel" data-placement="top" title="Cancel Leave" id="btncancelleave"><i class="fa-regular fa-ban"></i></a>
+                                                        }
+                                                        else if (_RoleId > 1 && obj.CanEdit && _RoleId != 6805 && _RoleId != 6806 && @item.LeaveStatus == 3)
+                                                        {
+                                                            <a href="javascript:;" class="btn red_btnnew tooltips btnnotification" data-placement="top" title="Notification" data-id="@item.LeaveId"><i class="fa-light fa-bell"></i></a>
+                                                            <a href="javascript:;" class="btn red_btnnew tooltips cancel" data-placement="top" title="Cancel Leave" id="btncancelleave"><i class="fa-regular fa-ban"></i></a>
+                                                        }
+                                                    }
+
+                                                </td>
+                                            </tr>
+                                            n++;
+                                        }
+
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    else
+                    {
+                        <div id="NotificationGrid-empty">
+                            <div class="datanotfound">
+                                <img src="~/assets/images/emptyscreen_1.png" height="148" width="280" alt="Nodata Found Icon">
+                                <p class="datanotfound_title">No data found</p> <!-- titleText -->
+                                <p class="">No entries found. Please add a record to get started.</p><!-- subText -->
+                            </div>
+                        </div>
+                    }
+
+                    <div id='ajax_loaderCompany' class="modal_bg loading">
+                        <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading" />
+                    </div>
+
+                    <div id="frmpopup" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+                        <div class="modal-dialog">
+                            <!-- Modal content-->
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                                    <h4 class="modal-title">Leave Request</h4>
+                                </div>
+                                <div class="modal-body">
+                                    <div class="alert alert-danger popMsg" hidden>
+                                        <a href="#" class="close" data-dismiss="alert">&times;</a>
+                                        <strong id="strstg">Error ! </strong> @_error
+                                    </div>
+                                    <div class="modal-card">
+                                        <div class="row setup-content" id="step-1">
+                                            <fieldset>
+                                                <input type="hidden" id="OnDutyLeaveId" value="0">
+                                                <input type="hidden" id="hfEmpCode" value="0">
+                                                <input type="hidden" id="hfAvailBal" value="0">
+                                                <input type="hidden" id="CompanyID" value="0" />
+                                                <input type="hidden" id="BranchID" value="0" />
+                                                <input type="hidden" id="ddlEmployee" value="@Convert.ToInt32(Session["EmpId"])">
+                                                <input type="hidden" id="IsPaidFlag" value="0" />
+
+                                                <div class="col-md-12">
+                                                    <div class="row">
+                                                        <div class="col-md-6">
+                                                            <div class="form-group">
+                                                                <label>Leave <span class="required" aria-required="true"> * </span></label>
+                                                                <select class="form-control input-sm" id="ddlLeaveType" name="ddlLeaveType">
+                                                                    <option value="0" selected>-- Select Leave --</option>
+                                                                    @foreach (var item in ViewBag.LeaveTypeList as IEnumerable<SelectListItem>)
+                                                                    {
+                                                                        <option value="@item.Value">@item.Text</option>
+                                                                    }
+                                                                </select>
+                                                            </div>
+                                                            <div class="form-group data_picker_box">
+                                                                <label>From Date <span class="required" aria-required="true"> * </span></label>
+                                                                <div class="input-group input-group-sm date date-picker" data-date="@DateTime.Now" data-date-format="@_isdateformat" data-date-viewmode="years">
+                                                                    <span class="input-group-btn">
+                                                                        <button class="btn default" type="button">
+                                                                            <i class="fa-light fa-calendar-days"></i>
+                                                                        </button>
+                                                                    </span>
+                                                                    @if (_isdateformat == "dd-M-yyyy" || _isdateformat == "M-dd-yyyy" || _isdateformat == "yyyy-M-dd")
+                                                                    {
+                                                                        <input type="text" class="form-control" id="txtFromDate" placeholder="@_isdateformat.Replace("M","MMM")" autocomplete="off">
+                                                                    }
+                                                                    else
+                                                                    {
+                                                                        <input type="text" class="form-control" id="txtFromDate" placeholder="@_isdateformat" autocomplete="off">
+                                                                    }
+                                                                </div>
+
+                                                            </div>
+
+                                                            <div class="form-group margin-top-30">
+                                                                <label class="check mt-checkbox mt-checkbox-outline">
+                                                                    <input type="checkbox" id="chkIsHalfLeave" class=""> Is Half-Leave?
+                                                                    <span></span>
+                                                                </label>
+                                                            </div>
+
+                                                        </div>
+                                                        <div class="col-md-6">
+                                                            <div class="form-group">
+                                                                <label>Leave Type </label>
+                                                                <select class="form-control input-sm" id="ddlLeavePaid" name="ddlLeavePaid">
+                                                                    <option value="0" selected>UnPaid</option>
+                                                                    <option value="1" selected>Paid</option>
+                                                                </select>
+                                                            </div>
+
+                                                            <div class="form-group data_picker_box">
+                                                                <label>To Date <span class="required" aria-required="true"> * </span></label>
+                                                                <div class="input-group input-group-sm date date-picker" data-date-format="@_isdateformat" data-date-viewmode="years">
+                                                                    <span class="input-group-btn">
+                                                                        <button class="btn default" type="button">
+                                                                            <i class="fa-light fa-calendar-days"></i>
+                                                                        </button>
+                                                                    </span>
+                                                                    @if (_isdateformat == "dd-M-yyyy" || _isdateformat == "M-dd-yyyy" || _isdateformat == "yyyy-M-dd")
+                                                                    {
+                                                                        <input placeholder="@_isdateformat.Replace("M","MMM")" type="text" id="txtToDate" data-date-format="@_isdateformat" class="form-control" autocomplete="off">
+                                                                    }
+                                                                    else
+                                                                    {
+                                                                        <input placeholder="@_isdateformat" type="text" id="txtToDate" data-date-format="@_isdateformat" class="form-control" autocomplete="off">
+                                                                    }
+                                                                </div>
+                                                            </div>
+                                                            <div class="form-group" id="uploadDoc">
+                                                                <form id="frmupload" method="post" action="/ESS/UploadLeaveRequestDocument" enctype="multipart/form-data">
+                                                                    <div class="form-group">
+                                                                        <label>Upload Document <span class="required" aria-required="true" id="uploadleaveid"> * (File size Required 5 MB. and extension files:.pdf,.png,.jpg,.jpeg)</span></label>
+                                                                        <input type="file" name="UploadLeaveDoc" id="UploadLeaveDoc" value="">
+                                                                    </div>
+                                                                </form>
+                                                            </div>
+                                                        </div>
+                                                        <div class="col-md-6" id="leaveTypeDurationBlock" style="display: none;">
+                                                            <div class="form-group">
+                                                                <label>Leave Summary</label>
+                                                                <select id="ddlLeaveDuration" class="form-control input-sm">
+                                                                    <option value="1" selected>First Half</option>
+                                                                    <option value="2">Second Half</option>
+                                                                </select>
+                                                            </div>
+                                                        </div>
+                                                        <div class="col-md-12">
+                                                            <div class="form-group">
+                                                                <label>Reason <span class="required" aria-required="true"> * </span></label>
+                                                                <textarea id="txtReason" class="form-control input-sm" maxlength="100"></textarea>
+                                                            </div>
+
+                                                            <div class="form-group">
+                                                                <div class="row">
+                                                                    <div class="col-md-4">
+                                                                        <div class="form-group">
+                                                                            <input type="hidden" id="latlag" name="latlag" value="">
+                                                                            <input type="hidden" id="lat" name="lat" value="">
+                                                                            <input type="hidden" id="lag" name="lag" value="">
+                                                                            <input type="hidden" id="latlagAddress" name="latlagAddress" value="">
+                                                                            <a class="btn default blue-stripe btn-block"><i class="fa-light fa-calendar-check"></i> Leave Balance  : <span id="lblLeaveBalance"> 0</span> </a>
+                                                                        </div>
+                                                                    </div>
+                                                                    <div class="col-md-5">
+                                                                        <div class="form-group">
+                                                                            <a class="btn default green-stripe btn-block"><i class="fa-light fa-calendar-plus"></i> Carry Forward leaves : <span id="lblEncashLeave"> 0</span> </a>
+                                                                        </div>
+                                                                    </div>
+                                                                    <div class="col-md-3">
+                                                                        <div class="form-group">
+                                                                            <a class="btn default red-stripe btn-block"><i class="fa-light fa-calendar-circle-plus"></i> Total : <span id="lblTotalBalance"> 0</span> </a>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </fieldset>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="modal-footer">
+                                    <div class="row">
+                                        <div class="col-lg-12 col-md-12 col-xs-12 col-xs-12 form-actions text-right">
+                                            <button type="submit" id="btnSave" class="btn btn-sm blue"><i class="fa-light fa-floppy-disk"></i> Save</button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    <span style="color:red">Unauthorized Access.</span>
+
+}
+
+
+
+
+
+

@@ -1,0 +1,2007 @@
+﻿@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@using System.Configuration;
+@using EMSWebClient;
+@{
+    ViewBag.Title = "Policies";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    string _Message = ViewBag.msg;
+    string _error = ViewBag.error;
+    //string _flgempover = ViewBag.flgempover;
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    int _UserId = Convert.ToInt32(HttpContext.Current.Session["UserId"]);
+    int _cmpid = Convert.ToInt32(HttpContext.Current.Session["CompanyId"]);
+    //int _islimit = ViewBag.Islimit;
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiEMSURL = ConfigurationManager.AppSettings["WebApiEMS"].ToString();
+    // string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    string _accountcd = HttpContext.Current.Session["cmpcode"].ToString();
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+    //bool _isReligion = ViewBag.isReligion;
+    //bool _hasSMS = ViewBag.HasSMS;
+    //bool _IsEss = ViewBag.IsEss;
+    string _companyid = "0";
+    string _empid = "0";
+
+    //if (_RoleId != 1 && _RoleId != 6805 && _RoleId != 6806)
+    //{
+    //    _empid = HttpContext.Current.Session["EmpId"].ToString();
+    //}
+    //string _branchid = "0";
+    //if (_RoleId == 6805)
+    //{
+    //    _companyid = HttpContext.Current.Session["ClientCompanyId"].ToString();
+    //}
+    //if (_RoleId == 6806)
+    //{
+    //    _companyid = HttpContext.Current.Session["ClientCompanyId"].ToString();
+    //    _branchid = HttpContext.Current.Session["BranchId"].ToString();
+    //}
+    string _isPlanFace = HttpContext.Current.Session["isPlanFace"].ToString();
+    string _isdateformat = HttpContext.Current.Session["IsDateFormat"].ToString();
+
+    //string _CountryCode = HttpContext.Current.Session["CountryCode"].ToString();
+    //string _AreaCode = HttpContext.Current.Session["AreaCode"].ToString();
+    //string _dbName = HttpContext.Current.Session["DbName"].ToString();
+    //int _IsVerification = ViewBag.IsVerification;
+    string _isPlanId = HttpContext.Current.Session["planId"].ToString();
+
+    string isClientDBMatchFlag = HttpContext.Current.Session["IsClientDBMatch"] != null
+? HttpContext.Current.Session["IsClientDBMatch"].ToString()
+: "false"; // Default to "false" if the session is null
+}
+
+<link href="/Newlayout/css/payrollstructure.css" rel="stylesheet">
+<link href="/Newlayout/css/emsstructure.css" rel="stylesheet">
+<script src="~/Newlayout/js/sweet_alert_payroll.js"></script>
+<script src="~/Scripts/Helpers/noDataHandler.js"></script>
+
+<style type="text/css">
+    .tbl_newdatatbl > tbody > tr > td {
+        text-align: left !important;
+    }
+
+    .ui-widget-content {
+        height: 200px;
+        overflow-y: auto;
+    }
+</style>
+
+<script type="text/javascript">
+    var isdateformat1 = '@_isdateformat';
+    var Policies_table = "";
+    var Policy_AssignEmpView_table = "";
+    var checkedCount = 0;
+    var isDateformat = "yyyy-mm-dd";
+    var selectedBranch = "";
+    var Strselectedbranch = "";
+    var selectedDepartment = "";
+    var Strselecteddepartment = "";
+    var selectedDesignation = "";
+    var Strselecteddesignation = "";
+    var empid = "";
+    var empIds = [];
+    var empids = "";
+    var empname = "";
+    var empNames = [];
+    var empcode = "";
+    var empCodes = [];
+    var PolicyId = 0;
+    $(document).ready(function () {
+        checkSession();
+
+        getPolicies();
+        fillApprovalFlow();
+        fillBranchdll();
+        fillDepartmentdll();
+        fillDesignationdll();
+        create();
+
+        var DepartmentId = "";
+        var DesignationId = "";
+        var BranchIdlst = "";
+        var elementClicked = "";
+
+        var $Branchselect = $("#BranchId").multiselect({
+            selectAllValue: 'multiselect-all',
+            enableCaseInsensitiveFiltering: true,
+            includeSelectAllOption: true,
+            allSelectedText: 'All Select',
+            enableFiltering: true,
+            maxHeight: '300',
+            buttonWidth: '100%',
+            enableClickableOptGroups: true
+        });
+
+        var $Departmentselect = $("#DepartmentId").multiselect({
+            selectAllValue: 'multiselect-all',
+            enableCaseInsensitiveFiltering: true,
+            includeSelectAllOption: true,
+            allSelectedText: 'All Select',
+            enableFiltering: true,
+            maxHeight: '300',
+            buttonWidth: '100%',
+            enableClickableOptGroups: true
+        });
+
+        var $Designationselect = $("#DesignationId").multiselect({
+            selectAllValue: 'multiselect-all',
+            enableCaseInsensitiveFiltering: true,
+            includeSelectAllOption: true,
+            allSelectedText: 'All Select',
+            enableFiltering: true,
+            maxHeight: '300',
+            buttonWidth: '100%',
+            enableClickableOptGroups: true
+        });
+
+        $("#tbl_Policies tfoot th").each(function (index) {
+            var title = $(this).text();
+            if (index === 14 || index === 15) {
+                $(this).html(''); // No input
+            }
+            else {
+                $(this).html('<input type="text" class="search_input" placeholder="Search" /><i class="clm-search" id=""></i>');
+            }
+
+        });
+        $(document).on("click", ".close", function () {
+            getPolicies();
+        });
+
+
+
+
+        window.pressed = function () {
+            var a = document.getElementById('FileUpload');
+            if (a.value == "") {
+                fileLabel.innerHTML = "";
+            }
+            else {
+                var theSplit = a.value.split('\\');
+                fileLabel.innerHTML = theSplit[theSplit.length - 1];
+            }
+        };
+
+        //$("#btnclose").on('click', function () {
+        //    $(".dataTables_filter").removeClass("active");
+        //    window.location.reload();
+        //    //location.reload();
+        //})
+
+        var select = $('#App_till');
+        select.empty();
+        select.append('<option value="0">Select Days</option>');
+        for (var i = 1; i <= 30; i++) {
+            select.append('<option value="' + i + '">' + i + ' Days</option>');
+        }
+
+
+        $(document).on("click", "a[class^='remove_emp_']", function (e) {
+
+            e.preventDefault();
+            $(this).closest('.emp_item').remove();
+            var empIdToRemove = parseInt($(this).attr('class').split(' ')[0].split('_')[2]);
+            var index = empIds.indexOf(empIdToRemove);
+            if (index !== -1) {
+                empIds.splice(index, 1);
+            }
+            var empIdToRemaining = empIds.join(',');
+            empids = empIdToRemaining;
+        });
+
+        $("#clearEmpName").on("click", function () {
+            var index = $(this).index();
+            empIds.splice(index, 1);
+            $("#Show_EmpName span").text(empIds.join(", "));
+
+            //$("#Show_EmpName span").text("");
+            //$("#hfCustomer").val("");
+        });
+        $('#PolicyName').keydown(function (e) {
+            if (this.value.length === 0 && e.which === 32) e.preventDefault();
+        });
+        //================================= Add Policy Modal Code : Begin  ==================================
+
+        // Add Approval flow modal open and close
+        $("#AddPolicyBtn").on('click', function () {
+            
+            $('#PolocyId').closest('.col-lg-6').hide();
+            //$('#PolocyId').closest('.col-lg-6').hide();
+            $('#PolicyName').closest('.col-lg-6').addClass('col-lg-12');
+            var curdate = Date.now();
+            frmClear();
+            $("#AddPolicyBtn").attr("data-toggle", "modal");
+            $("#AddPolicyBtn").attr("data-target", "#AddPolicyBtn_modal");
+        });
+
+        //================================= View Policy Assigned Employee Modal Code : End  ==================================
+
+
+        $("#tbl_Policies").on('click', '.employeeCount', function ()
+        {
+            
+            checkSession();
+            var selectedRow = $(this).closest("tr");
+            var ExpPolicyID = selectedRow.find(".ExpPolicyID").text();
+            var Status = selectedRow.find(".Policy_Status").text();
+            var CountDetails = selectedRow.find(".employeeCount").text();
+
+            if (Status == "Active" && CountDetails !=0)
+            {
+                $(".EmployeeIds").attr("data-toggle", "modal");
+                $(".EmployeeIds").attr("data-target", "#AssignedEmpBtn_modal");
+
+                $("#tblViewAssignEmp tfoot th").each(function (index)
+                {
+                    var title = $(this).text();
+                    if (index != 0) {
+                        $(this).html('<input type="text" class="search_input" placeholder="Search" /><i class="clm-search" id=""></i>');
+                    }else{
+                        $(this).html('');
+                    }
+                });
+                getpolicyEmpView(ExpPolicyID);
+            }
+        });
+
+        // In Active Button Click Open Swal Modal
+        $("#InActive_Btn").on('click', function () {
+            Swal.fire({
+                html: '<div class="swal_title">Inactive Policy</div><div class="swal_subtitle grey_font">Are you sure? Do you want to inactive Policy</div></div>',
+                closeOnConfirm: true,
+                showCloseButton: false,
+                showCancelButton: true,
+                focusConfirm: false,
+                cancelButtonColor: '#d33',
+                cancelButtonText: 'Back',
+                confirmButtonColor: '#295097',
+                confirmButtonText: 'Yes',
+                allowOutsideClick: false,
+                allowEscapeKey: false,
+                customClass: {
+                    confirmButton: 'swal-confirm-button-class',
+                    cancelButton: 'swal-cancel-button-class'
+                }
+            });
+        });
+
+        $("#tbl_Policies").on('click', '.clm_edit_btn', function () {
+            //PolocyId
+            var isdateformat1 = '@_isdateformat';
+            checkSession();
+            frmClear();
+            var selectedRow = $(this).closest("tr");
+            $('#PolocyId').closest('.col-lg-6').show();
+            $('#PolicyName').closest('.col-lg-6').removeClass('col-lg-12').addClass('col-lg-6');
+            var policycode = selectedRow.find(".ExpPolicyID").text();
+            $("#PolocyId").val(policycode);
+
+            PolicyId = $(this).parent('td').parent('tr').children(1)[0].innerText.trim();
+            var effectiveDate = selectedRow.find(".EffectiveDate").text();
+
+            $("#Effect_Date").datepicker({ format: isdateformat1, todayHighlight: true, });
+            $("#Effect_Date").datepicker('setDate', effectiveDate);
+
+
+            var policyname = selectedRow.find(".PolicyName").text();
+            $("#PolicyName").val(policyname);
+
+            var _Approvelvl1 = $(this).parent('td').parent('tr').children(1)[9].innerText.trim();
+            var Approvedays = [];
+            Approvedays =_Approvelvl1.split(" ");
+            $("#App_till option[value = '" + Approvedays[0] + "' ]").prop("selected", true);
+            $('#App_till').trigger('change.select2');
+
+            var Description = selectedRow.find(".Description").text();
+            $("#policydesc").val(Description);
+
+            var Approvaflow = $(this).parent('td').parent('tr').children(1)[3].innerText.trim();
+            $("#Approvaflow option[value = '" + Approvaflow + "' ]").prop("selected", true);
+            $('#Approvaflow').trigger('change.select2');
+            policytype = $(this).parent('td').parent('tr').children(1)[10].innerText.trim();
+            $("#PolicyType").val(policytype);
+            if (policytype === "Expense") {
+                // Disable Travel_data
+                $("#Expense_data").prop('checked', true);
+                $("#Travel_data").prop('disabled', true);
+            } else if (policytype === "Travel") {
+                // Disable Expense_data
+                $("#Travel_data").prop('checked', true);
+                $("#Expense_data").prop('disabled', true);
+            }
+
+            var fileName = $(this).parent('td').parent('tr').children(1)[13].innerText.trim();
+            var filePath = $(this).parent('td').parent('tr').children(1)[17].innerText.trim();
+            $("#policyphotoname").val(fileName);
+            $("#policyphotopath").val(filePath);
+            $('.fileinput-filename').text(fileName);
+
+            selectedBranch= $(this).parent('td').parent('tr').children(1)[2].innerText.trim();
+            selectedBranch = selectedBranch.split("&quot;").join("");
+            selectedBranch = selectedBranch.split(" ").join("");
+            selectedBranch = selectedBranch.split(",");
+            Strselectedbranch = selectedBranch;
+            $('#BranchId').val(Strselectedbranch);
+            fillBranchdll(Strselectedbranch);
+
+            selectedDepartment= $(this).parent('td').parent('tr').children(1)[4].innerText.trim();
+            selectedDepartment = selectedDepartment.split("&quot;").join("");
+            selectedDepartment = selectedDepartment.split(" ").join("");
+            selectedDepartment = selectedDepartment.split(",");
+            Strselecteddepartment = selectedDepartment;
+            $('#DepartmentId').val(Strselecteddepartment);
+            fillDepartmentdll(Strselecteddepartment);
+
+            selectedDesignation = $(this).parent('td').parent('tr').children(1)[5].innerText.trim();
+            selectedDesignation = selectedDesignation.split("&quot;").join("");
+            selectedDesignation = selectedDesignation.split(" ").join("");
+            selectedDesignation = selectedDesignation.split(",");
+            Strselecteddesignation = selectedDesignation;
+            $('#DesignationId').val(Strselecteddesignation);
+            fillDesignationdll(Strselecteddesignation);
+
+            var ids = 0;
+            empid = $(this).parent('td').parent('tr').children(1)[1].innerText.trim();
+            empIds = empid.split(",");
+            empname = $(this).parent('td').parent('tr').children(1)[16].innerText.trim();
+            empNames = empname.split(",");
+
+
+
+            if (empIds.length === 1 && empIds[0] === "null")
+            {
+                console.log("empIds contains only 'null', skipping...");
+            } else
+            {
+                var _empcnt = 0;
+                for (var i = 0; i < empIds.length; i++) {
+
+                    if (!empIds[i] || empIds[i] === "null") continue;
+
+                    var removeButton = '<a href="#" class="remove_emp_' + empIds[i] + '"><i class="fa-solid fa-xmark"></i></a>';
+                    var newText = (empNames[i] || "") + removeButton;
+                    var newSpan = $('<span></span>').html(newText);
+
+                    $("#Show_EmpName").append(newSpan);
+
+                    empids = empIds.join(',');
+                    _empcnt = empNames[i];
+                }
+            }
+            var policycodeNew = selectedRow.find(".PolicyCode").text();
+            $("#_PolicyIDNew").val(policycodeNew);
+
+            $(".clm_edit_btn").attr("data-toggle", "modal");
+            $(".clm_edit_btn").attr("data-target", "#AddPolicyBtn_modal");
+
+        });
+
+        var _ApproveLvl1 = "";
+        var delay = 1000;
+        $("#tbl_Policies").on('click', '.clm_delete_btn', function () {
+            checkSession();
+            //var policyId = $(this).parent('td').parent('tr').children(5)[0].innerText.trim();
+            var ExpPolicyid = $(this).closest('tr').find('.ExpPolicyID').text().trim();
+
+            EStatus = 0;
+            if (ExpPolicyid > 0)
+            {
+                Swal.fire({
+                    title:"<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_error.svg' alt=''>Delete",
+                    html: `<div class="swal_subtitle"><b>Are you sure you want to remove this Police?</b> <p>This policy is assigned to one or more employees. Please unassign it from all employees before deleting.</p><div class="margin-top-10 text-left"></div></div>`,
+                    closeOnConfirm: true,
+                    showCloseButton: true,
+                    showCancelButton: true,
+                    focusConfirm: false,
+                    cancelButtonText: 'No',
+                    confirmButtonText: 'Yes',
+                    allowOutsideClick: false,
+                    allowEscapeKey: false,
+                    customClass: {
+                        confirmButton: 'swal-confirm-button-class',
+                        cancelButton: 'swal-cancel-button-class'
+                    }
+                }).then(function (isConfirm)
+                {
+                    if (isConfirm.isConfirmed == true)
+                    {
+                        $.ajax({
+                            type: "POST",
+                            headers: { 'Authorization': '@_tokan' },
+                            url: '@_webapiEMSURL' + 'ExpensePolicyMaster/DeleteExpensePolicyByPolicyID?PolicyID=' + ExpPolicyid  + "&EStatus=" + EStatus,
+                            contentType: "application/json; charset=utf-8",
+                            dataType: "json",
+                            beforeSend: function () {
+                                $("#ajax_loader").show();
+                            },
+                            success: function (response) {
+                                if (response != null) {
+                                    if (response.success == true)
+                                    {
+                                        if (response.responseCode == 221)
+                                        {
+                                            toastr.remove();
+                                            toastr.error(response.message);
+                                        }
+                                        else
+                                        {
+                                            toastr.remove();
+                                            toastr.success("InActive Successfully");
+                                        }
+                                        setTimeout(function ()
+                                        {
+                                            window.location.reload(true);
+                                        }, delay);
+                                    }
+                                    else
+                                    {
+                                        toastr.remove();
+                                        toastr.error(response.message);
+                                        setTimeout(function () {
+                                            window.location.reload(true);
+                                        }, delay);
+
+                                    }
+                                } else {
+                                    toastr.remove();
+                                    toastr.error(response.message);
+                                    setTimeout(function () {
+                                        window.location.reload(true);
+                                    }, delay);
+
+                                }
+                            },
+                            complete: function () {
+                                $("#ajax_loader").hide();
+                            }
+                        });
+                    }
+                });
+                $('img[src="/assets/images/icons/swal_icon/icon_error.svg"]')
+                    .closest('.swal2-popup')
+                    .addClass('swal_error');
+            }
+        });
+
+
+        $("#tbl_Policies").on('click', '.clm_renew_btn', function () {
+            checkSession();
+            var delay = 1000;
+            var ExpPolicyid = $(this).closest('tr').find('.ExpPolicyID').text().trim();
+            EStatus = 1;
+            if (ExpPolicyid > 0) {
+                $.ajax({
+                    type: "POST",
+                    headers: { 'Authorization': '@_tokan' },
+                    url: '@_webapiEMSURL' + 'ExpensePolicyMaster/DeleteExpensePolicyByPolicyID?PolicyID=' + ExpPolicyid + "&EStatus=" + EStatus,
+                    contentType: "application/json; charset=utf-8",
+                    dataType: "json",
+                    beforeSend: function () {
+                        $("#ajax_loader").show();
+                    },
+                    success: function (response) {
+                        if (response != null) {
+                            if (response.success == true) {
+                                toastr.remove();
+                                toastr.success("Activate Successfully.");
+                                setTimeout(function () {
+                                    window.location.reload(true);
+                                }, delay);
+                            }
+                            else {
+                                toastr.remove();
+                                toastr.error(response.message);
+                                setTimeout(function () {
+                                    window.location.reload(true);
+                                }, delay);
+                            }
+                        } else {
+                            toastr.remove();
+                            toastr.error(response.message);
+                            setTimeout(function () {
+                                window.location.reload(true);
+                            }, delay);
+                        }
+                    },
+                    complete: function () {
+                        $("#ajax_loader").hide();
+                    }
+                });
+            }
+        });
+        $("#btnclose").on('click', function () {
+            frmClear();
+        });
+
+        $("#btnReset").on('click', function () {
+            frmClear();
+        });
+
+        $(".ClsChkEmp").click(function () {
+            $('input:checkbox').not(this).prop('checked', this.checked);
+        });
+
+        $('#policydesc , #PolicyName').on('input', function () {
+            var exTitle = $(this).val();
+            if (!/^[a-zA-Z0-9\s]*$/.test(exTitle)) {
+                $(this).val(exTitle.replace(/[^a-zA-Z0-9\s]/g, ''));
+            }
+        });
+
+        $("#FileUpload").change(function () {
+            var fileLabel = document.querySelector('.fileinput-filename');
+            var GetfileName = document.getElementById('FileUpload');
+            var selectedfile = GetfileName.files[0].size;
+            var filename = GetfileName.files[0].name;
+            var isquality = true;
+            var validFileSize = 1000 * 1024;
+            if (selectedfile > validFileSize) {
+                toastr.remove();
+                toastr.error("Select File Between 0 to 1 MB.");
+                $(this).val("");
+                fileLabel.innerHTML = "";
+                return false;
+            }
+            var allowedFiles = [".bmp", ".png", ".jpg", ".jpeg", ".pdf"];
+            var fileUpload1 = $("#FileUpload");
+            var regex = new RegExp("([a-zA-Z0-9\s_\\.\-:])+(" + allowedFiles.join('|') + ")$");
+            if (!regex.test(fileUpload1.val().toLowerCase())) {
+                toastr.remove();
+                toastr.error("Please upload files having extensions:" + allowedFiles.join(', ') + " only.");
+                $(this).val("");
+                fileLabel.innerHTML = "";
+                return false;
+            }
+
+            var fileUpload = $("#FileUpload").get(0);
+            var files = fileUpload.files;
+            var fileData = new FormData();
+            for (var i = 0; i < files.length; i++) {
+                fileData.append(files[i].name, files[i]);
+            }
+            $.ajax({
+                url: '/ExpenseRequestMaster/EMSEmpReqMaster',
+                headers: { 'Authorization': '@_tokan' },
+                type: "POST",
+                processData: false,
+                contentType: false,
+                data: fileData,
+                success: function (result) {
+                    $("#policyphotoname").val(result.FileName);
+                    $("#policyphotopath").val(result.FilePath);
+                },
+                error: function (err) {
+                    $("#policyphotoname").val("");
+                    $("#policyphotopath").val("");
+                }
+            });
+        });
+
+        function formatDate(dateString) {
+            const dateFormat = "@_isdateformat";
+
+            if (!dateString) return "";
+
+            const parsedDate = moment(dateString);
+
+            if (!parsedDate.isValid()) return "";
+
+            switch (dateFormat) {
+                case "dd-M-yyyy":
+                    return parsedDate.format("YYYY-MM-DD");
+                case "dd-mm-yyyy":
+                    return parsedDate.format("YYYY-MM-DD");
+                case "M-dd-yyyy":
+                    return parsedDate.format("YYYY-MM-DD");
+                case "mm-dd-yyyy":
+                    return parsedDate.format("YYYY-MM-DD");
+                case "yyyy-M-dd":
+                    return parsedDate.format("YYYY-MM-DD");
+                case "yyyy-mm-dd":
+                    return parsedDate.format("YYYY-MM-DD");
+                default:
+                    return parsedDate.format("YYYY-MM-DD");
+                }
+            }
+
+        $("#Expense_data").change(function () {
+            if ($(this).is(":checked")) {
+                $('#PolicyType').val(1);
+            }
+        });
+
+        $("#Travel_data").change(function () {
+            if ($(this).is(":checked")) {
+                $('#PolicyType').val(2);
+            }
+        });
+
+        function normalizeToIsoDate(rawDateString) {
+            if (!rawDateString) return null; // Handle empty/undefined
+
+            // Case 1: dd-M-yyyy  => "04-Sep-2025"
+            let match = rawDateString.match(/^(\d{2})-([A-Za-z]{3})-(\d{4})$/);
+            if (match) {
+                let [, day, mon, year] = match;
+                const months = { Jan: "01", Feb: "02", Mar: "03", Apr: "04", May: "05", Jun: "06", Jul: "07", Aug: "08", Sep: "09", Oct: "10", Nov: "11", Dec: "12" };
+                if (months[mon]) return `${year}-${months[mon]}-${day}`;
+            }
+
+            // Case 2: dd-mm-yyyy => "04-09-2025"
+            match = rawDateString.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+            if (match) {
+                let [, day, month, year] = match;
+                return `${year}-${month}-${day}`;
+            }
+
+            // Case 3: M-dd-yyyy => "Sep-04-2025"
+            match = rawDateString.match(/^([A-Za-z]{3})-(\d{2})-(\d{4})$/);
+            if (match) {
+                let [, mon, day, year] = match;
+                const months = { Jan: "01", Feb: "02", Mar: "03", Apr: "04", May: "05", Jun: "06", Jul: "07", Aug: "08", Sep: "09", Oct: "10", Nov: "11", Dec: "12" };
+                if (months[mon]) return `${year}-${months[mon]}-${day}`;
+            }
+
+            // Case 4: mm-dd-yyyy => "09-04-2025"
+            match = rawDateString.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+            if (match) {
+                let [, month, day, year] = match;
+                return `${year}-${month}-${day}`;
+            }
+
+            // Case 5: yyyy-M-dd => "2025-Sep-04"
+            match = rawDateString.match(/^(\d{4})-([A-Za-z]{3})-(\d{2})$/);
+            if (match) {
+                let [, year, mon, day] = match;
+                const months = { Jan: "01", Feb: "02", Mar: "03", Apr: "04", May: "05", Jun: "06", Jul: "07", Aug: "08", Sep: "09", Oct: "10", Nov: "11", Dec: "12" };
+                if (months[mon]) return `${year}-${months[mon]}-${day}`;
+            }
+
+            // Case 6: yyyy-mm-dd => already ISO "2025-09-04"
+            match = rawDateString.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+            if (match) {
+                let [, year, month, day] = match;
+                return `${year}-${month}-${day}`;
+            }
+
+            // Default: try JS Date
+            let d = new Date(rawDateString);
+            if (!isNaN(d)) {
+                let year = d.getFullYear();
+                let month = (d.getMonth() + 1).toString().padStart(2, '0');
+                let day = d.getDate().toString().padStart(2, '0');
+                return `${year}-${month}-${day}`;
+            }
+
+            return null;
+        }
+
+        $("#BtnSubmitPolicy").on('click', function () {
+            var policytype= $("#PolicyType").val();
+            var policyid= $("#PolocyId").val();
+
+            if ($("#PolicyName").val() == "" || $("#PolicyName").val() == null) {
+                $("#PolicyName").addClass('field_error');
+                toastr.remove();
+                toastr.error("Please enter PolicyName.");
+                event.preventDefault();
+                return false;
+            }
+            else {
+                $("#PolicyName").removeClass('field_error');
+            }
+
+            if ($("#Effect_Date").val() == "" || $("#Effect_Date").val() == "") {
+                $("#Effect_Date").addClass('field_error');
+                toastr.remove();
+                toastr.error("Please enter Effective Date.");
+                event.preventDefault();
+                return false;
+            }
+            else {
+                $("#Effect_Date").removeClass('field_error');
+            }
+
+            if ($("#App_till").val() == "0") {
+                $("#App_till").addClass('field_error');
+                toastr.remove();
+                toastr.error("Please Select Approval days.");
+                event.preventDefault();
+                return false;
+            }
+
+            if ($("#Approvaflow").val() == "0") {
+                $("#Approvaflow").addClass('field_error');
+                toastr.remove();
+                toastr.error("Please Select Approval Flow.");
+                event.preventDefault();
+                return false;
+            }
+
+            if ($("#policyphotopath").val() == "" ||$("#policyphotoname").val() == "") {
+                $("#FileUpload").addClass('field_error');
+                toastr.remove();
+                toastr.error("Please Upload File.");
+                event.preventDefault();
+                return false;
+                isValid = false;
+            }
+            else {
+                $("#FileUpload").removeClass('field_error');
+                isValid = true;
+            }
+
+
+            var Effdate = $("#Effect_Date").val();
+            var formattedStartDate = normalizeToIsoDate(Effdate);
+            var branchIds = $("#BranchId").val();
+            var departmentid = $("#DepartmentId").val();
+            var designationIds = $("#DesignationId").val();
+            if(branchIds)
+            {
+                branchIds = branchIds.toString();
+            }
+            else
+            {
+                branchIds = "";
+            }
+            if(departmentid){
+                departmentid = departmentid.toString();
+            }else{
+                departmentid = "";
+            }
+            if(designationIds){
+                designationIds = designationIds.toString();
+            }else{
+                designationIds = "";
+            }
+
+            if (policytype == "Expense")
+            {
+                policytype = 1;
+            } else if (policytype == "Travel") {
+                policytype = 2;
+            }
+
+            var objDetails = {
+                PolicyID : parseInt(PolicyId),
+                PolicyType : parseInt(policytype),
+                PolicyName :  $("#PolicyName").val(),
+                EffectiveDate: formattedStartDate,
+                ApproveTillDay :  parseInt($("#App_till").val()),
+                ApprovalFlowID :  parseInt($("#Approvaflow").val()),
+                PolicyFileName :  $("#policyphotoname").val(),
+                PolicyFilePath :  $("#policyphotopath").val(),
+                Description :  $("#policydesc").val(),
+                BranchIds :  branchIds,
+                DepartMentIds  : departmentid,
+                DesignationIds : designationIds,
+                EmployeeIds : empids,
+                CreatedByID :  "0",
+            };
+            //var delay = 1000;
+            $.ajax({
+                url: '@_webapiEMSURL' + 'ExpensePolicyMaster/AddExpensePolicyMasterRequest',
+                type: 'POST',
+                headers: { 'Authorization': '@_tokan' },
+                contentType: 'application/json',
+                dataType: 'json',
+                data: JSON.stringify(objDetails),
+                beforeSend: function ()
+                {
+                    $("#ajax_loader").show();
+                },
+                success: function (response)
+                {
+                    if (response.success == true && response.responseCode == 201)
+                    {
+                        toastr.remove();
+                        toastr.success("Policy " + response.message);
+                    }
+                    else if (response.success == true && response.responseCode == 206)
+                    {
+                        toastr.remove();
+                        toastr.success("Policy " + response.message);
+                    }
+                    else if (response.success == false && response.responseCode == 210)
+                    {
+                        toastr.remove();
+                        toastr.error(response.message);
+                    }
+                    else if (response.success == false && response.responseCode == 205)
+                    {
+                        toastr.remove();
+                        toastr.error(response.message);
+                    }
+                    else
+                    {
+                        toastr.remove();
+                        toastr.error(response.validationErrors);
+                        //toastr.error(response.validationErrors[0]);
+                    }
+                    setTimeout(function () {
+                        window.location.reload(true);
+                    }, delay);
+                },
+                complete: function () {
+                    $("#ajax_loader").hide();
+                }
+            });
+        });
+        $("#submitEmpAssignPolicy").on('click', function () {
+            
+            let unAssignEmpforPolicyArray = [];
+            let checkedItems = $('.ClsChkEmp:checked');
+
+            if (checkedItems.length === 0) {
+                toastr.warning("Please select at least one employee.");
+                return;
+            }
+
+            checkedItems.each(function () {
+                let row = $(this).closest('tr');
+                unAssignEmpforPolicyArray.push({
+                    EmpID: row.find('td:eq(1)').text().trim(),
+                    expenseReqType: row.find('td:eq(2)').text().trim(),
+                    PolicyID: row.find('td:eq(3)').text().trim()
+                });
+            });
+
+            $.ajax({
+                url: '@_webapiEMSURL' + 'ExpensePolicyMaster/UnAssignPolicyListByEmployee',
+                type: 'POST',
+                headers: { 'Authorization': '@_tokan' },
+                contentType: 'application/json',
+                dataType: 'json',
+                data: JSON.stringify(unAssignEmpforPolicyArray),
+                beforeSend: function () { $("#ajax_loader").show(); },
+                success: function (response) {
+                    toastr.remove();
+
+                    if (response.success && (response.responseCode === 208 || response.responseCode === 209)) {
+                        toastr.success("Unassigned successfully!");
+                        // Refresh employee list in the same modal
+                        let policyId = unAssignEmpforPolicyArray[0].PolicyID;
+                        setTimeout(() => getpolicyEmpView(policyId), 500);
+                    }
+                    else if (response.success === false && response.responseCode === 210) {
+                        toastr.error(response.message);
+                    }
+                    else if (response.success === false && response.responseCode === 205) {
+                        toastr.error(response.message);
+                    }
+                    else {
+                        toastr.error(response.validationErrors || "Something went wrong.");
+                    }
+                },
+                complete: function () { $("#ajax_loader").hide(); }
+            });
+        });
+
+
+        $("#tblViewAssignEmp").on('click', '.remove_emp', function () {
+            var delay = 1000;
+            checkedCount = $('.ClsChkEmp:checked').length;
+            var columnIndex = $(this).closest('tr').find('.ClsChkEmp:checked').closest('td').index() + 1;
+            if (checkedCount === 1 && columnIndex === 1) {
+
+                var EmpID = $(this).parent('td').parent('tr').children(1)[1].innerText.trim();
+                var expenseReqType = $(this).parent('td').parent('tr').children(1)[2].innerText.trim();
+                var PolicyID = $(this).parent('td').parent('tr').children(1)[3].innerText.trim();
+
+                var unAssignEmpforPolicy = {
+                    EmpID: EmpID,
+                    expenseReqType: expenseReqType,
+                    PolicyID: PolicyID
+                }
+
+                var unAssignEmpforPolicyArray = [];
+                unAssignEmpforPolicyArray.push(unAssignEmpforPolicy);
+
+                $.ajax({
+                    url: '@_webapiEMSURL' + 'ExpensePolicyMaster/UnAssignPolicyListByEmployee',
+                    type: 'POST',
+                    headers: { 'Authorization': '@_tokan' },
+                    contentType: 'application/json',
+                    dataType: 'json',
+                    data: JSON.stringify(unAssignEmpforPolicyArray),
+                    beforeSend: function ()
+                    {
+                        $("#ajax_loader").show();
+                    },
+                    success: function (response)
+                    {
+                        if (response.success == true && response.responseCode == 208)
+                        {
+                            toastr.remove();
+                            toastr.success("UnAssignPolicy Successfully");
+                        }
+                        else if (response.success == false && response.responseCode == 209)
+                        {
+                            toastr.remove();
+                            toastr.success("UnAssignPolicy Successfully");
+                        }
+                        else if (response.success == false && response.responseCode == 210)
+                        {
+                            toastr.remove();
+                            toastr.error(response.message);
+                        }
+                        else if (response.success == false && response.responseCode == 205)
+                        {
+                            toastr.remove();
+                            toastr.error(response.message);
+                        }
+                        else
+                        {
+                            toastr.remove();
+                            toastr.error(response.validationErrors);
+                            //toastr.error(response.validationErrors[0]);
+                        }
+                        setTimeout(function () {
+                            window.location.reload(true);
+                        }, delay);
+                    },
+                    complete: function ()
+                    {
+                        $("#ajax_loader").hide();
+                    }
+                });
+            }
+        });
+
+
+
+        $("#tbl_Policies").on('click', '.downloadDoc', function (e) {
+            e.preventDefault();
+            var $td = $(this);
+            // read data attributes (preferred)
+            var filePath = $td.data('filepath') || $td.attr('data-filepath') || '';
+            var fileName = $td.data('filename') || $td.attr('data-filename') || '';
+
+            // fallback: read the visible span text
+            if (!fileName) fileName = $td.find('.PolicyFileNameDisplay').text().trim();
+
+            // if filePath contains a path and you want only the base filename:
+            if (filePath) {
+                fileName = filePath.split(/[\\/]/).pop(); // handles '/' or '\' paths
+            }
+
+            // make sure to encode the filename for the URL
+            var downloadUrl = '/ExpenseRequestMaster/DownloadFile?fileName=' + encodeURIComponent(fileName);
+
+            var xhr = new XMLHttpRequest();
+            xhr.open('GET', downloadUrl);
+            xhr.setRequestHeader('Authorization', '@_tokan');
+            xhr.responseType = 'blob';
+            xhr.onload = function ()
+            {
+                if (xhr.status === 200)
+                {
+                    const url = URL.createObjectURL(xhr.response);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.target = '_blank';
+                    // keep original extension if possible
+                    const extMatch = (filePath.match(/(\.[^./\\?]+)(?:\?|$)/) || [,''])[1];
+                    link.download = fileName + extMatch;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    URL.revokeObjectURL(url);
+                } else
+                {
+                    toastr.remove();
+                    toastr.error('Failed to download the file.');
+                }
+            };
+            xhr.onerror = function(){ toastr.error('Network error while downloading the file.'); };
+            xhr.send();
+        });
+
+    });
+
+    function getPolicies() {
+        if ($.fn.DataTable.isDataTable('#tbl_Policies')) {
+            Policies_table.destroy();
+            $('#dataTables_tbl_header').remove();
+        }
+        checkSession();
+
+        $.ajax({
+            type: "POST",
+            headers: { 'Authorization': '@_tokan' },
+            url: '@_webapiEMSURL' + 'ExpensePolicyMaster/GetPolicyListAll',
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            beforeSend: function () {
+                $("#ajax_loader").show();
+            },
+            success: function (response)
+            {
+                if (response != null)
+                {
+                    const policie = response;
+                    handleGridVisibility("tblempty", "NotificationGrid-empty", policie, {
+                        imageUrl: "emptyscreen_1.png",
+                        subText: "No entries found. Please add a record to get started."
+                    });
+                }
+                $("#tbl_Policies tbody").empty();
+                if (response.length == 0)
+                {
+                    //$("#_nodataFoundList").show();
+                    //$("#_dataFoundList").hide();
+                }
+                else
+                {
+                    var datatbl = "";
+                    for (var i = 0; i < response.length; i++) {
+
+                        //$("#_nodataFoundList").hide();
+                        //$("#_dataFoundList").show();
+
+                        var tbl = "<tr class='odd gradeX'>";
+                        tbl = tbl + "<td class='ExpPolicyID' hidden>" + response[i].ExpPolicyID + "</td>";
+                        tbl = tbl + "<td class='EmployeeIds' hidden>" + response[i].EmployeeIds + "</td>";
+                        tbl = tbl + "<td class='BranchIds' hidden>" + response[i].BranchIds + "</td>";
+                        tbl = tbl + "<td class='ApprovalFlowID' hidden>" + response[i].ApprovalFlowID + "</td>";
+                        tbl = tbl + "<td class='DepartMentIds' hidden>" + response[i].DepartMentIds + "</td>";
+                        tbl = tbl + "<td class='DesignationIds' hidden>" + response[i].DesignationIds + "</td>";
+                        tbl = tbl + "<td class='PolicyCode'>" + response[i].PolicyCode + "</td>";
+                        tbl = tbl + "<td class='PolicyName'>" + response[i].PolicyName + "</td>";
+                        tbl = tbl + "<td class='EffectiveDate'>" + response[i].EffectiveDate + "</td>";
+                        tbl = tbl + "<td class='ApproveTillDay'>" + response[i].ApproveTillDay + "</td>";
+                        tbl = tbl + "<td class='PolicyType'>" + response[i].Type + "</td>";
+                        tbl = tbl + "<td class='Description' hidden>" + response[i].Description + "</td>";
+
+                        var employeeIds = response[i].EmployeeIds;
+                        if (employeeIds === "0" || employeeIds === null)
+                        {
+                            tbl += "<td class='EmployeeIds'  style='text-align:center !important;'>-</td>";
+                        }
+                        else
+                        {
+                            var employeeIdArray = employeeIds.split(",");
+                            var employeeCount = employeeIdArray.length;
+                            tbl += "<td class='EmployeeIds' style='text-align:center !important;'><a class='employeeCount'>" + response[i].EmployeeCount + "</a></td>";
+                        }
+                        //tbl += "<td class='downloadDoc'>" + "<div class='d-flex align-items-center justify-content-between'>" + "<span>Policy File</span>" + "<a href='javascript:;'>" + "<img class='tooltips' src='/assets/images/download_icon.svg' height='18' width='18' data-placement='top' data-original-title='Download Policy' alt='download icon'>" + "</a>" + "</div>" + "</td>";
+                        tbl += `
+                        <td class="downloadDoc" data-filepath="${response[i].PolicyFilePath}" data-filename="${response[i].PolicyFileName}">
+                          <div class="d-flex align-items-center justify-content-between"> <span class="PolicyFileNameDisplay">${response[i].PolicyFileName}</span>
+                            <a href="javascript:;" class="downloadLink"><img class="tooltips" src="/assets/images/download_icon.svg" height="18" width="18" data-placement="top" data-original-title="Download Policy" alt="download icon">
+                            </a>
+                          </div>
+                        </td>`;
+                        //tbl = tbl + "<td class='PolicyFileName'>" + response[i].PolicyFileName + "
+
+
+                        if (response[i].Status === "Active")
+                        {
+                            tbl = tbl + "<td class='Policy_Status green_font'>" + response[i].Status + "</td>";
+                            tbl = tbl + "<td>";
+                            tbl = tbl + "<a class='btn blue_btnnew tooltips clm_edit_btn' title='Edit' id='btnEdit'><i class='fa-regular fa-pen-to-square'></i></a>";
+
+                             ///For Policy assign employee that time Inactive button are Disable.
+                            if (employeeIds === "0" || employeeIds === null)
+                            {
+                                tbl = tbl + "<a class='btn blue_btnnew tooltips clm_delete_btn' title='InActive' id='btnDelete'><i class='fa-solid fa-xmark'></i></a>";
+                            }
+                            else
+                            {
+                                tbl = tbl + "<a class='btn blue_btnnew tooltips clm_delete_btn' title='InActive' id='btnDelete' disabled><i class='fa-solid fa-xmark'></i></a>";
+                            }
+                            tbl = tbl + "</td>";
+                        }
+                        else if (response[i].Status === "InActive")
+                        {
+                            tbl = tbl + "<td class='Policy_Status red_font'>" + response[i].Status + "</td>";
+                            tbl = tbl + "<td>";
+                            tbl = tbl + "<a class='btn blue_btnnew tooltips clm_edit_btn' title='Edit' id='btnEdit' disabled><i class='fa-regular fa-pen-to-square'></i></a>";
+
+                            ///For Policy assign employee that time Inactive button are Disable.
+                            if (employeeIds === "0" || employeeIds === null)
+                            {
+                                tbl = tbl + "<a class='btn blue_btnnew tooltips clm_renew_btn' id='btnActive' title='Active' ><i class='fa-solid fa-check' aria-hidden='true'></i></a>";
+                            }
+                            else
+                            {
+                                tbl = tbl + "<a class='btn blue_btnnew tooltips clm_renew_btn' id='btnActive' title='Active' disabled><i class='fa-solid fa-check' aria-hidden='true'></i></a>";
+                            }
+                            tbl = tbl + "</td>";
+                        }
+                        tbl = tbl + "<td class='EmpNames' hidden>" + response[i].EmpNames + "</td>";
+                        tbl = tbl + "<td class='PolicyFileName' hidden>" + response[i].PolicyFilePath + "</td>";
+                        tbl = tbl + "</tr>";
+                        datatbl += tbl;
+                    }
+                }
+                $('#tbl_Policies tbody').append(datatbl);
+                $('#tbl_Policies').destroy;
+
+                Policies_table = $("#tbl_Policies").DataTable({
+                    dom: _domColumn,
+                    language: _languageColumn,
+                    paging: true,
+                    autoWidth: true,
+                    ordering: true,
+                    buttons: [
+                        "excelHtml5",
+                    ],
+                    "columnDefs": [
+                    {
+                        "targets": [5, 8, 15],
+                        "orderable": false,
+                    },
+                    ],
+                    initComplete: function (settings, json) {
+                        var footer = $("#tbl_Policies tfoot tr");
+                        $("#tbl_Policies thead").append(footer);
+                    }
+                });
+
+                // Apply the Search
+                $("#tbl_Policies thead").on("keyup", "input", function () {
+                    Policies_table.column($(this).parent().index())
+                    .search(this.value)
+                    .draw();
+                });
+                setTimeout(function ()
+                {
+                    $("#" + "tbl_Policies" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+                    injectExportButtonsForDataTables(false, function () {
+                    });
+                    $('.tooltips').tooltip();
+                }, 100);
+            },
+            complete: function () {
+                $("#ajax_loader").hide();
+            }
+        });
+    }
+
+    function getpolicyEmpView(ExpPolicyID) {
+        
+        if ($.fn.DataTable.isDataTable('#tblViewAssignEmp')) {
+            Policy_AssignEmpView_table.destroy();
+            $('#tblViewAssignEmp tbody').empty();
+        }
+
+        $.ajax({
+            type: "GET",
+            headers: { 'Authorization': '@_tokan' },
+            url: '@_webapiEMSURL' + 'ExpensePolicyMaster/GetPolicyAssignEmployeeList?PolicyId=' + ExpPolicyID,
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            beforeSend: function () { $("#ajax_loader").show(); },
+            success: function (response) {
+                $("#tblViewAssignEmp tbody").empty();
+
+                if (response.length > 0) {
+                    $('.red_font span').text(response.length);
+
+                    let rows = "";
+                    for (let item of response) {
+                        rows += `
+                            <tr class="odd gradeX">
+                                <td><input type='checkbox' class='ClsChkEmp' value='${item.EmpID}'></td>
+                                <td hidden>${item.EmpID}</td>
+                                <td hidden>${item.expenseReqType}</td>
+                                <td hidden>${item.PolicyId}</td>
+                                <td>${item.Empcode}</td>
+                                <td>${item.EmpName}</td>
+                                <td>${item.Role}</td>
+                                <td>${item.DepartmentName}</td>
+                            </tr>`;
+                    }
+                    $("#tblViewAssignEmp tbody").append(rows);
+                }
+
+                Policy_AssignEmpView_table = $("#tblViewAssignEmp").DataTable({
+                    dom: _domCommon,
+                    language: _languageCommon,
+                    paging: true,
+                    autoWidth: true,
+                    ordering: true,
+                    buttons: ["excelHtml5"],
+                    columnDefs: [{ "targets": [1], "orderable": false }],
+                    initComplete: function () {
+                        var footer = $("#tblViewAssignEmp tfoot tr");
+                        $("#tblViewAssignEmp thead").append(footer);
+                    }
+                });
+
+                //  Search filter
+                $("#tblViewAssignEmp thead").on("keyup", "input", function () {
+                    Policy_AssignEmpView_table.column($(this).parent().index())
+                        .search(this.value)
+                        .draw();
+                });
+
+                //  Select All Checkbox
+                $(".selectall").off("click").on("click", function () {
+                    $(".ClsChkEmp").prop("checked", this.checked);
+                    $("#showempcount").text($('.ClsChkEmp:checked').length);
+                });
+
+                //  Individual Checkbox
+                $(document).off("change", ".ClsChkEmp").on("change", ".ClsChkEmp", function () {
+                    let checkedCount = $('.ClsChkEmp:checked').length;
+                    $("#showempcount").text(checkedCount);
+                    $('.selectall').prop('checked', $('.ClsChkEmp').length === checkedCount);
+                });
+            },
+            complete: function () { $("#ajax_loader").hide(); }
+        });
+    }
+
+
+    function fillBranchdll(Strselectedbranch) {
+        checkSession();
+
+        var $Branchselect = $("#BranchId").multiselect({
+            selectAllValue: 'multiselect-all',
+            enableCaseInsensitiveFiltering: true,
+            includeSelectAllOption: true,
+            allSelectedText: 'All Select',
+            enableFiltering: true,
+            maxHeight: '300',
+            buttonWidth: '100%',
+            enableClickableOptGroups: true
+        });
+
+        $('#BranchId').empty();
+
+        $.ajax({
+            type: "POST",
+            url: '@_webapiEMSURL' + 'CommanMaster/GetBranchListAll',
+            headers: { 'Authorization': '@_tokan' },
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            beforeSend: function () {
+            },
+            success: function (data) {
+                if (data.isRedirect) {
+                    window.location.href = data.redirectUrl;
+                }
+                $('#BranchId').empty();
+                var markup = '';
+                for (var x = 0; x < data.length; x++)
+                {
+                    var re = new RegExp("(^|,)" + data[x].Value + "($|,)");
+
+                    if (selectedBranch.length != 0)
+                    {
+                        var re = new RegExp("(^|,)" + data[x].BranchId + "($|,)");
+                        if (re.test(selectedBranch) == true) {
+                            markup += '<option selected="selected" value="' + data[x].BranchId + '" >' + data[x].BranchName + '</option>';
+                        }
+                        else {
+                            markup += "<option value=" + data[x].BranchId + ">" + data[x].BranchName + "</option>";
+                        }
+                    }
+                    else {
+                        markup += "<option value=" + data[x].BranchId + ">" + data[x].BranchName + "</option>";
+                    }
+                }
+                $('#BranchId').append(markup);
+                $('#BranchId').multiselect('rebuild');
+
+            },
+            error: function (xhr, ajaxOptions, thrownError) {
+            }
+        });
+    }
+
+    function fillDepartmentdll(Strselecteddepartment) {
+        checkSession();
+        var $Departmentselect = $("#DepartmentId").multiselect({
+            selectAllValue: 'multiselect-all',
+            enableCaseInsensitiveFiltering: true,
+            includeSelectAllOption: true,
+            allSelectedText: 'All Select',
+            enableFiltering: true,
+            maxHeight: '300',
+            buttonWidth: '100%',
+            enableClickableOptGroups: true
+        });
+
+        $('#DepartmentId').empty();
+
+        $.ajax({
+            type: "POST",
+            url: "@_webapiEMSURL" + "CommanMaster/GetDepartmentListAllByID?BranchID=" + 0,
+            headers: { 'Authorization': '@_tokan' },
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            beforeSend: function () {
+            },
+            success: function (data) {
+
+                if (data.isRedirect) {
+                    window.location.href = data.redirectUrl;
+                }
+                $('#DepartmentId').empty();
+                var markup = '';
+                for (var x = 0; x < data.length; x++)
+                {
+
+                    var re = new RegExp("(^|,)" + data[x].Value + "($|,)");
+                    if (selectedDepartment.length != 0)
+                    {
+                        var re = new RegExp("(^|,)" + data[x].DepartmentId + "($|,)");
+                        if (re.test(selectedDepartment) == true) {
+                            markup += '<option selected="selected" value="' + data[x].DepartmentId + '" >' + data[x].DepartmentName + '</option>';
+                        }
+                        else {
+                            markup += "<option value=" + data[x].DepartmentId + ">" + data[x].DepartmentName + "</option>";
+                        }
+                    }
+                    else {
+                        markup += "<option value=" + data[x].DepartmentId + ">" + data[x].DepartmentName + "</option>";
+                    }
+                }
+                $('#DepartmentId').append(markup);
+                $('#DepartmentId').multiselect('rebuild');
+
+            },
+            error: function (xhr, ajaxOptions, thrownError) {
+                // alert(thrownError);
+            }
+        });
+    }
+
+    function fillDesignationdll(Strselecteddesignation) {
+
+        var $Designationselect = $("#DesignationId").multiselect({
+            selectAllValue: 'multiselect-all',
+            enableCaseInsensitiveFiltering: true,
+            includeSelectAllOption: true,
+            allSelectedText: 'All Select',
+            enableFiltering: true,
+            maxHeight: '300',
+            buttonWidth: '100%',
+            enableClickableOptGroups: true
+        });
+
+        $('#DesignationId').empty();
+        $.ajax(
+            {
+                type: "POST",
+                url: "@_webapiEMSURL" + "CommanMaster/GetDesignationListAllByID?DesigID=" + 0,
+                headers: { 'Authorization': '@_tokan' },
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                beforeSend: function () {
+                },
+                success: function (data) {
+
+                    if (data.isRedirect) {
+                        window.location.href = data.redirectUrl;
+                    }
+                    $('#DesignationId').empty();
+                    var markup = '';
+                    for (var x = 0; x < data.length; x++)
+                    {
+
+                        var re = new RegExp("(^|,)" + data[x].Value + "($|,)");
+
+                        if (selectedDesignation.length != 0)
+                        {
+                            var re = new RegExp("(^|,)" + data[x].DesignationId + "($|,)");
+                            if (re.test(selectedDesignation) == true) {
+                                markup += '<option selected="selected" value="' + data[x].DesignationId + '" >' + data[x].DesignationName + '</option>';
+                            }
+                            else {
+                                markup += "<option value=" + data[x].DesignationId + ">" + data[x].DesignationName + "</option>";
+                            }
+                        }
+                        else {
+                            markup += "<option value=" + data[x].DesignationId + ">" + data[x].DesignationName + "</option>";
+                        }
+                    }
+                    $('#DesignationId').append(markup);
+                    $('#DesignationId').multiselect('rebuild');
+
+                },
+                error: function (xhr, ajaxOptions, thrownError) {
+                    // alert(thrownError);
+                }
+            });
+    }
+
+   function fillApprovalFlow() {
+        $.ajax({
+            type: "GET",
+            url: '@_webapiEMSURL' + 'ExpenseApprovalFlow/GetExpenseApprovalFlowAll',
+            headers: { 'Authorization': '@_tokan' },
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            beforeSend: function () {
+                $("#ajax_loader").show();
+            },
+            success: function (data) {
+                if (data != null) {
+                    var _approvalflow = '<option value="0">Select Approval Flow</option>';
+                    for (var i = 0; i < data.length; i++) {
+                        if (data[i].Status === "Active") {   // ✅ only active
+                            _approvalflow += '<option value="' + data[i].FlowID + '">' + data[i].FlowTitle + '</option>';
+                        }
+                    }
+                    $("#Approvaflow").html(_approvalflow);
+                }
+            },
+            error: function (error) {
+                console.error("Error:", error);
+            },
+            complete: function () {
+                $("#ajax_loader").hide();
+            }
+        });
+    }
+
+
+    function create() {
+        $(function () {
+
+            $("#EmpName").autocomplete({
+                source: function (request, response) {
+                    $.ajax({
+                        url: '@_webapiEMSURL' + 'CommanMaster/GetAllWithEmployee?EmpsqlQuery=' + request.term,
+                        contentType: "application/json; charset=utf-8",
+                        headers: { 'Authorization': '@_tokan' },
+                        dataType: "json",
+                        type: "GET",
+                        contentType: "application/json; charset=utf-8",
+                        success: function (data) {
+                            if (data.length > 0) {
+                                response($.map(data, function (item) {
+                                    return {
+                                        label: item.EmpName + '(' + item.Empcode + ')',
+                                        value: item.EmpName
+                                    };
+                                }))
+                                empid = data.Empid;
+                            }
+                            else {
+                                $("#EmpName").val("");
+                                $("#EmpName").focus();
+                            }
+                        },
+                        error: function (response) {
+                            toastr.error(response.responseText);
+                        },
+                        failure: function (response) {
+                            toastr.error(response.responseText);
+                        }
+                    });
+                },
+                select: function (e, i) {
+                    var Empcode = i.item.label.split('(')[1].split(')')[0];
+                    var EmpName = i.item.value;
+                    var obj = {
+                        empcode: Empcode,
+                        empName: EmpName
+                    };
+                    $.ajax({
+                        url: '@_webapiEMSURL' + 'CommanMaster/GetAllWithEmployeeByIDFetch',
+                        data: JSON.stringify(obj),
+                        dataType: "json",
+                        type: "POST",
+                        headers: { 'Authorization': '@_tokan' },
+                        contentType: "application/json; charset=utf-8",
+                        success: function (data) {
+                            if (data.length > 0) {
+                                var autocompleteempId = data[0].EmpId;
+
+                                var found = Object.values(empIds).find(function(value) {
+                                    return parseInt(value) === autocompleteempId;
+                                });
+                                if (parseInt(found) !== autocompleteempId) {
+                                    empIds.push(autocompleteempId);
+                                    empids = empIds.join(',');
+                                    var removeButton = '<a href="#" class="remove_emp_' + autocompleteempId + '"><i class="fa-solid fa-xmark"></i></a>';
+                                    var newText = data[0].EmpName + "_" + data[0].Empcode + removeButton;
+                                    var newSpan = $('<span></span>').html(newText);
+                                    $("#Show_EmpName").append(newSpan);
+                                } else {
+                                    toastr.error("Employee ID already added.");
+                                }
+                            }
+                            else {
+                                empids = "0";
+                            }
+                        },
+                    });
+                },
+                minLength: 1
+            });
+
+            $("#Show_EmpName").on('click', 'a', function() {
+                $(this).closest('span').remove();
+                var empIdToRemove = $(this).attr('class').split('remove_emp_')[1];
+                empIds = empIds.filter(id => id !== empIdToRemove);
+                empids = empIds.join(',');
+            });
+        });
+    }
+
+    function checkSession() {
+        $.ajax({
+            type: "GET",
+            async: false,
+            url: "/ESS/checkSession",
+            contentType: "application/json; charset=utf-8",
+            success: function (data) {
+                if (data.isRedirect) {
+                    window.location.href = data.redirectUrl;
+                }
+            },
+            error: function (data) {
+                window.location.href = data;
+            }
+        });
+    }
+
+    function frmClear() {
+        $("#PolicyName").val("");
+        $("#Effect_Date").val("");
+        $("#EmpName").val("");
+        $("#App_till").val("0");
+        $("#App_till").trigger('change');
+
+        $("#Approvaflow").val("0");
+        $("#Approvaflow").trigger('change');
+
+        $("#BranchId").val("0");
+        $("#BranchId option[value = '0']").prop('selected', true);
+        $("#BranchId").multiselect('refresh');
+
+        $("#DesignationId").val("0");
+        $("#DesignationId option[value = '0']").prop('selected', true);
+        $("#DesignationId").multiselect('refresh');
+
+        $("#DepartmentId").val("0");
+        $("#DepartmentId option[value = '0']").prop('selected', true);
+        $("#DepartmentId").multiselect('refresh');
+
+        $("#PolicyType").val("1");
+        $("#policydesc").val("");
+        $("#FileUpload").val("");
+        $(".fileinput-filename").text("");
+        $("#policyphotopath").val("");
+        $("#policyphotoname").val("");
+
+        empids = "";
+        $("#Show_EmpName span").text("");
+        $('#Show_EmpName span').remove();
+        $("#hfCustomer").val("");
+    }
+
+</script>
+
+<div class="page-bar">
+
+    @if (_RoleId == 1 || _RoleId == 6805 || _RoleId == 6806)
+    {
+        <ul class="page-breadcrumb" style="float: none">
+            <li>
+                @if (isClientDBMatchFlag == "True")
+                {
+                    <a href="/Admin/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+                }
+                else
+                {
+                    <a href="/Dashboard/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+                }
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> Policies</span>
+            </li>
+        </ul>
+    }
+    else
+    {
+        <ul class="page-breadcrumb">
+            <li>
+                @if (isClientDBMatchFlag == "true")
+                {
+                    <a href="/Admin/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+                }
+                else
+                {
+                    <a href="/Dashboard/EmployeeDashboard"><i class="fa-regular fa-house"></i></a>
+                }
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> Policies</span>
+            </li>
+        </ul>
+    }
+    <div class="emptotalcount">
+        <div class="page-toolbar page-toolbar_payroll">
+            @if (obj.CanAdd)
+            {
+                <div class="emp_btn_block">
+                    <div class="text-right">
+                        <a href="javascript:;" class="btn icon_transparent_btn tooltips" data-placement="left" data-original-title="Add Policy" id="AddPolicyBtn"><i class="fa-solid fa-plus"></i></a>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@if (obj.CanView)
+{
+    <div id='ajax_loader' class="modal_bg loading" aria-hidden="true">
+        <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading" />
+    </div>
+
+    <div id="_dataFoundList" class="expense_data_block record">
+        <div id="TripRequest_block">
+            <div class="portlet">
+                <div class="portlet-body">
+                    <div id="tblempty">
+                        <div class="table-responsive" id="tableResponsive">
+                            <div class="EMS_details_table">
+                                <!-- Datatable : Begin -->
+                                <table id="tbl_Policies" class="table new_datatbl table-striped table-bordered table-hover serch_datatable table-checkable order-column">
+                                    <thead>
+                                        <tr>
+                                            <th style="min-width: 40px;" hidden>PolicyCode</th>
+                                            <th style="min-width: 60px;" hidden>EmployeeIds</th>
+                                            <th style="min-width: 60px;" hidden>BranchIds</th>
+                                            <th style="min-width: 60px;" hidden>DepartMentIds</th>
+                                            <th style="min-width: 60px;" hidden>DesignationIds</th>
+                                            <th style="min-width: 30px;" hidden>ApprovalFlowID</th>
+                                            <th style="min-width: 30px">Policy Code</th>
+                                            <th style="min-width: 150px">Policy Name</th>
+                                            <th style="min-width: 50px">Effected Date</th>
+                                            <th style="min-width: 20px">Approve Till</th>
+                                            <th style="min-width: 40px">Type</th>
+                                            <th style="min-width: 80px" hidden>Description</th>
+                                            <th style="min-width: 20px">Assigned Employee</th>
+                                            <th style="min-width: 100px">Files</th>
+                                            <th style="min-width: 30px">Status</th>
+                                            <th style="min-width: 80px">Actions</th>
+                                            <th style="min-width: 60px;" hidden>EmpNames</th>
+                                            <th style="min-width: 100px" hidden>Files Path</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody></tbody>
+                                    <tfoot>
+                                        <tr>
+                                            <th hidden>PolicyCode</th>
+                                            <th hidden>EmployeeIds</th>
+                                            <th hidden>BranchIds</th>
+                                            <th hidden>DepartMentIds</th>
+                                            <th hidden>DesignationIds</th>
+                                            <th hidden>ApprovalFlowID</th>
+                                            <th>Policy Id</th>
+                                            <th>Policy Name</th>
+                                            <th>Effected Date</th>
+                                            <th>Approve Till</th>
+                                            <th>Type</th>
+                                            <th hidden>Description</th>
+                                            <th>Assigned Emp</th>
+                                            <th>Files</th>
+                                            <th>Status</th>
+                                            <th>Actions</th>
+                                            <th hidden>Empcodes</th>
+                                            <th hidden>File Path</th>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                                <!-- Datatable : End -->
+                            </div>
+                        </div>
+                    </div>
+                    <div id="NotificationGrid-empty" style="display: none">
+                        <div class="datanotfound">
+                            <img src="" height="148" width="280" alt="Nodata Found Icon">
+                            <p class="datanotfound_title"></p> <!-- titleText -->
+                            <p class=""></p><!-- subText -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Policy Modal : Begin -->
+    <div id="AddPolicyBtn_modal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog w-900">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" id="closeModal" class="close" data-dismiss="modal">×</button>
+                    <h4 class="modal-title">Add Policy</h4>
+                </div>
+                <div class="modal-body">
+                    <fieldset>
+                        <div class="row">
+                            <!-- Step 1 - Policy Details : Begin -->
+                            <input type="hidden" id="PolicyType" name="PolicyType" value="1" />
+                            <input type="hidden" id="PolicyId" name="PolicyId" value="0" />
+                            <div class="col-lg-6">
+                                <div class="er_details">
+                                    <div class="col-lg-12">
+                                        <div class="er_details__title padding-top-10 padding-bottom-10">Step 1 - Policy Details</div>
+                                    </div>
+                                    <div class="er_details__box er_details__heightcard">
+                                        <div class="col-lg-12">
+                                            <div class="form-group radio_box">
+                                                <label class="mt-radio mt-radio-outline">
+                                                    Expense
+                                                    <input value="False" name="Expensetype" id="Expense_data" type="radio" checked="">
+                                                    <span></span>
+                                                </label>
+                                                <label class="mt-radio mt-radio-outline">
+                                                    Travel
+                                                    <input value="True" name="Expensetype" id="Travel_data" type="radio">
+                                                    <span></span>
+                                                </label>
+                                            </div>
+                                        </div>
+                                        <!-- Expense Select Block Data : Begin -->
+                                        <div id="">
+                                            <div class="col-lg-12">
+                                                <div class="row">
+                                                    <div class="col-lg-6">
+                                                        <div class="form-group">
+                                                            <label>Policy Id</label>
+                                                            <input type="hidden" id="_PolicyID">
+                                                            <input type="hidden" id="PolocyId">
+                                                            <input type="text" class="form-control input-sm validation" name="" id="_PolicyIDNew" placeholder="006" disabled>
+                                                        </div>
+                                                    </div>
+                                                    <div class="col-lg-6">
+                                                        <div class="form-group">
+                                                            <label>Policy Name<span class="required" aria-required="true">*</span></label>
+                                                            <input type="text" class="form-control input-sm validation" name="" id="PolicyName" placeholder="Enter Policy Name" maxlength="50">
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="col-lg-12">
+                                                <div class="row">
+                                                    <div class="col-lg-6">
+                                                        <div class="form-group data_picker_box">
+                                                            <label>Effective Date<span class="required" aria-required="true">*</span></label>
+                                                            <div class="input-group input-group-sm date date-picker" id="" data-date="@DateTime.Now" data-date-format="@_isdateformat" data-date-viewmode="years">
+                                                                <span class="input-group-btn">
+                                                                    <button class="btn default" type="button">
+                                                                        <i class="fa-light fa-calendar-days"></i>
+                                                                    </button>
+                                                                </span>
+                                                                <input type="text" class="form-control" id="Effect_Date" data-date-format="@_isdateformat" placeholder="@_isdateformat.Replace("M","MMM")" autocomplete="off">
+                                                            </div>
+                                                            @*<div class="input-group input-group-sm date date-picker">
+                                                                    <span class="input-group-btn">
+                                                                        <button class="btn default" type="button">
+                                                                            <i class="fa-light fa-calendar-days"></i>
+                                                                        </button>
+                                                                    </span>
+                                                                    <input type="text" placeholder="Select Date" class="form-control" id="Effect_Date" name="" autocomplete="off" readonly="readonly">
+                                                                </div>*@
+                                                        </div>
+                                                    </div>
+                                                    <div class="col-lg-6">
+                                                        <div class="form-group">
+                                                            <label>Approve Till<span class="required" aria-required="true">*</span></label>
+                                                            <select class="form-control input-sm select2" id="App_till">
+                                                                <option value="0">Select Days</option>
+                                                            </select>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="col-lg-12">
+                                                <div class="form-group">
+                                                    <label>Approval Flow<span class="required" aria-required="true">*</span></label>
+                                                    <select class="form-control input-sm select2" id="Approvaflow">
+                                                        <option value="0">Select Approval Flow</option>
+
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <div class="col-lg-12">
+                                                <div class="form-group">
+                                                    <div class="fileinput fileinput-new" data-provides="fileinput" id="pqr">
+                                                        <label>Upload Policy<span class="required" aria-required="true">*</span></label>
+                                                        <div class="input-group">
+                                                            <div class="form-control uneditable-input input-fixed input" data-trigger="fileinput">
+                                                                <i class="fa-light fa-upload font-blue"></i>&nbsp;
+                                                                <span class="fileinput-filename" style="white-space: nowrap; width: 180px; text-overflow: ellipsis;"> </span>
+                                                            </div>
+                                                            <span class="input-group-addon btn blue btn-file">
+                                                                <span class="fileinput-new">Upload</span>
+                                                                <span class="fileinput-exists">Change</span>
+                                                                <input type="file" name="FileUpload" id="FileUpload" value="">
+                                                                <input type="hidden" id="policyphotopath" name="policyphotopath">
+                                                                <input type="hidden" id="policyphotoname" name="policyphotoname">
+                                                            </span>
+                                                            <a href="javascript:;" class="input-group-addon btn red fileinput-exists" data-dismiss="fileinput">Remove</a>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="col-lg-12">
+                                                <div class="form-group">
+                                                    <label>Description</label>
+                                                    <textarea class="form-control" name="policydesc" id="policydesc" placeholder="Enter Description" maxlength="100"></textarea>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <!-- Expense Select Block Data : End -->
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Step 1 - Policy Details : End -->
+                            <!-- Step 2 - Assign Policy : Begin -->
+                            <div class="col-lg-6">
+                                <div class="er_details">
+                                    <div class="col-lg-12">
+                                        <div class="er_details__title padding-top-10 padding-bottom-10">Step 2 - Assign Policy</div>
+                                    </div>
+                                    <div class="er_details__box er_details__heightcard">
+                                        <div class="col-lg-12">
+                                            <div class="form-group">
+                                                <label class="control-label">Branch</label>
+                                                <input type="text" id="txt1" value="0" hidden />
+                                                <select id="BranchId" class="mt-multiselect btn-sm btn blue btn-outline" aria-haspopup="true" aria-expanded="false" multiple="multiple" data-width="100%"></select>
+                                            </div>
+                                            <div id='ajax_loader' class="modal_bg loading" aria-hidden="true">
+                                                <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading" />
+                                            </div>
+                                        </div>
+                                        <div class="col-lg-12">
+                                            <div class="form-group">
+                                                <label class="control-label">Department</label>
+                                                <input type="text" id="txt2" value="0" hidden />
+                                                <select id="DepartmentId" class="mt-multiselect btn-sm btn blue btn-outline" aria-haspopup="true" aria-expanded="false" multiple="multiple" data-width="100%"></select>
+                                            </div>
+                                            <div id='ajax_loader' class="modal_bg loading" aria-hidden="true">
+                                                <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading" />
+                                            </div>
+                                        </div>
+                                        <div class="col-lg-12">
+                                            <div class="form-group">
+                                                <label class="control-label">Designation</label>
+                                                <input type="text" id="txt3" value="0" hidden />
+                                                <select id="DesignationId" class="mt-multiselect btn-sm btn blue btn-outline" aria-haspopup="true" aria-expanded="false" multiple="multiple" data-width="100%"></select>
+                                            </div>
+                                            <div id='ajax_loader' class="modal_bg loading" aria-hidden="true">
+                                                <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading" />
+                                            </div>
+                                        </div>
+                                        <div class="col-lg-12">
+                                            <div class="form-group">
+                                                <label>Employee</label>
+                                                <input id="EmpName" name="EmpName" maxlength="15" class="form-control" placeholder="Please Enter Code or Name" tabindex="1">
+                                                <input type="hidden" id="hfCustomer" />
+                                            </div>
+                                            <div class="emp_selected" id="Show_EmpName"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Step 2 - Assign Policy : End -->
+                        </div>
+                    </fieldset>
+                </div>
+                <div class="modal-footer">
+                    <div class="row">
+                        <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                            <input type="button" class="btn clear_btn" id="btnReset" value="Reset" />
+                            <button class="btn save_btn" type="button" id="BtnSubmitPolicy"><i class="fa-light fa-floppy-disk"></i> Save</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Add Policy Modal : End -->
+    <!-- View Policy Assigned Employee Modal : Begin -->
+    <div id="AssignedEmpBtn_modal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog w-900">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal">×</button>
+                    <h4 class="modal-title">
+                        Unassigned Employee: <span id="showempcount"></span>
+                    </h4>
+                </div>
+
+                <div class="modal-body">
+                    <div class="table-responsive" id="tableResponsive1">
+                        <table id="tblViewAssignEmp"
+                               class="new_datatbl table table-striped table-bordered tbl_middle table-hover tbl_newdatatbl serch_datatable table-checkable order-column">
+                            <thead>
+                                <tr>
+                                    <th style="min-width: 70px"><input type="checkbox" class="selectall" /></th>
+                                    <th hidden>Emp ID</th>
+                                    <th hidden>expenseReqType</th>
+                                    <th hidden>PolicyID</th>
+                                    <th>Emp Code</th>
+                                    <th>Employee Name</th>
+                                    <th>Role</th>
+                                    <th>Department</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                            <tfoot>
+                                <tr>
+                                    <th></th>
+                                    <th hidden>Emp ID</th>
+                                    <th hidden>expenseReqType</th>
+                                    <th hidden>PolicyID</th>
+                                    <th>Emp Code</th>
+                                    <th>Employee Name</th>
+                                    <th>Role</th>
+                                    <th>Department</th>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <div class="d-flex align-items-center justify-content-between" id="modal_Btn">
+                        <div class="red_font">Assigned Employee: <span></span></div>
+                        <div>
+                            <input type="button" class="btn clear_btn" data-dismiss="modal" value="Cancel" />
+                            <button class="btn btn-sm blue" type="button" id="submitEmpAssignPolicy">
+                                <i class="fa-light fa-floppy-disk"></i> Unassign
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+    <!-- View Policy Assigned Employee Modal : End -->
+}
+else
+{
+    <script>
+        Swal.fire({
+            title:
+                "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_info.svg' alt=''> Unauthorized Access",
+            html:
+                "<div class='swal_subtitle'>" +
+                "<b>Access denied. You don’t have the required permissions to view this page.</b>" +
+                "<p>Please contact your administrator if you believe this is a mistake.</p>" +
+                "</div>",
+            showCloseButton: true,
+            showCancelButton: false,
+            focusConfirm: false,
+            cancelButtonText: 'Close',
+            confirmButtonText: 'Go to Dashboard',
+            allowOutsideClick: false,
+            allowEscapeKey: false,
+            customClass: {
+                popup: 'swal_info',                     // <<-- Add class directly to popup
+                confirmButton: 'swal-confirm-button-class',
+                cancelButton: 'swal-cancel-button-class'
+            }
+        }).then(function (result) {
+            if (result.isConfirmed) {
+                window.location.href = "/MinopProduct/EMSDashboard";
+            }
+        });
+    </script>
+}
+<!-- Add Approval flow Modal : Begin -->

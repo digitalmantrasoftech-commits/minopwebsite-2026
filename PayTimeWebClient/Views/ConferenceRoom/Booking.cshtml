@@ -1,0 +1,2334 @@
+﻿@using System.Configuration;
+@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+
+@{
+    ViewBag.Title = "BookMeetingRoom";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    int _UserId = Convert.ToInt32(HttpContext.Current.Session["UserId"]);
+    int _cmpid = Convert.ToInt32(HttpContext.Current.Session["CompanyId"]);
+    string _EmailId = HttpContext.Current.Session["UserEmail"].ToString();
+    string _isdateformat = HttpContext.Current.Session["IsDateFormat"].ToString();
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + (Controller.ToLower() == "conferenceroom" ? "ConferenceRoom" : "") + "/" + (action.ToLower() == "booking" ? "Booking" : "");
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    int empid = Convert.ToInt32(HttpContext.Current.Session["EmpId"]);
+    int UserId = Convert.ToInt32(HttpContext.Current.Session["UserId"]);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+    string isClientDBMatchFlag = HttpContext.Current.Session["IsClientDBMatch"] != null
+        ? HttpContext.Current.Session["IsClientDBMatch"].ToString()
+        : "false"; // Default to "false" if the session is null
+}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/qtip2/3.0.3/jquery.qtip.min.css">
+<link href="~/AssetsNew/css/introjs.css" rel="stylesheet" />
+<link href="~/Newlayout/css/CustomDesign/mysubscription.css" rel="stylesheet" />
+
+@if (obj.CanView)
+{
+    <style type="text/css">
+        .page-content-white .page-bar {
+            min-height: auto;
+        }
+
+        a.fc-day-grid-event.fc-h-event.fc-event.fc-start.fc-end {
+            border-radius: 3px !important;
+            width: 98%;
+            border: none;
+            outline: 0;
+            opacity: 1;
+            margin-top: 2px;
+        }
+
+        .fc-basic-view .fc-body .fc-row {
+            height: 78px !important;
+        }
+
+        .swal-highest-zindex {
+            z-index: 11111;
+        }
+
+        .fc-axis.fc-widget-header {
+            width: 42px !important;
+        }
+
+        .my-event {
+            background-color: #20c997 !important;
+            border-color: #20c997 !important;
+        }
+
+        .bookroom_calender a.fc-day-grid-event.fc-h-event.fc-event.fc-start.fc-end.my-event:hover {
+            background-color: #1aa885 !important;
+            border-color: #1aa885 !important;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+            transform: scale(1.03);
+        }
+
+        /* Accordian Code Start */
+        #accordion_container {
+            width: 100%;
+            height: calc(100vh - 133px);
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
+
+        .accordion-item {
+            border: 1px solid #ddd;
+            margin-bottom: 10px;
+            border-radius: 6px !important;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 100%;
+            box-sizing: border-box;
+            overflow: hidden;
+        }
+
+        .accordion-header {
+            background: #fff;
+            padding: 8px 12px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .employee-summary {
+            display: flex;
+            flex: 1;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .emp-info {
+            display: flex;
+            flex-direction: column;
+            min-width: 280px;
+        }
+
+        .emp-name {
+            color: #333;
+            font-weight: 500;
+            font-size: 14px;
+            margin-bottom: 2px;
+        }
+
+        .emp-code {
+            color: #666;
+        }
+
+        .accordion-toggle {
+            color: #444444;
+            transition: 0.5s;
+        }
+
+        .accordion-content {
+            border-top: 1px solid #ddd;
+            padding: 8px 12px;
+            overflow-x: auto;
+            overflow-y: hidden;
+            max-width: 100%;
+        }
+        /* Accordian Code End */
+
+        /* Room-specific colors for meeting events */
+        .fc-event {
+            border-radius: 4px !important;
+            border-width: 1px !important;
+            opacity: 0.9 !important;
+        }
+
+        .fc-event:hover {
+            opacity: 1 !important;
+            transform: scale(1.02);
+            transition: all 0.2s ease;
+        }
+
+        /* Ensure room colors are applied properly */
+        .fc-day-grid-event .fc-content,
+        .fc-time-grid-event .fc-content {
+            color: white !important;
+            font-weight: 500;
+        }
+
+        /* Room color variants for day view */
+        .fc-agendaDay-view .fc-event {
+            border-left-width: 4px !important;
+        }
+
+        /* Available time slot styling */
+        .available-slot {
+            background-color: #1D8B3C !important; /* Light green background */
+            color: #155724; /* Dark green text */
+            font-weight: 500;
+        }
+
+        .available-slot td {
+            font-style: italic;
+            opacity: 0.8;
+        }
+    </style>
+    <!-- Page Bar : Begin -->
+    <div class="page-bar">
+        <ul class="page-breadcrumb">
+            <li>
+                @if (_RoleId == 1 || _RoleId == 6805 || _RoleId == 6806)
+                {
+                    <a href="/Dashboard/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+                }
+                else
+                {
+                    <a href="/Dashboard/EmployeeDashboard"><i class="fa-regular fa-house"></i></a>
+                }
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> Book Conference Room</span>
+            </li>
+        </ul>
+    </div>
+    <!-- Page Bar : End -->
+
+    <div class="mysubscription">
+        <ul class="nav nav-tabs nav-tabs-custom" role="tablist">
+            <li class="nav-item active">
+                <a class="nav-link" data-toggle="tab" href="#calenderview" role="tab" aria-selected="false" id="">
+                    <i class="fa-light fa-calendar-days"></i>
+                    <span class="">Calender View</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" data-toggle="tab" href="#roomview" role="tab" aria-selected="true" id="">
+                    <i class="fa-light fa-person-booth"></i>
+                    <span class="">Room View</span>
+                </a>
+            </li>
+        </ul>
+        <div class="mroom_search">
+            <div class="d-flex">
+                <div class="form-group drop_width">
+                    <select id="room_Id" class="mt-multiselect btn blue btn-outline" multiple="multiple" data-width="100%">
+                        <option value="">Loading rooms...</option>
+                    </select>
+                </div>
+                <button type="button" class="btn icon_transparent_btn  tooltips" id="quichsearching" data-placement="top" data-original-title="Search" style="border: 1px solid #c2cad8; background: #fff;">
+                    <i class="fa-solid fa-magnifying-glass"></i>
+                </button>
+            </div>
+        </div>
+        <div class="tab-content text-muted tab_content_box">
+            <div class="tab-pane active" id="calenderview" role="tabpanel">
+                <div class="portlet">
+                    <div class="portlet-body">
+                        <div class="row" id="calendar-wrapper">
+                            <div class="col-lg-12 bookroom_calender">
+                                <div id="MyCalendar">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="tab-pane" id="roomview" role="tabpanel">
+                <div class="portlet" style="margin-bottom: 8px;">
+                    <div class="portlet-body">
+                        <div class="reportblock_table" style="display: block;">
+                            <!-- Accordion block : Begin -->
+                            <div id="accordion_container">
+                                <div class="accordion-item">
+                                    <div class="accordion-header">
+                                        <div class="employee-summary">
+                                            <div class="emp-info">
+                                                <span class="emp-name"></span>
+                                                <span class="emp-code"></span>
+                                            </div>
+                                            <div class="d-flex align-items-center">
+                                                <img src="/assets/images/icons/icon_user-tie.svg" alt="" width="14" height="14">
+                                                <span></span>
+                                            </div>
+                                        </div>
+                                        <div class="accordion-toggle">
+                                            <i class="fa fa-chevron-down"></i>
+                                        </div>
+                                    </div>
+                                    <div class="accordion-content" id="" style="display:none;">
+                                        <div class="tableresponsive_report" id="tableResponsive">
+                                            <table class="table new_datatbl table-striped table-bordered table-hover table-checkable order-column dataTable" cellspacing="0">
+                                                <thead>
+                                                    <tr>
+                                                        <th style="min-width: 200px;">The person who booked Room</th>
+                                                        <th>Metting Title</th>
+                                                        <th>Booking Time</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                                                           </div>
+                            <!-- Accordion block : End -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Book Meeting Room Modal : Begin -->
+    <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+        <div id='ajax_loader' class="modal_bg loading">
+            <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading" />
+        </div>
+    </div>
+    <div id="bookmeetingroom_modal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    <h4 class="modal-title">Select Room & Details</h4>
+                </div>
+                <div class="modal-body">
+                    <!-- Step1 : Begin -->
+                    <div id="step1_details">
+                        <div class="modal-card">
+                            <div class="row">
+                                <div class="col-md-6 col-sm-6">
+                                    <div class="form-group data_picker_box">
+                                        <label>From Date <span class="required" aria-required="true"> * </span></label>
+                                        <div class="input-group input-group-sm date date-picker" data-date="@DateTime.Now" data-date-format="@_isdateformat" data-date-viewmode="years" id="StartDatedp">
+                                            <span class="input-group-btn">
+                                                <button class="btn default" type="button">
+                                                    <i class="fa-light fa-calendar-days"></i>
+                                                </button>
+                                            </span>
+                                            @if (@_isdateformat == "dd-M-yyyy" || @_isdateformat == "M-dd-yyyy" || @_isdateformat == "yyyy-M-dd")
+                                            {
+                                                <input type="text" placeholder="@_isdateformat.Replace(" m", "mmm")" class="form-control" id="StartDate" name="StartDate" autocomplete="off" onpaste="return false;" oncopy="return false;" oncut="return false;" oncontextmenu="return false;">
+                                            }
+                                            else
+                                            {
+                                                <input type="text" placeholder="@_isdateformat" class="form-control" id="StartDate" name="StartDate" autocomplete="off" onpaste="return false;" oncopy="return false;" oncut="return false;" oncontextmenu="return false;">
+                                            }
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-6 col-sm-6">
+                                    <div class="form-group data_picker_box">
+                                        <label>To Date <span class="required" aria-required="true"> * </span></label>
+                                        <div class="input-group input-group-sm date date-picker" data-date="@DateTime.Now" data-date-format="@_isdateformat" data-date-viewmode="years" id="EndDatedp">
+                                            <span class="input-group-btn">
+                                                <button class="btn default" type="button">
+                                                    <i class="fa-light fa-calendar-days"></i>
+                                                </button>
+                                            </span>
+                                            @if (@_isdateformat == "dd-M-yyyy" || @_isdateformat == "M-dd-yyyy" || @_isdateformat == "yyyy-M-dd")
+                                            {
+                                                <input type="text" placeholder="@_isdateformat.Replace(" m", "mmm")" class="form-control" id="EndDate" name="EndDate" autocomplete="off" onpaste="return false;" oncopy="return false;" oncut="return false;" oncontextmenu="return false;">
+                                            }
+                                            else
+                                            {
+                                                <input type="text" placeholder="@_isdateformat" class="form-control" id="EndDate" name="EndDate" autocomplete="off" onpaste="return false;" oncopy="return false;" oncut="return false;" oncontextmenu="return false;">
+                                            }
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12" id="">
+                                    <div class="form-group data_picker_box">
+                                        <label>Start Time <span class="required" aria-required="true"> * </span></label>
+                                        <div class="input-group input-group-sm">
+                                            <input type="text" class="form-control timepicker timepicker-24" id="StartTime" name="StartTime" placeholder="00:00" onpaste="return false;" oncopy="return false;" oncut="return false;" oncontextmenu="return false;">
+                                            <span class="input-group-btn">
+                                                <button class="btn default" type="button" id="">
+                                                    <i class="fa-regular fa-clock"></i>
+                                                </button>
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12" id="">
+                                    <div class="form-group data_picker_box">
+                                        <label>End Time <span class="required" aria-required="true"> * </span></label>
+                                        <div class="input-group input-group-sm">
+                                            <input type="text" class="form-control timepicker timepicker-24" id="EndTime" name="EndTime" placeholder="00:00" onpaste="return false;" oncopy="return false;" oncut="return false;" oncontextmenu="return false;">
+                                            <span class="input-group-btn">
+                                                <button class="btn default" type="button" id="">
+                                                    <i class="fa-regular fa-clock"></i>
+                                                </button>
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12" id="">
+                                    <div class="form-group">
+                                        <label class="control-label">Strength</label>
+                                        <input type="number" class="form-control" id="Capacity" name="Capacity" min="1" max="100" placeholder="Add strength" onpaste="return false;" oncopy="return false;" oncut="return false;" oncontextmenu="return false;">
+                                    </div>
+                                </div>
+                                <div class="col-lg-12" id="divcustomdays">
+                                    <div class="row">
+                                        @*<div class="col-lg-2 col-sm-2 col-xs-4">
+                                                <input type="radio" id="alldays" name="frequency" value="alldays" checked>
+                                                <label for="alldays">All Days</label>
+                                            Commneted by Bansal
+                                            </div>*@
+                                        <div class="col-lg-3 col-sm-3 col-xs-6">
+                                            <input type="checkbox" id="customdays" name="frequency" value="customdays">
+                                            <label for="customdays">Custom Days</label>
+                                        </div>
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-lg-12">
+                                            <div class="weekday-checkbox-container" style="display:none">
+                                                <div class="weekday tooltips" data-placement="bottom" data-original-title="Sunday">
+                                                    <input type="checkbox" id="sunday" />
+                                                    <label for="sunday">S</label>
+                                                </div>
+                                                <div class="weekday tooltips" data-placement="bottom" data-original-title="Monday">
+                                                    <input type="checkbox" id="monday" checked />
+                                                    <label for="monday">M</label>
+                                                </div>
+                                                <div class="weekday tooltips" data-placement="bottom" data-original-title="Tuesday">
+                                                    <input type="checkbox" id="tuesday" checked />
+                                                    <label for="tuesday">T</label>
+                                                </div>
+                                                <div class="weekday tooltips" data-placement="bottom" data-original-title="Wednesday">
+                                                    <input type="checkbox" id="wednesday" checked />
+                                                    <label for="wednesday">W</label>
+                                                </div>
+                                                <div class="weekday tooltips" data-placement="bottom" data-original-title="Thursday">
+                                                    <input type="checkbox" id="thursday" checked />
+                                                    <label for="thursday">T</label>
+                                                </div>
+                                                <div class="weekday tooltips" data-placement="bottom" data-original-title="Friday">
+                                                    <input type="checkbox" id="friday" checked />
+                                                    <label for="friday">F</label>
+                                                </div>
+                                                <div class="weekday tooltips" data-placement="bottom" data-original-title="Saturday">
+                                                    <input type="checkbox" id="saturday" />
+                                                    <label for="saturday">S</label>
+                                                </div>
+                                            </div>
+
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                                    <button type="button" class="btn add_btn red" id="delete_btn"><i class="fa-regular fa-trash-can"></i> Delete</button>
+                                    <button type="button" class="btn add_btn" id="findroom_btn"><i class="fa-solid fa-magnifying-glass"></i> Find Room</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="modal-card" id="noRoom">
+                            <div class="row">
+                                <div class="col-lg-12 card_summarylist" id="noroomfind">
+                                    <div class="empty_block no_recoed">
+                                        <img src="/assets/images/icons/icon_emptyscreen.png" height="140" width="141" alt="No Feeds Yet">
+                                        <p>No Rooms Available</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="modal-card" id="roomcard">
+
+                            <div class="row">
+
+                                @*<div class="col-lg-6 col-md-4 col-sm-4 col-xs-4">
+                                        <div class="metting-card pink">
+                                            <div class="d-flex border_bottom">
+                                                <img class="user_img" src="~/assets/images/avtar.png" height="32" width="32" alt="">
+                                                <div class="room_details">
+                                                    <h3>Meeting Room 01</h3>
+                                                    <p>B-203, Shapath Hexa, Sola, Ahmedabad</p>
+                                                    <div class="d-flex align-items-center justify-content-between margin-top-5 margin-bottom-5">
+                                                        <div class="green_font">Available</div>
+                                                        <div class="d-flex align-items-center">
+                                                            <img src="~/assets/images/icons/icon_user-tie.svg" alt="" width="14" height="14">
+                                                            <span>1-10</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="room_addon">
+                                                <img class="tooltips" src="~/assets/images/icons/icon_tv.svg" alt="" width="26" height="26" data-placement="top" data-original-title="TV">
+                                                <img class="tooltips" src="~/assets/images/icons/icon_laptop.svg" alt="" width="26" height="26" data-placement="top" data-original-title="Laptop">
+                                                <img class="tooltips" src="~/assets/images/icons/icon_ac.svg" alt="" width="26" height="26" data-placement="top" data-original-title="AC">
+                                                <img class="tooltips" src="~/assets/images/icons/icon_projector.svg" alt="" width="26" height="26" data-placement="top" data-original-title="Projector">
+                                                <img class="tooltips" src="~/assets/images/icons/icon_wifi.svg" alt="" width="26" height="26" data-placement="top" data-original-title="Wifi">
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-lg-6 col-md-4 col-sm-4 col-xs-4">
+                                        <div class="metting-card blue">
+                                            <div class="d-flex border_bottom">
+                                                <img class="user_img" src="~/assets/images/avtar.png" height="32" width="32" alt="">
+                                                <div class="room_details">
+                                                    <h3>Meeting Room 02</h3>
+                                                    <p>B-703, Shapath Hexa, Sola, Ahmedabad</p>
+                                                    <div class="d-flex align-items-center justify-content-between margin-top-5 margin-bottom-5">
+                                                        <div class="green_font">Available</div>
+                                                        <div class="d-flex align-items-center">
+                                                            <img src="~/assets/images/icons/icon_user-tie.svg" alt="" width="14" height="14">
+                                                            <span>1-25</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="room_addon">
+                                                <img class="tooltips" src="~/assets/images/icons/icon_tv.svg" alt="" width="26" height="26" data-placement="top" data-original-title="TV">
+                                                <img class="tooltips" src="~/assets/images/icons/icon_laptop.svg" alt="" width="26" height="26" data-placement="top" data-original-title="Laptop">
+                                                <img class="tooltips" src="~/assets/images/icons/icon_ac.svg" alt="" width="26" height="26" data-placement="top" data-original-title="AC">
+                                                <img class="tooltips" src="~/assets/images/icons/icon_projector.svg" alt="" width="26" height="26" data-placement="top" data-original-title="Projector">
+                                                <img class="tooltips" src="~/assets/images/icons/icon_wifi.svg" alt="" width="26" height="26" data-placement="top" data-original-title="Wifi">
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-lg-6 col-md-4 col-sm-4 col-xs-4">
+                                        <div class="metting-card yellow">
+                                            <div class="d-flex border_bottom">
+                                                <img class="user_img" src="~/assets/images/avtar.png" height="32" width="32" alt="">
+                                                <div class="room_details">
+                                                    <h3>Meeting Room 03</h3>
+                                                    <p>401-405, Parkview Nexus, Sola, Ahmedabad</p>
+                                                    <div class="d-flex align-items-center justify-content-between margin-top-5 margin-bottom-5">
+                                                        <div class="green_font">Available</div>
+                                                        <div class="d-flex align-items-center">
+                                                            <img src="~/assets/images/icons/icon_user-tie.svg" alt="" width="14" height="14">
+                                                            <span>1-12</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="room_addon">
+                                                <img class="tooltips" src="~/assets/images/icons/icon_tv.svg" alt="" width="26" height="26" data-placement="top" data-original-title="TV">
+                                                <img class="tooltips" src="~/assets/images/icons/icon_laptop.svg" alt="" width="26" height="26" data-placement="top" data-original-title="Laptop">
+                                                <img class="tooltips" src="~/assets/images/icons/icon_ac.svg" alt="" width="26" height="26" data-placement="top" data-original-title="AC">
+                                                <img class="tooltips" src="~/assets/images/icons/icon_projector.svg" alt="" width="26" height="26" data-placement="top" data-original-title="Projector">
+                                                <img class="tooltips" src="~/assets/images/icons/icon_wifi.svg" alt="" width="26" height="26" data-placement="top" data-original-title="Wifi">
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-lg-6 col-md-4 col-sm-4 col-xs-4">
+                                        <div class="metting-card green">
+                                            <div class="d-flex border_bottom">
+                                                <img class="user_img" src="~/assets/images/avtar.png" height="32" width="32" alt="">
+                                                <div class="room_details">
+                                                    <h3>Meeting Room 04</h3>
+                                                    <p>401-405, Parkview Nexus, Sola, Ahmedabad</p>
+                                                    <div class="d-flex align-items-center justify-content-between margin-top-5 margin-bottom-5">
+                                                        <div class="green_font">Available</div>
+                                                        <div class="d-flex align-items-center">
+                                                            <img src="~/assets/images/icons/icon_user-tie.svg" alt="" width="14" height="14">
+                                                            <span>1-15</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="room_addon">
+                                                <img class="tooltips" src="~/assets/images/icons/icon_tv.svg" alt="" width="26" height="26" data-placement="top" data-original-title="TV">
+                                                <img class="tooltips" src="~/assets/images/icons/icon_laptop.svg" alt="" width="26" height="26" data-placement="top" data-original-title="Laptop">
+                                                <img class="tooltips" src="~/assets/images/icons/icon_ac.svg" alt="" width="26" height="26" data-placement="top" data-original-title="AC">
+                                                <img class="tooltips" src="~/assets/images/icons/icon_projector.svg" alt="" width="26" height="26" data-placement="top" data-original-title="Projector">
+                                                <img class="tooltips" src="~/assets/images/icons/icon_wifi.svg" alt="" width="26" height="26" data-placement="top" data-original-title="Wifi">
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-lg-6 col-md-4 col-sm-4 col-xs-4">
+                                        <div class="metting-card purple">
+                                            <div class="d-flex border_bottom">
+                                                <img class="user_img" src="~/assets/images/avtar.png" height="32" width="32" alt="">
+                                                <div class="room_details">
+                                                    <h3>Meeting Room 05</h3>
+                                                    <p>401-405, Parkview Nexus, Sola, Ahmedabad</p>
+                                                    <div class="d-flex align-items-center justify-content-between margin-top-5 margin-bottom-5">
+                                                        <div class="green_font">Available</div>
+                                                        <div class="d-flex align-items-center">
+                                                            <img src="~/assets/images/icons/icon_user-tie.svg" alt="" width="14" height="14">
+                                                            <span>1-5</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="room_addon">
+                                                <img class="tooltips" src="~/assets/images/icons/icon_tv.svg" alt="" width="26" height="26" data-placement="top" data-original-title="TV">
+                                                <img class="tooltips" src="~/assets/images/icons/icon_laptop.svg" alt="" width="26" height="26" data-placement="top" data-original-title="Laptop">
+                                                <img class="tooltips" src="~/assets/images/icons/icon_ac.svg" alt="" width="26" height="26" data-placement="top" data-original-title="AC">
+                                                <img class="tooltips" src="~/assets/images/icons/icon_projector.svg" alt="" width="26" height="26" data-placement="top" data-original-title="Projector">
+                                                <img class="tooltips" src="~/assets/images/icons/icon_wifi.svg" alt="" width="26" height="26" data-placement="top" data-original-title="Wifi">
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-lg-6 col-md-4 col-sm-4 col-xs-4">
+                                        <div class="metting-card violet">
+                                            <div class="d-flex border_bottom">
+                                                <img class="user_img" src="~/assets/images/avtar.png" height="32" width="32" alt="">
+                                                <div class="room_details">
+                                                    <h3>Meeting Room 06</h3>
+                                                    <p>401-405, Parkview Nexus, Sola, Ahmedabad</p>
+                                                    <div class="d-flex align-items-center justify-content-between margin-top-5 margin-bottom-5">
+                                                        <div class="green_font">Available</div>
+                                                        <div class="d-flex align-items-center">
+                                                            <img src="~/assets/images/icons/icon_user-tie.svg" alt="" width="14" height="14">
+                                                            <span>1-8</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="room_addon">
+                                                <img class="tooltips" src="~/assets/images/icons/icon_tv.svg" alt="" width="26" height="26" data-placement="top" data-original-title="TV">
+                                                <img class="tooltips" src="~/assets/images/icons/icon_laptop.svg" alt="" width="26" height="26" data-placement="top" data-original-title="Laptop">
+                                                <img class="tooltips" src="~/assets/images/icons/icon_ac.svg" alt="" width="26" height="26" data-placement="top" data-original-title="AC">
+                                                <img class="tooltips" src="~/assets/images/icons/icon_projector.svg" alt="" width="26" height="26" data-placement="top" data-original-title="Projector">
+                                                <img class="tooltips" src="~/assets/images/icons/icon_wifi.svg" alt="" width="26" height="26" data-placement="top" data-original-title="Wifi">
+                                            </div>
+                                        </div>
+                                    </div>*@
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Step1 : End -->
+                    <!-- Step2 : Begin -->
+                    <div class="modal-card" id="step2_details">
+                        <fieldset>
+                            <div class="row">
+                                <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                    <div class="form-group">
+                                        <label class="control-label">Meeting Title <span class="required" aria-required="true">*</span></label>
+                                        <input type="text" id="MeetingTitle" placeholder="Please Enter" class="form-control" name="Main Title" maxlength="50" onpaste="return false;" oncopy="return false;" oncut="return false;" oncontextmenu="return false;">
+                                    </div>
+                                </div>
+                                <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                    @*<div class="form-group">
+                                            <label class="control-label">Meeting Description </label>
+                                            <input type="text" id="MeetingDescription" placeholder="Please Enter" class="form-control" name="Main Title">
+                                        </div>*@
+                                    <div class="form-group">
+                                        <label>Agenda <span class="required" aria-required="true"></span></label>
+                                        <textarea class="form-control" id="MeetingDescription" maxlength="1000" rows="5" name="" placeholder="Please Enter" style="resize: vertical; height: 30px; min-height: 30px; " onpaste="return false;" oncopy="return false;" oncut="return false;" oncontextmenu="return false;"></textarea>
+                                    </div>
+
+                                </div>
+                                @*<div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                        <div class="form-group">
+                                            <label class="control-label">Organizer Name <span class="required" aria-required="true">*</span></label>
+                                            <input type="text" id="" placeholder="Please Enter" class="form-control" name="Main Title">
+                                        </div>
+                                    </div>*@
+                                @*<div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                        <div class="form-group">
+                                            <label class="control-label">Organizer Email <span class="required" aria-required="true">*</span></label>
+                                            <input type="text" id="EmailId" placeholder="Please Enter" class="form-control" name="Main Title">
+                                        </div>
+                                    </div>
+                                    <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                        <div class="form-group">
+                                            <label class="control-label">Add Attendee </label>
+                                            <select id="Attendee" class="mt-multiselect btn blue btn-outline" multiple="multiple" data-width="100%">
+                                            </select>
+                                        </div>
+                                    </div>*@
+
+
+
+                            </div>
+                        </fieldset>
+                    </div>
+                    <!-- Step2 : End -->
+                </div>
+                <div class="modal-footer">
+                    <div class="row" id="mf_hidden">
+                        <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                            <button type="button" class="btn prev_btn" id="backbtn"><i class="fa-regular fa-angle-left"></i> Back</button>
+                            <button type="button" class="btn save_btn" id="savebtn"><i class="fa-light fa-floppy-disk"></i> Save</button>
+                            <button type="button" class="btn save_btn" id="updatebtn" style="display:none;"><i class="fa-regular fa-gear"></i> Update</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Book Meeting Room Modal : End -->
+}
+else
+{
+    <span style="color:red">Unauthorized Access.</span>
+}
+<script src="~/Newlayout/js/sweet_alert_payroll.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qtip2/3.0.3/jquery.qtip.min.js"></script>
+<script src="~/AssetsNew/js/CommonValidation.js"></script>
+@*<script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js'></script>*@
+<script>
+    let dateFormat = '@_isdateformat'=="yyyy-M-dd"?"YYYY-MMM-DD":'@_isdateformat'=="M-dd-yyyy"?"MMM-DD-YYYY":'@_isdateformat'=="dd-M-yyyy"?"DD-MMM-YYYY":'@_isdateformat';
+    let selectedRoom = 0;
+    let FindSelectedRoom = 0;
+
+    var defaultDay = "";
+    let selectedDays = "";
+
+    let selectedMeeting = 0;
+    let selectedGroup = 0;
+
+    // Room colors for visual distinction - 6 modern trendy colors
+    var roomColors = [
+        '#639754', // Indigo - Modern purple-blue
+        '#227FAD', // Vibrant Red - Bold and energetic
+        '#B976A4', // Emerald Green - Fresh and modern
+        '#29989F', // Amber - Warm and inviting
+        '#C5848D', // Violet - Creative and sophisticated
+        '#9191C8'  // Cyan - Cool and contemporary
+    ];
+
+    // Function to get color for a specific room ID
+    function getRoomColor(roomId) {
+        var colorIndex = roomId % roomColors.length;
+        return roomColors[colorIndex];
+    }
+
+    $(document).ready(function () {
+        RequestForConferenceRoom(); // get any rquest for room
+        // When accordion-header is clicked
+        $(".accordion-header").click(function () {
+            var content = $(this).next(".accordion-content");
+            var icon = $(this).find(".fa");
+
+            // If this accordion is already open
+            if (content.is(":visible")) {
+                content.slideUp();
+                icon.removeClass("fa-chevron-up").addClass("fa-chevron-down");
+            } else {
+                $(".accordion-content").slideUp();
+                $(".accordion-header .fa").removeClass("fa-chevron-up").addClass("fa-chevron-down");
+
+                content.slideDown();
+                icon.removeClass("fa-chevron-down").addClass("fa-chevron-up");
+            }
+        });
+
+        // Load rooms from database
+        loadRooms();
+
+        // Calendar View tab click handler
+        $('a[href="#calenderview"]').on('shown.bs.tab', function (e) {
+            // Ensure calendar shows current filtered data when switching to this tab
+            $('#MyCalendar').fullCalendar('refetchEvents');
+        });
+
+        var $Roomselectselect = $("#room_Id").multiselect({
+            selectAllValue: 'multiselect-all',
+            enableCaseInsensitiveFiltering: true,
+            includeSelectAllOption: true,
+            allSelectedText: 'All Select',
+            enableFiltering: true,
+            maxHeight: '300',
+            buttonWidth: '100%',
+            enableClickableOptGroups: true,
+            nonSelectedText: 'Select Room'
+        });
+
+        selectedRoom = 0;
+        selectedMeeting = 0;
+        selectedGroup = 0;
+        selectedDays = "";
+        defaultDay = "";
+        /*SelectedAttendee = "";*/
+        // Click Event Hide/Show Cards blocks
+        $('#step2_details').hide();
+        $('#roomcard').hide();
+        $('#noRoom').hide();
+        $('#mf_hidden').css('visibility', 'hidden');
+
+          // Calculate max date (1 month from today)
+          var maxBookingDate = new Date();
+          maxBookingDate.setMonth(maxBookingDate.getMonth() + 1);
+
+          $('#StartDatedp').datepicker({
+            format: "@_isdateformat", // Example: "dd-mm-yyyy"
+            startDate: new Date(),    // Disable previous dates
+            endDate: maxBookingDate,  // Maximum 1 month from today
+            autoclose: true           // Automatically close after date selection
+          });
+
+          $('#EndDatedp').datepicker({
+              format: "@_isdateformat", // Example: "dd-mm-yyyy"
+              startDate: new Date(),    // Disable previous dates (today onwards)
+              endDate: maxBookingDate,  // Maximum 1 month from today
+              autoclose: true           // Automatically close after date selection
+          });
+
+        $('#MyCalendar').fullCalendar({
+            defaultView: 'month',
+            handleWindowResize: true,
+            views: {
+                month: {
+                    columnFormat: "ddd"
+                },
+                week: {
+                    titleFormat: '[Week from] D MMMM YYYY',
+                    titleRangeSeparator: ' to ',
+                    columnFormat: "ddd D/M",
+                },
+                day: {
+                    columnFormat: "dddd D/M",
+                }
+            },
+            axisFormat: 'H:mm',
+            allDaySlot: false,
+            timeFormat: {
+                agenda: 'H:mm',
+                month: 'h(:mm)a'
+            },
+            header: {
+                left: 'prev,next today',
+                center: 'title',
+                right: 'month,agendaDay'
+            },
+            eventLimit: true,
+            eventLimitClick: 'popover',
+            eventRender(event, $el) {
+                if (event.UserId == '@_UserId') {
+                $el.addClass('my-event');
+                }
+                $el.qtip({
+                content: {
+                title: `<strong>${event.title}</strong>`, // Add title in bold for emphasis
+                        text: `
+                <div>${event.start.format('h:mm a')} - ${event.end.format('h:mm a')}</div>  <!-- Time range -->
+                <div><strong>Room Reserved By : </strong>${event.EmpName}</div>
+                <div><strong>Location : </strong>${event.RoomName},${event.RoomLocation}</div>
+                `
+                },
+                    style: {
+                    classes: 'qtip-bootstrap', // Use Bootstrap style for the tooltip
+                    tip: {
+                            corner: 'top left', // Tooltip tip corner position
+                            width: 10,
+                            height: 10
+                    },
+                        width: 250, // Set the tooltip width for better readability
+                        },
+                show: {
+                    event: 'mouseenter', // Show tooltip when the mouse enters the event
+                        solo: true // Only show one tooltip at a time
+                },
+                hide: {
+                    event: 'mouseleave', // Hide tooltip on mouse leave
+                    fixed: true,
+                    delay:100// Keeps tooltip visible when hovered
+
+                },
+                position: {
+                        my: 'top left', // Tooltip anchor position (top left of the element)
+                        at: 'bottom right', // Tooltip is displayed below the event
+                    viewport: $('.portlet'), // Ensures the tooltip stays within the viewport
+                        adjust: {
+                            method: 'shift',
+                            resize: true, // Recalculate position on window resize
+                            scroll: true // Adjust position if the page is scrolled
+                        }
+                }
+                });
+                },
+                events: function(start, end, timezone, callback) {
+                        loadMeetingsWithRoomFilter(start, end, callback);
+                    },
+                selectable: true,
+                    select: findEvent,
+                eventClick: updateEvent
+                });
+                $("#StartDate").on({
+
+                        "change": function () {
+                            let start = $("#StartDate").val();
+                            let end = $("#EndDate").val();
+                            $('#roomcard').hide();
+                            $('#noRoom').hide();
+                            start = moment(start, dateFormat.toUpperCase());
+                            end = moment(end, dateFormat.toUpperCase());
+
+                            if (start >= end) {
+                                $('#EndDatedp .input-group-btn button').prop('disabled', false);
+                                $('#EndDatedp').datepicker('setDate', start.format(dateFormat.toUpperCase()));
+                            }
+                            if (moment(end).isAfter(start)) {
+                                $('#divcustomdays').show();
+                            }
+                            else {
+                                $('#divcustomdays').hide();
+                                $("#customdays").prop('checked', false);
+                                $(".weekday-checkbox-container").hide();
+                            }
+
+                            defaultDay = start.format("dddd");
+                            defaultDay = defaultDay.toLowerCase();
+                            $(`#${defaultDay}`).prop("checked", true);
+                           $("#EndDate").removeClass('field_error');
+
+
+                    },
+                    "keyup": function () {
+                        $('#roomcard').hide();
+                        $('#noRoom').hide();
+                    }
+                });
+
+                $("#EndDate").on({
+                    "blur": function () {
+                        let start = $("#StartDate").val();
+                        let end = $("#EndDate").val();
+                        start = moment(start, dateFormat.toUpperCase())
+                        end = moment(end, dateFormat.toUpperCase())
+                        if (start > end) {
+                            $("#EndDate").addClass('field_error');
+                        }
+                        else {
+                            $("#EndDate").removeClass('field_error');
+                        }
+                        if (moment(end).isAfter(start)) {
+                            $('#divcustomdays').show();
+                        }
+                        else {
+                            $('#divcustomdays').hide();
+                            $("#customdays").prop('checked', false);
+                            $(".weekday-checkbox-container").hide();
+                        }
+                    },
+                    "change": function () {
+                        let start = $("#StartDate").val();
+                        let end = $("#EndDate").val();
+                        start = moment(start, dateFormat.toUpperCase())
+                        end = moment(end, dateFormat.toUpperCase())
+                        if (start > end) {
+                            $("#EndDate").addClass('field_error');
+                        }
+                        else {
+                            $("#EndDate").removeClass('field_error');
+                        }
+                        if (moment(end).isAfter(start)) {
+                            $('#divcustomdays').show();
+                        }
+                        else {
+                            $('#divcustomdays').hide();
+                            $("#customdays").prop('checked', false);
+                            $(".weekday-checkbox-container").hide();
+                        }
+                    }
+                    ,
+                    "keyup": function () {
+                        $('#roomcard').hide();
+                        $('#noRoom').hide();
+                    }
+                });
+                $("#StartTime").on({
+                    "blur": function () {
+                        let startTime = $("#StartTime").val();
+
+                        let endTime = $("#EndTime").val();
+                        startTime = moment(startTime, "HH:mm")
+                        endTime = moment(endTime, "HH:mm")
+                        if (startTime > endTime) {
+                            $("#EndTime").addClass('field_error');
+                        }
+                        else {
+                            $("#EndTime").removeClass('field_error');
+                        }
+
+                    },
+                    "change": function () {
+                        let startTime = $("#StartTime").val();
+                        let endTime = $("#EndTime").val();
+
+                        startTime = moment(startTime, "HH:mm")
+                        endTime = moment(endTime, "HH:mm")
+                        $('#roomcard').hide();
+                        $('#noRoom').hide();
+                        if (startTime >= endTime) {
+                            $("#EndTime").addClass('field_error');
+                        }
+                        else {
+                            $("#EndTime").removeClass('field_error');
+                        }
+
+                        //let start = $("#StartDate").val();
+                        //start = moment(start, dateFormat.toUpperCase())
+                        //if (start.diff(moment(), 'days') == 0) {
+                        //    $("#StartTime").attr("min", moment().startOf('minute').format("HH:mm"));
+                        //}
+                        //else {
+                        //    // Allow all times if a date in the future is selected
+                        //    $("#StartTime").removeAttr("min");
+                        //}
+                    },
+                    "keyup": function () {
+                        $('#roomcard').hide();
+                        $('#noRoom').hide();
+                    }
+                });
+    $("#EndTime").on({
+        "blur": function () {
+            let startTime = $("#StartTime").val();
+            let endTime = $("#EndTime").val();
+            startTime = moment(startTime, "HH:mm")
+            endTime = moment(endTime, "HH:mm")
+            $('#roomcard').hide();
+            $('#noRoom').hide();
+            if (startTime > endTime) {
+                $("#EndTime").addClass('field_error');
+            }
+            else {
+                $("#EndTime").removeClass('field_error');
+            }
+
+        },
+        "change": function () {
+            let startTime = $("#StartTime").val();
+            let endTime = $("#EndTime").val();
+            startTime = moment(startTime, "HH:mm")
+            endTime = moment(endTime, "HH:mm")
+            $('#roomcard').hide();
+            $('#noRoom').hide();
+            if (startTime >= endTime) {
+                $("#EndTime").addClass('field_error');
+            }
+            else {
+                $("#EndTime").removeClass('field_error');
+            }
+
+        },
+        "keyup": function () {
+            $('#roomcard').hide();
+            $('#noRoom').hide();
+        }
+    });
+
+    $("#MeetingTitle").on({
+        "blur": function () {
+
+            if ($("#MeetingTitle").val().trim() == "") {
+                $("#MeetingTitle").addClass('field_error');
+            } else {
+                $("#MeetingTitle").removeClass('field_error');
+            }
+        },
+        "input": function () {
+            $(this).val($(this).val().replace(/[^a-zA-Z0-9 ]/g, ""));
+        }
+    });
+
+        $('#Capacity').on({
+            "input": function (e) {
+                this.value = this.value.replace(/[^0-9]/g, '');
+                let min = parseInt(this.min, 10); // Get the minimum value
+                let max = parseInt(this.max, 10); // Get the maximum value
+                let value = parseInt(this.value, 10); // Get the entered value
+
+                // If the value is outside the allowed range, reset it
+                if (value < min) {
+                    this.value = min;
+                } else if (value > max) {
+                    this.value = max;
+                }
+            }
+        });
+        $("#MeetingDescription").on({
+            "input": function (e) {
+                $(this).val($(this).val().replace(/[^a-zA-Z0-9 ]/g, ""));
+            }
+        });
+
+    $("body").on("mouseenter", "#step1_details .field_error", function () {
+        // On mouse enter
+        const tooltipText = "Event must end after it starts."; // Define your default tooltip text
+        $(this).attr("title", tooltipText).tooltip({ trigger: "manual" }).tooltip("show");
+    });
+
+    $("body").on("mouseleave", "#step1_details .field_error", function () {
+        // On mouse leave
+        $(this).tooltip("hide");
+        $(this).removeAttr("title");
+
+    });
+
+    $('#customdays').change(function () {
+        $('#roomcard').hide();
+        $('#noRoom').hide();
+
+        if ($('#customdays').prop('checked')) {
+            $(".weekday-checkbox-container").show();
+        }
+        else {
+            $(".weekday-checkbox-container").hide();
+        }
+
+    });
+
+    $(".weekday-checkbox-container input[type='checkbox']").change(function () {
+        const checkedBoxes = $(".weekday-checkbox-container input[type='checkbox']:checked");
+        $('#roomcard').hide();
+        $('#noRoom').hide();
+        if (checkedBoxes.length === 0) {
+            // If no checkbox is selected, re-select the default checkbox
+            $(`#${defaultDay}`).prop("checked", true);
+    }
+    });
+
+    $('.close').click(frmClear);
+    $('#findroom_btn').click(findRoomEvent);
+    $('#savebtn').click(addMeeting);
+    $('#updatebtn').click(updateMeeting);
+    $('#quichsearching').click(handleRoomSearch);
+    /*$('#delete_btn').click(deleteMeeting);*/
+
+    // On Inactive Button Click, Open Swal Modal
+
+        $("#delete_btn").on('click', function () {
+            $('#bookmeetingroom_modal').modal('hide');
+            Swal.fire({
+                html: '<div class="swal_subtitle"><b>Which event would you like to delete?</b></div><div style="text-align: left; margin-top: 10px;"><div class="margin-bottom-10"><input type="radio" id="thisEvent" name="eventOption" value="thisEvent" style="height: 16px; width: 16px; vertical-align: text-bottom; accent-color: #0b57d0;" checked><label class="margin-left-15" for="thisEvent">This event</label></div><div class="margin-bottom-10"><input type="radio" id="allEvents" name="eventOption" value="allEvents" style="height: 16px; width: 16px; vertical-align: text-bottom; accent-color: #0b57d0;"><label class="margin-left-15" for="allEvents">This and following events</label></div></div>',
+                title: "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_error.svg' alt=''>Delete",
+                closeOnConfirm: true,
+                showCloseButton: true,
+                showCancelButton: true,
+                focusConfirm: false,
+                cancelButtonText: 'No',
+                confirmButtonText: 'Yes',
+                allowOutsideClick: false,
+                allowEscapeKey: false,
+                customClass: {
+
+                    confirmButton: 'swal-confirm-button-class',
+                    cancelButton: 'swal-cancel-button-class'
+                },
+                preConfirm: () => {
+                    // Capture the selected radio button value
+                    const selectedOption = document.querySelector('input[name="eventOption"]:checked').value;
+                    return selectedOption;
+                }
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    const selectedOption = result.value; // "thisEvent" or "allEvents"
+
+
+                    // Call different functions based on the selected option
+                    if (selectedOption === "thisEvent") {
+                        let flag = 0;
+                        deleteMeeting(flag); // Function for "This Event"
+                    } else if (selectedOption === "allEvents") {
+                        let flag = 1;
+                        deleteMeeting(flag); // Function for "This and Following Events"
+                    }
+                }
+            });
+            $('img[src="/assets/images/icons/swal_icon/icon_error.svg"]').parent().parent().parent().addClass('swal_error');
+        });
+
+    $('#backbtn').click(function () {
+        $('#mf_hidden').css('visibility', 'hidden');
+        $('#step1_details').show();
+        $('#step2_details').hide();
+        $('#roomcard').hide();
+        $('#noRoom').hide();
+    });
+    });
+
+    // Function to load rooms from database
+    function loadRooms() {
+        $.ajax({
+            type: "GET",
+            url: '@_webapiurl' + "RoomBook/GetAllRoomsList/0",
+            headers: { 'Authorization': '@_tokan' },
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            beforeSend: function () {
+                $("#room_Id").empty();
+            },
+            success: function (data) {
+                $("#room_Id").empty();
+                if (data && data.length > 0) {
+                    $.each(data, function (index, room) {
+                        $("#room_Id").append('<option value="' + room.RoomId + '">' + room.RoomName + '</option>');
+                    });
+                    generateRoomAccordion(data,0)
+                } else {
+                    toastr.error("No rooms available");
+                }
+
+                $("#room_Id").multiselect('rebuild');
+                
+            },
+            error: function (xhr, status, error) {
+                console.error("Error loading rooms:", error);
+                $("#room_Id").multiselect('rebuild');
+                toastr.error("Failed to load rooms.");
+            }
+        });
+    }
+
+    // Function to load room view accordion
+    function loadRoomView(selectedRoomIds) {
+       
+        $.ajax({
+            type: "GET",
+            url: '@_webapiurl' + "RoomBook/GetAllRoomsList/0",
+            headers: { 'Authorization': '@_tokan' },
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            beforeSend: function () {
+                $("#accordion_container").html('<div class="text-center"><i class="fa fa-spinner fa-spin"></i> Loading rooms...</div>');
+            },
+            success: function (data) {
+                generateRoomAccordion(data, selectedRoomIds);
+            },
+            error: function (xhr, status, error) {
+                console.error("Error loading room view:", error);
+                $("#accordion_container").html('<div class="text-center text-danger">Failed to load rooms.</div>');
+                toastr.error("Failed to load room view.");
+            }
+        });
+    }
+
+    // Function to generate room accordion from API data
+    function generateRoomAccordion(rooms, selectedRoomIds) {
+        var accordionHtml = '';
+        var filteredRooms = rooms;
+
+        if (selectedRoomIds && selectedRoomIds.length > 0) {
+            var isSelectAllChosen = selectedRoomIds.includes('multiselect-all');
+
+            if (!isSelectAllChosen) {
+                var selectedRoomIdsStr = selectedRoomIds.map(String);
+                filteredRooms = rooms.filter(function(room) {
+                    return selectedRoomIdsStr.includes(String(room.RoomId));
+                });
+            }
+        }
+
+        if (filteredRooms && filteredRooms.length > 0) {
+            $.each(filteredRooms, function (index, room) {
+                accordionHtml += '<div class="accordion-item">';
+                accordionHtml += '    <div class="accordion-header" data-room-id="' + room.RoomId + '">';
+                accordionHtml += '        <div class="employee-summary">';
+                accordionHtml += '            <div class="emp-info">';
+                accordionHtml += '                <span class="emp-name">' + (room.RoomName || 'Unknown Room') + '</span>';
+                accordionHtml += '                <span class="emp-code">' + (room.RoomLocation || 'No Location') + '</span>';
+                accordionHtml += '            </div>';
+                accordionHtml += '            <div class="d-flex align-items-center">';
+                accordionHtml += '                <img src="/assets/images/icons/icon_user-tie.svg" alt="" width="14" height="14">';
+                accordionHtml += '                <span>1-' + (room.Capacity || '0') + '&nbsp&nbsp&nbsp&nbsp Today</span>';
+                accordionHtml += '            </div>';
+                accordionHtml += '        </div>';
+                accordionHtml += '        <div class="accordion-toggle">';
+                accordionHtml += '            <i class="fa fa-chevron-down"></i>';
+                accordionHtml += '        </div>';
+                accordionHtml += '    </div>';
+                accordionHtml += '    <div class="accordion-content" style="display:none;">';
+                accordionHtml += '        <div class="tableresponsive_report">';
+                accordionHtml += '            <table class="table new_datatbl table-striped table-bordered table-hover table-checkable order-column dataTable" cellspacing="0">';
+                accordionHtml += '                <thead>';
+                accordionHtml += '                    <tr>';
+                accordionHtml += '                        <th style="min-width: 140px;">Booking Time</th>';
+                accordionHtml += '                        <th style="min-width: 140px;">Meeting Title</th>';
+                accordionHtml += '                        <th style="min-width: 220px;">The person who booked Room</th>';
+                accordionHtml += '                        <th>Request</th>';
+                accordionHtml += '                    </tr>';
+                accordionHtml += '                </thead>';
+                accordionHtml += '                <tbody id="meetings-table-' + room.RoomId + '">';
+                accordionHtml += '                    <tr>';
+                accordionHtml += '                        <td colspan="4" class="text-center">Click to load today\'s meetings...</td>';
+                accordionHtml += '                    </tr>';
+                accordionHtml += '                </tbody>';
+                accordionHtml += '            </table>';
+                accordionHtml += '        </div>';
+                accordionHtml += '    </div>';
+                accordionHtml += '</div>';
+            });
+        } else {
+            accordionHtml = '<div class="text-center"><p>No rooms available</p></div>';
+        }
+
+        $("#accordion_container").html(accordionHtml);
+
+        // Re-bind accordion click events for dynamically created content
+        $(".accordion-header").off('click').on('click', function () {
+            var content = $(this).next(".accordion-content");
+            var icon = $(this).find(".fa");
+            var roomId = $(this).data('room-id');
+
+            // If this accordion is already open
+            if (content.is(":visible")) {
+                content.slideUp();
+                icon.removeClass("fa-chevron-up").addClass("fa-chevron-down");
+            } else {
+                $(".accordion-content").slideUp();
+                $(".accordion-header .fa").removeClass("fa-chevron-up").addClass("fa-chevron-down");
+
+                content.slideDown();
+                icon.removeClass("fa-chevron-down").addClass("fa-chevron-up");
+
+                // Load meetings for this room when accordion opens
+                loadRoomMeetings(roomId);
+            }
+        });
+    }
+
+    // Function to load meetings for a specific room for today
+    function loadRoomMeetings(roomId) {
+       
+        // Get today's date in YYYY-MM-DD format
+        var today = new Date();
+        var todayStr = today.getFullYear() + '-' +
+                       String(today.getMonth() + 1).padStart(2, '0') + '-' +
+                       String(today.getDate()).padStart(2, '0');
+
+        $.ajax({
+            type: "GET",
+            url: '@_webapiurl' + "RoomBook/GetMeetings?start=" + todayStr + "&end=" + todayStr + "&roomId=" + roomId,
+            headers: { 'Authorization': '@_tokan' },
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            beforeSend: function () {
+                $("#meetings-table-" + roomId).html('<tr><td colspan="4" class="text-center"><i class="fa fa-spinner fa-spin"></i> Loading meetings...</td></tr>');
+            },
+            success: function (data) {
+                populateMeetingsTable(roomId, data);
+            },
+            error: function (xhr, status, error) {
+                console.error("Error loading meetings for room " + roomId + ":", error);
+                $("#meetings-table-" + roomId).html('<tr><td colspan="4" class="text-center text-danger">Failed to load meetings</td></tr>');
+            }
+        });
+    }
+
+    // Function to format time string (remove date, keep time only)
+    function formatMeetingTime(startDateTime, endDateTime) {
+        try {
+            var startTime = '';
+            var endTime = '';
+
+          
+            if (startDateTime && startDateTime.includes('T')) {
+                startTime = startDateTime.split('T')[1]; 
+              
+                if (startTime.includes('Z')) {
+                    startTime = startTime.split('Z')[0];
+                } else if (startTime.includes('+')) {
+                    startTime = startTime.split('+')[0];
+                } else if (startTime.includes('-') && startTime.lastIndexOf('-') > 2) {
+                    startTime = startTime.substring(0, startTime.lastIndexOf('-'));
+                }
+            } else if (startDateTime && startDateTime.includes(' ')) {
+               
+                startTime = startDateTime.split(' ').slice(1).join(' ');
+            } else if (startDateTime) {
+                startTime = startDateTime;
+            }
+
+            if (endDateTime && endDateTime.includes('T')) {
+                endTime = endDateTime.split('T')[1]; 
+                if (endTime.includes('Z')) {
+                    endTime = endTime.split('Z')[0];
+                } else if (endTime.includes('+')) {
+                    endTime = endTime.split('+')[0];
+                } else if (endTime.includes('-') && endTime.lastIndexOf('-') > 2) {
+                    endTime = endTime.substring(0, endTime.lastIndexOf('-'));
+                }
+            } else if (endDateTime && endDateTime.includes(' ')) {
+                endTime = endDateTime.split(' ').slice(1).join(' ');
+            } else if (endDateTime) {
+                endTime = endDateTime;
+            }
+
+           
+            if (startTime && endTime) {
+                return startTime + ' - ' + endTime;
+            } else {
+                return (startDateTime || '') + ' - ' + (endDateTime || '');
+            }
+
+        } catch (e) {
+            console.error('Error formatting meeting time:', e);
+            return (startDateTime || '') + ' - ' + (endDateTime || '');
+        }
+    }
+
+    // Helper function to convert time string to minutes since midnight
+    function timeToMinutes(timeStr) {
+        try {
+            var time = timeStr;
+            if (timeStr.includes('T')) {
+                time = timeStr.split('T')[1].split('Z')[0].split('+')[0].split('-')[0];
+            } else if (timeStr.includes(' ')) {
+                time = timeStr.split(' ')[1];
+            }
+            var parts = time.split(':');
+            return parseInt(parts[0]) * 60 + parseInt(parts[1]);
+        } catch (e) {
+            return 0;
+        }
+    }
+
+    // Helper function to convert minutes to time string
+    function minutesToTime(minutes) {
+        var hours = Math.floor(minutes / 60);
+        var mins = minutes % 60;
+        var secs = '00';
+        return String(hours).padStart(2, '0') + ':' + String(mins).padStart(2, '0') + ':' + secs;
+    }
+
+    // Function to find available time slots in the day
+    function findAvailableSlots(meetings) {
+        var slots = [];
+        var dayStart = 0; // 00:00:00
+        var dayEnd = 1439; // 23:59:00 (we'll show as 23:59:59)
+
+        // Sort meetings by start time
+        var sortedMeetings = meetings.slice().sort(function(a, b) {
+            return timeToMinutes(a.start) - timeToMinutes(b.start);
+        });
+
+        var currentTime = dayStart;
+
+        sortedMeetings.forEach(function(meeting) {
+            var meetingStart = timeToMinutes(meeting.start);
+            var meetingEnd = timeToMinutes(meeting.end);
+
+           
+            if (currentTime < meetingStart) {
+                slots.push({
+                    type: 'available',
+                    start: minutesToTime(currentTime),
+                    end: minutesToTime(meetingStart)
+                });
+            }
+
+          
+            slots.push({
+                type: 'meeting',
+                id: meeting.id, 
+                start: meeting.start,
+                end: meeting.end,
+                title: meeting.title,
+                EmpName: meeting.EmpName,
+                UserId: meeting.UserId,
+                IsRequest: meeting.IsRequest
+            });
+
+            currentTime = meetingEnd;
+        });
+
+      
+        if (currentTime < dayEnd) {
+            slots.push({
+                type: 'available',
+                start: minutesToTime(currentTime),
+                end: '23:59:59'
+            });
+        }
+
+        return slots;
+    }
+
+    // Function to populate meetings table with real data and available slots
+    function populateMeetingsTable(roomId, meetings) {
+       
+        var tableHtml = '';
+
+        if (meetings && meetings.length > 0) {
+            var allSlots = findAvailableSlots(meetings);
+
+            $.each(allSlots, function(index, slot) {
+                if (slot.type === 'meeting') {
+                    var personName = slot.EmpName || 'Unknown';
+                    var meetingTitle = slot.title || 'No Title';
+                    var timeRange = formatMeetingTime(slot.start, slot.end);
+
+                    tableHtml += '<tr>';
+                    tableHtml += '    <td>' + timeRange + '</td>';
+                    tableHtml += '    <td>' + meetingTitle + '</td>';
+                    tableHtml += '    <td>' + personName + '</td>';
+                    var meetingStart = new Date(slot.start);
+                    var now = new Date();
+                    var nowPlus30 = new Date(now.getTime() + 30 * 60000);
+                    if ('@UserId' != slot.UserId && meetingStart > nowPlus30 && slot.IsRequest == 0) {
+                        tableHtml += '<td><a class="btn btn-xs meeting-request-btn seagreen_btnnew tooltips" data-placement="top" title="Send Request" onclick="requestMeeting(' + slot.id + ', \'' + meetingTitle.replace(/'/g, '&apos;') + '\', \'' + timeRange + '\')" style="margin-left: 0 !important;"><i class="fa-regular fa-envelope-circle-check" style="font-size: 15px;"></i></a></td>';
+                    }
+                    else if (slot.IsRequest !=  0)
+                    {
+                        tableHtml += '    <td>Already Requested</td>';
+                    }
+                    else {
+                        tableHtml += '    <td></td>';
+                    }
+                    tableHtml += '</tr>';
+                } else {
+                    // Available slot
+                    var availableTime = slot.start + ' - ' + slot.end;
+
+                    tableHtml += '<tr class="available-slot">';
+                    tableHtml += '    <td>' + availableTime + '</td>';
+                    tableHtml += '    <td>-</td>';
+                    tableHtml += '    <td>-</td>';
+                    tableHtml += '    <td></td>';
+                    tableHtml += '</tr>';
+                }
+            });
+        } else {
+           
+            tableHtml = '<tr class="available-slot">';
+            tableHtml += '    <td>00:00:00 - 23:59:59</td>';
+            tableHtml += '    <td>-</td>';
+            tableHtml += '    <td>-</td>';
+            tableHtml += '    <td>-</td>';
+            tableHtml += '</tr>';
+        }
+
+        $("#meetings-table-" + roomId).html(tableHtml);
+    }
+
+    // Function to handle meeting request button click
+    function requestMeeting(meetingId, meetingTitle, timeRange) {
+
+        Swal.fire({
+            html: '<div class="swal_subtitle"><b>Request Conference Room</b>' +
+                  '<p>Would you like to request the conference room for the time ' + timeRange + '?</p>' +
+                  '<div style="margin-top: 15px;">' +
+                  '<label style="display: block; text-align: left; margin-bottom: 5px; font-weight: bold;">Optional Message:</label>' +
+                  '<textarea id="requestMessage" class="swal2-input" placeholder="Add a message for the meeting organizer (optional)" ' +
+                  'style="width: 100%; height: 80px; resize: vertical; font-size: 14px;" maxlength="100"></textarea>' +
+                  '</div></div>',
+            title: "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_question.svg' alt=''>Request Meeting",
+            closeOnConfirm: true,
+            showCloseButton: true,
+            showCancelButton: true,
+            focusConfirm: false,
+            cancelButtonText: 'No, Cancel',
+            confirmButtonText: 'Yes, Send Request',
+            allowOutsideClick: false,
+            allowEscapeKey: false,
+            customClass: {
+                confirmButton: 'swal-confirm-button-class',
+                cancelButton: 'swal-cancel-button-class'
+            },
+            preConfirm: () => {
+
+                const message = document.getElementById('requestMessage').value.trim();
+                const specialCharPattern = /[!#$%^&*()_+\-=\[\]{};':"\\|,<>\/]/;
+              
+                if (message && specialCharPattern.test(message)) {
+                    Swal.showValidationMessage('Message cannot contain special characters (!#$%^&*()_+-=[]{};"\\|,<>/). Only letters, numbers and spaces are allowed.');
+                    return false;
+                }
+
+                return true;
+            }
+        }).then((result) => {
+            if (result.isConfirmed) {
+                const message = document.getElementById('requestMessage').value.trim();
+
+               
+                $.ajax({
+                    type: "POST",
+                    url: '@_webapiurl' + "RoomBook/RequestMeeting",
+                    headers: { 'Authorization': '@_tokan' },
+                    contentType: "application/json; charset=utf-8",
+                    beforeSend: function () {
+                        $("#ajax_loader").show();
+                    },
+                    data: JSON.stringify({
+                        MeetingId: meetingId,
+                        RequestMessage: message,
+                        RequesterMeetingTitle: "",
+                        RequesterUserId: 0,
+                        RequesterEmail: "",
+                        RequesterName: ""
+                    }),
+                    success: function (data) {
+                      
+                        $("#ajax_loader").hide();
+                        if (data.MegSts === "ok") {
+                            toastr.success('Conference room request sent successfully for particular slot!');
+                        }
+                        else if (data.MegSts == "fail") {
+                            toastr.error('Failed to send request: ' + data.Meg);
+                        }
+                        else {
+                            toastr.error('Failed to send request: ' + data.Meg);
+                        }
+                    },
+                    error: function (xhr, status, error) {
+                        $("#ajax_loader").hide();
+                        console.error("Error sending request:", error);
+                        toastr.error('Failed to send request. Please try again.');
+                    }
+                });
+            }
+        });
+
+       
+        $('img[src="/assets/images/icons/swal_icon/icon_question.svg"]').parent().parent().parent().addClass('swal_question');
+    }
+
+    // Function to handle room search button click
+    function handleRoomSearch() {
+       
+        var selectedRooms = $("#room_Id").val();
+        var roomId = 0; 
+
+      
+        var allRoomOptions = $("#room_Id option").length;
+        var isSelectAllChosen = selectedRooms && selectedRooms.includes('multiselect-all');
+        var allRoomsSelected = selectedRooms && selectedRooms.length === allRoomOptions;
+
+        if (isSelectAllChosen || allRoomsSelected || !selectedRooms || selectedRooms.length === 0) {
+         
+            roomId = 0;
+        } else {
+         
+            if (selectedRooms.length === 1) {
+                roomId = selectedRooms[0]; 
+            } else {
+                
+                roomId = selectedRooms.join(',');
+            }
+        }
+
+       
+        $('#MyCalendar').fullCalendar('removeEvents');
+        $('#MyCalendar').fullCalendar('refetchEvents');
+
+        loadRoomView(selectedRooms);
+    }
+
+    
+    function loadMeetingsWithRoomFilter(start, end, callback) {
+      
+        var selectedRooms = $("#room_Id").val();
+        var roomId = 0; 
+
+       
+        var allRoomOptions = $("#room_Id option").length;
+        var isSelectAllChosen = selectedRooms && selectedRooms.includes('multiselect-all');
+        var allRoomsSelected = selectedRooms && selectedRooms.length === allRoomOptions;
+
+        if (isSelectAllChosen || allRoomsSelected || !selectedRooms || selectedRooms.length === 0) {
+            
+            roomId = 0;
+        } else {
+            
+            if (selectedRooms.length === 1) {
+                roomId = selectedRooms[0]; 
+            } else {
+              
+                roomId = selectedRooms.join(',');
+            }
+        }
+
+      
+        var startDate = start.format('YYYY-MM-DD');
+        var endDate = end.format('YYYY-MM-DD');
+
+        $.ajax({
+            type: "GET",
+            url: '@_webapiurl' + "RoomBook/GetMeetings",
+            headers: { 'Authorization': '@_tokan' },
+            data: {
+                start: startDate,
+                end: endDate,
+                roomId: roomId
+            },
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            success: function (data) {
+                // Add room-specific colors to each event
+                if (data && data.length > 0) {
+                    data.forEach(function(event) {
+                        event.color = getRoomColor(event.RoomId);
+                    });
+                }
+                callback(data || []);
+            },
+            error: function (xhr, status, error) {
+                console.error("Error loading meetings:", error);
+                toastr.error("Failed to load meetings");
+                callback([]);
+            }
+        });
+    }
+
+    function findEvent(start, end, jsEvent, view) {
+        checkSession();
+        if (start.isBefore(moment())) {
+            return;
+        }
+
+        // Check if date is beyond 1 month limit
+        var maxBookingDate = moment().add(1, 'month');
+        if (start.isAfter(maxBookingDate)) {
+            toastr.error("You cannot book a room more than 1 month in advance. Please select a date within the specified range.");
+            return;
+        }
+
+        //Date formate manage
+        let isMonthView = view.type === 'month';
+
+        defaultDay = moment(start, dateFormat.toUpperCase()).format("dddd");
+        defaultDay = defaultDay.toLowerCase();
+        $(`#${defaultDay}`).prop("checked", true);
+
+    let formattedStart = start.format(dateFormat.toUpperCase());
+
+    //get one day more on end date so subtract one day
+    let formattedEnd = isMonthView
+        ? moment(end).subtract(1, 'days').format(dateFormat.toUpperCase())
+        : moment(end).format(dateFormat.toUpperCase());
+    //modal handling
+    FindSelectedRoom = 0;
+        let startTime = isMonthView ? moment().format("HH:mm:ss") : start.format("HH:mm");
+        let endTime = isMonthView ? moment().add(1, 'hours').format("HH:mm:ss") : end.format("HH:mm");
+    $('#bookmeetingroom_modal').modal('show');
+        $('#mf_hidden').css('visibility', 'hidden');
+        if (moment(end).subtract(1, 'days').isAfter(start)) {
+            $('#divcustomdays').show();
+        }
+        else {
+            $('#divcustomdays').hide();
+        }
+    $('#step1_details').show();
+    $('#step2_details').hide();
+    $('#roomcard').hide();
+    $('#noRoom').hide();
+    $('#updatebtn').hide();
+    $('#delete_btn').hide();
+    $('#savebtn').show(); $('#StartDate').prop('disabled', false);
+    $('#StartDatedp .input-group-btn button').prop('disabled', false);
+    $('#StartDatedp').datepicker('setDate', formattedStart);
+    $('#EndDate').prop('disabled', false);
+    $('#EndDatedp .input-group-btn button').prop('disabled', false);
+    $('#EndDatedp').datepicker('setDate', formattedEnd);
+    //$('#StartTime').timepicker('setTime', '12:00 AM');
+    //$('#EndTime').timepicker('setTime', '13:00 AM');
+    $('#StartTime').timepicker('setTime', startTime);
+    $('#EndTime').timepicker('setTime', endTime);
+    $("#Capacity").val("");
+    $("#customdays").prop('checked', false);
+    $(".weekday-checkbox-container").hide();
+    //$('#Attendee').empty();
+    //SelectedAttendee = "";
+    }
+
+    function updateEvent(event, element) {
+        checkSession();
+        if (event.start.isBefore(moment())) {
+            return;
+        }
+        if (event.UserId != '@_UserId') {
+
+            return;
+        }
+
+    if ($(this).data("qtip")) $(this).qtip("hide");
+    let start = event.start;
+    let end = event.end;
+    let startDate = start.format(dateFormat.toUpperCase());
+    selectedMeeting = event.id;
+    selectedGroup = event.GroupId;
+    let endDate = end.format(dateFormat.toUpperCase());
+    let startTime = start.format("HH:mm:ss")
+    let endTime = end.format("HH:mm:ss")
+    let _strength = event.Strength == 0 ? null : event.Strength;
+    FindSelectedRoom = event.RoomId;
+
+    $('#bookmeetingroom_modal').modal('show');
+    $('#mf_hidden').css('visibility', 'hidden');
+    $('#step1_details').show();
+    $('#step2_details').hide();
+    $('#divcustomdays').hide();
+    $('#updatebtn').show();
+    $('#delete_btn').show();
+    $('#savebtn').hide();
+    $('#StartDatedp').datepicker('setDate', startDate);
+    $('#StartDate').prop('disabled', true);
+    $('#StartDatedp .input-group-btn button').prop('disabled', true);
+    $('#EndDatedp').datepicker('setDate', endDate);
+    $('#EndDate').prop('disabled', true);
+    $('#EndDatedp .input-group-btn button').prop('disabled', true);
+    $('#StartTime').timepicker('setTime', startTime );
+    $('#EndTime').timepicker('setTime', endTime);
+    $("#Capacity").val(_strength);
+    $('#MeetingTitle').val(event.title);
+    $('#MeetingDescription').val(event.description);
+    $("#customdays").prop('checked', false);
+    $(".weekday-checkbox-container").hide();
+    }
+
+    function findRoomEvent(e) {
+        checkSession();
+        $('#roomcard').hide();
+        $('#noRoom').hide();
+
+        const container = $("#roomcard .row");
+        container.empty();
+
+        let start = $("#StartDate").val();
+        let end = $("#EndDate").val();
+        let startTime = $("#StartTime").val();
+        let endTime = $("#EndTime").val();
+        let capacity = $("#Capacity").val();
+
+        start = moment(start, dateFormat.toUpperCase());
+        end = moment(end, dateFormat.toUpperCase());
+
+        if (start > end) {
+            $("#EndDate").addClass('field_error');
+            $("#EndDate").focus();
+            e.preventDefault();
+            return;
+        }
+
+        else {
+            $("#EndDate").removeClass('field_error');
+        }
+
+
+        let dayStart = start.clone();
+        const dayEnd = end.clone();
+        const dayNames = new Set();
+
+        while (dayStart <= dayEnd) {
+            dayNames.add(dayStart.format("dddd")); // Get the day name
+            dayStart = dayStart.add(1, 'days'); // Move to the next day
+        }
+        const currentTime = moment().format("HH:mm");
+        if (start.isSame(moment(), 'day')) {
+            if (moment(startTime, "HH:mm").isBefore(moment(currentTime, "HH:mm"))) {
+                toastr.error("Looks like you picked a past time.")
+                $("#StartTime").focus();
+                e.preventDefault();
+                return;
+            }
+        }
+
+        start = start.format("YYYY-MM-DD");
+        end = end.format("YYYY-MM-DD");
+        startTime = moment(startTime, "HH:mm")
+        endTime = moment(endTime, "HH:mm")
+        if (startTime >= endTime) {
+            $("#EndTime").addClass('field_error');
+            $("#EndTime").focus();
+            e.preventDefault();
+            return;
+        }
+        else {
+            $("#EndTime").removeClass('field_error');
+        }
+
+
+        let startDate = $("#StartDate").val();
+        startDate = moment(startDate, dateFormat.toUpperCase()); // Assuming StartDate format is YYYY-MM-DD
+
+        if (startDate.isSame(moment(), 'day')) {
+            if (moment(startTime, "HH:mm").isBefore(moment(currentTime, "HH:mm"))) {
+                $("#StartTime").addClass("field_error"); // Add error class
+            } else {
+                $("#StartTime").removeClass("field_error");
+            }
+        }
+
+        startTime = startTime.format("HH:mm:ss");
+        endTime = endTime.format("HH:mm:ss");
+
+        // custom or all days Logic
+        let arrayofDay = [...dayNames];
+        if ($('input[name = "frequency"]:checked').val() == "customdays") {
+            var Days = [];
+            // Check each day and add it to the array if checked
+            if ($('#sunday').prop('checked')) {
+                if (arrayofDay.includes("Sunday")) Days.push("Sunday");
+            }
+            if ($('#monday').prop('checked')) {
+                if (arrayofDay.includes("Monday"))Days.push("Monday");
+            }
+            if ($('#tuesday').prop('checked')) {
+                if (arrayofDay.includes("Tuesday"))Days.push("Tuesday");
+            }
+            if ($('#wednesday').prop('checked')) {
+                if (arrayofDay.includes("Wednesday"))Days.push("Wednesday");
+            }
+            if ($('#thursday').prop('checked')) {
+                if (arrayofDay.includes("Thursday"))Days.push("Thursday");
+            }
+            if ($('#friday').prop('checked')) {
+                if (arrayofDay.includes("Friday"))Days.push("Friday");
+            }
+            if ($('#saturday').prop('checked')) {
+                if (arrayofDay.includes("Saturday"))Days.push("Saturday");
+            }
+            Days = Days.join(",");
+            selectedDays = Days;
+        }
+        else {
+
+            var Days = arrayofDay.join(",");
+            selectedDays = Days;
+        }
+
+        if (Days == "") {
+            toastr.error("selected days not match with Date");
+            e.preventDefault();
+            return;
+        }
+
+        let obj = {
+            MeetingId:selectedMeeting,
+            StartDate: start,
+            EndDate: end,
+            StartTime: startTime,
+            EndTime: endTime,
+            Capacity: capacity,
+            Days: Days,
+        }
+
+        $.ajax({
+            type: "POST",
+            url: '@_webapiurl' + "RoomBook/GetAvailableRoom",
+            headers: { 'Authorization': '@_tokan' },
+            data: JSON.stringify(obj),
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            beforeSend: function () {
+                $("#ajax_loader").show();
+            },
+            success: function (data) {
+                $("#ajax_loader").hide();
+                if (data.length == 0) {
+                    const container = $("#roomcard .row");
+                    container.empty();
+                    $('#noRoom').show();
+                }
+                else if (data.length > 0) {
+                    $('#roomcard').show();
+                    container.empty(); // Clear existing content if needed
+                    var cardColor = ['pink', 'blue', 'yellow', 'green', 'purple', 'violet'];
+                    var i = 0;
+                    // Loop through the response data
+                    data.forEach(room => {
+                        if (room.AmenityNames != null) {
+                            room.AmenityNames = room.AmenityNames.split(",");
+                        }
+                        else {
+                            room.AmenityNames = [];
+                        }
+                    const roomHTML = `
+            <div class="col-md-6 col-sm-12" onclick="goToSecondStep(${room.RoomId})">
+                <div class="metting-card ${cardColor[i]}">
+                    <div class="d-flex border_bottom">
+
+                        <div class="room_details">
+                            <h3>${room.RoomName}</h3>
+                            <p>${room.RoomLocation}</p>
+                            <div class="d-flex align-items-center justify-content-between margin-top-5 margin-bottom-5">
+                                <div class="green_font">Available  ${FindSelectedRoom == room.RoomId ? "| Selected" : ""}</div>
+                                <div class="d-flex align-items-center">
+                                    <img src="/assets/images/icons/icon_user-tie.svg" alt="" width="14" height="14">
+                                    <span>1-${room.Capacity}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="room_addon">
+                        ${room.AmenityNames.map(addon => {
+                            if (addon != "") {
+                                addon = addon.split(" ").join("");
+                                return `<img class="tooltips" src="/assets/images/ConferenceRoom/icon_${addon}.svg" alt="" width="26" height="26" data-placement="top" data-original-title="${addon}">`
+                            }
+                }).join('')}
+                        </div>
+                    </div>
+
+                </div>
+            `;
+        container.append(roomHTML);
+        i < cardColor.length - 1 ? i++ : i=0;
+        // Append each room's HTML
+    });
+    $('.tooltips').tooltip();
+    }
+
+    },
+    error: function (errormsg) {
+        toastr.error("Error during find room");
+        $("#ajax_loader").hide();
+    }
+
+    });
+
+    }
+    function goToSecondStep(roomid) {
+
+        $('#step2_details').show();
+        $('#step1_details').hide();
+        $('#mf_hidden').css('visibility', 'visible');
+        selectedRoom = roomid;
+
+    }
+
+    function addMeeting() {
+        checkSession();
+        let start = $("#StartDate").val();
+        let end = $("#EndDate").val();
+        let startTime = $("#StartTime").val();
+        let endTime = $("#EndTime").val();
+
+        start = moment(start, dateFormat.toUpperCase()).format("YYYY-MM-DD");
+        end = moment(end, dateFormat.toUpperCase()).format("YYYY-MM-DD");
+        startTime = moment(startTime, "HH:mm").format("HH:mm:ss");
+        endTime = moment(endTime, "HH:mm").format("HH:mm:ss");
+
+        let meetingTitle = $('#MeetingTitle').val().trim().replace(/[^a-zA-Z0-9 ]/g, "");
+        let meetingDescription = $('#MeetingDescription').val().trim().replace(/[^a-zA-Z0-9 ]/g, "");
+        if (meetingTitle == "") {
+            $("#MeetingTitle").addClass('field_error');
+            $("#MeetingTitle").focus();
+            e.preventDefault();//or return false
+            return;
+        }
+
+        var organizerEmail = '@_EmailId'
+
+        if (organizerEmail.trim() == "") {
+            return;
+        }
+        let roomid = selectedRoom;
+
+        let obj = {
+            RoomId: roomid,
+            FromDate : start,
+            ToDate : end,
+            StartTime: startTime,
+            EndTime: endTime,
+            Days: selectedDays.length > 0 ? selectedDays:"",
+            MeetingTitle: meetingTitle,
+            EmailId: organizerEmail,
+            MeetingDescription: meetingDescription,
+            UserId: '@_UserId',
+            Strength:$("#Capacity").val()
+        }
+
+        $.ajax({
+            type: "POST",
+            url: '@_webapiurl' +"RoomBook/AddMeeting",
+            headers: { 'Authorization': '@_tokan' },
+            data: JSON.stringify(obj),
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            beforeSend: function () {
+                $("#ajax_loader").show();
+            },
+            success: function (data) {
+                $("#ajax_loader").hide();
+                if (data.MegSts == 'ok') {
+                    toastr.success(data.Meg);
+                }
+                else if (data.MegSts == 'error') {
+                    toastr.error(data.Meg);
+                }
+                else {
+                    toastr.error("Error during insert and update");
+                }
+                $('#MyCalendar').fullCalendar('refetchEvents');
+                selectedRoom = 0;
+                selectedDays = "";
+                $('#bookmeetingroom_modal').modal('hide');
+                frmClear();
+            },
+            error: function (errormsg) {
+                $("#ajax_loader").hide();
+                toastr.error("Error during insert and update");
+                $('#MyCalendar').fullCalendar('refetchEvents');
+                selectedRoom = 0;
+                selectedDays = "";
+                $('#bookmeetingroom_modal').modal('hide');
+                frmClear();
+
+            }
+        });
+    }
+
+    function updateMeeting() {
+        checkSession();
+        let start = $("#StartDate").val();
+        let end = $("#EndDate").val();
+        let startTime = $("#StartTime").val();
+        let endTime = $("#EndTime").val();
+
+        start = moment(start, dateFormat.toUpperCase()).format("YYYY-MM-DD");
+        end = moment(end, dateFormat.toUpperCase()).format("YYYY-MM-DD");
+        startTime = moment(startTime, "HH:mm").format("HH:mm:ss");
+        endTime = moment(endTime, "HH:mm").format("HH:mm:ss");
+
+        let meetingTitle = $('#MeetingTitle').val().trim().replace(/[^a-zA-Z0-9 ]/g, "");
+        let meetingDescription = $('#MeetingDescription').val().trim().replace(/[^a-zA-Z0-9 ]/g, "");
+        if (meetingTitle == "") {
+            $("#MeetingTitle").addClass('field_error');
+            $("#MeetingTitle").focus();
+            e.preventDefault();//or return false
+            return;
+        }
+        var organizerEmail = '@_EmailId'
+
+        if (organizerEmail.trim() == "") {
+            return;
+        }
+        let roomid = selectedRoom;
+
+        let obj = {
+            MeetingId: selectedMeeting,
+            RoomId: roomid,
+            FromDate : start,
+            ToDate : end,
+            StartTime: startTime,
+            EndTime: endTime,
+            Days: selectedDays.length > 0 ? selectedDays:"",
+            MeetingTitle: meetingTitle,
+            //EmailId: $("#EmailId").val(),
+            EmailId: organizerEmail,
+            MeetingDescription: meetingDescription,
+            UserId: '@_UserId',
+            Strength: $("#Capacity").val(),
+
+            //Attendee: $('#Attendee').val() != null ? $('#Attendee').val().toString() : ""
+        }
+
+        $.ajax({
+            type: "POST",
+            url: '@_webapiurl' +"RoomBook/AddMeeting",
+            headers: { 'Authorization': '@_tokan' },
+            data: JSON.stringify(obj),
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            beforeSend: function () {
+                $("#ajax_loader").show();
+            },
+            success: function (data) {
+                $("#ajax_loader").hide();
+                if (data.MegSts == 'ok') {
+                    toastr.success(data.Meg);
+                }
+                else if (data.MegSts == 'error') {
+                    toastr.error(data.Meg);
+                }
+                else {
+                    toastr.error("Error during insert and update");
+                }
+                $('#MyCalendar').fullCalendar('refetchEvents');
+                selectedRoom = 0;
+                selectedDays = "";
+                $('#bookmeetingroom_modal').modal('hide');
+
+                frmClear();
+            },
+            error: function (errormsg) {
+                $("#ajax_loader").hide();
+                toastr.error("Error during insert and update");
+                $('#MyCalendar').fullCalendar('refetchEvents');
+                selectedRoom = 0;
+                selectedDays = "";
+                $('#bookmeetingroom_modal').modal('hide');
+                frmClear();
+
+            }
+        });
+    }
+
+
+    function deleteMeeting(flag) {
+        checkSession();
+        if (selectedMeeting != 0) {
+            $.ajax({
+                type: "GET",
+                url: '@_webapiurl' + "RoomBook/deleteMeeting?meetingId=" + selectedMeeting + "&groupId=" + selectedGroup + "&UserId=" + '@_UserId' + "&flag=" + flag,
+                headers: { 'Authorization': '@_tokan' },
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                beforeSend: function () {
+                    $("#ajax_loader").show();
+                },
+                success: function (data) {
+                    $("#ajax_loader").hide();
+                    if (data.MegSts == 'ok') {
+                        toastr.success(data.Meg);
+                    }
+                    else if (data.MegSts == 'error') {
+                        toastr.error(data.Meg);
+                    }
+                    else {
+                        toastr.error("Error during delete");
+                    }
+
+                    $('#MyCalendar').fullCalendar('refetchEvents');
+                    $('#bookmeetingroom_modal').modal('hide');
+                    frmClear();
+                },
+                error: function (errormsg) {
+                    $("#ajax_loader").hide();
+                    toastr.error("Error during delete");
+                    $('#MyCalendar').fullCalendar('refetchEvents');
+                    $('#bookmeetingroom_modal').modal('hide');
+                    frmClear();
+
+                }
+            });
+        }
+    }
+
+    function RequestForConferenceRoom() {
+     
+    $.ajax({
+        type: "GET",
+        url: '@_webapiurl' + "RoomBook/ActionOnMeetingRequest",
+        headers: { 'Authorization': '@_tokan' },
+        contentType: "application/json; charset=utf-8",
+        dataType: "json",
+        success: function (data) {
+          
+            if (data && data.Data && data.Data.length > 0) {
+                var meeting = data.Data[0];
+                var meetingId = data.Data[0].MeetingId;
+                var title = data.Data[0].MeetingTitle;
+                var room = data.Data[0].RoomName;
+                var requester = data.Data[0].EmpName;
+                var title = meeting.MeetingTitle;
+                var room = meeting.RoomName;
+                var requester = meeting.EmpName;
+                var startDate = new Date(meeting.Start);
+                var endDate = new Date(meeting.End);
+                var date = startDate.toISOString().split("T")[0];
+                var startTime = startDate.toTimeString().split(" ")[0];
+                var endTime = endDate.toTimeString().split(" ")[0];
+                var displayTime = `${date} (${startTime} - ${endTime})`;
+
+                Swal.fire({
+                    title: "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_info.svg' alt=''>Info",
+                    html: `<div class="swal_subtitle">
+                              For meeting <b>${title}</b> in <b>${room}</b>
+                              from <b>${displayTime}</b>,
+                              <b>${requester}</b> has requested this room for above time slot.<br><br>
+                              If you agree voluntarily, please update or delete your meeting.<br>
+                              Otherwise, click <b>Cancel Request</b>.
+                           </div>`,
+                    closeOnConfirm: true,
+                    showCloseButton: true,
+                    showCancelButton: true,
+                    focusConfirm: false,
+                    cancelButtonText: 'Cancel Request',
+                    confirmButtonText: 'OK',
+                    allowOutsideClick: false,
+                    allowEscapeKey: false,
+                    customClass: {
+                        confirmButton: 'swal-confirm-button-class',
+                        cancelButton: 'swal-cancel-button-class'
+                    }
+                }).then((result) => {
+                   
+                    let status = null;
+
+                    if (result.isConfirmed) {
+                        // OK clicked
+                        status = 5;
+                    } else if (result.dismiss === Swal.DismissReason.cancel) {
+                        // Cancel clicked
+                        status = 4;
+                    }
+
+                    if (status !== null) {
+                        $.ajax({
+                            type: "POST",
+                            url: '@_webapiurl' + "RoomBook/CancelMeetingRequest?meetingId=" + meetingId + "&status=" + status,
+                            headers: { 'Authorization': '@_tokan' },
+                            contentType: "application/json; charset=utf-8",
+                            beforeSend: function () {
+                                $("#ajax_loader").show();
+                            },
+                            success: function () {
+                                $("#ajax_loader").hide();
+                                let msg = status === 5 ? "You accepted the request now kindly update or delete the particular meeting slot."
+                                    : "Conference room request denied successfully.";
+                                toastr.success(msg);
+                                RequestForConferenceRoom();
+                            },
+                            error: function (xhr, status, error) {
+                                $("#ajax_loader").hide();
+                                console.error("Error updating request", error);
+                                toastr.error("Error updating request");
+                            }
+                        });
+                    }
+                });
+
+                $('img[src="/assets/images/icons/swal_icon/icon_info.svg"]')
+                    .parent().parent().parent()
+                    .addClass('swal_info');
+            }
+            else {
+                console.log("No request found");
+            }
+        },
+        error: function (xhr, status, error) {
+            console.error("Error while fetching Meeting Request for today", error);
+            toastr.error("Error while fetching Meeting Request for today");
+        }
+    });
+}
+
+    function frmClear() {
+        $('#roomcard').hide();
+        $("#roomcard .row").empty();
+        $("#MeetingTitle").val("");
+        $("#MeetingDescription").val("");
+        $("#EmailId").val("");
+        $("#MeetingTitle").removeClass('field_error');
+        $("#EndTime").removeClass('field_error');
+        $("#EndDate").removeClass('field_error');
+        selectedRoom = 0;
+        selectedMeeting = 0;
+        selectedGroup = 0;
+        selectedGroup = 0;
+        selectedDays = "";
+        defaultDay = "";
+
+        //Dropdown
+
+        //SelectedAttendee = "";
+        // filteredEmployees = [];
+        // allEmployees = [];
+        // totalEmployees = 0; // Total number of employees
+        // chunkSize = 100; // Number of employees to display at a time
+        //loadedEmployees = 0;
+    }
+
+    function checkSession() {
+        $.ajax({
+            type: "GET",
+            async: false,
+            url: "/ESS/checkSession",
+            contentType: "application/json; charset=utf-8",
+            success: function (data) {
+                if (data.isRedirect) {
+                    window.location.href = data.redirectUrl;
+                }
+            },
+            error: function (data) {
+                window.location.href = data;
+            }
+        });
+    }
+</script>

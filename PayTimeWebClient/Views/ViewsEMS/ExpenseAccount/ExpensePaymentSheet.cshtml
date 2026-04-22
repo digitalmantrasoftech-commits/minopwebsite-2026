@@ -1,0 +1,821 @@
+﻿
+@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@using System.Configuration;
+@using EMSWebClient;
+@{
+    ViewBag.Title = "ExpensePaymentSheet";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    string _Message = ViewBag.msg;
+    string _error = ViewBag.error;
+    //string _flgempover = ViewBag.flgempover;
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    int _UserId = Convert.ToInt32(HttpContext.Current.Session["UserId"]);
+    int _cmpid = Convert.ToInt32(HttpContext.Current.Session["CompanyId"]);
+    //int _islimit = ViewBag.Islimit;
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiEMSURL = ConfigurationManager.AppSettings["WebApiEMS"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    string _accountcd = HttpContext.Current.Session["cmpcode"].ToString();
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+    //bool _isReligion = ViewBag.isReligion;
+    //bool _hasSMS = ViewBag.HasSMS;
+    //bool _IsEss = ViewBag.IsEss;
+    string _companyid = "0";
+    string _empid = "0";
+    string _empName = "0";
+
+    if (_RoleId != 1 && _RoleId != 6805 && _RoleId != 6806)
+    {
+        _empid = HttpContext.Current.Session["EmpId"].ToString();
+        _empName = HttpContext.Current.Session["EmpName"].ToString();
+
+    }
+    string _branchid = "0";
+    if (_RoleId == 6805)
+    {
+        _companyid = HttpContext.Current.Session["ClientCompanyId"].ToString();
+    }
+    if (_RoleId == 6806)
+    {
+        _companyid = HttpContext.Current.Session["ClientCompanyId"].ToString();
+        _branchid = HttpContext.Current.Session["BranchId"].ToString();
+    }
+    string _isPlanFace = HttpContext.Current.Session["isPlanFace"].ToString();
+    string _isdateformat = HttpContext.Current.Session["IsDateFormat"].ToString();
+    string _UserImg = HttpContext.Current.Session["photo"].ToString();
+    //if (_flgempover == "true")
+    //{
+    //    obj.CanAdd = false;
+
+    //}
+    string _CountryCode = HttpContext.Current.Session["CountryCode"].ToString();
+    string _AreaCode = HttpContext.Current.Session["AreaCode"].ToString();
+    string _dbName = HttpContext.Current.Session["DbName"].ToString();
+    //int _IsVerification = ViewBag.IsVerification;
+    string _isPlanId = HttpContext.Current.Session["planId"].ToString();
+    int _amount = 0;
+}
+
+
+<link href="/Newlayout/css/payrollstructure.css" rel="stylesheet">
+<link href="/Newlayout/css/emsstructure.css" rel="stylesheet">
+<script src="~/Newlayout/js/sweet_alert_payroll.js"></script>
+
+<style type="text/css">
+    .fixed-column {
+        width: 60px !important;
+        min-width: 60px !important;
+        right: 0px;
+        position: sticky !important;
+        background-color: #fff !important;
+    }
+
+    .fixed-column-1 {
+        width: 60px !important;
+        min-width: 60px !important;
+        right: 96px;
+        position: sticky !important;
+        background-color: #fff !important;
+        box-shadow: -1px 0px 3px 0px rgba(0, 0, 0, 0.20);
+    }
+
+    .user_img {
+        width: 25px;
+        height: 25px;
+        border-radius: 50%;
+        object-fit: cover;
+        vertical-align: middle;
+    }
+</style>
+
+<script src="~/Scripts/Helpers/noDataHandler.js"></script>
+
+<script>
+
+    var _RoleID = '@_RoleId';
+    var _PaymentSheetMasterData = [];
+    var PaymentSheet_table = "";
+    var _EID = '';
+
+    $(document).ready(function () {
+
+        GetAllPaymentSheetDetails();
+        // Create search inputs in footer
+        $("#tblexpesnePaymentGetAll tfoot th").each(function (index) {
+            var title = $(this).text();
+            $(this).html('<input type="text" class="search_input" placeholder="Search" /><i class="clm-search" id=""></i>');
+        });
+        // Apply the column Search
+        //$("#tblexpesnePaymentGetAll thead").on("keyup", "input", function () {
+        //    PaymentSheet_table.column($(this).parent().index())
+        //        .search(this.value)
+        //        .draw();
+        //});
+
+        // Filter Click Hide/Show Div
+        $("#Filter_search").click(function () {
+            const wrapper = $(".filter_portlet_wrapper");
+            wrapper.toggleClass("full-width");
+
+            var screenWidth = $(window).width();
+            if (screenWidth >= 300 && screenWidth <= 600) {
+                $('.filter_portlet_tbl').toggle();
+                $('.filter_portlet_wrapper .filter_boxModal').css('width', '100%');
+            }
+        });
+        // Close filter panel on close button click
+        $(".filterclose_btn").click(function () {
+            const wrapper = $(".filter_portlet_wrapper");
+            wrapper.addClass("full-width");
+
+            var screenWidth = $(window).width();
+            if (screenWidth >= 300 && screenWidth <= 600)
+            {
+                $(".filter_portlet_tbl").css("display", "block");
+            }
+        });
+        // Reject Button Click Open Swal Modal
+        $('#tblexpesnePaymentGetAll tbody').on('click', '.reject_btn', function ()
+        {
+            var expenseId = $(this).data('expenseid');
+            var _empid = $(this).data('empid');
+
+            Swal.fire({
+                html:`
+                <div class="swal_subtitle grey_font">
+                   <p>Are you sure you want to put this expense payment as <strong>Rejected</strong>?</p>
+                </div>
+                <div class="margin-top-10 text-left">
+                    <div class="form-group margin-bottom-0">
+                        <label>Reason<span class="required" aria-required="true">*</span></label>
+                        <textarea class="form-control" name="onholdReason" id="onholdReason" placeholder="Enter Reason" maxlength="250"></textarea>
+                    </div>
+                </div>`,
+                title: "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_info.svg' alt=''>Reject Expense Payment",
+                closeOnConfirm: true,
+                showCloseButton: true,
+                showCancelButton: true,
+                focusConfirm: false,
+                cancelButtonText: 'Close',
+                confirmButtonText: 'Reject Payment',
+                allowOutsideClick: false,
+                allowEscapeKey: false,
+                customClass:
+                {
+                    confirmButton: 'swal-confirm-button-class',
+                    cancelButton: 'swal-cancel-button-class',
+                },
+                preConfirm: () =>
+                {
+                    const reason = Swal.getPopup().querySelector('#onholdReason').value.trim();
+                    if (!reason) {
+                        Swal.showValidationMessage('Reason is required');
+                        return false;  // Prevent closing
+                    }
+                    return reason;
+                }
+            }).then((result) =>
+            {
+                if (result.isConfirmed) {
+                    // result.value contains the reason entered
+                    updateExpensePaymentStatus('IsReject', result.value, expenseId, _empid);
+                }
+            });
+        });
+
+
+        // Approve button click
+        $('#tblexpesnePaymentGetAll tbody').on('click', '.approve_btn', function ()
+        {
+            checkSession();
+            var expenseId = $(this).data('expenseid');
+            var _empid = $(this).data('empid');
+            Swal.fire({
+                title:
+                    "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_success.svg' alt=''>Success",
+                html: '<div class="swal_subtitle"><b>Are you sure you want to approve this expense?</b><p>By approving, you confirm that the expense details are accurate and ready for processing.</p><p><b>Note:</b> Once approved, the expense cannot be modified.</p></div>',
+                closeOnConfirm: true,
+                showCloseButton: true,
+                showCancelButton: true,
+                focusConfirm: false,
+                cancelButtonText: 'No',
+                confirmButtonText: 'Yes',
+                allowOutsideClick: false,
+                allowEscapeKey: false,
+                customClass:
+                {
+                    confirmButton: 'swal-confirm-button-class',
+                    cancelButton: 'swal-cancel-button-class'
+                }
+            }).then(function (isConfirmed) {
+                if (isConfirmed.dismiss == "cancel" || isConfirmed.dismiss == "close") {
+
+                }
+                else
+                {
+                    if (expenseId != null && expenseId != 0)
+                    {
+                        updateExpensePaymentStatus('Approve', '', expenseId, _empid);
+                    }
+                }
+            });
+            // Apply icon block styling
+            $('img[src="/assets/images/icons/swal_icon/icon_success.svg"]')
+                .closest('.swal2-popup')
+                .addClass('swal_success');
+        });
+
+        $("#tblexpesnePaymentGetAll").on('click', '.downloadDoc', function ()
+        {
+            //var expDocID = $(this).parent('td').parent('tr').children(1)[0].innerText.trim();
+            //var expDocName = $(this).parent('td').parent('tr').children(1)[6].innerText.trim();
+            var selectedRow = $(this).closest("tr");
+            var expDocID = selectedRow.find(".ExpesneID").text();
+            var expDocName = expDocID + ".rar";
+            //expDocID = expDocName + "_" + expDocID + "_" + new Date().getFullYear() + '-' + ('0' + (new Date().getMonth() + 1)).slice(-2) + '-' + ('0' + new Date().getDate()).slice(-2) + ' ' + ('0' + new Date().getHours()).slice(-2) + '-' + ('0' + new Date().getMinutes()).slice(-2) + '-' + ('0' + new Date().getSeconds()).slice(-2) + ".rar";
+            var downloadUrl = '/ExpenseRequestMaster/DownloadRaRFile?expDocID=' + expDocID;
+
+            var xhr = new XMLHttpRequest();
+            xhr.open('GET', downloadUrl);
+            xhr.setRequestHeader('Authorization', '@_tokan');
+            xhr.responseType = 'blob';
+            xhr.onload = function () {
+                if (xhr.status === 200) {
+                    var url = URL.createObjectURL(xhr.response);
+                    var link = document.createElement('a');
+                    link.href = url;
+                    link.target = '_blank';
+                    link.download = expDocName;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                } else {
+                    console.error('Error:', xhr.status);
+                    toastr.remove();
+                    toastr.error('Error occurred while downloading the file.');
+                }
+            };
+            xhr.send();
+        });
+
+    });
+
+    const statusMapping =
+    {
+        '11111': 'Drafted',
+        '11112': 'Submitted',
+        '11113': 'Approved',
+        '11114': 'OnHold',      // or 'On Hold' for consistency
+        '11115': 'Declined',
+        '11116': 'ReSubmitted',
+        '11117': 'Rejected',
+        '11118': 'Pending'
+    };
+    const statusClassMapping =
+    {
+        'Approved': 'green_font fixed-column-1',
+        'Rejected': 'red_font fixed-column-1',
+        'Pending': 'fixed-column-1',
+    };
+
+    function formatDate(dateString)
+    {
+        const dateFormat = "@_isdateformat";
+        if (!dateString) return "";
+        const parsedDate = moment(dateString);
+        if (!parsedDate.isValid()) return "";
+        switch (dateFormat) {
+            case "dd-M-yyyy":
+                return parsedDate.format("DD-MMM-YYYY");
+            case "dd-mm-yyyy":
+                return parsedDate.format("DD-MM-YYYY");
+            case "M-dd-yyyy":
+                return parsedDate.format("MMM-DD-YYYY");
+            case "mm-dd-yyyy":
+                return parsedDate.format("MM-DD-YYYY");
+            case "yyyy-M-dd":
+                return parsedDate.format("YYYY-MMM-DD");
+            case "yyyy-mm-dd":
+                return parsedDate.format("YYYY-MM-DD");
+            default:
+                return parsedDate.format("YYYY-MM-DD");
+        }
+    }
+
+    $(function () {
+        $("#Expense_date").datepicker({
+            dateFormat: "YYYY-MMM-DD",
+            changeMonth: true,
+            changeYear: true,
+            showAnim: "fadeIn"
+        });
+
+        $("#calendar_btn").on("click", function () {
+            $("#Expense_date").datepicker("show");
+        });
+
+        $("#btnSubmit").click(function () {
+            var selectedEmpName = $('#Emp_filter').val().trim();
+            var selectedDateRaw = $('#Expense_date').val();
+            var selectedDate = moment(selectedDateRaw, "MM/DD/YYYY").format("YYYY-MMM-DD");
+            var selectedStatus = $('#Status_filter').val();
+
+            toastr.remove();
+            $('.field_error').removeClass('field_error');
+
+            if (!selectedEmpName || selectedEmpName === "1") {
+                toastr.error("Please select an employee.");
+                $('#Emp_filter').addClass('field_error');
+                return false;
+            }
+
+            //if (!selecteddate) {
+            //    toastr.error("please select expense date.");
+            //    $('#expense_date').addclass('field_error');
+            //    return false;
+            //}
+
+            if (!selectedStatus || selectedStatus === "0") {
+                toastr.error("Please select expense status.");
+                $('#Status_filter').addClass('field_error');
+                return false;
+            }
+            PaymentSheet_table.column(4).search(selectedEmpName).draw();
+            var selectedDate = $('#Expense_date').val();
+            var formattedDate = formatDate(selectedDate);
+            PaymentSheet_table.column(1).search(formattedDate).draw();
+            var statusText = $("#Status_filter option:selected").text();
+            PaymentSheet_table.column(9).search(statusText).draw();
+
+
+            var info = PaymentSheet_table.page.info();
+
+
+            if (info.recordsDisplay === 0) {
+                const wrapper = $(".filter_portlet_wrapper");
+                wrapper.removeClass("full-width");
+                $("#NotificationGrid-empty1").show();
+                $("#tblempty").hide();
+            } else {
+                const wrapper = $(".filter_portlet_wrapper");
+                wrapper.addClass("full-width");
+                $("#NotificationGrid-empty1").hide();
+                $("#tblempty").show();
+            }
+        });
+
+        $("#clear_operation").click(function () {
+            $('#Emp_filter').val("1").trigger("change");
+            $('#Expense_date').val("");
+            $('#Status_filter').val("0").trigger("change");
+            $('.field_error').removeClass('field_error');
+            if ($.fn.DataTable.isDataTable('#tblexpesnePaymentGetAll')) {
+                var table = $('#tblexpesnePaymentGetAll').DataTable();
+                table.columns().search('').draw();
+            }
+            $("#NotificationGrid-empty1").hide();
+            $("#tblempty").show();
+        });
+
+    });
+    function checkSession() {
+        $.ajax({
+            type: "GET",
+            async: false,
+            url: "/ESS/checkSession",
+            contentType: "application/json; charset=utf-8",
+            success: function (data) {
+                if (data.isRedirect) {
+                    window.location.href = data.redirectUrl;
+                }
+            },
+            error: function (data) {
+                window.location.href = data;
+            }
+        });
+    }
+
+    function GetAllPaymentSheetDetails() {
+        checkSession();
+        var _ExpenID = 0;
+
+        $.ajax({
+            type: "GET",
+            headers: { 'Authorization': '@_tokan' },
+            url: '@_webapiEMSURL' + 'ExpensePreparationMaster/GetExpensePaymentSheetGetAll/' + _ExpenID,
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            timeout: 30000,
+            beforeSend: function () {
+                $("#ajax_loaderPaymentGetAll").show();
+            },
+            success: function (response) {
+                if (response.Result != null) {
+                    const sift = response.Result;
+
+                    $('#Emp_filter').find('option:not(:first)').remove();
+                    const uniqueEmpNames = new Set();
+                    sift.forEach(function (item) {
+                        if (item.empname) {
+                            uniqueEmpNames.add(item.empname);
+                        }
+                    });
+                    Array.from(uniqueEmpNames).sort().forEach(function (empName) {
+                        $('#Emp_filter').append(`<option value="${empName}">${empName}</option>`);
+                    });
+                    handleGridVisibility("tblempty", "NotificationGrid-empty1", sift, {
+                        imageUrl: "emptyscreen_3.png",
+                        subText: "No entries found. Please add a record to get started."
+                    });
+                }
+
+                $("#ajax_loaderPaymentGetAll").hide();
+                var table = "";
+                if (response.Result && response.Result.length > 0) {
+                    const statusApproveActive = ['Pending'];
+
+                    for (var i = 0; i < response.Result.length; i++) {
+                        var item = response.Result[i];
+                        var tbl = "<tr class='odd gradeX'>";
+                        tbl += "<td class='ExpesneID' hidden>" + item.expenseReqID + "</td>";
+                        tbl += "<td class='ExDate'>" + item.ExpenseDate + "</td>";
+                        tbl += "<td class='ExType'>" + item.ExpenseType + "</td>";
+                        tbl += "<td class='Exempcode'>" + item.EmpCode + "</td>";
+                        tbl += "<td class='ExEmpName'>" + generateEmpPhotoHtml(item) + "</td>";
+                        tbl += "<td class='ExDepartName'>" + item.DepartmentName + "</td>";
+                        tbl += "<td class='ExBranch'>" + item.BranchName + "</td>";
+                        tbl += "<td class='ExAmount'>" + item.TotalExpenseAmount + "</td>";
+                        tbl += "<td class='downloadDoc'><div class='d-flex align-items-center justify-content-between'><span>View Receipts</span> <a href='javascript:;'><img class='tooltips' src='/assets/images/download_icon.svg' height='18' width='18' data-placement='top' data-original-title='Download Receipts' alt='download icon'></a></div></td>";
+
+
+                        let statusId = item.Approval4StatusId;
+                        let statusName = statusMapping[statusId] || "-";
+                        if (statusName === "Approved") statusName = "Settled";
+                        const statusClassMapping = {
+                            'Settled': 'green_font fixed-column-1',
+                            'Rejected': 'red_font fixed-column-1',
+                            'Pending': 'fixed-column-1',
+                        };
+                        let statusClass = statusClassMapping[statusName] || '';
+                        tbl += `<td class="${statusClass}">${statusName}</td>`;
+
+                        let canApprove = statusApproveActive.includes(statusName);
+                        let approveBtn = `<button class="btn blue_btnnew approve_btn tooltips" data-placement="left" data-original-title="Approve" data-expenseid="${item.expenseReqID}" data-empid="${item.EmpID}" ${canApprove ? '' : 'disabled'}><i class="fa-solid fa-check "></i></button>`;
+                        let rejectBtn = `<button class="btn red_btnnew reject_btn tooltips" data-placement="left" data-original-title="Reject" data-expenseid="${item.expenseReqID}" data-empid="${item.EmpID}" ${canApprove ? '' : 'disabled'}><i class="fa-solid fa-xmark"></i></button>`;
+                        tbl += `<td class="fixed-column">${approveBtn} ${rejectBtn}</td>`;
+                        tbl += "</tr>";
+                        table += tbl;
+                    }
+                }
+
+                if ($.fn.DataTable.isDataTable('#tblexpesnePaymentGetAll')) {
+                    $('#tblexpesnePaymentGetAll').DataTable().destroy();
+                   // $('#tblexpesnePaymentGetAll tbody').empty();
+                }
+
+                $('#tblexpesnePaymentGetAll tbody').append(table);
+
+                PaymentSheet_table = $("#tblexpesnePaymentGetAll").DataTable({
+                    dom: _domColumn,
+                    language: _languageColumn,
+                    paging: true,
+                    autoWidth: true,
+                    ordering: true,
+                    buttons: ["excelHtml5"],
+                    columnDefs: [
+                        { targets: [5], orderable: false }
+                    ],
+                    initComplete: function () {
+                        var footer = $("#tblexpesnePaymentGetAll tfoot tr");
+                        $("#tblexpesnePaymentGetAll thead").append(footer);
+                    }
+                });
+
+                $("#tblexpesnePaymentGetAll thead").on("keyup", "input", function () {
+                    PaymentSheet_table.column($(this).parent().index())
+                        .search(this.value)
+                        .draw();
+                });
+
+                setTimeout(function () {
+                    $("#" + "tblexpesnePaymentGetAll" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+                    $('.tooltips').tooltip();
+                    injectExportButtonsForDataTables(false, function () {
+                    });
+                    $('.tooltips').tooltip();
+                }, 100);
+            },
+            complete: function () {
+                $("#ajax_loaderPaymentGetAll").hide();
+            },
+            error: function (jqXHR) {
+                $('.loading').hide();
+                if (jqXHR.status == 500) {
+                    toastr.error("Internal Server Error");
+                } else if (jqXHR.status == 400) {
+                    toastr.error("Bad Request");
+                } else if (jqXHR.status == 401) {
+                    window.location.href = "/PayTime/LoginPage";
+                }
+            },
+        });
+    }
+
+    function checkSession() {
+        $.ajax({
+            type: "GET",
+            async: false,
+            url: "/ESS/checkSession",
+            contentType: "application/json; charset=utf-8",
+            success: function (data) {
+                if (data.isRedirect) {
+                    window.location.href = data.redirectUrl;
+                }
+            },
+            error: function (data) {
+                window.location.href = data;
+            }
+        });
+    }
+    //update review expense
+    function updateExpensePaymentStatus(DocuStatus, ApprovalReason, ExpenReqID,PaymentEmpID)
+    {
+        var _UID = _EID;
+        var _RoleId = '@_RoleId';
+        var Obpolicyreq =
+            {
+                UserId: PaymentEmpID,
+                RoleId: _RoleId,
+                StatusName: DocuStatus,
+                ApproveReason: ApprovalReason,
+                ExpeReqID: ExpenReqID,
+            };
+        var delay = 2000;
+        $.ajax({
+            type: "POST",
+            headers: { 'Authorization': '@_tokan' },
+            url: '@_webapiEMSURL' + 'ExpensePreparationMaster/UpdatePaymentsheetRecordByID',
+            data: JSON.stringify(Obpolicyreq),
+            contentType: "application/json;",
+            dataType: "json",
+            beforeSend: function ()
+            {
+                $("#ajax_loaderPaymentGetAll").show();
+            },
+            success: function (response)
+            {
+                if (response != null) {
+                    if (response.success == true)
+                    {
+                        toastr.remove();
+                        if (DocuStatus == 'Approve')
+                        {
+                            toastr.success("Expense Payment Approved successfully.");
+                        }
+                        else if (DocuStatus == 'IsReject')
+                        {
+                            toastr.success("Expense Payment Reject successfully.");
+                        }
+                        setTimeout(function ()
+                        {
+                            window.location.reload(true);
+                        }, delay);
+                    }
+                    else
+                    {
+                        toastr.remove();
+                        toastr.error("failed to update Expense Payment");
+                        setTimeout(function ()
+                        {
+                            window.location.reload(true);
+                        }, delay);
+                    }
+                } else {
+                    toastr.remove();
+                    toastr.error("failed to update Expense Payment");
+                    setTimeout(function () {
+                        window.location.reload(true);
+                    }, delay);
+
+                }
+            },
+            complete: function () {
+                $("#ajax_loaderPaymentGetAll").hide();
+            }
+        });
+    }
+
+    function generateEmpPhotoHtml(item) {
+        if (!item || !item.empname) return "";
+
+        // Prepare initials from empname
+        var nameParts = item.empname.replace(/\s+/g, ' ').trim().split(" ");
+        var initials = nameParts[0].charAt(0).toUpperCase();
+        if (nameParts.length > 1) {
+            initials += nameParts[1].charAt(0).toUpperCase();
+        }
+
+        const randomColor = "#295097";
+
+        // Return the employee photo + initials HTML block
+        return `<div class="emp_box empbox_pending">
+            <img alt="" class="user_img img-circle tooltips" data-placement="right" data-original-title="Empcode : ${item.EmpCode ? item.EmpCode : ''}" src="/UploadEmpPhoto/${item.EmpPhoto ? item.EmpPhoto : ''}" onerror="this.style.display='none'; this.nextElementSibling.style.display='inline-block';"/>
+            <span class="tooltips" data-placement="right" data-original-title="Empcode : ${item.EmpCode}" style="display: none; min-width: 30px; height: 30px; line-height: 30px; text-align: center; background-color: #ecf3ff; color: ${randomColor}; border-radius: 50% !important; border: 1px solid #8ab1f7; margin-right: 8px;">
+                ${initials}
+            </span><span>${item.empname}</span>
+        </div>`;
+    }
+
+</script>
+
+<!-- Page Bar : Begin -->
+@if (obj.CanView)
+{
+    <div class="page-bar">
+        <ul class="page-breadcrumb" style="float: none">
+            <li>
+                <a href="/PayTime/AdminDashboard">Home</a>
+                <i class="fa fa-circle"></i>
+            </li>
+            <li>
+                <span>Expense Payment Sheet</span>
+            </li>
+        </ul>
+
+        <div class="page-toolbar">
+            <div class="text-right">
+                <a href="javascript:;" class="btn icon_transparent_btn tooltips" id="Filter_search" data-placement="left" data-original-title="Filter" data-toggle="tooltip"><i class="fa-light fa-filter" aria-hidden="true"></i> </a>
+            </div>
+        </div>
+    </div>
+    <div id='ajax_loaderPaymentGetAll' class="modal_bg loading" aria-hidden="true">
+        <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading" />
+    </div>
+    <!-- Page Bar : End -->
+
+    <div class="filter_portlet_wrapper full-width">
+        <!-- Datatable Block : Begin -->
+        <div class="portlet filter_portlet_tbl">
+            <div class="portlet-body">
+                <div class="EMS_details_table">
+                    <!-- Datatable : Begin -->
+                    <div id="tblempty">
+                        <div class="table-responsive" id="tableResponsive">
+                            <table id="tblexpesnePaymentGetAll" class="table new_datatbl table-striped table-bordered tbl_middle table-hover tbl_newdatatbl serch_datatable table-checkable order-column">
+                                <thead>
+                                    <tr>
+                                        <th style="min-width: 30px" hidden>ExpenseID</th>
+                                        <th style="min-width: 80px">Date</th>
+                                        <th style="min-width: 80px">Type</th>
+                                        <th style="min-width: 50px">Employee Code</th>
+                                        <th style="min-width: 220px">Name</th>
+                                        <th style="min-width: 120px">Department</th>
+                                        <th style="min-width: 80px">Branch</th>
+                                        <th style="min-width: 80px">Amount</th>
+                                        <th style="min-width: 120px">Document</th>
+                                        <th class="fixed-column-1">Status</th>
+                                        <th class="fixed-column">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                                <tfoot>
+                                    <tr>
+                                        <th hidden>ExpenseID</th>
+                                        <th>Date</th>
+                                        <th>Type</th>
+                                        <th>Emp Code</th>
+                                        <th>Name</th>
+                                        <th>Department</th>
+                                        <th>Branch</th>
+                                        <th>Amount</th>
+                                        <th>Document</th>
+                                        <th class="fixed-column-1">Status</th>
+                                        <th class="fixed-column"> Actions</th>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                    </div>
+                    <!-- Datatable : End -->
+                </div>
+
+                <!-- No Data Block Design : Begin -->
+                <div class="nodata_block no_recoed" style="display:none">
+                    <div class="datanotfound">
+                        <img src="~/assets/images/emptyscreen_3.png" height="148" width="280" alt="No Data Icon" />
+                        <p class="datanotfound_title">No data found</p> <!-- titleText -->
+                        <p class=""> No matching records found for the selected filters.</p><!-- subText -->
+                    </div>
+                </div>
+                <div id="NotificationGrid-empty1" style="display:none">
+                    <div class="datanotfound">
+                        <img src="~/assets/images/emptyscreen_3.png" height="148" width="280" alt="Nodata Found Icon">
+                        <p class="datanotfound_title">No data show</p> <!-- titleText -->
+                        <p class="">Start by applying a filter to view relevant data.</p><!-- subText -->
+                    </div>
+                </div>
+                <!-- No Data Block Design : End -->
+
+            </div>
+        </div>
+        <!-- Datatable Block : End -->
+        <!-- Filter Block : Begin -->
+        <div class="portlet filter_boxModal">
+            <div class="filterbox_header">
+                <div class="d-flex align-items-center justify-content-between">
+                    <h4 class="filter-title">Filters</h4>
+                    <button type="button" class="filterclose_btn"><i class="fa-light fa-xmark"></i></button>
+                </div>
+            </div>
+            <div class="filterbox_body">
+                <div class="col-lg-12">
+                    <div class="form-group">
+                        <label>Employee<span class="required" aria-required="true">*</span></label>
+                        <select class="form-control input-sm select2" id="Emp_filter">
+                            <option value="1">Select an option</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="col-lg-12">
+                    <div class="form-group data_picker_box">
+                        <label class="control-label" for="Expense_date">Expense Date</label>
+                        <div class="input-group input-group-sm" id="datepicker_group">
+                            <span class="input-group-btn">
+                                <button class="btn default" type="button" id="calendar_btn">
+                                    <i class="fa-light fa-calendar-days"></i>
+                                </button>
+                            </span>
+                            <input type="text"
+                                   class="form-control"
+                                   id="Expense_date"
+                                   placeholder="YYYY-MMM-DD"
+                                   autocomplete="off" />
+                        </div>
+                    </div>
+                </div>
+
+
+                <div class="col-lg-12">
+                    <div class="form-group">
+                        <label>Status<span class="required" aria-required="true">*</span></label>
+                        <select class="form-control input-sm select2" id="Status_filter">
+                            <option value="0">Select an option</option>
+                            <option value="1">Settled</option>
+                            <option value="2">Pending</option>
+                            <option value="3">Reject</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="filterbox_footer">
+                <div class="text-right">
+                    <button type="submit" id="clear_operation" class="clear_btn tooltips" data-placement="top" data-original-title="Clear Filters"><i class="fa-regular fa-eraser"></i></button>
+                    <button type="submit" id="btnSubmit" class="icon_btn margin-left-5 tooltips" data-placement="top" data-original-title="Search Filters"><i class="fa-solid fa-magnifying-glass"></i></button>
+                </div>
+            </div>
+        </div>
+        <!-- Filter Block : End -->
+    </div>
+}
+else
+{
+    <script>
+        Swal.fire({
+            title:
+                "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_info.svg' alt=''> Unauthorized Access",
+            html:
+                "<div class='swal_subtitle'>" +
+                "<b>Access denied. You don’t have the required permissions to view this page.</b>" +
+                "<p>Please contact your administrator if you believe this is a mistake.</p>" +
+                "</div>",
+            showCloseButton: true,
+            showCancelButton: false,
+            focusConfirm: false,
+            cancelButtonText: 'Close',
+            confirmButtonText: 'Go to Dashboard',
+            allowOutsideClick: false,
+            allowEscapeKey: false,
+            customClass: {
+                popup: 'swal_info',                     // <<-- Add class directly to popup
+                confirmButton: 'swal-confirm-button-class',
+                cancelButton: 'swal-cancel-button-class'
+            }
+        }).then(function (result) {
+            if (result.isConfirmed) {
+                window.location.href = "/MinopProduct/EMSDashboard";
+            }
+        });
+    </script>
+}

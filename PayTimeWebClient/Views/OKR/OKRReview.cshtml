@@ -1,0 +1,2722 @@
+﻿@using System.Configuration;
+@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@{
+    ViewBag.Title = "OKRReview";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+    string _webapiurlokr = ConfigurationManager.AppSettings["webapiurlokr"].ToString();
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _userid = HttpContext.Current.Session["UserId"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    int _companyid = 0;
+    int _branchid = 0;
+    if (_RoleId == 6805 || _RoleId == 6806)
+    {
+        _companyid = Convert.ToInt32(HttpContext.Current.Session["ClientCompanyId"].ToString());
+        _branchid = Convert.ToInt32(HttpContext.Current.Session["BranchId"].ToString());
+
+    }
+    int empid = 0;
+    if (Convert.ToInt32(HttpContext.Current.Session["EmpId"]) != 0)
+    {
+        empid = Convert.ToInt32(HttpContext.Current.Session["EmpId"].ToString());
+    }
+}
+<link href="/Newlayout/css/payrollstructure.css" rel="stylesheet">
+<script src="~/Newlayout/js/FileSaver.min.js"></script>
+<script src="~/Newlayout/js/xlsx.full.min.js"></script>
+<script src="~/Newlayout/js/pako.min.js"></script>
+<script src="~/Scripts/Helpers/noDataHandler.js"></script>
+<style type="text/css">
+    #okrreviewtbl thead tr:nth-child(2) th:nth-last-child(-n+3) .search_input,
+    #okrreviewtbl thead tr:nth-child(2) th:nth-last-child(-n+3) i {
+        display: none;
+    }
+
+    .left_fixed-column_1 {
+        min-width: 218px !important;
+        left: 0px;
+        position: sticky !important;
+        z-index: 9;
+        background-color: #fff !important;
+        box-shadow: 1px 1px 4px 0px rgba(0, 0, 0, 0.20);
+    }
+
+    .fixed-column {
+        min-width: 65px !important;
+        right: 0px;
+        position: sticky !important;
+        z-index: 9;
+        background-color: #fff !important;
+    }
+
+    .fixed-column-1 {
+        min-width: 115px !important;
+        right: 77px;
+        position: sticky !important;
+        z-index: 9;
+        background-color: #fff !important;
+        font-weight: 600;
+    }
+
+    .fixed-column-2 {
+        min-width: 60px !important;
+        right: 205px;
+        position: sticky !important;
+        z-index: 9;
+        background-color: #fff !important;
+        font-weight: 600;
+        box-shadow: -2px 2px 4px 0px rgba(0, 0, 0, 0.20);
+    }
+
+    .search-dropdown {
+        width: 100%;
+        padding: 3px 3px 3px 6px;
+        box-sizing: border-box;
+        border: 1px solid #dddddd;
+        border-radius: 3px !important;
+        font-size: 12px;
+        font-weight: 300;
+        position: relative;
+    }
+
+    .exe_btn {
+        float: right;
+    }
+
+        .exe_btn:hover {
+            cursor: pointer;
+        }
+
+    .tbl_scroll .table thead {
+        z-index: 1000;
+    }
+</style>
+
+<script type="text/javascript">
+    var table = "";
+    var roleData = [];
+    var targetperiod = ["Please Select"];
+    var emprole = '@_RoleId';
+    var disflag = 0;
+    var EmpData = [];
+    var $Companyselect = "";
+    var $Branchselect = "";
+    var $Departmentselect = "";
+    var selectedcompNames = [];
+    var selectedbrnname = [];
+    var selecteddeptnames = [];
+    var Saveflag = 0;
+    $(document).ready(function () {
+
+        setTimeout(function () {
+            if ($("#export-button").length) {
+                $("#export-button").attr("id", "export-button-custom");
+
+                $("#export-button-custom").on("click", function () {
+                    exportToExcel();
+                });
+            }
+        }, 300);
+
+        $Companyselect = $("#CompanyID").multiselect({
+            selectAllValue: 'multiselect-all',
+            enableCaseInsensitiveFiltering: true,
+            includeSelectAllOption: true,
+            allSelectedText: 'All Select',
+            enableFiltering: true,
+            maxHeight: '300',
+            buttonWidth: '100%',
+            enableClickableOptGroups: true,
+            nonSelectedText: 'Select Company'
+        });
+        $Branchselect = $("#BranchIds").multiselect({
+            selectAllValue: 'multiselect-all',
+            enableCaseInsensitiveFiltering: true,
+            includeSelectAllOption: true,
+            allSelectedText: 'All Select',
+            enableFiltering: true,
+            maxHeight: '300',
+            buttonWidth: '100%',
+            enableClickableOptGroups: true,
+            nonSelectedText: 'Select Branch'
+        });
+        $Departmentselect = $("#DeptIds").multiselect({
+            selectAllValue: 'multiselect-all',
+            enableCaseInsensitiveFiltering: true,
+            includeSelectAllOption: true,
+            allSelectedText: 'All Select',
+            enableFiltering: true,
+            maxHeight: '300',
+            buttonWidth: '100%',
+            enableClickableOptGroups: true,
+            nonSelectedText: 'Select Department',
+        });
+        tableGet();
+        calculateSum();
+        fillcompany();
+        getempname();
+        $("#okr_infopayout").hide();
+        targetperiod.push("Quarterly Based", "Monthly Based", "Yearly Based");
+        rolegetalldrp();
+        bindEffectedFromDropdown();
+        // DataTable initialisation ================
+
+        $("#Filter_search").click(function () {
+            const wrapper = $(".filter_portlet_wrapper");
+            wrapper.toggleClass("full-width");
+
+            var screenWidth = $(window).width();
+            if (screenWidth >= 300 && screenWidth <= 600) {
+                $('.filter_portlet_tbl').toggle();
+                $('.filter_portlet_wrapper .filter_boxModal').css('width', '100%');
+            }
+        });
+
+        // Close filter panel on close button click
+        $(".filterclose_btn").click(function () {
+            const wrapper = $(".filter_portlet_wrapper");
+            wrapper.addClass("full-width");
+
+            var screenWidth = $(window).width();
+            if (screenWidth >= 300 && screenWidth <= 600) {
+                $(".filter_portlet_tbl").css("display", "block");
+            }
+        });
+
+        $("#clear_operation").click(function () {
+            $("#CompanyID").val('0');
+            $("#txt5").val('0');
+            $Companyselect.multiselect('rebuild');
+            $("#BranchIds").val('0');
+            $("#BranchIds option:selected").prop("selected", false);
+            $("#BranchIds").multiselect('refresh');
+            $("#BranchIds").empty();
+            $("#BranchIds").multiselect('disable');
+            $("#txt2").val(0);
+            $("#DeptIds").val('0');
+            $("#DeptIds option:selected").prop("selected", false);
+            $("#DeptIds").multiselect('refresh');
+            $("#DeptIds").empty();
+            $("#DeptIds").multiselect('disable');
+            $("#txt3").val(0);
+            $("#dataTables_tbl_header").remove();
+            $("#export-button-custom").remove();
+            setTimeout(() => {
+                $("#buttons").append(`
+            <div id="export-button-custom" class="export-button tooltips" data-placement="bottom" data-original-title="Download" data-table-id="okrreviewtbl">
+                <img src="../Newlayout/images/download_icon.svg" alt="Download icon">
+            </div>
+        `);
+                $('.tooltips').tooltip();
+            }, 100);
+            tableGet();
+        });
+        $('#CompanyID').change(function () {
+            var s = $('#CompanyID').val();
+            $('#CompanyName').val($("#CompanyID option:selected").text());
+            fillBranchbycompnyid(s, "");
+            $("#DeptIds").empty();
+            $Departmentselect.multiselect('rebuild');
+            var branid = $('#CompanyID option:selected');
+            var CompanyArray = [];
+            $(branid).each(function (index, branid) {
+                CompanyArray.push([$(this).val()]);
+            });
+            if (CompanyArray == "") {
+                $("#txt5").val(0);
+            }
+            else {
+                $("#txt5").val(CompanyArray);
+            }
+            var Arrbranch = $("#txt5").val();
+            CompIdlst = Arrbranch;
+            $('#CompanyID option:selected').each(function () {
+                selectedcompNames.push($(this).text());
+            });
+        });
+        $('#BranchIds').change(function () {
+            $("#spvalidation").hide();
+            var s = $('#BranchIds').val();
+            $('#BranchName').val($('#BranchIds :selected').text());
+            fillDeptTable(s, "");
+            $('#BranchIds option:selected').each(function () {
+                selectedbrnname.push($(this).text());
+            });
+        });
+        $("#btnapply").click(function (event) {
+            event.preventDefault();
+            if ($("#CompanyID").val() == "" || $("#CompanyID").val() == null) {
+                toastr.remove();
+                toastr.error("Please  select company.");
+                event.preventDefault();
+                return false;
+            }
+            if ($("#BranchIds").val() == "" || $("#BranchIds").val() == null) {
+                toastr.remove();
+                toastr.error("Please  select branch.");
+                event.preventDefault();
+                return false;
+            }
+            var compnyID = $("#CompanyID").val() || '0';
+            var formattedCompanyID = Array.isArray(compnyID) ? compnyID .join(",") : '0';
+            var branchID = $("#BranchIds").val() || '0';
+            var formattedBranchID = Array.isArray(branchID) ? branchID.join(",") : '0';
+            var DepartmentID = $("#DeptIds").val() || '0';
+            var formattedDeptID = Array.isArray(DepartmentID) ? DepartmentID.join(",").replace(/\s+/g, "") : '0';
+            var requestObj = {
+                Userid: '@_userid',
+                Roleid: '@_RoleId',
+                Companyid: formattedCompanyID,
+                Branchid: formattedBranchID,
+                Departmentid: formattedDeptID
+            };
+            const wrapper = $(".filter_portlet_wrapper");
+            wrapper.addClass("full-width");
+            // Ensure table is safely destroyed and recreated properly before reinitializing
+if ($.fn.DataTable.isDataTable('#okrreviewtbl')) {
+    $('#okrreviewtbl').DataTable().clear().destroy(true);
+    $('#okrreviewtbl').remove();
+}
+
+$('#tableResponsive').append(`
+    <table id="okrreviewtbl" class="table new_datatbl table-striped table-bordered tbl_middle table-hover tbl_newdatatbl serch_datatable order-column">
+        <thead>
+            <tr>
+                <th class="left_fixed-column_1">Employee Details</th>
+                <th>Employee ID</th>
+                <th class="left_fixed-column_3">Assigned OKR</th>
+            </tr>
+            <tr>
+                <th style="min-width: 200px">Employee Details</th>
+                <th style="min-width: 100px">Employee ID</th>
+                <th style="min-width: 120px">Assigned OKR</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+`);
+
+$.ajax({
+    type: "POST",
+    url: '@_webapiurlokr' + 'Objectve/GetOKRReviewDetailsRoleWise',
+    headers: { 'Authorization': '@_tokan' },
+    contentType: "application/json; charset=utf-8",
+    dataType: "json",
+    async: false,
+    data: JSON.stringify(requestObj),
+    beforeSend: function () {
+        $("#ajax_loader").show();
+    },
+    success: function (response) {        
+        if (response!=null) {
+            //$('#okrreviewtbl tbody').html('<tr><td colspan="100%">No records found</td></tr>');
+            //return;
+            const List = response;
+            handleGridVisibility("tblempty", "NotificationGrid-empty", List, {
+                imageUrl: "emptyscreen_3.png",
+                subText: "No matching records found for the selected filters."
+            });
+            
+        }
+        if (response.length === 0) {
+            const wrapper = $(".filter_portlet_wrapper");
+            wrapper.removeClass("full-width");
+        }
+
+        const monthOrder = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+            "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        let monthKeys = [];
+        if (Array.isArray(response) && response.length > 0 && typeof response[0] === "object") {
+            monthKeys = Object.keys(response[0]).filter(k =>
+                /^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)-\d{2}$/.test(k)
+            );
+            monthKeys.sort((a, b) => {
+                return monthOrder.indexOf(a.split("-")[0]) - monthOrder.indexOf(b.split("-")[0]);
+            });
+        } 
+
+        const headerRow1 = $('#okrreviewtbl thead tr:eq(0)');
+        const headerRow2 = $('#okrreviewtbl thead tr:eq(1)');
+        headerRow1.find("th:gt(2)").remove();
+        headerRow2.find("th:gt(2)").remove();
+
+        for (let i = 0; i < monthKeys.length; i += 3) {
+            const quarter = `Q${Math.floor(i / 3) + 1}`;
+            const monthsInQuarter = monthKeys.slice(i, i + 3);
+            headerRow1.append(`<th class="text-center" colspan="${monthsInQuarter.length}">${quarter}</th>`);
+            monthsInQuarter.forEach(month => {
+                headerRow2.append(`<th class="text-center" style="min-width: 30px">${month}</th>`);
+            });
+        }
+
+        headerRow1.append('<th class="fixed-column-2" rowspan="2">Total Progress(/100%)</th>');
+        headerRow1.append('<th class="fixed-column-1" rowspan="2">Manager Rating(%)</th>');
+        headerRow1.append('<th class="fixed-column" rowspan="2">Action</th>');
+        $("#dataTables_tbl_header").remove();
+        const table = $('#okrreviewtbl').DataTable({
+            data: response,
+            paging: true,
+            ordering: false,
+            autoWidth: false,
+            dom: _domColumn,
+            language: _languageColumn,
+            lengthMenu: [10, 25, 50, 100],
+            columns: [
+                { data: 'EmpDetails' },
+                { data: 'EmpCode' },
+                { data: 'total_assignobj' },
+                ...monthKeys.map(month => ({ data: month })),
+                { data: 'TotalScore' },
+                { data: 'ManagerScore' },
+                { data: null }
+            ],
+            rowCallback: function (row, data) {
+                $(row).empty();
+
+                var empDetails = data.EmpDetails.split("|");
+                var empname = empDetails[0];
+                var empphoto = empDetails[1];
+                var designationname = empDetails[2];
+                var empID = data.EmpCode;
+                var total_assign_OKR_obj = data.total_assignobj.split("|");
+                var toatl_ass_OKR = total_assign_OKR_obj[0];
+                var total_ass_KR = total_assign_OKR_obj[1];
+
+                var assignedOKR = 'No. Objective: ' + toatl_ass_OKR + ' <p>No. KR: ' + total_ass_KR + '</p>';
+                empDetailsHTML = '';
+                var nameParts = empname.replace(/\s+/g, ' ').trim().split(" ");
+                var initials = nameParts[0].charAt(0).toUpperCase();
+                if (nameParts.length > 1) {
+                    initials += nameParts[1].charAt(0).toUpperCase();
+                }
+                const colors = ["#e74c3c", "#8e44ad", "#3498db", "#16a085", "#f39c12", "#d35400", "#2c3e50"];
+                //const randomColor = colors[Math.floor(Math.random() * colors.length)];
+                const randomColor = "#295097";
+                empDetailsHTML = `<div class="emp_box">
+                                    <img alt="" class="user_img img-circle tooltips" data-placement="right" data-original-title="Empcode : ${empID}" src="/UploadEmpPhoto/${empphoto}"
+                                    onerror="this.style.display='none'; this.nextElementSibling.style.display='inline-block';"/>
+                                    <span  class="tooltips" data-placement="right" data-original-title="Empcode : ${empID}" style="display: none; min-width: 30px; height: 30px; line-height: 30px; text-align: center; background-color: #ecf3ff; color:  ${randomColor}; border-radius: 50% !important; border: 1px solid #8ab1f7; margin-right: 8px;">
+                                    ${initials}</span><span><p>${empname}</p > <p>${designationname}</p></span ></div>`;
+
+                var total_score = data.TotalScore !== undefined && data.TotalScore !== 0 && data.TotalScore !== null ? data.TotalScore : '--';
+                var manger_given = data.ManagerScore !== undefined && data.ManagerScore !== 0 && data.ManagerScore !== null ? data.ManagerScore : '--';
+                // Modifying the row HTML structure
+                $(row).append('<td class="left_fixed-column_1"><div class="emp_box">' + empDetailsHTML +  '</div></td>');
+                $(row).append('<td>' + empID + '</td>');
+                $(row).append('<td><div class="assign_okrobj left_fixed-column_3">' + assignedOKR + '</div></td>');
+
+                for (var i = Object.keys(data).length - data.monthcnt; i <= Object.keys(data).length - 1; i++) {
+                    var month = Object.keys(data)[i];
+                    var value = data[month] !== null ? data[month] : 0; // Check for null and replace with 0
+                    var td = $('<td>').text(value); // Create a new td element with data
+                    $(row).append(td); // Append the new td to the row
+                }
+
+                $(row).append('<td class="fixed-column-2">' + total_score + '</td>');
+                $(row).append('<td class="fixed-column-1">' + total_score +  '</td>');
+
+                // Modify action column (20th td element)
+                var actionColumn = "";
+                 var actionColumn = "";
+                 if (emprole == 1)
+                 {
+                     actionColumn = $('<td class="dayswise_action blue_font assign_okr fixed-column" id=""><a href="javascript:;" id="review_employee" class="btn score_btn">Score</a></td>');
+                 }
+                 else if (emprole == 6805 && ('@obj.CanAdd.ToString()' == 'True'))
+                 {
+                     actionColumn = $('<td class="dayswise_action blue_font assign_okr fixed-column" id=""><a href="javascript:;" id="review_employee" class="btn score_btn">Score</a></td>');
+                 }
+                 else if (emprole == 6806 && ('@obj.CanAdd.ToString()' == 'True'))
+                 {
+                     actionColumn = $('<td class="dayswise_action blue_font assign_okr fixed-column" id=""><a href="javascript:;" id="review_employee" class="btn score_btn">Score</a></td>');
+                 }
+                 else if (emprole > 1 && ('@obj.CanAdd.ToString()' == 'True')) {
+                     actionColumn = $('<td class="dayswise_action blue_font assign_okr fixed-column" id=""><a href="javascript:;" id="review_employee" class="btn score_btn">Score</a></td>');
+                 }
+                 else
+                 {
+                     actionColumn = $('<td class="fixed-column"></td>');
+                 }
+                 if(total_assign_OKR_obj[0] == 0)
+                 {
+                     actionColumn = $('<td class="dayswise_action blue_font assign_okr fixed-column" id=""><a href="javascript:;" id="review_employee" class="btn score_btn" disabled>Score</a></td>');
+                 }
+                 $(row).append(actionColumn);// Append actionColumn after dynamically added columns
+                // Return the modified row
+                return row;
+            },
+            drawCallback: function () {
+                $("#ajax_loader").hide();
+                setTimeout(function () {
+                    $("#export-button-custom").remove();
+                    $("#buttons").append(`
+                        <div id="export-button-custom" class="export-button tooltips" data-placement="bottom" data-original-title="Download" data-table-id="okrreviewtbl">
+                            <img src="../Newlayout/images/download_icon.svg" alt="Download icon">
+                        </div>
+                    `);
+
+                    $("#export-button-custom").on("click", function () {
+                        exportToExcel();
+                    });
+                }, 300);
+                $('.tooltips').tooltip();
+            },
+            initComplete: function () {
+                setTimeout(function () {
+                    bindSearchInputs();
+                    FillEmployeeID();
+                    FillOKRAssign();
+                }, 20);
+            }
+        });
+
+        setTimeout(() => {
+            $("#okrreviewtbl_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+            $('.tooltips').tooltip();
+        }, 100);
+    },
+    error: function (xhr, status, error) {
+        console.error("Error:", status, error);
+        console.error("Response text:", xhr.responseText);
+    },
+    complete: function () {
+        $("#ajax_loader").hide();
+    }
+});
+
+
+
+        });
+
+
+        $("#okrreviewtbl thead").on("keyup", "input", function () {
+            table.column($(this).parent().index())
+            .search(this.value)
+            .draw();
+        });
+        // OKR filter search employee dropdown.
+        $(document).on('change', '#fltrSearchdrpEmpID', function () {
+            var empIDFilter = $('#fltrSearchdrpEmpID').val();
+            if (empIDFilter === '0') {
+                table.column(1).search('').draw();
+            }
+            else {
+                table.column(1).search(empIDFilter).draw();
+            }
+        });
+        //OKR flter search objective.
+        $(document).on('change', '#fltrSearchdrpObjective', function () {
+            var ObjectiveFilter = $('#fltrSearchdrpObjective').val();
+            if (ObjectiveFilter === '-1') {
+                table.column(2).search('').draw();
+            }
+            else {
+                table.column(2).search(ObjectiveFilter).draw();
+            }
+        });
+
+        $('.exe_btn').html('<img src="../Newlayout/images/dw_btn_review.svg" width="35" height="30"/>');
+
+        $('.searchbyname').html('<label>Search <input type="search" class="form-control input-sm input-inline margin-left-5" placeholder="Search by Name" ></label>');
+        // Search By Name ================
+
+        $(document).on("keyup", ".searchbyname input", function () {
+            var searchValue = $(this).val();
+            $('#okrreviewtbl').DataTable().search(searchValue).draw();
+        });
+        // Apply the Search ================
+        $("#okrreviewtbl thead").on("keyup", "input", function () {
+            var columnIndex = $(this).closest('th').index();
+
+            // Clear the table before applying the search
+            table.columns().search('').draw();
+
+            // Apply search for the specific column based on its index
+            table.column(columnIndex).search(this.value).draw();
+        });
+
+        $(document).on("click", ".score_btn", function () {            
+            Saveflag = 0;
+            $("#Filter_search").hide();
+            $("#fil_col_div").hide();
+            const wrapper = $(".filter_portlet_wrapper");
+            wrapper.addClass("full-width");
+
+            //var tr = $(this).closest('tr');
+            //var rowData = table.row(tr).data();
+            //var totalscore = rowData.TotalScore !== null ? rowData.TotalScore : 0;
+
+            var tr = $(this).closest('tr');
+            var rowData = $('#okrreviewtbl').DataTable().row(tr).data();
+            var totalscore = rowData.TotalScore !== null ? rowData.TotalScore : 0;
+            var totalscore = rowData.TotalScore !== null ? rowData.TotalScore : 0;
+            $("#OKR_assigntbl").hide();
+            $("#review_title").hide();
+            $("#reviewemplyoee_title").show();
+            $("#okr_infopayout").show();
+            var empname = rowData.EmpDetails.split("|");
+            $("#empname").text(empname[0]);
+            $("#designationname").text(empname[2]);
+            var empphoto = empname[1];
+            $("#usrimg").attr('src', '/UploadEmpPhoto/' + empphoto);
+            $("#empid").text(empname[3]);
+            getempname(function () {
+                getassignobjectiveKR(empname[3], 0);
+            });
+            var designationid = rowData.Designationid;
+            $("#empid_review").val(empname[3]);
+            $("#empname_review").val(empname[0]);
+            $("#Designationid_review").val(designationid);
+            $("#total_score").text(totalscore);
+            var getMonth = new Date().getMonth() + 1;
+            if (getMonth.toString().length == 1) {
+                $("#Effectedfrom").val(new Date().getFullYear() + "-0" + getMonth + "-01");
+            } else {
+                $("#Effectedfrom").val(new Date().getFullYear() + "-" + getMonth + "-01");
+            }
+            if ($("#dataTables_tbl_header").length > 0) {
+                $("#dataTables_tbl_header").hide();
+            }
+        });
+
+        //Notes special character not allowed.
+
+        $(document).on("keypress", "#notes_review", function (e) {
+            var keyCode = e.which;
+            var response = validateKeyPress(keyCode);
+            if (response == true) {
+            }
+            else { e.preventDefault(); }
+        });
+        $(document).on("blur", "#objective_input", function (e) {
+            var obj_in = removeTags($("#notes_review").val());
+            $("#notes_review").val(obj_in);
+        });
+        // close btn click
+        $("#closebtn").click(function () {
+            $("#Filter_search").show();
+            $("#reviewemplyoee_title").hide();
+            $("#okr_infopayout").hide();
+            $("#review_title").show();
+            $("#OKR_assigntbl").show();
+            var firstValue = $('#Effectedfrom option:first').val();
+            $('#Effectedfrom').val(firstValue);
+            $("#export-button-custom").remove();
+            $("#dataTables_tbl_header").show();
+            setTimeout(() => {
+                $("#buttons").append(`
+            <div id="export-button-custom" class="export-button tooltips" data-placement="bottom" data-original-title="Download" data-table-id="okrreviewtbl">
+                <img src="../Newlayout/images/download_icon.svg" alt="Download icon">
+            </div>
+        `);
+                $('.tooltips').tooltip();
+            }, 100);
+            const companyVal = $("#CompanyID").val() || [];
+            const branchVal = $("#BranchIds").val() || [];
+            const deptVal = $("#DeptIds").val() || [];
+
+            if (companyVal.length > 0 || branchVal.length > 0 || deptVal.length > 0) {
+                getScoreDataFilter();
+            }
+            else {
+                getScoreData();
+            }
+        });
+
+        function getScoreDataFilter() {
+                 var compnyID = $("#CompanyID").val() || '0';
+    var formattedCompanyID = Array.isArray(compnyID) ? compnyID .join(",") : '0';
+    var branchID = $("#BranchIds").val() || '0';
+    var formattedBranchID = Array.isArray(branchID) ? branchID.join(",") : '0';
+    var DepartmentID = $("#DeptIds").val() || '0';
+    var formattedDeptID = Array.isArray(DepartmentID) ? DepartmentID.join(",").replace(/\s+/g, "") : '0';
+    var requestObj = {
+        Userid: '@_userid',
+        Roleid: '@_RoleId',
+        Companyid: formattedCompanyID,
+        Branchid: formattedBranchID,
+        Departmentid: formattedDeptID
+    };
+    // Ensure table is safely destroyed and recreated properly before reinitializing
+    if ($.fn.DataTable.isDataTable('#okrreviewtbl')) {
+        $('#okrreviewtbl').DataTable().clear().destroy(true);
+        $('#okrreviewtbl').remove();
+    }
+
+    $('#tableResponsive').append(`
+        <table id="okrreviewtbl" class="table new_datatbl table-striped table-bordered tbl_middle table-hover tbl_newdatatbl serch_datatable order-column">
+            <thead>
+                <tr>
+                    <th class="left_fixed-column_1">Employee Details</th>
+                    <th>Employee ID</th>
+                    <th class="left_fixed-column_3">Assigned OKR</th>
+                </tr>
+                <tr>
+                    <th style="min-width: 200px">Employee Details</th>
+                    <th style="min-width: 100px">Employee ID</th>
+                    <th style="min-width: 120px">Assigned OKR</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    `);
+
+$.ajax({
+    type: "POST",
+    url: '@_webapiurlokr' + 'Objectve/GetOKRReviewDetailsRoleWise',
+    headers: { 'Authorization': '@_tokan' },
+    contentType: "application/json; charset=utf-8",
+    dataType: "json",
+    async: false,
+    data: JSON.stringify(requestObj),
+    beforeSend: function () {
+        $("#ajax_loader").show();
+    },
+    success: function (response) {
+        if (!response || response.length === 0) {
+            //$('#okrreviewtbl tbody').html('<tr><td colspan="100%">No records found</td></tr>');
+            //return;
+            const List = response;
+            handleGridVisibility("tblempty", "NotificationGrid-empty", List, {
+                imageUrl: "emptyscreen_3.png",
+                subText: "No matching records found for the selected filters."
+            });
+        }
+
+        const monthOrder = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        const monthKeys = Object.keys(response[0]).filter(k => /^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)-\d{2}$/.test(k));
+        monthKeys.sort((a, b) => {
+            return monthOrder.indexOf(a.split("-")[0]) - monthOrder.indexOf(b.split("-")[0]);
+        });
+
+        const headerRow1 = $('#okrreviewtbl thead tr:eq(0)');
+        const headerRow2 = $('#okrreviewtbl thead tr:eq(1)');
+        headerRow1.find("th:gt(2)").remove();
+        headerRow2.find("th:gt(2)").remove();
+
+        for (let i = 0; i < monthKeys.length; i += 3) {
+            const quarter = `Q${Math.floor(i / 3) + 1}`;
+            const monthsInQuarter = monthKeys.slice(i, i + 3);
+            headerRow1.append(`<th class="text-center" colspan="${monthsInQuarter.length}">${quarter}</th>`);
+            monthsInQuarter.forEach(month => {
+                headerRow2.append(`<th class="text-center" style="min-width: 30px">${month}</th>`);
+            });
+        }
+
+        headerRow1.append('<th class="fixed-column-2" rowspan="2">Total Progress(/100%)</th>');
+        headerRow1.append('<th class="fixed-column-1" rowspan="2">Manager Rating(%)</th>');
+        headerRow1.append('<th class="fixed-column" rowspan="2">Action</th>');
+        $("#dataTables_tbl_header").remove();
+        const table = $('#okrreviewtbl').DataTable({
+            data: response,
+            paging: true,
+            ordering: false,
+            autoWidth: false,
+            dom: _domColumn,
+            language: _languageColumn,
+            lengthMenu: [10, 25, 50, 100],
+            columns: [
+                { data: 'EmpDetails' },
+                { data: 'EmpCode' },
+                { data: 'total_assignobj' },
+                ...monthKeys.map(month => ({ data: month })),
+                { data: 'TotalScore' },
+                { data: 'ManagerScore' },
+                { data: null }
+            ],
+            rowCallback: function (row, data) {
+                $(row).empty();
+
+                var empDetails = data.EmpDetails.split("|");
+                var empname = empDetails[0];
+                var empphoto = empDetails[1];
+                var designationname = empDetails[2];
+                var empID = data.EmpCode;
+                var total_assign_OKR_obj = data.total_assignobj.split("|");
+                var toatl_ass_OKR = total_assign_OKR_obj[0];
+                var total_ass_KR = total_assign_OKR_obj[1];
+
+                var assignedOKR = 'No. Objective: ' + toatl_ass_OKR + ' <p>No. KR: ' + total_ass_KR + '</p>';
+                empDetailsHTML = '';
+                var nameParts = empname.replace(/\s+/g, ' ').trim().split(" ");
+                var initials = nameParts[0].charAt(0).toUpperCase();
+                if (nameParts.length > 1) {
+                    initials += nameParts[1].charAt(0).toUpperCase();
+                }
+                const colors = ["#e74c3c", "#8e44ad", "#3498db", "#16a085", "#f39c12", "#d35400", "#2c3e50"];
+                //const randomColor = colors[Math.floor(Math.random() * colors.length)];
+                const randomColor = "#295097";
+                empDetailsHTML = `<div class="emp_box">
+                                    <img alt="" class="user_img img-circle tooltips" data-placement="right" data-original-title="Empcode : ${empID}" src="/UploadEmpPhoto/${empphoto}"
+                                    onerror="this.style.display='none'; this.nextElementSibling.style.display='inline-block';"/>
+                                    <span  class="tooltips" data-placement="right" data-original-title="Empcode : ${empID}" style="display: none; min-width: 30px; height: 30px; line-height: 30px; text-align: center; background-color: #ecf3ff; color:  ${randomColor}; border-radius: 50% !important; border: 1px solid #8ab1f7; margin-right: 8px;">
+                                    ${initials}</span><span><p>${empname}</p > <p>${designationname}</p></span ></div>`;
+
+                var total_score = data.TotalScore !== undefined && data.TotalScore !== 0 && data.TotalScore !== null ? data.TotalScore : '--';
+                var manger_given = data.ManagerScore !== undefined && data.ManagerScore !== 0 && data.ManagerScore !== null ? data.ManagerScore : '--';
+                // Modifying the row HTML structure
+                $(row).append('<td class="left_fixed-column_1"><div class="emp_box">' + empDetailsHTML +  '</div></td>');
+                $(row).append('<td>' + empID + '</td>');
+                $(row).append('<td><div class="assign_okrobj left_fixed-column_3">' + assignedOKR + '</div></td>');
+
+                for (var i = Object.keys(data).length - data.monthcnt; i <= Object.keys(data).length - 1; i++) {
+                    var month = Object.keys(data)[i];
+                    var value = data[month] !== null ? data[month] : 0; // Check for null and replace with 0
+                    var td = $('<td>').text(value); // Create a new td element with data
+                    $(row).append(td); // Append the new td to the row
+                }
+
+                $(row).append('<td class="fixed-column-2">' + total_score + '</td>');
+                $(row).append('<td class="fixed-column-1">' + total_score +  '</td>');
+
+                // Modify action column (20th td element)
+                var actionColumn = "";
+                 var actionColumn = "";
+                 if (emprole == 1)
+                 {
+                     actionColumn = $('<td class="dayswise_action blue_font assign_okr fixed-column" id=""><a href="javascript:;" id="review_employee" class="btn score_btn">Score</a></td>');
+                 }
+                 else if (emprole == 6805 && ('@obj.CanAdd.ToString()' == 'True'))
+                 {
+                     actionColumn = $('<td class="dayswise_action blue_font assign_okr fixed-column" id=""><a href="javascript:;" id="review_employee" class="btn score_btn">Score</a></td>');
+                 }
+                 else if (emprole == 6806 && ('@obj.CanAdd.ToString()' == 'True'))
+                 {
+                     actionColumn = $('<td class="dayswise_action blue_font assign_okr fixed-column" id=""><a href="javascript:;" id="review_employee" class="btn score_btn">Score</a></td>');
+                 }
+                 else if (emprole > 1 && ('@obj.CanAdd.ToString()' == 'True')) {
+                     actionColumn = $('<td class="dayswise_action blue_font assign_okr fixed-column" id=""><a href="javascript:;" id="review_employee" class="btn score_btn">Score</a></td>');
+                 }
+                 else
+                 {
+                     actionColumn = $('<td class="fixed-column"></td>');
+                 }
+                 if(total_assign_OKR_obj[0] == 0)
+                 {
+                     actionColumn = $('<td class="dayswise_action blue_font assign_okr fixed-column" id=""><a href="javascript:;" id="review_employee" class="btn score_btn" disabled>Score</a></td>');
+                 }
+                 $(row).append(actionColumn);// Append actionColumn after dynamically added columns
+                // Return the modified row
+                return row;
+            },
+            drawCallback: function () {
+                $("#ajax_loader").hide();
+                setTimeout(function () {
+                    $("#export-button-custom").remove();
+                    $("#buttons").append(`
+                        <div id="export-button-custom" class="export-button tooltips" data-placement="bottom" data-original-title="Download" data-table-id="okrreviewtbl">
+                            <img src="../Newlayout/images/download_icon.svg" alt="Download icon">
+                        </div>
+                    `);
+
+                    $("#export-button-custom").on("click", function () {
+                        exportToExcel();
+                    });
+                }, 300);
+                $('.tooltips').tooltip();
+            },
+            initComplete: function () {
+                setTimeout(function () {
+                    bindSearchInputs();
+                    FillEmployeeID();
+                    FillOKRAssign();
+                }, 20);
+            }
+        });
+
+        setTimeout(() => {
+            $("#okrreviewtbl_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+            $('.tooltips').tooltip();
+        }, 100);
+    },
+    error: function (xhr, status, error) {
+        console.error("Error:", status, error);
+        console.error("Response text:", xhr.responseText);
+    },
+    complete: function () {
+        $("#ajax_loader").hide();
+    }
+});
+        }
+
+         function tableGet() {
+    if ($.fn.DataTable.isDataTable('#okrreviewtbl')) {
+       $('#okrreviewtbl').DataTable().clear().destroy();
+   }
+    $('#okrreviewtbl tbody').empty();
+    table = $("#okrreviewtbl").DataTable({
+    //dom: "<'row'<'col-lg-3 col-sm-5 col-xs-12 '<'record_btn_main'l,><'exe_btn'Bf>><'col-lg-9 col-sm-7 col-xs-12 mb_margin_bottom_15'<'searchbyname text-right'>>>" +
+    //     "<'row mb_5'<'col-sm-12 margin-bottom-10'<'customforms_table tbl_scroll'tr'>>>" +
+        //     "<'row'<'col-md-5 col-sm-5'i><'col-md-7 col-sm-7'p>>",
+    dom: _domColumn,
+    language: _languageColumn,
+    paging: true,
+    autoWidth: true,
+    ordering: false,
+    lengthMenu: [10,25,50, 100], // Set the page length options
+    buttons: [
+        //{
+        //    extend: 'excelHtml5',
+        //}
+    ],
+    "ajax": {
+        url: '@_webapiurlokr' + 'Objectve/GetOKRReviewDetails/' + '@_userid' + '/' + '@_RoleId' + '/' + '@_companyid' + '/' + '@_branchid',
+        type: "GET",
+        headers: { 'Authorization': '@_tokan' },
+        dataSrc: function (json) {
+            if (json != null) {
+                const mp = json;
+                handleGridVisibility("tblempty", "NotificationGrid-empty", mp, {
+                    imageUrl: "emptyscreen_3.png",
+                    subText: "No matching records found for the selected filters."
+                });
+                return mp; // Must return data to populate the table
+            }
+            else {
+                handleGridVisibility("tblempty", "NotificationGrid-empty", [], {
+                    imageUrl: "emptyscreen_1.png",
+                    subText: "No entries found. Please add a record to get started."
+                });
+                return []; // Return empty array to avoid DataTable errors
+            }
+        },
+        async: false,
+        beforeSend: function () {
+            $("#ajax_loader").show();
+        },
+    },
+    "columns": [
+       { "data": "EmpDetails" },
+       { "data": "EmpCode" },
+       { "data": "total_assignobj" },
+    ],
+    //row call back function to modify the row display.
+    "rowCallback": function (row, data, index) {
+
+        // Empty the row before populating with new data
+        $(row).empty();
+
+        var empDetails = data.EmpDetails.split("|");
+        var empname = empDetails[0];
+        var empphoto = empDetails[1];
+        var designationname = empDetails[2];
+        var empID = data.EmpCode;
+        var total_assign_OKR_obj = data.total_assignobj.split("|");
+        var toatl_ass_OKR = total_assign_OKR_obj[0];
+        var total_ass_KR = total_assign_OKR_obj[1];
+
+        var assignedOKR = 'No. Objective: ' + toatl_ass_OKR + ' <p>No. KR: ' + total_ass_KR + '</p>';
+
+        var empDetailsHTML = '';
+        var nameParts = empname.replace(/\s+/g, ' ').trim().split(" ");
+        var initials = nameParts[0].charAt(0).toUpperCase();
+        if (nameParts.length > 1) {
+            initials += nameParts[1].charAt(0).toUpperCase();
+        }
+        const colors = ["#e74c3c", "#8e44ad", "#3498db", "#16a085", "#f39c12", "#d35400", "#2c3e50"];
+        //const randomColor = colors[Math.floor(Math.random() * colors.length)];
+        const randomColor = "#295097";
+        empDetailsHTML = `<div class="emp_box">
+                     <img alt="" class="user_img img-circle tooltips" data-placement="right" data-original-title="Empcode : ${empID}" src="/UploadEmpPhoto/${empphoto}"
+                     onerror="this.style.display='none'; this.nextElementSibling.style.display='inline-block';"/>
+                     <span  class="tooltips" data-placement="right" data-original-title="Empcode : ${empID}" style="display: none; min-width: 30px; height: 30px; line-height: 30px; text-align: center; background-color: #ecf3ff; color:  ${randomColor}; border-radius: 50% !important; border: 1px solid #8ab1f7; margin-right: 8px;">
+                     ${initials}</span><span><p>${empname}</p > <p>${designationname}</p></span ></div>`;
+        //if (empphoto === null || empphoto === '') {
+        //    empDetailsHTML = '<img src= "/assets/images/avtar.png" alt="User icon" class="user_img"><span><p>' + empname + '</p><p>' + designationname + '</p></span>';
+        //} else {
+        //    empDetailsHTML = '<img src="/UploadEmpPhoto/' + empphoto + `" alt="User icon" class="user_img" onerror="this.onerror=null; this.src='/assets/images/avtar.png';"><span><p>` + empname + '</p><p>' + designationname + '</p></span>';
+        //}
+        var total_score = data.TotalScore !== undefined && data.TotalScore !== 0 && data.TotalScore !== null ? data.TotalScore : '--';
+        var manger_given = data.ManagerScore !== undefined && data.ManagerScore !== 0 && data.ManagerScore !== null ? data.ManagerScore : '--';
+        // Modifying the row HTML structure
+        $(row).append('<td class="left_fixed-column_1"><div class="emp_box">' + empDetailsHTML +  '</div></td>');
+        $(row).append('<td>' + empID + '</td>');
+        $(row).append('<td><div class="assign_okrobj left_fixed-column_3">' + assignedOKR + '</div></td>');
+
+        for (var i = Object.keys(data).length - data.monthcnt; i <= Object.keys(data).length - 1; i++) {
+            var month = Object.keys(data)[i];
+            var value = data[month] !== null ? data[month] : 0; // Check for null and replace with 0
+            var td = $('<td>').text(value); // Create a new td element with data
+            $(row).append(td); // Append the new td to the row
+        }
+
+        $(row).append('<td class="fixed-column-2">' + total_score + '</td>');
+        $(row).append('<td class="fixed-column-1">' + total_score +  '</td>');
+
+        // Modify action column (20th td element)
+        var actionColumn = "";
+        if (emprole == 1)
+        {
+            actionColumn = $('<td class="dayswise_action blue_font assign_okr fixed-column" id=""><a href="javascript:;" id="review_employee" class="btn score_btn">Score</a></td>');
+        }
+        else if (emprole == 6805 && ('@obj.CanAdd.ToString()' == 'True'))
+        {
+            actionColumn = $('<td class="dayswise_action blue_font assign_okr fixed-column" id=""><a href="javascript:;" id="review_employee" class="btn score_btn">Score</a></td>');
+        }
+        else if (emprole == 6806 && ('@obj.CanAdd.ToString()' == 'True'))
+        {
+            actionColumn = $('<td class="dayswise_action blue_font assign_okr fixed-column" id=""><a href="javascript:;" id="review_employee" class="btn score_btn">Score</a></td>');
+        }
+        else if (emprole > 1 && ('@obj.CanAdd.ToString()' == 'True')) {
+            actionColumn = $('<td class="dayswise_action blue_font assign_okr fixed-column" id=""><a href="javascript:;" id="review_employee" class="btn score_btn">Score</a></td>');
+        }
+        else
+        {
+            actionColumn = $('<td class="fixed-column"></td>');
+        }
+        if(total_assign_OKR_obj[0] == 0)
+        {
+            actionColumn = $('<td class="dayswise_action blue_font assign_okr fixed-column" id=""><a href="javascript:;" id="review_employee" class="btn score_btn" disabled>Score</a></td>');
+        }
+        $(row).append(actionColumn); // Append actionColumn after dynamically added columns
+        // Return the modified row
+        return row;
+    },
+    initComplete: function (settings, json) {
+        if (json && json.length > 0) {
+            var footer = $("#okrreviewtbl tfoot tr");
+            $("#okrreviewtbl thead").append(footer);
+            var table = $('#okrreviewtbl').DataTable();
+            // First row of table header
+            var headerRow1 = $("#okrreviewtbl thead tr:eq(0)");
+            headerRow1.empty();
+            headerRow1.append('<th class="left_fixed-column_1">Employee Details</th>');
+            headerRow1.append('<th>Employee ID</th>');
+            headerRow1.append('<th class="left_fixed-column_3">Assigned OKR</th>');
+
+
+            // Second row of table header
+            var headerRow2 = $("#okrreviewtbl thead tr:eq(1)");
+            headerRow2.empty();
+            headerRow2.append('<th class="left_fixed-column_1" style="min-width: 200px">Employee Details</th>');
+            headerRow2.append('<th style="min-width: 100px">Employee ID</th>');
+            headerRow2.append('<th class="left_fixed-column_3" style="min-width: 120px">Assigned OKR</th>');
+            // Calculate the number of quarters based on the count of months
+            var monthCount = json[0].monthcnt;;
+            var quarterCount = Math.ceil(monthCount / 3); // Assuming 3 months per quarter
+
+            var quarterHeaders = {};
+            for (var i = 1; i <= quarterCount; i++) {
+                var quarterName = 'Q' + i;
+                quarterHeaders[quarterName] = true;
+            }
+
+            // Add dynamic quarterly headers to the first row
+            Object.keys(quarterHeaders).forEach(function (quarter) {
+                headerRow1.append('<th class="text-center" colspan="3">' + quarter + '</th>');
+            });
+            headerRow1.append('<th class="fixed-column-2" rowspan="2">Total Progress(/100%)</th>');
+            headerRow1.append('<th class="fixed-column-1" rowspan="2">Manager Rating(%)</th>');
+            headerRow1.append('<th class="fixed-column" rowspan="2">Action</th>');
+
+
+            var firstRow = json[0];
+            var dynamicColumns = [];
+
+            // Filter keys starting with 'Month_' to get month names
+            var monthNames = Object.keys(firstRow).filter(function (key) {
+                return key.match(/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)-\d{2}$/);
+            });
+
+            // Add dynamic month headers to the second row
+            monthNames.forEach(function (month) {
+                headerRow2.append('<th class="text-center" style="min-width: 30px">' + month + '</th>');
+            });
+
+            var dynamicColumns = monthNames.map(function (month) {
+                return {
+                    "data": month, // Use the month name as data property
+                    "render": function (data, type, row) {
+                        // Return the value corresponding to the month
+                        return row[month];
+                    }
+                };
+            });
+            setTimeout(function () {
+                bindSearchInputs();
+                FillEmployeeID();
+                FillOKRAssign();
+            }, 20);
+        }
+        else{
+            var footer = $("#okrreviewtbl tfoot tr");
+            $("#okrreviewtbl thead").append(footer);
+            var table = $('#okrreviewtbl').DataTable();
+            // First row of table header
+            var headerRow1 = $("#okrreviewtbl thead");
+            headerRow1.empty();
+            headerRow1.append('<th class="left_fixed-column_1">Employee Details</th>');
+            headerRow1.append('<th>Employee ID</th>');
+            headerRow1.append('<th class="left_fixed-column_3">Assigned OKR</th>');
+            headerRow1.append('<th class="fixed-column-2">Total(%)</th>')
+            headerRow1.append('<th class="fixed-column-1">Manager Given(%)</th>')
+            headerRow1.append('<th class="fixed-column">Action</th>')
+        }
+
+    },
+    "drawCallback": function (settings) {
+        // Hide loader after the DataTable is drawn
+        $("#ajax_loader").hide();
+        $('.tooltips').tooltip();
+    },
+
+    });
+       setTimeout(function () {
+           $("#" + "okrreviewtbl" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+           $('.tooltips').tooltip();
+       }, 100);
+    }
+    function calculateSum() {
+        let sum = 0;
+        let totalRows = table.data().count();
+        $("#okrreviewtbl .fixed-column-1").each(function () {
+            let value = parseFloat($(this).text().trim()) || 0;
+            sum += value;
+        });
+        let percentage = (sum / totalRows) * 100;
+        $("#score_count").text("Your total score is:" + percentage.toFixed(2) + "%");
+    }
+        //review note btn click open the modal
+        $(document).on("click", ".review_notes_btn", function () {            
+            frmclearOKRReview();
+            // Get the value of obj_id_
+            var objectiveId = $(this).closest('.accordion_box_main').find('[id^="obj_id_"]').text();
+            $("#obj_id_review").val(objectiveId);
+
+            //Open the modal Review notes modal.
+            $("#reviewnotes_modal").modal('show');
+
+            // Get the value of the KR id
+            var krId = $(this).closest('.okr_acc_body').find('[id^="KR_id_"]').text();
+            $("#KR_id_review").val(krId);
+
+            //var enddate = $(this).closest('.accordion_box_main').find('[id^="target_period_enddate_"]').text();
+            //$("#assigned_review_date").val(enddate);
+
+            //get the value of the score
+            var score = $(this).closest('.okr_acc_body').find('[id^="kr_score_"]').text();
+            if(score != null && score != "--" && score != 0)
+            {
+                var numericScore = parseFloat(score.replace('point', '').trim());
+                $("#review_score").val(numericScore);
+                if(numericScore != null && numericScore > 0 && numericScore != "--")
+                {
+                    $("#btnsave").prop('disabled', true);
+                }
+                else{
+                    $("#btnsave").prop('disabled', false);
+                }
+            }
+            var review_type =  $(this).closest('.okr_acc_body').find('[id^="kr_review_type_"]').text();
+            if(score != null && score !="--" && score != 0)
+            {
+                $("#review_type").val(review_type);
+            }
+
+            var empid = $("#empid").text();
+
+            //fetch the reviewnotes by empid wise
+            getreviewnotes(objectiveId, krId, empid)
+            .then(function (data) {
+                if (data && data.length > 0){
+                    $("#notes_review").val(data[0].note_text);
+                }
+            });
+
+            //fetch the reviewfiles by empid wise
+            getfileData(objectiveId, krId, empid)
+            .then(function (data) {
+                var responsecnt = data.length;
+                $("#upload_file_cnt").text(responsecnt);
+                var $container = $("#upload_file");
+                $container.empty(); // Clear previous content
+                data.forEach(function (item, index) {
+                    var ulElement = $('<ul></ul>');
+                    var objectiveItem = $('<li class="d-flex align-items-center justify-content-between"> <div class="uploadfilename" id="upload_file_name_' + index + '" ><i class="fa-regular fa-file margin-right-5"></i>' + item.file_path_OKR + '</div> <div class="assign_text"> <a href="javascript:;"><img class="margin-right-5" src="/assets/images/download_icon.svg" height="24" width="24" alt="close icon" id="remove_file_download_' + index + '"></a></div> </li>');
+                    ulElement.append(objectiveItem);
+                    $container.append(ulElement);
+                });
+
+            });
+
+
+
+            // Find the closest common parent or container of the data
+            var container = $(this).closest('.no_bd_radius'); // Update this with the appropriate container class
+            if (container.length > 0) {
+                var krname = container.find('.okr_body_ttl span:last').text().trim();
+                $("#div_KR_keyresult").text(krname);
+
+                var weightageElement = container.find('.okr_acc_st:contains("Weightage:")');
+                if (weightageElement.length > 0) {
+                    var weightage = weightageElement.text().trim().split(':')[1];
+                    $("#div_KR_weightage").text(weightage);
+                } else {
+                    $("#div_KR_weightage").text('');
+                }
+            }
+
+            // enable or disble the btnsave and review score based on  a reporting to and targetperiod wise
+            var reviewdby  =  $(this).closest('.okr_acc_body').find('[id^="Kr_reviewd_by_"]').text();
+            var krfilledby  = $(this).closest('.okr_acc_body').find('[id^="Kr_filled_by_"]').text();
+            var reportingto  = $(this).closest('.okr_acc_body').find('[id^="Kr_reporting_by_"]').text();
+            if ((krfilledby == "1" && (emprole == "1" || emprole == "6000")) ||
+                (krfilledby == "2" && '@empid' == reviewdby) ||
+                (krfilledby == "3" && '@empid' == reportingto)) {
+                $('.save_btn').prop('disabled', false);
+                $('#review_score').prop('disabled', false);
+                disflag = 0;
+                var currentDate = new Date(); // Get the current date
+                var effectivEndDatestring = $(this).closest('.okr_acc_body').find('[id^="kr_effective_end_date_"]').text();
+                var endatestaring = $(this).closest('.okr_acc_body').find('[id^="kr_end_date_"]').text();;
+                var endDate = new Date(endatestaring);
+                var effectiveDate = new Date(effectivEndDatestring);
+                currentDate.setHours(0, 0, 0, 0);
+                endDate.setHours(0,0,0,0);
+                effectiveDate.setHours(0,0,0,0);
+               
+                if(currentDate >= endDate && currentDate <= effectiveDate)
+                {
+                    $('.save_btn').prop('disabled', false);
+                    $('#review_score').prop('disabled', false);
+                    disflag = 0;
+                }
+                else{
+                    $('.save_btn').prop('disabled', true);  
+                    $('#review_score').prop('disabled', true);
+                    disflag = 1;
+                }
+            } else {
+                $('.save_btn').prop('disabled', true);
+                $('#review_score').prop('disabled', true);
+                disflag = 1;
+            }
+            // taregt period wise enable or disbale  the review button.
+
+        });
+
+        // click event of oke title collapse class and aria expanded
+        $(document).on('click', '[id^="objective_title_"]', function () {
+            var index = $(this).attr("id").replace("objective_title_", "");
+
+            // Get the element by ID with the current index
+            var $okrList = $("#okrreview_" + index);
+            var $okrTitle = $(this);
+
+            // Check if the element has the class "in"
+            if ($okrList.hasClass('in')) {
+                // If it has the class, remove it and set aria-expanded to 'false'
+                $okrList.removeClass('in');
+                $okrTitle.attr('aria-expanded', 'false');
+            } else {
+                // If it doesn't have the class, add it and set aria-expanded to 'true'
+                $okrList.addClass('in');
+                $okrTitle.attr('aria-expanded', 'true');
+            }
+        });
+        $("#review_score").on('change', function () {
+            $("#review_score").removeClass('field_error');
+        });
+        $(document).on("keypress", "[id^='review_score']", function (e) {
+            var keyCode = e.which;
+            // Allow only numeric keys (0-9) and some special keys (e.g., backspace, delete, left, right, etc.)
+            if (keyCode < 48 || keyCode > 57) {
+                // Prevent the input if it's not a numeric key
+                e.preventDefault();
+            }
+        });
+        $("#review_score").on('input', function () {
+            var value = $(this).val();
+            // Remove any non-numeric characters and convert to a number
+            var floatValue = parseFloat(value);
+
+            // Constrain the value to be between 0 and 100
+            if (isNaN(floatValue) || floatValue <= 0 || floatValue > 100) {
+                $(this).val(''); // Set the input field to blank
+            } else {
+                // Update the input field with the constrained value
+                $(this).val(floatValue);
+            }
+        });
+
+        $(document).on("click", "#btnsave", function () {
+            SaveReview();
+        });
+        $(document).on("click", ".exe_btn", function () {
+            exportToExcel();
+        });
+        $("#Effectedfrom").change(function () {
+
+            Saveflag = 1;
+            var empId = $('#empid').text();
+            var effecteddate = $("#Effectedfrom").val();
+            getempname(function () {
+                GetOKRempwise(empId, effecteddate, 0);
+            });
+        });
+        $(document).on('click', "[id^='remove_file_download_']", function () {
+            var index = $(this).attr('id').replace('remove_file_download_', '');
+            var filename = $("#upload_file_name_" + index).text().trim();
+            var fileURL = '/UploadOKREmpDOC/' + filename;
+
+            var downloadLink = document.createElement('a');
+            downloadLink.href = fileURL;
+            downloadLink.download = filename;
+
+            document.body.appendChild(downloadLink);
+            downloadLink.click();
+
+            // Delay removal of the anchor element after a short time (e.g., 100 milliseconds)
+            setTimeout(function () {
+                document.body.removeChild(downloadLink);
+            }, 100);
+        });
+
+    });
+    function bindEffectedFromDropdown() {
+    // Make an AJAX request to get the active transaction year
+    $.ajax({
+        url: '@_webapiurl' + 'Master/GetActiveTransactionYear',  // Replace with your actual API endpoint
+        method: 'GET',
+        headers: { 'Authorization': '@_tokan' },
+        contentType: "application/json; charset=utf-8",
+        dataType: 'json',
+        success: function (response) {
+            if (response && response.length > 0) {
+                // Parse the FromDate and ToDate from the response
+                var fromDate = new Date(response[0].FromDate);  // Start date from the transaction year
+                var toDate = new Date(response[0].ToDate);      // End date from the transaction year
+
+                // Set initial month and year based on FromDate
+                var currentMonth = fromDate.getMonth(); // Get the month (0-11)
+                var currentYear = fromDate.getFullYear(); // Get the year
+
+                // Populate the dropdown with months from FromDate to ToDate
+                var lastMonth = toDate.getMonth(); // Get the last month (0-11)
+                var lastYear = toDate.getFullYear(); // Get the last year
+
+                // Loop to fill the months between FromDate and ToDate
+                while (currentYear < lastYear || (currentYear === lastYear && currentMonth <= lastMonth)) {
+                    // Create the formatted date for the first day of the current month
+                    var formattedDate = currentYear + '-' + ('0' + (currentMonth + 1)).slice(-2) + '-01';
+
+                    // Create the option element
+                    var option = $('<option>', {
+                        value: formattedDate, // Set the date as value (first day of the month)
+                        text: GetMonthFullName(currentMonth) + ' ' + currentYear
+                    });
+
+                    // Append the option to the dropdown
+                    $("#Effectedfrom").append(option);
+
+                    // Move to the next month
+                    currentMonth++;
+
+                    // If currentMonth exceeds December (11), move to the next year
+                    if (currentMonth > 11) {
+                        currentMonth = 0;
+                        currentYear++;
+                    }
+                }
+                // Set the default value to the current month (if within the range)
+                var _gmonth = new Date().getMonth() + 1;
+                if (_gmonth.toString().length == 1) {
+                    $("#Effectedfrom").val(new Date().getFullYear() + "-0" + _gmonth + "-01");
+                } else {
+                    $("#Effectedfrom").val(new Date().getFullYear() + "-" + _gmonth + "-01");
+                }
+            } else {
+                toastr.error("No transaction year data available.");
+            }
+        },
+        error: function (jqXHR, status, error) {
+            // Improved error handling based on response status
+            switch (jqXHR.status) {
+                case 500: // InternalServerError
+                    toastr.error("Internal Server Error occurred.");
+                    break;
+                case 400: // BadRequest
+                    toastr.error("Bad Request. Please check the input parameters.");
+                    break;
+                case 401: // Unauthorized
+                    window.location.href = "/PayTime/LoginPage"; // Redirect to login
+                    break;
+                default:
+                    toastr.error("An error occurred: " + jqXHR.statusText);
+                    break;
+            }
+        }
+    });
+    }
+
+    function getScoreData() {
+             var compnyID = $("#CompanyID").val() || '0';
+            var formattedCompanyID = Array.isArray(compnyID) ? compnyID .join(",") : '0';
+            var branchID = $("#BranchIds").val() || '0';
+            var formattedBranchID = Array.isArray(branchID) ? branchID.join(",") : '0';
+            var DepartmentID = $("#DeptIds").val() || '0';
+            var formattedDeptID = Array.isArray(DepartmentID) ? DepartmentID.join(",").replace(/\s+/g, "") : '0';
+            var requestObj = {
+                Userid: '@_userid',
+                Roleid: '@_RoleId',
+                Companyid: formattedCompanyID,
+                Branchid: formattedBranchID,
+                Departmentid: formattedDeptID
+            };
+            // Ensure table is safely destroyed and recreated properly before reinitializing
+            if ($.fn.DataTable.isDataTable('#okrreviewtbl')) {
+                $('#okrreviewtbl').DataTable().clear().destroy(true);
+                $('#okrreviewtbl').remove();
+            }
+
+            $('#tableResponsive').append(`
+                <table id="okrreviewtbl" class="table new_datatbl table-striped table-bordered tbl_middle table-hover tbl_newdatatbl serch_datatable order-column">
+                    <thead>
+                        <tr>
+                            <th class="left_fixed-column_1">Employee Details</th>
+                            <th>Employee ID</th>
+                            <th class="left_fixed-column_3">Assigned OKR</th>
+                        </tr>
+                        <tr>
+                            <th style="min-width: 200px">Employee Details</th>
+                            <th style="min-width: 100px">Employee ID</th>
+                            <th style="min-width: 120px">Assigned OKR</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            `);
+
+        $.ajax({
+            type: "GET",
+            url: '@_webapiurlokr' + 'Objectve/GetOKRReviewDetails/' + '@_userid' + '/' + '@_RoleId' + '/' + '@_companyid' + '/' + '@_branchid',
+            headers: { 'Authorization': '@_tokan' },
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            async: false,
+            data: JSON.stringify(requestObj),
+            beforeSend: function () {
+                $("#ajax_loader").show();
+            },
+            success: function (response) {
+                if (!response || response.length === 0) {
+                    //$('#okrreviewtbl tbody').html('<tr><td colspan="100%">No records found</td></tr>');
+                    //return;
+                    const List = response;
+                    handleGridVisibility("tblempty", "NotificationGrid-empty", List, {
+                        imageUrl: "emptyscreen_3.png",
+                        subText: "No matching records found for the selected filters."
+                    });
+                }
+
+                const monthOrder = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+                const monthKeys = Object.keys(response[0]).filter(k => /^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)-\d{2}$/.test(k));
+                monthKeys.sort((a, b) => {
+                    return monthOrder.indexOf(a.split("-")[0]) - monthOrder.indexOf(b.split("-")[0]);
+                });
+
+                const headerRow1 = $('#okrreviewtbl thead tr:eq(0)');
+                const headerRow2 = $('#okrreviewtbl thead tr:eq(1)');
+                headerRow1.find("th:gt(2)").remove();
+                headerRow2.find("th:gt(2)").remove();
+
+                for (let i = 0; i < monthKeys.length; i += 3) {
+                    const quarter = `Q${Math.floor(i / 3) + 1}`;
+                    const monthsInQuarter = monthKeys.slice(i, i + 3);
+                    headerRow1.append(`<th class="text-center" colspan="${monthsInQuarter.length}">${quarter}</th>`);
+                    monthsInQuarter.forEach(month => {
+                        headerRow2.append(`<th class="text-center" style="min-width: 30px">${month}</th>`);
+                    });
+                }
+
+                headerRow1.append('<th class="fixed-column-2" rowspan="2">Total Progress(/100%)</th>');
+                headerRow1.append('<th class="fixed-column-1" rowspan="2">Manager Rating(%)</th>');
+                headerRow1.append('<th class="fixed-column" rowspan="2">Action</th>');
+                $("#dataTables_tbl_header").remove();
+                const table = $('#okrreviewtbl').DataTable({
+                    data: response,
+                    paging: true,
+                    ordering: false,
+                    autoWidth: false,
+                    dom: _domColumn,
+                    language: _languageColumn,
+                    lengthMenu: [10, 25, 50, 100],
+                    columns: [
+                        { data: 'EmpDetails' },
+                        { data: 'EmpCode' },
+                        { data: 'total_assignobj' },
+                        monthKeys.map(month => ({ data: month })),
+                        { data: 'TotalScore' },
+                        { data: 'ManagerScore' },
+                        { data: null }
+                    ],
+                    rowCallback: function (row, data) {
+                        $(row).empty();
+
+                        var empDetails = data.EmpDetails.split("|");
+                        var empname = empDetails[0];
+                        var empphoto = empDetails[1];
+                        var designationname = empDetails[2];
+                        var empID = data.EmpCode;
+                        var total_assign_OKR_obj = data.total_assignobj.split("|");
+                        var toatl_ass_OKR = total_assign_OKR_obj[0];
+                        var total_ass_KR = total_assign_OKR_obj[1];
+
+                        var assignedOKR = 'No. Objective: ' + toatl_ass_OKR + ' <p>No. KR: ' + total_ass_KR + '</p>';
+                        empDetailsHTML = '';
+                        var nameParts = empname.replace(/\s+/g, ' ').trim().split(" ");
+                        var initials = nameParts[0].charAt(0).toUpperCase();
+                        if (nameParts.length > 1) {
+                            initials += nameParts[1].charAt(0).toUpperCase();
+                        }
+                        const colors = ["#e74c3c", "#8e44ad", "#3498db", "#16a085", "#f39c12", "#d35400", "#2c3e50"];
+                        //const randomColor = colors[Math.floor(Math.random() * colors.length)];
+                        const randomColor = "#295097";
+                        empDetailsHTML = `<div class="emp_box">
+                                            <img alt="" class="user_img img-circle tooltips" data-placement="right" data-original-title="Empcode : ${empID}" src="/UploadEmpPhoto/${empphoto}"
+                                            onerror="this.style.display='none'; this.nextElementSibling.style.display='inline-block';"/>
+                                            <span  class="tooltips" data-placement="right" data-original-title="Empcode : ${empID}" style="display: none; min-width: 30px; height: 30px; line-height: 30px; text-align: center; background-color: #ecf3ff; color:  ${randomColor}; border-radius: 50% !important; border: 1px solid #8ab1f7; margin-right: 8px;">
+                                            ${initials}</span><span><p>${empname}</p > <p>${designationname}</p></span ></div>`;
+
+                        var total_score = data.TotalScore !== undefined && data.TotalScore !== 0 && data.TotalScore !== null ? data.TotalScore : '--';
+                        var manger_given = data.ManagerScore !== undefined && data.ManagerScore !== 0 && data.ManagerScore !== null ? data.ManagerScore : '--';
+                        // Modifying the row HTML structure
+                        $(row).append('<td class="left_fixed-column_1"><div class="emp_box">' + empDetailsHTML +  '</div></td>');
+                        $(row).append('<td>' + empID + '</td>');
+                        $(row).append('<td><div class="assign_okrobj left_fixed-column_3">' + assignedOKR + '</div></td>');
+
+                        for (var i = Object.keys(data).length - data.monthcnt; i <= Object.keys(data).length - 1; i++) {
+                            var month = Object.keys(data)[i];
+                            var value = data[month] !== null ? data[month] : 0; // Check for null and replace with 0
+                            var td = $('<td>').text(value); // Create a new td element with data
+                            $(row).append(td); // Append the new td to the row
+                        }
+
+                        $(row).append('<td class="fixed-column-2">' + total_score + '</td>');
+                        $(row).append('<td class="fixed-column-1">' + total_score +  '</td>');
+
+                        // Modify action column (20th td element)
+                        var actionColumn = "";
+                         var actionColumn = "";
+                         if (emprole == 1)
+                         {
+                             actionColumn = $('<td class="dayswise_action blue_font assign_okr fixed-column" id=""><a href="javascript:;" id="review_employee" class="btn score_btn">Score</a></td>');
+                         }
+                         else if (emprole == 6805 && ('@obj.CanAdd.ToString()' == 'True'))
+                         {
+                             actionColumn = $('<td class="dayswise_action blue_font assign_okr fixed-column" id=""><a href="javascript:;" id="review_employee" class="btn score_btn">Score</a></td>');
+                         }
+                         else if (emprole == 6806 && ('@obj.CanAdd.ToString()' == 'True'))
+                         {
+                             actionColumn = $('<td class="dayswise_action blue_font assign_okr fixed-column" id=""><a href="javascript:;" id="review_employee" class="btn score_btn">Score</a></td>');
+                         }
+                         else if (emprole > 1 && ('@obj.CanAdd.ToString()' == 'True')) {
+                             actionColumn = $('<td class="dayswise_action blue_font assign_okr fixed-column" id=""><a href="javascript:;" id="review_employee" class="btn score_btn">Score</a></td>');
+                         }
+                         else
+                         {
+                             actionColumn = $('<td class="fixed-column"></td>');
+                         }
+                         if(total_assign_OKR_obj[0] == 0)
+                         {
+                             actionColumn = $('<td class="dayswise_action blue_font assign_okr fixed-column" id=""><a href="javascript:;" id="review_employee" class="btn score_btn" disabled>Score</a></td>');
+                         }
+                         $(row).append(actionColumn);// Append actionColumn after dynamically added columns
+                        // Return the modified row
+                        return row;
+                    },
+                    drawCallback: function () {
+                        $("#ajax_loader").hide();
+                        setTimeout(function () {
+                            $("#export-button-custom").remove();
+                            $("#buttons").append(`
+                                <div id="export-button-custom" class="export-button tooltips" data-placement="bottom" data-original-title="Download" data-table-id="okrreviewtbl">
+                                    <img src="../Newlayout/images/download_icon.svg" alt="Download icon">
+                                </div>
+                            `);
+
+                            $("#export-button-custom").on("click", function () {
+                                exportToExcel();
+                            });
+                        }, 300);
+                        $('.tooltips').tooltip();
+                    },
+                    initComplete: function () {
+                        setTimeout(function () {
+                            bindSearchInputs();
+                            FillEmployeeID();
+                            FillOKRAssign();
+                        }, 20);
+                    }
+                });
+
+                setTimeout(() => {
+                    $("#okrreviewtbl_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+                    $('.tooltips').tooltip();
+                }, 100);
+            },
+            error: function (xhr, status, error) {
+                console.error("Error:", status, error);
+                console.error("Response text:", xhr.responseText);
+            },
+            complete: function () {
+                $("#ajax_loader").hide();
+            }
+        });
+    }
+
+    //function to fill the Employee code dropdown.
+    function FillEmployeeID() {
+        $.ajax({
+            type: "GET",
+            url: '@_webapiurlokr' + 'Objectve/GetOKRAssigndrpdetails/' + '@_userid' + '/' + '@_RoleId' + '/' + '@_companyid' + '/' + '@_branchid',
+            headers: { 'Authorization': '@_tokan' },
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",  // Correct the spelling of "dataType"
+            async: false,  // Use false instead of "false",
+            beforeSend: function () {
+                $("#ajax_loader").show();
+            },
+            success: function (response) {
+                if (response.isRedirect) {
+                    window.location.href = response.redirectUrl;
+                }
+                if (response && response.length > 0) {
+                    var selectElement = $('#fltrSearchdrpEmpID');
+                    selectElement.empty(); // Clear existing options
+
+                    selectElement.append("<option value='0' selected>All</option>");
+
+                    for (var i = 0; i < response.length; i++) {
+                        // Add options to the select element
+                        selectElement.append("<option value='" + response[i].EmpCode + "'>" + response[i].EmpCode + "</option>");
+                    }
+                }
+            },
+            error: function () {
+                $("#ajax_loader").hide();
+            },
+            complete: function () {
+                $("#ajax_loader").hide();
+            }
+        });
+    }
+    // get assign objective KR
+    function getassignobjectiveKR(empid,flag) {
+        $.ajax({
+            type: "GET",
+            headers: { 'Authorization': '@_tokan' },
+            url: '@_webapiurlokr' + 'Objectve/GetOKRAssignDetailsEmpwise/' + empid + '/' + flag,
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            beforeSend: function () {
+                $("#ajax_loader").show();
+            },
+            success: function (response) {
+
+                if (response.Table && response.Table.length > 0) {
+                    $("#okr_infopayout").show();
+                    $(".okrreview_main").show();
+                    $("#no_data").css('display', 'none');
+                    var accordionContainer = $(".okrreview_main");
+                    accordionContainer.empty(); // Clear previous content
+                    response.Table.forEach(function (item, index) {
+                        var accordationmain = $('<div class="accordion_box_main"></div>'); // Create accordion box
+                        var accordionHeader = $('<div class="accordian-header okr_acc_header">' +
+                            '<div>' +
+                            '<span id="obj_id_' + index + '" hidden>' + item.objective_id + '</span>' +
+                            '<a href="#okrreview_' + index + '" class="acc_ttl" data-toggle="collapse" aria-expanded="false" aria-controls="okrreview_' + index + '">' +
+                            '<span id="objective_title_' + index + '">' + item.Title + '</span>' +
+                            '<i class="fa-solid fa-chevron-down arrow_down"></i>' +
+                            '</a>' +
+                            '</div>' +
+                            '<div class="d-flex align-items-center">' +
+                            //'<span id="target_period_id_' + index + '" hidden>' + item.TragatPeriod + '</span>' +
+                            //'<span id="target_period_startdate_' + index + '" hidden>' + item.AssignCreatedate + '</span>' +
+                            //'<span id="target_period_enddate_' + index + '" hidden>' + item.Enddate + '</span>' +
+                            //'<div class="okr_acc_based">' + getTargetPeriodValue(item.TragatPeriod) + '</div>' +
+                            '<div class="okr_acc_data">' + item.Description + '</div>' +
+                            '<div class="okr_acc_based">Weightage: <span>' + item.weightage + '</span></div>' +
+                            '</div>' +
+                            '</div>'
+                        );
+                        var krmain = $('<div class="collapse" id="okrreview_' + index + '" aria-expanded="true"></div>');
+                        if (response.Table1 && response.Table1.length > 0) {
+                            response.Table1.forEach(function (krItem, KrIndex) {
+                                if (item.objective_id === krItem.krObjectiveId) {
+                                    //var KR_score = krItem.score !== undefined && krItem.score !== 0 && krItem.score !== null ? krItem.score : '--';
+                                    var totalDisplay = krItem.score !== undefined && krItem.score !== 0 && krItem.score !== null ? (krItem.score + '/' + krItem.krWeightage) : '--';
+                                    var Kr_flat_per = krItem.review_type == 2? '%':'';
+                                    var score = "";
+                                    if(krItem.review_type == 2)
+                                    {
+                                        score = ((krItem.score/krItem.krWeightage)* 100).toFixed(2);
+                                    }
+                                    else
+                                    {
+                                        score = krItem.score !== undefined && krItem.score !== 0 && krItem.score !== null ? krItem.score :'--';
+                                    }
+                                    var krContent = $(
+                                        '<div class="no_bd_radius">' +
+                                        '<div class="portlet-body">' +
+                                        '<div class="okr_acc_body">' +
+                                        '<div class="okr_body_ttl">' +
+                                        '<img src="/assets/images/icon_kr.svg" alt="objective icon" width="13" height="14" />' +
+                                        '<span id="KR_id_' + index + '" hidden>' + krItem.krid + '</span>' +
+                                        '<span>' + krItem.krKeyResult + '</span>' +
+                                        '</div>' +
+                                        '<div class="d-flex align-items-center">' +
+                                        '<div class="okr_acc_based_2">Reviewed By ' + getRoleNameByRoleId(krItem.krFieldby,krItem.Krreviewdby) + '</div>' +
+                                        '<span id="Kr_filled_by_'+ KrIndex +'" hidden >' + krItem.krFieldby + '</span>'+
+                                        '<span id="Kr_reviewd_by_'+ KrIndex +'" hidden >' + krItem.Krreviewdby + '</span>'+
+                                        '<span id="Kr_reporting_by_'+ KrIndex +'" hidden >' + krItem.reportingto + '</span>'+
+                                        '<div class="okr_acc_based">' + krItem.KrDescription + '</div>' +
+                                        '<div class="okr_acc_st">Weightage: <span>' + krItem.krWeightage + '</span></div>' +
+                                        '<div class="okr_acc_st">Status: <span>' + krItem.review_status + '</span></div>' +
+                                        '<div class="okr_acc_st">Start Date: <span id = "kr_start_date_'+ KrIndex +'">' + krItem.StartDate + '</span></div>' +
+                                        '<div class="okr_acc_st">End Date: <span id = "kr_end_date_'+ KrIndex +'">' + krItem.EndDate + '</span></div>' +
+                                        '<span id = "kr_effective_end_date_'+ KrIndex +'" hidden>' + krItem.effectiveenddate + '</span>'+
+                                        '<div class="okr_acc_st text-center">Score: <span id="kr_score_'+ KrIndex +'">' + score + Kr_flat_per +'</span><span id="kr_review_type_'+ KrIndex +'" style="display:none;">'+ krItem.review_type +'</span></div>' +
+                                        '<div class="okr_acc_st">Total: <span>' + totalDisplay + '</span></div>' +
+                                        '<div class="okr_acc_actiondata">' +
+                                        '<a href="javascript:;" class="btn btn-xs review_notes_btn" id="reviewnotesbtn" title="" data-original-title="Edit">' +
+                                        '<i class="fa-regular fa-file blue_font margin-right-5"></i>Review Notes / Score' +
+                                        '</a>' +
+                                        '</div>' +
+                                        '</div>' +
+                                        '</div>' +
+                                        '</div>' +
+                                        '</div>'
+                                    );
+                                    krmain.append(krContent);
+                                    // If the Key Result (KR) meets the specified condition, then the associated objective is displayed
+                                    accordationmain.append(accordionHeader); // Append header to the accordion box
+                                    accordationmain.append(krmain); // Append KR content to the accordion box
+                                }
+                            });
+                        }
+                        accordionContainer.append(accordationmain); // Append accordion box to the main container
+                    });
+                } else {
+                    $("#no_data").css('display', 'flex');
+                    $(".okrreview_main").hide();
+                }
+            },
+            error: function (xhr, ajaxOptions, thrownError) {
+                $("#ajax_loader").hide();
+            },
+            complete: function () {
+                $("#ajax_loader").hide();
+            }
+        });
+    }
+    function rolegetalldrp() {
+        $.ajax({
+            type: "GET",
+            url: '@_webapiurl' + 'Master/RoleMasterGetAll',
+            headers: { 'Authorization': '@_tokan' },
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            async: false,
+            beforeSend: function () {
+                $(".loading").show();
+            },
+            success: function (response) {
+                if (response.isRedirect) {
+                    window.location.href = response.redirectUrl;
+                }
+                if (response != null) {
+                    var selectElement = $('#roleid');
+                    selectElement.empty(); // Clear existing options
+
+                    selectElement.append("<option value='0' selected>Please select</option");
+
+                    response.sort(function (a, b) {
+                        return a.RoleName.localeCompare(b.RoleName);
+                    });
+
+                    for (var i = 0; i < response.length; i++) {
+                        // Add options to the select element
+                        selectElement.append("<option value='" + response[i].RoleId + "'>" + response[i].RoleName + "</option>");
+                        // Create an object with RoleId and RoleName and push it to the roleData array
+                        roleData.push({ RoleId: response[i].RoleId, RoleName: response[i].RoleName });
+                    }
+                }
+                $(".loading").hide();
+            },
+            error: function () {
+                $(".loading").hide();
+            }
+        });
+    }
+    function getTargetPeriodValue(index) {
+        return targetperiod[index];
+    }
+    function getempname(callback) {
+        $.ajax({
+            type: "GET",
+            url: '/MasterData/EmployeeGetReporting',
+            contentType: "application/json; charset=utf-8",
+            dataType: 'json',
+            beforeSend: function () {
+                $("#ajax_loader").show();
+            },
+            success: function (data) {
+                var compressedData = atob(data);
+                var data = JSON.parse(pako.inflate(compressedData, { to: 'string' }));
+                if (data.isRedirect) {
+                    window.location.href = data.redirectUrl;
+                }
+                $("#ajax_loader").hide();
+                data.sort(function (a, b) {
+                    return a.EmpName.localeCompare(b.EmpName);
+                });
+                for (var x = 0; x < data.length; x++) {
+                    EmpData.push({ EmpID: data[x].EmpId, Empname: data[x].EmpName });
+                }
+                // Call the callback function if provided
+                if (callback && typeof callback === 'function') {
+                    callback();
+                }
+            },
+            error: function (jqXHR, ajaxOptions, thrownError) {
+                $("#ajax_loader").hide();
+                if (jqXHR.status == 500) {
+                    toastr.error("InternalServerError");
+                } else if (jqXHR.status == 400) {
+                    toastr.error("BadRequest");
+                } else if (jqXHR.status == 401) {
+                    window.location.href = "/PayTime/LoginPage";
+                }
+            }
+        });
+    }
+    function getRoleNameByRoleId(roleId, reviewdby) {
+        //(krItem.krFieldby, krItem.Krreviewdby)
+        var roleName = null;
+        if (roleId === 1) {
+            roleName = "HRBP";
+        } else if (roleId === 2) {
+            // Assuming EmpData is globally accessible
+            for (var i = 0; i < EmpData.length; i++) {
+                if (EmpData[i].EmpID === reviewdby) {
+                    roleName = EmpData[i].Empname;
+                    break; // Exit the loop when a match is found
+                }
+            }
+        } else if (roleId === 3) {
+            roleName = "Reporting To";
+        }
+        return roleName;
+    }
+
+    function SaveReview() {
+        if ($("#review_score").val().trim() == "") {
+            $("#review_score").addClass('field_error');
+            $("#review_score").focus();
+            return false;
+        }
+        else {
+            $("#review_score").removeClass('field_error');
+        }
+        var flag_type = $("#review_type").val();
+        if (flag_type == 1)
+        {
+            var weightage = parseInt($("#div_KR_weightage").text().trim());
+            var score = parseInt($("#review_score").val());
+            if (score > weightage) {
+                toastr.remove();
+                toastr.error("Score should not be greater than weighatge.");
+                return false;
+            }
+        }
+        var per = "";
+
+        if ($("#review_type").val() == 2) {
+            var review_score = parseFloat($("#review_score").val()); // Getting the review score as a floating-point number
+            var weightage = parseFloat($("#div_KR_weightage").text().trim()); // Getting weightage as a floating-point number
+
+            var total_marks = 100; // Assuming the maximum score is out of 100
+            // Converting percentage into marks
+            var marks = (review_score / total_marks) * weightage;
+            per = marks; // Assigning marks to 'per'
+        } else {
+            per = $("#review_score").val();
+        }
+        if(disflag == 1)
+        {
+            return false;
+        }
+
+        var obj = {
+            "EmpID": $("#empid_review").val(),
+            "EmpName": $("#empname_review").val(),
+            "DesignationId": $("#Designationid_review").val(),
+            "objectiveId": $("#obj_id_review").val(),
+            "KRId": $("#KR_id_review").val(),
+            "review_type": $("#review_type").val(),
+            "score": per,
+            "description": $("#notes_review").val(),
+            "Weightage": $("#div_KR_weightage").text().trim(),
+            "review_status":4
+        };
+        $.ajax({
+            type: "POST",
+            headers: { 'Authorization': '@_tokan' },
+            url: '@_webapiurlokr' + 'Objectve/SaveOKRReview',
+            data: JSON.stringify(obj),
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            beforeSend: function () {
+                $("#ajax_loader").show();
+            },
+            success: function (response) {
+                if (response.success == true) {
+                    toastr.remove();
+                    toastr.success("Note has been saved sucessfully;employees are not allowed to upload it again.");
+                    $('#reviewnotes_modal').modal('toggle');
+
+                    if (Saveflag == 1) {
+                        var empId = $('#empid').text();
+                        var effecteddate = $("#Effectedfrom").val();
+                        GetOKRempwise(empId, effecteddate, 0);
+                    }
+                    else {
+                        var empId = $('#empid').text();
+                        getassignobjectiveKR(empId, 0);
+                    }
+                    frmclearOKRReview();
+                }
+                if (response.success == false) {
+                    toastr.remove();
+                    toastr.error(response.message);
+                    $('#reviewnotes_modal').modal('toggle');
+                }
+            },
+            error: function () {
+                $("#ajax_loader").hide();
+            },
+            complete: function () {
+                $("#ajax_loader").hide();
+            }
+        });
+    }
+    function frmclearOKRReview() {
+        $("#notes_review").val('');
+        $("#review_type").val(1);
+        $("#review_score").val('');
+        $("#review_score").removeClass('field_error')
+    }
+    // Dropdown function fill objectives.
+    function FillOKRAssign() {
+        $.ajax({
+            type: "GET",
+            url: '@_webapiurlokr' + 'Objectve/GetOKRReviewDetails/' + '@_userid' + '/' + '@_RoleId' + '/' + '@_companyid' + '/' + '@_branchid',
+            headers: { 'Authorization': '@_tokan' },
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            async: false,
+            beforeSend: function () {
+                $("#ajax_loader").show();
+            },
+            success: function (response) {
+                if (response.isRedirect) {
+                    window.location.href = response.redirectUrl;
+                }
+                if (response && response.length > 0) {
+                    var selectElement = $('#fltrSearchdrpObjective');
+                    selectElement.empty(); // Clear existing options
+                    selectElement.append("<option value='-1' selected>All</option>");
+
+                    var uniqueObjectives = {}; // Object to store unique Assignobjectives
+
+                    for (var i = 0; i < response.length; i++) {
+                        var ass_obj = response[i].total_assignobj.split("|"); // Fixed the syntax error here (square brackets instead of parentheses)
+                        var objective = ass_obj[0].trim(); // Get the objective
+
+                        // Add options to the select element only if they are unique
+                        if (!(objective in uniqueObjectives)) {
+                            uniqueObjectives[objective] = true; // Mark the objective as encountered
+                            selectElement.append("<option value='" + objective + "'>" + objective + "</option>");
+                        }
+                    }
+                }
+            },
+            error: function () {
+                $("#ajax_loader").hide();
+            },
+            complete: function () {
+                $("#ajax_loader").hide();
+            }
+        });
+    }
+    function exportToExcel() {
+        const table = document.getElementById('okrreviewtbl');
+        const rows = table.querySelectorAll('tr');
+
+        const data = [];
+        const headersFirstRow = [];
+        const headersSecondRow = [];
+
+        // Extracting headers from the table
+        const headerRow = rows[0];
+        const headerCells = headerRow.querySelectorAll('th');
+        for (let i = 0; i < headerCells.length; i++) {
+            headersFirstRow.push(headerCells[i].innerText);
+        }
+        data.push(headersFirstRow);
+
+        // Extracting the second row of headers
+        const secondHeaderRow = rows[1];
+        const secondHeaderCells = secondHeaderRow.querySelectorAll('th');
+        for (let i = 0; i < secondHeaderCells.length; i++) {
+            headersSecondRow.push(secondHeaderCells[i].innerText);
+        }
+
+        const updatedHeadersSecondRow = [...headersSecondRow]; // Create a copy to store the updated headers
+
+        updatedHeadersSecondRow.unshift('EmpDetails', 'EmpID', 'AssignOKR');
+
+        // Remove the three positions after the fixed columns
+        updatedHeadersSecondRow.splice(3, 3);
+
+        const existingMonthNames = headersSecondRow.filter(function (key) {
+            return key.match(/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)-\d{2}$/);
+        });
+
+        // Remove existing month names from updatedHeadersSecondRow
+        const filteredHeaders = updatedHeadersSecondRow.filter(function (key) {
+            return !key.match(/^(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)-\d{2}$/);
+        });
+
+        const monthNames = existingMonthNames; // Assuming monthNames is calculated elsewhere in your code based on data
+
+        // Add dynamic month headers to the updated headers array
+        monthNames.forEach(function (month) {
+            filteredHeaders.push(month);
+        });
+
+        // Push additional headers to the updated headers array
+        filteredHeaders.push('Total', 'ManagerGiven');
+
+        const wb = XLSX.utils.book_new();
+
+        for (let k = 1; k < rows.length; k++) {
+            const row = rows[k];
+            const rowData = [];
+            const cells = row.querySelectorAll('td');
+            for (let j = 0; j < cells.length-1; j++) {
+                rowData.push(cells[j].innerText);
+            }
+            data.push(rowData);
+        }
+
+        const ws = XLSX.utils.aoa_to_sheet(data);
+
+        XLSX.utils.sheet_add_aoa(ws, [filteredHeaders], { origin: 'A2' });
+
+        XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
+
+        const wbout = XLSX.write(wb, { bookType: 'xlsx', bookSST: true, type: 'binary' });
+
+        function s2ab(s) {
+            const buf = new ArrayBuffer(s.length);
+            const view = new Uint8Array(buf);
+            for (let i = 0; i < s.length; i++) view[i] = s.charCodeAt(i) & 0xFF;
+            return buf;
+        }
+
+        const fileName = 'OKRReview.xlsx';
+        saveAs(new Blob([s2ab(wbout)], { type: 'application/octet-stream' }), fileName);
+    }
+
+    function bindSearchInputs() {
+        $('#okrreviewtbl thead tr:eq(1) th').each(function (index) {
+            if (index == 0) {
+                $(this).addClass('left_fixed-column_1').html('<input type="text" class="search_input left_fixed-column_1"  id="srch_empname" placeholder="Search" /><i class="clm-search" id=""></i>');
+            }
+            else if (index == 1) {
+                $(this).html('<select class="search-dropdown" id="fltrSearchdrpEmpID"></select>');
+            }
+            else if (index == 2) {
+                $(this).html('<select class="search-dropdown" id="fltrSearchdrpObjective"></select>');
+            }
+        });
+        // Re-bind logic
+        $('#okrreviewtbl thead').on('keyup', '.search_input', function () {
+            $('#okrreviewtbl').DataTable().column(0).search(this.value).draw();
+        });
+
+        $('#okrreviewtbl').on('change', '#fltrSearchdrpEmpID', function () {
+            $('#okrreviewtbl').DataTable().column(1).search(this.value).draw();
+        });
+
+        $('#okrreviewtbl').on('change', '#fltrSearchdrpObjective', function () {
+            $('#okrreviewtbl').DataTable().column(2).search(this.value).draw();
+        });
+    }
+    function GetOKRempwise(empid,effecteddate,flag){
+        $.ajax({
+            type: "GET",
+            headers: { 'Authorization': '@_tokan' },
+            url: '@_webapiurlokr' + 'Objectve/GetOKRAssignDetailsEmpwiseMonth/' + empid + '/' + effecteddate + '/' + flag,
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            beforeSend: function () {
+                $("#ajax_loader").show();
+            },
+            success: function (response) {
+                if (response.Table && response.Table.length > 0) {
+                    $("#okr_infopayout").show();
+                    $(".okrreview_main").show();
+                    $("#no_data").css('display', 'none');
+                    var accordionContainer = $(".okrreview_main");
+                    accordionContainer.empty(); // Clear previous content
+
+                    response.Table.forEach(function (item, index) {
+                        var accordationmain = $('<div class="accordion_box_main"></div>'); // Create accordion box
+
+                        var accordionHeader = $('<div class="accordian-header okr_acc_header">' +
+                            '<div>' +
+                            '<span id="obj_id_' + index + '" hidden>' + item.objective_id + '</span>' +
+                            '<a href="#okrreview_' + index + '" class="acc_ttl" data-toggle="collapse" aria-expanded="false" aria-controls="okrreview_' + index + '">' +
+                            '<span id="objective_title_' + index + '">' + item.Title + '</span>' +
+                            '<i class="fa-solid fa-chevron-down arrow_down"></i>' +
+                            '</a>' +
+                            '</div>' +
+                            '<div class="d-flex align-items-center">' +
+                            //'<span id="target_period_id_' + index + '" hidden>' + item.TragatPeriod + '</span>' +
+                            //'<span id="target_period_startdate_' + index + '" hidden>' + item.AssignCreatedate + '</span>' +
+                            //'<span id="target_period_enddate_' + index + '" hidden>' + item.Enddate + '</span>' +
+                            //'<div class="okr_acc_based">' + getTargetPeriodValue(item.TragatPeriod) + '</div>' +
+                            '<div class="okr_acc_data">' + item.Description + '</div>' +
+                            '<div class="okr_acc_based">Weightage: <span>' + item.weightage + '</span></div>' +
+                            '</div>' +
+                            '</div>'
+                        );
+                        var krmain = $('<div class="collapse" id="okrreview_' + index + '" aria-expanded="true"></div>');
+                        if (response.Table1 && response.Table1.length > 0) {
+                            response.Table1.forEach(function (krItem, KrIndex) {
+                                if (item.objective_id === krItem.krObjectiveId) {
+                                    //var KR_score = krItem.score !== undefined && krItem.score !== 0 && krItem.score !== null ? krItem.score : '--';
+                                    var totalDisplay = krItem.score !== undefined && krItem.score !== 0 && krItem.score !== null ? (krItem.score + '/' + krItem.krWeightage) : '--';
+                                    var Kr_flat_per = krItem.review_type == 2? '%':'';
+                                    var score = "";
+                                    if(krItem.review_type == 2)
+                                    {
+                                        score = ((krItem.score/krItem.krWeightage)* 100).toFixed(2);
+                                    }
+                                    else
+                                    {
+                                        score = krItem.score !== undefined && krItem.score !== 0 && krItem.score !== null ? krItem.score :'--';
+                                    }
+                                    var krContent = $(
+                                        '<div class="no_bd_radius">' +
+                                        '<div class="portlet-body">' +
+                                        '<div class="okr_acc_body">' +
+                                        '<div class="okr_body_ttl">' +
+                                        '<img src="/assets/images/icon_kr.svg" alt="objective icon" width="13" height="14" />' +
+                                        '<span id="KR_id_' + index + '" hidden>' + krItem.krid + '</span>' +
+                                        '<span>' + krItem.krKeyResult + '</span>' +
+                                        '</div>' +
+                                        '<div class="d-flex align-items-center">' +
+                                        '<div class="okr_acc_based_2">Reviewed By ' + getRoleNameByRoleId(krItem.krFieldby,krItem.Krreviewdby) + '</div>' +
+                                        '<span id="Kr_filled_by_'+ KrIndex +'" hidden >' + krItem.krFieldby + '</span>'+
+                                        '<span id="Kr_reviewd_by_'+ KrIndex +'" hidden >' + krItem.Krreviewdby + '</span>'+
+                                        '<span id="Kr_reporting_by_'+ KrIndex +'" hidden >' + krItem.reportingto + '</span>'+
+                                        '<div class="okr_acc_based">' + krItem.KrDescription + '</div>' +
+                                        '<div class="okr_acc_st">Weightage: <span>' + krItem.krWeightage + '</span></div>' +
+                                        '<div class="okr_acc_st">Status: <span>' + krItem.review_status + '</span></div>' +
+                                          '<div class="okr_acc_st">Start Date: <span id = "kr_start_date_'+ KrIndex +'">' + krItem.StartDate + '</span></div>' +
+                                        '<div class="okr_acc_st">End Date: <span id = "kr_end_date_'+ KrIndex +'">' + krItem.EndDate + '</span></div>' +
+                                        '<span id = "kr_effective_end_date_'+ KrIndex +'" hidden>' + krItem.effectiveenddate + '</span>'+
+                                       '<div class="okr_acc_st text-center">Score: <span id="kr_score_'+ KrIndex +'">' + score + Kr_flat_per +'</span><span id="kr_review_type_'+ KrIndex +'" style="display:none;">'+ krItem.review_type +'</span></div>' +
+                                        '<div class="okr_acc_st">Total: <span>' + totalDisplay + '</span></div>' +
+                                        '<div class="okr_acc_actiondata">' +
+                                        '<a href="javascript:;" class="btn btn-xs review_notes_btn" id="reviewnotesbtn" title="" data-original-title="Edit">' +
+                                        '<i class="fa-regular fa-file blue_font margin-right-5"></i>Review Notes / Score' +
+                                        '</a>' +
+                                        '</div>' +
+                                        '</div>' +
+                                        '</div>' +
+                                        '</div>' +
+                                        '</div>'
+                                    );
+                                    krmain.append(krContent);
+                                    // If the Key Result (KR) meets the specified condition, then the associated objective is displayed
+                                    accordationmain.append(accordionHeader); // Append header to the accordion box
+                                    accordationmain.append(krmain); // Append KR content to the accordion box
+                                }
+                            });
+                        }
+                        accordionContainer.append(accordationmain); // Append accordion box to the main container
+                    });
+                } else {
+                    $("#no_data").css('display', 'flex');
+                    $(".okrreview_main").hide();
+                }
+            },
+            error: function (xhr, ajaxOptions, thrownError) {
+                $("#ajax_loader").hide();
+            },
+            complete: function () {
+                $("#ajax_loader").hide();
+            }
+        });
+
+    }
+    function getreviewnotes(objectiveid, krid, empid) {
+        return new Promise(function (resolve, reject) {
+            $.ajax({
+                type: "GET",
+                url: '@_webapiurlokr' + 'Objectve/GetEmployeeReviewNotes/' + objectiveid + '/' + krid + '/' + empid,
+                headers: { 'Authorization': '@_tokan' },
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                beforeSend: function () {
+                    $(".loading").show();
+                },
+                success: function (response) {
+                    if (response.isRedirect) {
+                        window.location.href = response.redirectUrl;
+                    }
+                    if (response != null) {
+                        resolve(response); // Resolve the Promise with the response data
+                    }
+                    $(".loading").hide();
+                },
+                error: function () {
+                    $(".loading").hide();
+                    reject("Error occurred"); // Reject the Promise if there's an error
+                }
+            });
+        });
+    }
+    function getfileData(objectiveid, krid, empid) {
+        return new Promise(function (resolve, reject) {
+            $.ajax({
+                type: "GET",
+                url: '@_webapiurlokr' + 'Objectve/GetEmployeeReviewFiles/' + objectiveid + '/' + krid + '/' + empid,
+                headers: { 'Authorization': '@_tokan' },
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                beforeSend: function () {
+                    $(".loading").show();
+                },
+                success: function (response) {
+                    if (response.isRedirect) {
+                        window.location.href = response.redirectUrl;
+                    }
+                    if (response != null) {
+                        resolve(response); // Resolve the Promise with the response data
+                    }
+                    $(".loading").hide();
+                },
+                error: function () {
+                    $(".loading").hide();
+                    reject("Error occurred"); // Reject the Promise if there's an error
+                }
+            });
+        });
+    }
+   function fillcompany() {
+    var _urlcmp = '@_webapiurl' + "Master/CompanyGetAll";
+    $("#CompanyID").empty()
+    $.ajax(
+        {
+            type: "GET",
+            headers: { 'Authorization': '@_tokan' },
+            url: _urlcmp,
+            dataType: "json",
+            beforeSend: function () {
+                $(".loading").show();
+            },
+            success: function (data) {
+                var markup = '';
+                data.sort(function (a, b) {
+                    return a.CompanyName.localeCompare(b.CompanyName);
+                });
+                if (emprole == 6805 || emprole == 6806 || (emprole > 1 && emprole != 6000)) {
+                    for (var x = 0; x < data.length; x++) {
+                        if (data[x].CompanyID.toString() == cmpid) {
+                            markup += "<option value=" + data[x].CompanyID + ">" + data[x].CompanyName + "</option>";
+                        }
+                    }
+                }
+                else {
+                    for (var x = 0; x < data.length; x++) {
+                        markup += "<option value=" + data[x].CompanyID + ">" + data[x].CompanyName + "</option>";
+                    }
+                }
+                $("#CompanyID").append(markup);
+                if (emprole > 1 && emprole != 6000 && emprole != 6805 && emprole != 6806) {
+                    $("#CompanyID option[value = '" + cmpid + "' ]").prop('selected', true);
+                }
+                $Companyselect.multiselect('rebuild');
+            },
+            error: function (jqXHR, ajaxOptions, thrownError) {
+                if (jqXHR.status == 500) {
+                    toastr.error("InternalServerError");
+                } else if (jqXHR.status == 400) {
+                    toastr.error("BadRequest");
+                } else if (jqXHR.status == 401) {
+                    window.location.href = "/PayTime/LoginPage";
+                }
+            }
+        });
+    }
+   function fillDeptTable(BranchId, selectedDept) {
+    $("#DeptIds").empty();
+    $.ajax({
+        type: "GET",
+        url: "/MasterData/GetDeptbyBranchstr?BranchId=" + BranchId,
+        contentType: "application/json; charset=utf-8",
+        datatype: "json",
+        async: "false",
+        success: function (response) {
+            if (response != null) {
+                for (var i = 0; i < response.length; i++) {
+                    if (selectedDept.length != 0 && selectedDept != null) {
+                        var re = new RegExp("(^|,)" + response[i].Value + "($|,)");
+                        if (re.test(selectedDept) == true) {
+                            $('#DeptIds').append('<option value=" ' + response[i].Value + '" selected>' + response[i].Text + '</option>');
+                        }
+                        else {
+                            $('#DeptIds').append('<option value=" ' + response[i].Value + ' ">' + response[i].Text + '</option>');
+                        }
+                    }
+                    else {
+                        $('#DeptIds').append('<option value=" ' + response[i].Value + ' ">' + response[i].Text + '</option>');
+                    }
+                }
+                $Departmentselect.multiselect('rebuild');
+                $(document.body).on('change', '#DeptIds', function () {
+                    $("#spvalidation").hide();
+                    var deptid = $('#DeptIds option:selected');
+                    var DeptArray = [];
+                    $(deptid).each(function (index, deptid) {
+                        DeptArray.push([$(this).val()]);
+                    });
+                    if (DeptArray == "") {
+                        $("#txt3").val(0);
+                    }
+                    else {
+                        $("#txt3").val(DeptArray);
+                        $("#spValidation").hide();
+                    }
+                    var ArrDept = $("#txt3").val();
+                    if (ArrDept == 0 || ArrDept === "") {
+                        DeptIdlst = "";
+                    } else {
+                        DeptIdlst = ArrDept;
+                    }
+                    $("#DepId").val(DeptIdlst);
+                    $('#DeptIds option:selected').each(function () {
+                        selecteddeptnames.push($(this).text());
+                    });
+                });
+            }
+            $(".loading").hide();
+        },
+        beforeSend: function () {
+            $(".loading").show();
+        },
+        error: function () {
+            $(".loading").hide();
+        }
+    });
+   }
+   function fillBranchbycompnyid(companyid, selectedBranch) {
+    $('#BranchIds').empty();
+    $.ajax(
+     {
+         type: "GET",
+         url: "/MasterData/GetBranchbycomapnyid?CompanyID=" + companyid,
+         contentType: "application/json; charset=utf-8",
+         dataType: "json",
+         success: function (data) {
+             var markup = '';
+             for (var x = 0; x < data.length; x++) {
+                 data.sort(function (a, b) {
+                     return a.BranchName.localeCompare(b.BranchName);
+                 });
+                 if (selectedBranch.length != 0) {
+                     var re = new RegExp("(^|,)" + data[x].BranchId + "($|,)");
+                     if (re.test(selectedBranch) == true) {
+                         markup += '<option selected="selected" value="' + data[x].BranchId + '" >' + data[x].BranchName + '</option>';
+                     }
+                     else {
+                         markup += "<option value=" + data[x].BranchId + ">" + data[x].BranchName + "</option>";
+                     }
+                 }
+                 else {
+                     markup += "<option value=" + data[x].BranchId + ">" + data[x].BranchName + "</option>";
+                 }
+             }
+             $('#BranchIds').append(markup);
+             $Branchselect.multiselect('rebuild');
+             $(document.body).on('change', '#BranchIds', function () {
+                 $("#spvalidation").hide();
+                 var branid = $('#BranchIds option:selected');
+                 var BranchArray = [];
+                 $(branid).each(function (index, branid) {
+                     BranchArray.push([$(this).val()]);
+                 });
+                 if (BranchArray == "") {
+                     $("#txt2").val(0);
+                 }
+                 else {
+                     $("#txt2").val(BranchArray);
+                     $("#spValidation").hide();
+                 }
+                 var Arrbranch = $("#txt2").val();
+                 BranchIdlst = Arrbranch;
+                 $("#BranchId").val(BranchIdlst);
+             });
+         },
+         error: function (xhr, ajaxOptions, thrownError) {
+
+             if (xhr.status == 404) {
+                 toastr.error(thrownError);
+             } else if (xhr.status == 500) {
+                 toastr.error("InternalServerError");
+             } else if (xhr.status == 400) {
+                 toastr.error("BadRequest");
+             } else if (xhr.status == 419) {
+                 window.location.href = "/PayTime/LoginPage";
+             } else {
+                 toastr.error(thrownError);
+             }
+         }
+     });
+    }
+
+
+</script>
+
+<div class="page-bar">
+    @if (_RoleId == 1 || _RoleId == 6805 || _RoleId == 6806 || _RoleId == 6000)
+    {
+        <ul class="page-breadcrumb" style="float: none">
+            <li>
+                <a href="/Dashboard/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> OKR Review</span>
+            </li>
+        </ul>
+    }
+    else
+    {
+        <ul class="page-breadcrumb" style="float: none">
+            <li>
+                <a href="/Dashboard/EmployeeDashboard"><i class="fa-regular fa-house"></i></a>
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> OKR Review</span>
+            </li>
+        </ul>
+    }
+    <div class="emptotalcount justify-content-between" id="review_title" style="position: relative; min-height: 36px;">
+        <div class="empcount_title">OKR Review</div>
+        <div class="d-flex align-items-center">
+            <div id="score_count" style="position:relative; top:-2px;"></div>
+            @if (_RoleId == 6000)
+            {
+                <div class="page-toolbar">
+                    <div class="text-right">
+                        <a href="javascript:;" class="btn icon_transparent_btn margin-left-5 tooltips" id="Filter_search" data-placement="left" data-original-title="Filter" data-toggle="tooltip"><i class="fa-light fa-filter" aria-hidden="true"></i> </a>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+
+    <div class="emptotalcount justify-content-between" id="reviewemplyoee_title" style="display: none; margin-bottom: 4px;">
+        <div class="reviewemplyoee_header">
+            <div class="re_title margin-right-10">
+                <img src="/assets/images/avtar.png" alt="User icon" class="user_img" id="usrimg" onerror="this.onerror=null; this.src='/assets/images/avtar.png';">
+                <span>
+                    <p id="empname"> </p>
+                    <p id="designationname"></p>
+                    <p id="empid" hidden></p>
+                </span>
+            </div>
+            <div class="">
+                <div class="form-group margin-bottom-0">
+                    <select class="form-control input-sm" data-val="true" id="Effectedfrom" name="Effectedfrom"></select>
+                </div>
+            </div>
+        </div>
+        <div class="page-toolbar" style="padding: 0;">
+            <a href="javascript:;" class="btn icon_transparent_btn tooltips margin-left-10" id="closebtn" data-placement="left" data-original-title="Close"><i class="fa-solid fa-xmark"></i></a>
+        </div>
+    </div>
+</div>
+
+@if (obj.CanView)
+{
+    <div id="ajax_loader" class="modal_bg loading" aria-hidden="true" style="display:none">
+        <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading" />
+    </div>
+
+    <div class="filter_portlet_wrapper full-width">
+
+        <!-- Datatable Block : Begin -->
+        <div class="portlet filter_portlet_tbl">
+            <div class="portlet-body">
+                <!-- OKRReview Datatable Design : Begin -->
+                <div id="OKR_assigntbl" style="z-index: 11; position: relative;">
+                    <div class="portlet-body">
+                        <!-- Datatable : Begin -->
+                        <div id="tblempty">
+                            <div class="table-responsive" id="tableResponsive">
+                                <table id="okrreviewtbl" class="table new_datatbl table-striped table-bordered tbl_middle table-hover tbl_newdatatbl serch_datatable order-column">
+                                    <thead>
+                                        <tr></tr>
+                                    </thead>
+                                    <tbody></tbody>
+                                </table>
+                            </div>
+                            <!-- Datatable : End -->
+                        </div>
+                        <div id="NotificationGrid-empty" style="display: none">
+                            <div class="datanotfound">
+                                <img src="" width="280" height="148" alt="Nodata Found Icon">
+                                <p class="datanotfound_title"></p> <!-- titleText -->
+                                <p class=""></p><!-- subText -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- OKRReview Datatable Design : End -->
+            </div>
+        </div>
+        <!-- Datatable Block : End -->
+        <!-- Filter Block : Begin -->
+        <div class="portlet filter_boxModal">
+            <div class="filterbox_header">
+                <div class="d-flex align-items-center justify-content-between">
+                    <h4 class="filter-title">Filters</h4>
+                    <button type="button" class="filterclose_btn"><i class="fa-light fa-xmark"></i></button>
+                </div>
+            </div>
+            <div class="filterbox_body">
+                <div class="col-lg-12">
+                    <div class="form-group ">
+                        <label class="control-label" id="lblcomp">Company<span class="required" aria-required="true"> * </span></label>
+                        <input type="text" id="txt5" value="0" hidden />
+                        <select id="CompanyID" class="mt-multiselect btn blue btn-outline" multiple="multiple" data-width="100%"></select>
+                    </div>
+                </div>
+                <div class="col-lg-12">
+                    <div class="form-group ">
+                        <label class="control-label" id="lblbranch">Branch <span class="required" aria-required="true"> * </span></label>
+                        <input type="text" id="txt2" value="0" hidden />
+                        <select id="BranchIds" class="mt-multiselect btn blue btn-outline" multiple="multiple" data-width="100%"></select>
+                    </div>
+                </div>
+                <div class="col-lg-12">
+                    <div class="form-group">
+                        <label class="control-label" id="lbldepartment">Department </label>
+                        <input type="text" id="txt3" value="0" hidden />
+                        <select id="DeptIds" class="mt-multiselect btn-sm btn blue btn-outline " aria-haspopup="true" aria-expanded="false" multiple="multiple" data-width="100%"></select>
+                    </div>
+                </div>
+            </div>
+            <div class="filterbox_footer">
+                <div class="text-right">
+                    <button type="submit" id="clear_operation" class="btn clear_btn tooltips" data-placement="top" data-original-title="Clear"><i class="fa-regular fa-eraser"></i></button>
+                    <button type="submit" id="btnapply" class="btn icon_btn margin-left-5 tooltips" data-placement="top" data-original-title="Search Filters"><i class="fa-solid fa-magnifying-glass"></i></button>
+                </div>
+            </div>
+        </div>
+        <!-- Filter Block : End -->
+
+    </div>
+
+    <!-- Accordian Employee Specific Info Payout : Begin -->
+    <div class="list-content" id="okr_infopayout">
+        <div class="nodata_block no_recoed okr_r_nodata" style="display: none;" id="no_data">
+            <img src="/assets/images/nodata_block.png" height="161" width="162" alt="No Data Icon">
+            <p>Not Data Found</p>
+        </div>
+        <div class="okrreview_main">
+        </div>
+        <div class="kr_score">
+            <div class="d-flex align-items-center justify-content-between">
+                <div class="ks_left">
+                    <div class="d-flex align-items-center">
+                        <img src="/assets/images/assign_info_white.svg" alt="info icon" width="24" height="24" class="margin-right-5">
+                        <span>KR Score Should not exceed 100</span>
+                    </div>
+                </div>
+                <div class="ks_right">
+                    <p>Total Score <span id="total_score"></span></p>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Accordian Employee Specific Info Payout : End -->
+
+    <!-- Review Notes Modal : Begin -->
+    <div id="reviewnotes_modal" class="modal fade popup_info_model" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog">
+            <!-- Modal content-->
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    <h4 class="modal-title">Notes</h4>
+                </div>
+                <div class="modal-body">
+                    <div class="modal-card">
+                        <fieldset>
+                            <div class="row">
+                                <div class="col-xs-6">
+                                    <div class="uploadfile_left w-100">
+                                        <p class="ttl">Uploaded Files: <span id="upload_file_cnt"></span></p>
+                                        <div class="upload_data" id="upload_file">
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="col-xs-6">
+                                    <textarea class="notes_block" id="notes_review" name="notes_review" disabled></textarea>
+                                </div>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-sm-12">
+                                    <div class="increase_pay">
+                                        <div class="row">
+                                            <div class="d-flex align-items-center flex-wrap">
+                                                <div class="col-lg-6 col-sm-12">
+                                                    <div class="row">
+                                                        <div class="d-flex align-items-center">
+                                                            <div class="col-lg-8" id="div_KR_keyresult">
+                                                            </div>
+                                                            <div class="col-lg-4 col-xs-5">
+                                                                Weightage: <span id="div_KR_weightage"></span>
+                                                            </div>
+                                                            <span id="KR_id_review" hidden></span>
+                                                            <span id="obj_id_review" hidden></span>
+                                                            <span id="empid_review" hidden></span>
+                                                            <span id="empname_review" hidden></span>
+                                                            <span id="score_review" hidden></span>
+                                                            <span id="Designationid_review" hidden></span>
+                                                            <span id="assigned_review_date" hidden></span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div class="col-lg-6 col-sm-12">
+                                                    <div class="row">
+                                                        <div class="d-flex align-items-center">
+                                                            <div class="col-lg-5">
+                                                                <div class="form-group margin-bottom-0">
+                                                                    <select class="form-control input-sm" id="review_type" name="review_type">
+                                                                        <option value="1">Flat Score</option>
+                                                                        <option value="2">Percentage %</option>
+                                                                    </select>
+                                                                </div>
+                                                            </div>
+                                                            <div class="col-lg-5">
+                                                                <div class="form-group margin-bottom-0">
+                                                                    <input type="text" class="form-control input-sm" name="review_score" id="review_score" placeholder="Enter Score" maxlength="3">
+                                                                </div>
+                                                                <input type="hidden" name="review_Percentage" id="review_Percentage">
+                                                            </div>
+                                                            <div class="col-lg-2 padding-left-0">
+                                                                <div class="score_total">100</div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </fieldset>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <div class="row">
+                        <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                            <button type="button" class="btn save_btn" id="btnsave"><i class="fa-light fa-floppy-disk"></i> Save</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Review Notes Modal : End -->
+
+    <!-- Upload Document Modal : Begin -->
+    <div id="uploaddocument_modal" class="modal fade popup_info_model" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog">
+            <!-- Modal content-->
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    <h4 class="modal-title">Attachments Files</h4>
+                </div>
+                <div class="modal-body">
+                    <fieldset>
+                        <div class="d-flex">
+                            <div class="uploadfile_left w-100">
+                                <p class="ttl">Uploaded Files: <span id="upload_file_cnt"></span></p>
+                                <div class="upload_data">
+                                    <!-- Empty Document block : Begin -->
+                                    <div class="obj_data" style="display: none;">
+                                        <img src="/assets/images/nodata_block.png" alt="No Data Icon" width="162" height="161" class="">
+                                        <p class="obj_note">Not Selected any objective</p>
+                                    </div>
+                                    <!-- Empty Document block : End -->
+                                    <!-- Document Upload block : Begin -->
+                                    <div id="upload_File">
+
+                                    </div>
+                                    <!-- Document Upload block : End -->
+                                </div>
+                            </div>
+                        </div>
+                    </fieldset>
+                </div>
+                <div class="modal-footer" style="visibility:hidden;">
+                    <div class="row">
+                        <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                            <div class="d-flex align-items-center justify-content-between" id="modal_Btn">
+                                <div class="weightage_surpass">
+                                    <img src="/assets/images/assign_info.svg" alt="info icon" width="24" height="24" class="margin-right-5">
+                                    <span class="red_font">8 Maximum number of files that can be uploaded</span>
+                                </div>
+                                <div>
+                                    <button type="button" class="btn save_btn" id="btnsave_Upload_doc"> Save</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Upload Document Modal : End -->
+
+}
+else
+{
+    <span style="color:red">Unauthorized Access.</span>
+}

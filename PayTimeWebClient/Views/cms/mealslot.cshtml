@@ -1,0 +1,799 @@
+﻿
+@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@using System.Configuration;
+@{
+    ViewBag.Title = "Meal Slot";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    int _UserId = Convert.ToInt32(HttpContext.Current.Session["UserId"]);
+    int _cmpid = Convert.ToInt32(HttpContext.Current.Session["CompanyId"]);
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapicms"].ToString();
+    string _webapiurlMain = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    string _ChunkSize = HttpContext.Current.Session["0"] != null
+        ? HttpContext.Current.Session["DataDropDownThreShold"].ToString()
+        : "500";
+
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+
+    string isClientDBMatchFlag = HttpContext.Current.Session["IsClientDBMatch"] != null
+        ? HttpContext.Current.Session["IsClientDBMatch"].ToString()
+        : "false";
+}
+
+<script src="~/Pages_JS/VirtuallScroll/NormalDropDownVirtualClientServer.js"></script>
+
+<script>
+    let RoleId = '@_RoleId';
+    let isedit = '@obj.CanEdit';
+    let isdelete = '@obj.CanDelete';
+    let MealSlotData = [];
+    let CanteenFilterDropdown = null;
+    let selectedCanteenId = null;
+
+    $(document).ready(function () {
+        $('#mealSlotContainer').hide();
+        $('#NotificationGrid-empty').show();
+        $('#emptyMessage').text('Please select a canteen to view meal slots.');
+
+        $(window).on("load", function () {
+            initializeFilterDropdown();
+        });
+
+        // Filter canteen change - reload cards
+        $('#FilterCanteenId').change(function () {
+            selectedCanteenId = $(this).val();
+            if (selectedCanteenId) {
+                loadMealSlots(selectedCanteenId);
+            } else {
+                $('#mealSlotContainer').hide();
+                $('#NotificationGrid-empty').show();
+                $('#emptyMessage').text('Please select a canteen to view meal slots.');
+            }
+        });
+
+        $('#Addnewslot_btn').click(function () {
+            checkSession();
+            if (!selectedCanteenId) {
+                toastr.warning("Please select a Canteen first");
+                $(".filter_portlet_wrapper").removeClass("full-width");
+                return;
+            }
+            frmClear();
+            $('#modalTitle').text('Add New Meal Slot');
+            $('#btnSaveText').text('Add Meal Slot');
+            $('#Addnewslot_btn_modal').modal('show');
+        });
+
+        $('#btnMealSlotSubmit').click(saveMealSlot);
+
+        // Validation on blur
+        $('#SlotName').blur(function () { validateField('SlotName'); });
+        $('#ServingStartTime').blur(function () { validateField('ServingStartTime'); });
+        $('#ServingEndTime').blur(function () {
+            validateField('ServingEndTime');
+            validateServingTimeRange();
+        });
+        $('#BookingCutoffTime').blur(function () { validateField('BookingCutoffTime'); });
+
+        // Keypress validation for text fields
+        $('#SlotName').on('keypress', function (e) {
+            return validateKeyPress(e.which);
+        });
+        $('#SlotDescription').on('keypress', function (e) {
+            return validateAddress(e.which);
+        });
+
+        // DisplayOrder - only allow numbers
+        $('#DisplayOrder').on('input', function () {
+            this.value = this.value.replace(/[^0-9]/g, '');
+            let val = parseInt(this.value, 10);
+            if (val < 1) this.value = 1;
+            if (val > 100) this.value = 100;
+        });
+
+        // Search button
+        $("#Search_OPration").click(function () {
+            if (!selectedCanteenId) {
+                toastr.warning("Please select a canteen first");
+                return;
+            }
+            loadMealSlots(selectedCanteenId);
+        });
+
+        // Clear button
+        $("#Clear_OPration").click(function () {
+            if (CanteenFilterDropdown) CanteenFilterDropdown.clearDropdown();
+            selectedCanteenId = null;
+            initializeFilterDropdown();
+            $('#mealSlotContainer').hide();
+            $('#NotificationGrid-empty').show();
+            $('#emptyMessage').text('Please select a canteen to view meal slots.');
+        });
+
+        // Filter panel toggle
+        $("#Filter_search").click(function () {
+            var wrapper = $(".filter_portlet_wrapper");
+            wrapper.toggleClass("full-width");
+            var screenWidth = $(window).width();
+            if (screenWidth >= 300 && screenWidth <= 600) {
+                $('.filter_portlet_tbl').toggle();
+                $('.filter_portlet_wrapper .filter_boxModal').css('width', '100%');
+            }
+        });
+
+        // Filter panel close
+        $(".filterclose_btn").click(function () {
+            var wrapper = $(".filter_portlet_wrapper");
+            wrapper.addClass("full-width");
+            var screenWidth = $(window).width();
+            if (screenWidth >= 300 && screenWidth <= 600) {
+                $(".filter_portlet_tbl").css("display", "block");
+            }
+        });
+    });
+
+    function initializeFilterDropdown() {
+        // Load canteen dropdown — API handles role-based filtering
+        $.ajax({
+            type: "GET",
+            url: '@_webapiurl' + "canteens?pageSize=100&isActive=true",
+            headers: { 'Authorization': 'Bearer ' + '@_tokan' },
+            dataType: "json",
+            success: function (response) {
+                var canteens = response.canteens || [];
+                var $dd = $('#FilterCanteenId');
+                $dd.empty().append('<option value="">-- Select Canteen --</option>');
+                for (var i = 0; i < canteens.length; i++) {
+                    $dd.append('<option value="' + canteens[i].canteenId + '">' + canteens[i].canteenName + '</option>');
+                }
+                // Auto-select if only one canteen (e.g., Canteen Manager)
+                if (canteens.length === 1) {
+                    $dd.val(canteens[0].canteenId).trigger('change');
+                } else if (canteens.length > 1) {
+                    // Auto-open filter panel so user can select canteen immediately
+                    $(".filter_portlet_wrapper").removeClass("full-width");
+                }
+            },
+            error: function (xhr) {
+                var errorMsg = "Error loading canteens";
+                if (xhr.responseJSON && xhr.responseJSON.detail) errorMsg = xhr.responseJSON.detail;
+                toastr.error(errorMsg);
+            }
+        });
+    }
+
+    function loadMealSlots(canteenId) {
+        checkSession();
+
+        var apiUrl = '@_webapiurl' + "mealslots";
+        if (canteenId) {
+            apiUrl += "?canteenId=" + canteenId;
+        }
+
+        $.ajax({
+            type: "GET",
+            url: apiUrl,
+            headers: { 'Authorization': 'Bearer ' + '@_tokan' },
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            beforeSend: function () {
+                $("#ajax_loader").show();
+            },
+            complete: function () {
+                $('#ajax_loader').hide();
+            },
+            success: function (response) {
+                var data = response.mealSlots || [];
+                MealSlotData = data;
+
+                if (data.length === 0) {
+                    $('#mealSlotContainer').hide();
+                    $('#NotificationGrid-empty').show();
+                } else {
+                    $('#NotificationGrid-empty').hide();
+                    $('#mealSlotContainer').show();
+                    renderCards(data);
+                }
+            },
+            error: function (xhr, status, error) {
+                var errorMsg = "Error loading meal slots";
+                if (xhr.responseJSON && xhr.responseJSON.detail) {
+                    errorMsg = xhr.responseJSON.detail;
+                }
+                toastr.error(errorMsg);
+                $('#mealSlotContainer').hide();
+                $('#NotificationGrid-empty').show();
+            }
+        });
+    }
+
+    function renderCards(data) {
+        var html = '';
+        for (var i = 0; i < data.length; i++) {
+            var slot = data[i];
+            var statusClass = slot.isActive ? 'active' : 'inactive';
+            var statusText = slot.isActive ? 'Active' : 'Inactive';
+
+            var startTime = slot.servingStartTime ? slot.servingStartTime.substring(0, 5) : '';
+            var endTime = slot.servingEndTime ? slot.servingEndTime.substring(0, 5) : '';
+
+            var cutoffTime = slot.bookingCutoffTime ? slot.bookingCutoffTime.substring(0, 5) : '';
+            var cutoffDay = slot.cutoffDaysBefore === 1 ? '(previous day)' : '(same day)';
+
+            html += '<div class="col-md-4 col-sm-6">';
+            html += '  <div class="portlet margin-bottom-20">';
+            html += '    <div class="portlet-body">';
+            html += '      <div class="mealblock">';
+            html += '        <div class="d-flex justify-content-between margin-bottom-10">';
+            html += '          <div class="mealname">' + escapeHtml(slot.slotName) + '</div>';
+            html += '          <div class="d-flex">';
+            if (slot.slotCategoryName) {
+                html += '            <span class="badge" style="background:#5b9bd5;color:#fff;margin-right:5px;">' + escapeHtml(slot.slotCategoryName) + '</span>';
+            }
+            html += '            <div class="mealstatus ' + statusClass + '">' + statusText + '</div>';
+            html += '          </div>';
+            html += '        </div>';
+            html += '        <div class="d-flex margin-bottom-10">';
+            html += '          <div class="margin-right-15">';
+            html += '            <div class="meal_s">Serving Time</div>';
+            html += '            <div class="meal_t">' + startTime + ' - ' + endTime + '</div>';
+            html += '          </div>';
+            html += '          <div>';
+            html += '            <div class="meal_s">Booking Cut-off</div>';
+            html += '            <div class="meal_t">' + cutoffTime + ' ' + cutoffDay + '</div>';
+            html += '          </div>';
+            html += '        </div>';
+
+            // Action buttons
+            html += '        <div class="mealaction d-flex justify-content-between">';
+            if (isedit == "True") {
+                html += '          <a href="javascript:;" class="editbtn" onclick="openEditModal(' + slot.mealSlotId + ')"><i class="fa-regular fa-pen-to-square"></i> Edit</a>';
+                html += '          <div class="d-flex align-items-center">';
+                if (slot.isActive) {
+                    html += '            <a href="javascript:;" class="btn deletebtn tooltips" data-placement="top" data-original-title="Inactive" onclick="statusChange(' + slot.mealSlotId + ')" style="margin-right:5px;"><i class="fa-solid fa-xmark"></i></a>';
+                } else {
+                    html += '            <a href="javascript:;" class="btn deletebtn tooltips" data-placement="top" data-original-title="Active" onclick="statusChange(' + slot.mealSlotId + ')" style="margin-right:5px;"><i class="fa-solid fa-check"></i></a>';
+                }
+                if (isdelete == "True") {
+                    html += '            <a href="javascript:;" class="btn deletebtn tooltips" data-placement="top" data-original-title="Delete"  onclick="deleteMealSlot(' + slot.mealSlotId + ')"><i class="fa-light fa-trash-can"></i></a>';
+                }
+                html += '          </div>';
+            } else {
+                html += '          <span></span>';
+                if (isdelete == "True") {
+                    html += '          <a href="javascript:;" class="btn deletebtn tooltips" data-placement="top" data-original-title="Delete"  onclick="deleteMealSlot(' + slot.mealSlotId + ')"><i class="fa-light fa-trash-can"></i></a>';
+                }
+            }
+            html += '        </div>';
+
+            html += '      </div>';
+            html += '    </div>';
+            html += '  </div>';
+            html += '</div>';
+        }
+        $('#mealSlotContainer').html(html);
+        $('.tooltips').tooltip();
+    }
+
+    function openEditModal(id) {
+        checkSession();
+        frmClear();
+
+        var slot = MealSlotData.find(function (s) { return s.mealSlotId == id; });
+        if (!slot) {
+            toastr.error("Meal slot not found");
+            return;
+        }
+
+        $('#MealSlotId').val(slot.mealSlotId);
+        $('#SlotCategoryId').val(slot.slotCategoryId || '');
+        $('#SlotName').val(slot.slotName);
+        $('#SlotDescription').val(slot.slotDescription || '');
+        $('#ServingStartTime').val(slot.servingStartTime ? slot.servingStartTime.substring(0, 5) : '');
+        $('#ServingEndTime').val(slot.servingEndTime ? slot.servingEndTime.substring(0, 5) : '');
+        $('#BookingCutoffTime').val(slot.bookingCutoffTime ? slot.bookingCutoffTime.substring(0, 5) : '');
+        $('#CutoffDaysBefore').val(slot.cutoffDaysBefore != null ? slot.cutoffDaysBefore : 0);
+        $('#DisplayOrder').val(slot.displayOrder || 1);
+
+        $('#modalTitle').text('Edit Meal Slot');
+        $('#btnSaveText').text('Update Meal Slot');
+        $('#Addnewslot_btn_modal').modal('show');
+    }
+
+    function saveMealSlot() {
+        checkSession();
+
+        var mealSlotId = $('#MealSlotId').val();
+        var isUpdate = mealSlotId && mealSlotId !== "" && mealSlotId !== "0";
+
+        // Validate
+        if (!validateField('SlotCategoryId')) return;
+        if (!validateField('SlotName')) return;
+        if (!validateField('ServingStartTime')) return;
+        if (!validateField('ServingEndTime')) return;
+        if (!validateServingTimeRange()) return;
+        if (!validateField('BookingCutoffTime')) return;
+
+        var obj = {
+            slotCategoryId: parseInt($('#SlotCategoryId').val()),
+            slotName: $('#SlotName').val().trim(),
+            slotDescription: $('#SlotDescription').val().trim() || null,
+            servingStartTime: $('#ServingStartTime').val() + ':00',
+            servingEndTime: $('#ServingEndTime').val() + ':00',
+            bookingCutoffTime: $('#BookingCutoffTime').val() + ':00',
+            cutoffDaysBefore: parseInt($('#CutoffDaysBefore').val()) || 0,
+            displayOrder: parseInt($('#DisplayOrder').val()) || 1
+        };
+
+        // Add canteenId for POST (new slot)
+        if (!isUpdate) {
+            if (!selectedCanteenId) {
+                toastr.warning("Please select a Canteen first");
+                return;
+            }
+            obj.canteenId = parseInt(selectedCanteenId);
+        }
+
+        var url, method;
+        if (isUpdate) {
+            url = '@_webapiurl' + "mealslots/" + mealSlotId;
+            method = "PUT";
+        } else {
+            url = '@_webapiurl' + "mealslots";
+            method = "POST";
+        }
+
+        $.ajax({
+            type: method,
+            url: url,
+            headers: { 'Authorization': 'Bearer ' + '@_tokan' },
+            data: JSON.stringify(obj),
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            success: function (data) {
+                toastr.success(isUpdate ? "Meal slot updated successfully" : "Meal slot created successfully");
+                $('#Addnewslot_btn_modal').modal('hide');
+                loadMealSlots(selectedCanteenId);
+            },
+            error: function (xhr, status, error) {
+                var errorMsg = "Error during save";
+                if (xhr.responseJSON) {
+                    if (xhr.responseJSON.detail) {
+                        errorMsg = xhr.responseJSON.detail;
+                    }
+                    if (xhr.responseJSON.errors) {
+                        for (var field in xhr.responseJSON.errors) {
+                            errorMsg = xhr.responseJSON.errors[field].join(", ");
+                            break;
+                        }
+                    }
+                }
+                toastr.error(errorMsg);
+            }
+        });
+    }
+
+    function deleteMealSlot(id) {
+        checkSession();
+
+        Swal.fire({
+            html: '<div class="swal_subtitle"><b>You want to delete this meal slot?</b></div>',
+            title: "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_error.svg' alt=''>Are you sure?",
+            showCloseButton: true,
+            showCancelButton: true,
+            focusConfirm: false,
+            cancelButtonText: 'Cancel',
+            confirmButtonText: 'Yes, delete it!',
+            allowOutsideClick: false,
+            allowEscapeKey: false,
+            customClass: {
+                confirmButton: 'swal-confirm-button-class',
+                cancelButton: 'swal-cancel-button-class'
+            }
+        }).then(function (result) {
+            if (result.isConfirmed) {
+                $.ajax({
+                    type: "DELETE",
+                    url: '@_webapiurl' + "mealslots/" + id,
+                    headers: { 'Authorization': 'Bearer ' + '@_tokan' },
+                    contentType: "application/json; charset=utf-8",
+                    success: function () {
+                        Swal.fire({
+                            html: '<div class="swal_subtitle"><b>Meal slot has been deleted.</b></div>',
+                            title: "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_success.svg' alt=''>Deleted!",
+                            showCloseButton: true,
+                            confirmButtonText: 'OK',
+                            allowOutsideClick: false,
+                            allowEscapeKey: false,
+                            customClass: { confirmButton: 'swal-confirm-button-class' }
+                        });
+                        $('img[src="/assets/images/icons/swal_icon/icon_success.svg"]').parent().parent().parent().addClass('swal_success');
+                        loadMealSlots(selectedCanteenId);
+                    },
+                    error: function (xhr) {
+                        var errorMsg = "Error during delete";
+                        if (xhr.responseJSON && xhr.responseJSON.detail) {
+                            errorMsg = xhr.responseJSON.detail;
+                        }
+                        Swal.fire({
+                            html: '<div class="swal_subtitle"><b>' + errorMsg + '</b></div>',
+                            title: "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_error.svg' alt=''>Error!",
+                            showCloseButton: true,
+                            confirmButtonText: 'OK',
+                            allowOutsideClick: false,
+                            allowEscapeKey: false,
+                            customClass: { confirmButton: 'swal-confirm-button-class' }
+                        });
+                        $('img[src="/assets/images/icons/swal_icon/icon_error.svg"]').parent().parent().parent().addClass('swal_error');
+                    }
+                });
+            }
+        });
+        $('img[src="/assets/images/icons/swal_icon/icon_error.svg"]').parent().parent().parent().addClass('swal_error');
+    }
+
+    function statusChange(id) {
+        checkSession();
+
+        var slot = MealSlotData.find(function (s) { return s.mealSlotId == id; });
+        if (!slot) {
+            toastr.error("Meal slot not found");
+            return;
+        }
+
+        var newStatus = !slot.isActive;
+        var actionText = newStatus ? "activate" : "deactivate";
+        var confirmIcon = newStatus ? 'icon_success.svg' : 'icon_error.svg';
+        var confirmClass = newStatus ? 'swal_success' : 'swal_error';
+        var impactText = newStatus ? '' : '<br><small class="text-danger">Pending orders for this meal slot will need to be resolved.</small>';
+
+        Swal.fire({
+            html: '<div class="swal_subtitle"><b>You want to ' + actionText + ' this meal slot?</b>' + impactText + '</div>',
+            title: "<img class='margin-right-5' src='/assets/images/icons/swal_icon/" + confirmIcon + "' alt=''>Are you sure?",
+            showCloseButton: true,
+            showCancelButton: true,
+            focusConfirm: false,
+            cancelButtonText: 'Cancel',
+            confirmButtonText: 'Yes, ' + actionText + ' it!',
+            allowOutsideClick: false,
+            allowEscapeKey: false,
+            customClass: {
+                confirmButton: 'swal-confirm-button-class',
+                cancelButton: 'swal-cancel-button-class'
+            }
+        }).then(function (result) {
+            if (result.isConfirmed) {
+                $.ajax({
+                    type: "PATCH",
+                    url: '@_webapiurl' + "mealslots/" + id + "/status",
+                    headers: { 'Authorization': 'Bearer ' + '@_tokan' },
+                    data: JSON.stringify({ isActive: newStatus }),
+                    contentType: "application/json; charset=utf-8",
+                    dataType: "json",
+                    success: function () {
+                        Swal.fire({
+                            html: '<div class="swal_subtitle"><b>Meal slot has been ' + (newStatus ? "activated" : "deactivated") + '.</b></div>',
+                            title: "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_success.svg' alt=''>Success!",
+                            showCloseButton: true,
+                            confirmButtonText: 'OK',
+                            allowOutsideClick: false,
+                            allowEscapeKey: false,
+                            customClass: { confirmButton: 'swal-confirm-button-class' }
+                        });
+                        $('img[src="/assets/images/icons/swal_icon/icon_success.svg"]').parent().parent().parent().addClass('swal_success');
+                        loadMealSlots(selectedCanteenId);
+                    },
+                    error: function (xhr) {
+                        var errorMsg = "Error during status change";
+                        if (xhr.responseJSON && xhr.responseJSON.detail) {
+                            errorMsg = xhr.responseJSON.detail;
+                        }
+                        Swal.fire({
+                            html: '<div class="swal_subtitle"><b>' + errorMsg + '</b></div>',
+                            title: "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_error.svg' alt=''>Error!",
+                            showCloseButton: true,
+                            confirmButtonText: 'OK',
+                            allowOutsideClick: false,
+                            allowEscapeKey: false,
+                            customClass: { confirmButton: 'swal-confirm-button-class' }
+                        });
+                        $('img[src="/assets/images/icons/swal_icon/icon_error.svg"]').parent().parent().parent().addClass('swal_error');
+                    }
+                });
+            }
+        });
+        $('img[src="/assets/images/icons/swal_icon/' + confirmIcon + '"]').parent().parent().parent().addClass(confirmClass);
+    }
+
+    function validateField(fieldId) {
+        var value = $('#' + fieldId).val();
+        if (!value || value.trim() === "") {
+            $("#" + fieldId).addClass('field_error');
+            $("#" + fieldId).focus();
+            return false;
+        }
+        $("#" + fieldId).removeClass('field_error');
+        return true;
+    }
+
+    function validateServingTimeRange() {
+        var startTime = $('#ServingStartTime').val();
+        var endTime = $('#ServingEndTime').val();
+        if (startTime && endTime && endTime <= startTime) {
+            toastr.warning("Serving end time must be after start time");
+            $("#ServingEndTime").addClass('field_error');
+            return false;
+        }
+        $("#ServingEndTime").removeClass('field_error');
+        return true;
+    }
+
+    function frmClear() {
+        $('#MealSlotId').val('');
+        $('#SlotCategoryId').val('');
+        $('#SlotName').val('');
+        $('#SlotDescription').val('');
+        $('#ServingStartTime').val('');
+        $('#ServingEndTime').val('');
+        $('#BookingCutoffTime').val('');
+        $('#CutoffDaysBefore').val('0');
+        $('#DisplayOrder').val('1');
+        removeFieldErrors();
+    }
+
+    function removeFieldErrors() {
+        $('#SlotCategoryId, #SlotName, #ServingStartTime, #ServingEndTime, #BookingCutoffTime').removeClass('field_error');
+    }
+
+    function escapeHtml(text) {
+        if (!text) return '';
+        var map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
+        return text.replace(/[&<>"']/g, function (m) { return map[m]; });
+    }
+
+    function checkSession() {
+        $.ajax({
+            type: "GET",
+            async: false,
+            url: "/ESS/checkSession",
+            contentType: "application/json; charset=utf-8",
+            success: function (data) {
+                if (data.isRedirect) {
+                    window.location.href = data.redirectUrl;
+                }
+            },
+            error: function (data) {
+                window.location.href = data;
+            }
+        });
+    }
+</script>
+
+<style>
+    .field_error {
+        border-color: #dc3545 !important;
+    }
+</style>
+
+@if (obj.CanView)
+{
+    <!-- Page Bar : Begin -->
+    <div class="page-bar">
+        @if (_RoleId == 1 || _RoleId == 6805 || _RoleId == 6806 || _RoleId == 6811)
+        {
+            <ul class="page-breadcrumb">
+                <li>
+                    @if (isClientDBMatchFlag == "True")
+                    {
+                        <a href="/Admin/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+                    }
+                    else
+                    {
+                        <a href="/Dashboard/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+                    }
+                </li>
+                <li>
+                    <span><i class="fa-light fa-angle-right"></i> Canteen Management</span>
+                </li>
+                <li>
+                    <span><i class="fa-light fa-angle-right"></i> Meal Slot</span>
+                </li>
+            </ul>
+        }
+        else
+        {
+            <ul class="page-breadcrumb">
+                <li>
+                    @if (isClientDBMatchFlag == "true")
+                    {
+                        <a href="/Admin/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+                    }
+                    else
+                    {
+                        <a href="/Dashboard/EmployeeDashboard"><i class="fa-regular fa-house"></i></a>
+                    }
+                </li>
+                <li>
+                    <span><i class="fa-light fa-angle-right"></i> Meal Slot</span>
+                </li>
+            </ul>
+        }
+        <div class="page-toolbar">
+            <a href="javascript:;" class="btn icon_transparent_btn tooltips" id="Filter_search" data-placement="left" data-original-title="Filter"><i class="fa-light fa-filter"></i></a>
+            @if (obj.CanAdd)
+            {
+                <a href="javascript:;" class="btn icon_transparent_btn tooltips" id="Addnewslot_btn" data-placement="left" data-original-title="Add New Slot"><i class="fa-solid fa-plus"></i></a>
+            }
+        </div>
+    </div>
+    <!-- Page Bar : End -->
+
+    <!-- Ajax Loader : Begin -->
+    <div id='ajax_loader' class="modal_bg loading" aria-hidden="true">
+        <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" />
+    </div>
+    <!-- Ajax Loader : End -->
+
+    <div class="filter_portlet_wrapper full-width">
+
+        <!-- Content Block : Begin -->
+        <div class="filter_portlet_tbl">
+            <div>
+                <!-- Meal Slot Cards : Begin -->
+                <div class="row" id="mealSlotContainer"></div>
+                <!-- Meal Slot Cards : End -->
+                <!-- NoDataFound Block : Begin -->
+                <div id="NotificationGrid-empty" style="display: none">
+                    <div class="portlet">
+                        <div class="portlet-body">
+                            <div class="datanotfound">
+                                <img src="~/assets/images/emptyscreen_1.png" height="148" width="280" alt="No Data Found Icon">
+                                <p class="datanotfound_title">No data found</p>
+                                <p id="emptyMessage">No meal slots have been configured yet.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- NoDataFound Block : End -->
+            </div>
+        </div>
+        <!-- Content Block : End -->
+
+        <!-- Filter Block : Begin -->
+        <div class="portlet filter_boxModal">
+            <div class="filterbox_header">
+                <div class="d-flex align-items-center justify-content-between">
+                    <h4 class="filter-title">Filters</h4>
+                    <button type="button" class="filterclose_btn"><i class="fa-light fa-xmark"></i></button>
+                </div>
+            </div>
+            <div class="filterbox_body">
+                <div class="col-lg-12">
+                    <div class="form-group">
+                        <label>Canteen</label>
+                        <select class="form-control" id="FilterCanteenId">
+                            <option value="">-- Select Canteen --</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="filterbox_footer">
+                <div class="text-right">
+                    <button type="button" id="Clear_OPration" class="btn clear_btn margin-left-5 tooltips" data-placement="top" data-original-title="Clear filters"><i class="fa-regular fa-eraser"></i></button>
+                    <button type="button" id="Search_OPration" class="btn icon_btn margin-left-5 tooltips" data-placement="top" data-original-title="Search filters"><i class="fa-solid fa-magnifying-glass"></i></button>
+                </div>
+            </div>
+        </div>
+        <!-- Filter Block : End -->
+
+    </div>
+
+    <!-- Add/Edit Modal : Begin -->
+    <div id="Addnewslot_btn_modal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog w-500">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    <h4 class="modal-title" id="modalTitle">Add New Meal Slot</h4>
+                </div>
+                <div class="modal-body">
+                    <div class="modal-card">
+                        <div class="row">
+                            <input type="hidden" id="MealSlotId" value="">
+
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label class="control-label">Slot Category <span class="required" style="color:red;">*</span></label>
+                                    <select class="form-control input-sm" id="SlotCategoryId">
+                                        <option value="">-- Select Category --</option>
+                                        <option value="1">Breakfast</option>
+                                        <option value="2">Lunch</option>
+                                        <option value="3">Snacks</option>
+                                        <option value="4">Dinner</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label class="control-label">Slot Name <span class="required" style="color:red;">*</span></label>
+                                    <input type="text" class="form-control input-sm" id="SlotName" placeholder="e.g. Morning Breakfast" maxlength="50">
+                                </div>
+                            </div>
+
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label>Serving Start Time <span class="required" style="color:red;">*</span></label>
+                                    <input type="time" class="form-control input-sm" id="ServingStartTime">
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label>Serving End Time <span class="required" style="color:red;">*</span></label>
+                                    <input type="time" class="form-control input-sm" id="ServingEndTime">
+                                </div>
+                            </div>
+
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label>Booking Cut-off Time <span class="required" style="color:red;">*</span></label>
+                                    <input type="time" class="form-control input-sm" id="BookingCutoffTime">
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label>Cut-off Day</label>
+                                    <select class="form-control input-sm" id="CutoffDaysBefore">
+                                        <option value="0">Same Day</option>
+                                        <option value="1">Previous Day</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label>Display Order</label>
+                                    <input type="number" class="form-control input-sm" id="DisplayOrder" value="1" min="1" max="100">
+                                </div>
+                            </div>
+
+                            <div class="col-md-12">
+                                <div class="form-group">
+                                    <label>Description</label>
+                                    <textarea class="form-control input-sm" id="SlotDescription" rows="2" placeholder="Enter description" maxlength="255"></textarea>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <div class="row">
+                        <div class="col-lg-12 text-right">
+                            <button type="button" class="btn clear_btn" data-dismiss="modal"><i class="fa-light fa-xmark"></i> Cancel</button>
+                            <button type="button" class="btn save_btn" id="btnMealSlotSubmit"><i class="fa-light fa-floppy-disk"></i> <span id="btnSaveText">Add Meal Slot</span></button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Add/Edit Modal : End -->
+}
+else
+{
+    <div class="alert alert-danger">
+        <strong>Unauthorized Access.</strong> You do not have permission to view this page.
+    </div>
+}

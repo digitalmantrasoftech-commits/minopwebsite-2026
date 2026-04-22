@@ -1,0 +1,1304 @@
+@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@using System.Configuration;
+@{
+    ViewBag.Title = "Meal Master";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    int _UserId = Convert.ToInt32(HttpContext.Current.Session["UserId"]);
+    int _cmpid = Convert.ToInt32(HttpContext.Current.Session["CompanyId"]);
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapicms"].ToString();
+    string _webapiurlMain = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    string _ChunkSize = HttpContext.Current.Session["DataDropDownThreShold"] != null
+        ? HttpContext.Current.Session["DataDropDownThreShold"].ToString()
+        : "500";
+
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+
+    string isClientDBMatchFlag = HttpContext.Current.Session["IsClientDBMatch"] != null
+        ? HttpContext.Current.Session["IsClientDBMatch"].ToString()
+        : "false";
+}
+
+<script src="~/Pages_JS/VirtuallScroll/NormalDropDownVirtualClientServer.js"></script>
+
+<script>
+    let RoleId = '@_RoleId';
+    let UserId = '@_UserId';
+    let isedit = '@obj.CanEdit';
+    let isdelete = '@obj.CanDelete';
+    let canadd = '@obj.CanAdd';
+    let MealData = [];
+    let mealTable = null;
+    let selectedCanteenId = null;
+    let formDataCategories = [];
+
+    $(document).ready(function () {
+        $('#tblMealBlock').hide();
+        $('#NotificationGrid-empty').show();
+        $('#emptyMessage').text('Please select a canteen to view meals.');
+
+            initializeCanteenDropdown();
+            initMealImageUpload();
+
+        // Form field validation
+        $('#MealName').blur(function () {
+            validateField('MealName');
+        });
+
+        // Keypress validation for text fields
+        $('#MealName').on('keypress', function (e) {
+            return validateKeyPress(e.which);
+        });
+        $('#MealDescription').on('keypress', function (e) {
+            return validateAddress(e.which);
+        });
+
+        // DisplayOrder - only allow numbers
+        $('#DisplayOrder').on('input', function () {
+            this.value = this.value.replace(/[^0-9]/g, '');
+        });
+
+        // Add button
+        $('#AddMeal').click(function () {
+            checkSession();
+            if (!selectedCanteenId) {
+                toastr.warning("Please select a Canteen first");
+                $(".filter_portlet_wrapper").removeClass("full-width");
+                return;
+            }
+            frmClear();
+            removeFieldErrors();
+            $('#modalTitle').text('Add Meal');
+            $('#mealModal').modal('toggle');
+        });
+
+        // Submit button
+        $('#btnMealSubmit').click(saveMeal);
+
+        // Price auto-calculate
+        $(document).on('input', '#Price, #TaxPercentage', function () {
+            updateFinalPrice();
+        });
+
+        // Filter canteen change - reload table
+        $("#FilterCanteenId").change(function () {
+            var canteenId = $(this).val();
+            if (canteenId) {
+                selectedCanteenId = canteenId;
+                loadFormData(canteenId);
+                if (mealTable) {
+                    mealTable.ajax.reload();
+                } else {
+                    FillTable();
+                }
+            } else {
+                selectedCanteenId = null;
+                if (mealTable) {
+                    mealTable.destroy();
+                    mealTable = null;
+                    $("#dataTables_tbl_header").remove();
+                }
+                $('#tblMealBlock').hide();
+                $('#NotificationGrid-empty').show();
+                $('#emptyMessage').text('Please select a canteen to view meals.');
+                $('#mealSummary').hide();
+                formDataCategories = [];
+                populateCategoryDropdown();
+            }
+        });
+
+        // Search button
+        $("#Search_OPration").click(function () {
+            if (!selectedCanteenId) {
+                toastr.warning("Please select a canteen first");
+                return;
+            }
+            if (mealTable) {
+                mealTable.ajax.reload();
+            } else {
+                FillTable();
+            }
+        });
+
+        // Clear button
+        $("#Clear_OPration").click(function () {
+            $('#FilterCategoryId').val('');
+            $('#FilterDietaryType').val('');
+            $('#FilterStatusId').val('');
+            $('#FilterCanteenId').val('');
+            selectedCanteenId = null;
+            if (mealTable) {
+                mealTable.destroy();
+                mealTable = null;
+                $("#dataTables_tbl_header").remove();
+            }
+            $('#tblMealBlock').hide();
+            $('#NotificationGrid-empty').show();
+            $('#emptyMessage').text('Please select a canteen to view meals.');
+            $('#mealSummary').hide();
+            formDataCategories = [];
+            populateCategoryDropdown();
+            initializeCanteenDropdown();
+        });
+
+        // Filter panel toggle
+        $("#Filter_search").click(function () {
+            var wrapper = $(".filter_portlet_wrapper");
+            wrapper.toggleClass("full-width");
+            var screenWidth = $(window).width();
+            if (screenWidth >= 300 && screenWidth <= 600) {
+                $('.filter_portlet_tbl').toggle();
+                $('.filter_portlet_wrapper .filter_boxModal').css('width', '100%');
+            }
+        });
+
+        // Filter panel close
+        $(".filterclose_btn").click(function () {
+            var wrapper = $(".filter_portlet_wrapper");
+            wrapper.addClass("full-width");
+            var screenWidth = $(window).width();
+            if (screenWidth >= 300 && screenWidth <= 600) {
+                $(".filter_portlet_tbl").css("display", "block");
+            }
+        });
+    });
+
+    function initializeCanteenDropdown() {
+        $.ajax({
+            type: "GET",
+            url: '@_webapiurl' + 'canteens?pageSize=100&isActive=true',
+            headers: { 'Authorization': 'Bearer ' + '@_tokan' },
+            dataType: "json",
+            success: function (response) {
+                var canteens = response.canteens || [];
+                var $dd = $('#FilterCanteenId');
+                $dd.empty().append('<option value="">Select Canteen</option>');
+                for (var i = 0; i < canteens.length; i++) {
+                    $dd.append('<option value="' + canteens[i].canteenId + '">' + escapeHtml(canteens[i].canteenName) + '</option>');
+                }
+                // Auto-select if only one canteen
+                if (canteens.length === 1) {
+                    $dd.val(canteens[0].canteenId).trigger('change');
+                } else if (canteens.length > 1) {
+                    // Auto-open filter panel so user can select canteen immediately
+                    $(".filter_portlet_wrapper").removeClass("full-width");
+                }
+            },
+            error: function (xhr) {
+                var errorMsg = "Failed to load canteens";
+                if (xhr.responseJSON && xhr.responseJSON.detail) errorMsg = xhr.responseJSON.detail;
+                toastr.error(errorMsg);
+            }
+        });
+    }
+
+    // Map DataTable column index to API sortBy values
+    var sortColumnMap = {
+        2: 'mealName',
+        3: 'categoryName',
+        4: 'dietaryType'
+    };
+
+    function FillTable() {
+        checkSession();
+        $("#ajax_loader").show();
+        if (mealTable) {
+            mealTable.ajax.reload();
+            return;
+        }
+
+        $("#dataTables_tbl_header").remove();
+        $('#tblMealBlock').show();
+        $('#NotificationGrid-empty').hide();
+
+        mealTable = $('#tblMeal').DataTable({
+            dom: _domCommon,
+            language: _languageCommon,
+            serverSide: true,
+            searching: true,
+            searchDelay: 500,
+            ordering: true,
+            order: [[2, 'asc']],
+            ajax: {
+                url: '@_webapiurl' + "meals",
+                type: "GET",
+                headers: { 'Authorization': 'Bearer ' + '@_tokan' },
+                data: function (d) {
+                    var sortBy = 'mealName';
+                    if (d.order && d.order.length > 0) {
+                        var colIdx = d.order[0].column;
+                        if (sortColumnMap[colIdx]) {
+                            sortBy = sortColumnMap[colIdx];
+                        }
+                    }
+
+                    var params = {
+                        pageNumber: Math.floor(d.start / d.length) + 1,
+                        pageSize: d.length,
+                        sortBy: sortBy,
+                        sortDirection: (d.order && d.order.length > 0) ? d.order[0].dir : 'asc'
+                    };
+
+                    if (d.search && d.search.value) {
+                        params.searchTerm = d.search.value;
+                    }
+
+                    // Canteen filter
+                    if (selectedCanteenId) {
+                        params.canteenId = selectedCanteenId;
+                    }
+
+                    // Category filter
+                    var categoryId = $('#FilterCategoryId').val();
+                    if (categoryId) params.categoryId = categoryId;
+
+                    // Dietary type filter
+                    var dietaryType = $('#FilterDietaryType').val();
+                    if (dietaryType) params.dietaryType = dietaryType;
+
+                    // Status filter
+                    var filterStatus = $('#FilterStatusId').val();
+                    if (filterStatus !== '') {
+                        params.isActive = (filterStatus === 'true');
+                    }
+
+                    return params;
+                },
+                dataFilter: function (rawData) {
+                    var json = JSON.parse(rawData);
+                    var dtResponse = {
+                        recordsTotal: json.totalCount || 0,
+                        recordsFiltered: json.totalCount || 0,
+                        data: json.meals || []
+                    };
+
+                    // Update summary
+                    if (json.summary) {
+                        updateSummary(json.summary);
+                    }
+
+                    return JSON.stringify(dtResponse);
+                },
+                dataSrc: function (response) {
+                    var meals = response.data || [];
+                    MealData = meals;
+                    var hasSearch = mealTable && mealTable.search();
+                    if (response.recordsTotal === 0 && !hasSearch) {
+                        $('#tblMealBlock').hide();
+                        $('#NotificationGrid-empty').show();
+                        $('#emptyMessage').text('No meals have been configured yet.');
+                    } else {
+                        $('#tblMealBlock').show();
+                        $('#NotificationGrid-empty').hide();
+                    }
+
+                    return meals;
+                },
+                complete: function () {
+                    $('#ajax_loader').hide();
+                },
+                error: function (xhr) {
+                    var errorMsg = "Error during fetch data";
+                    if (xhr.responseJSON && xhr.responseJSON.detail) {
+                        errorMsg = xhr.responseJSON.detail;
+                    }
+                    toastr.error(errorMsg);
+                    $('#tblMealBlock').hide();
+                    $('#NotificationGrid-empty').show();
+                    $('#emptyMessage').text('No meals have been configured yet.');
+                    $('#mealSummary').hide();
+                }
+            },
+            initComplete: function () {
+                var visibleTable = 'tblMeal';
+                if ($('#buttons').length && visibleTable) {
+                    if ($('#buttons').children().length != 0) {
+                        $("#buttons").empty();
+                    }
+                    $("#buttons").append(
+                        '<div id="export-button1" class="export-button tooltips" data-placement="bottom" data-original-title="Download" data-table-id="' + visibleTable + '">' +
+                        '<img src="../Newlayout/images/download_icon.svg" alt="Download icon">' +
+                        '</div>'
+                    );
+                }
+
+                // Custom debounce: unbind default search and add 500ms delay
+                var searchTimer = null;
+                var $searchInput = $('#tblMeal_wrapper .dataTables_filter input');
+                $searchInput.unbind();
+                $searchInput.on('keyup search input paste cut', function () {
+                    var value = this.value;
+                    clearTimeout(searchTimer);
+                    searchTimer = setTimeout(function () {
+                        mealTable.search(value).draw();
+                    }, 500);
+                });
+                $searchInput.on('keypress', function (e) {
+                    if (e.keyCode === 13) return false;
+                });
+            },
+            columns: [
+                {
+                    title: "MealId",
+                    data: "mealId",
+                    visible: false,
+                    orderable: false
+                },
+                {
+                    title: "Sr No",
+                    data: null,
+                    orderable: false,
+                    width: "50px",
+                    render: function (data, type, row, meta) {
+                        return meta.row + meta.settings._iDisplayStart + 1;
+                    }
+                },
+                {
+                    title: "Meal Name",
+                    data: "mealName",
+                    render: function (data, type, row) {
+                        var imgSrc = row.imageUrl || '/assets/images/icon_food.svg';
+                        var html = '<div style="display:flex; align-items:center; gap:8px;">';
+                        html += '<img src="' + imgSrc + '" alt="" style="width:40px; height:40px; border-radius:50% !important; object-fit:cover; border:1px solid #e7ecf1;" onerror="this.onerror=null; this.src=\'/assets/images/icon_food.svg\';">';
+                        html += '<div>' + escapeHtml(data);
+                        if (row.mealDescription) {
+                            var desc = row.mealDescription.length > 60
+                                ? row.mealDescription.substring(0, 60) + '...'
+                                : row.mealDescription;
+                            html += '<br><small class="text-muted">' + escapeHtml(desc) + '</small>';
+                        }
+                        html += '</div></div>';
+                        return html;
+                    }
+                },
+                {
+                    title: "Category",
+                    data: "categoryName",
+                    render: function (data) {
+                        return data ? escapeHtml(data) : '-';
+                    }
+                },
+                {
+                    title: "Dietary Type",
+                    data: "dietaryType",
+                    render: function (data, type, row) {
+                        return getDietaryDisplay(data, row.isJainFriendly);
+                    }
+                },
+                {
+                    title: "Price",
+                    data: "finalPrice",
+                    orderable: false,
+                    width: "100px",
+                    render: function (data, type, row) {
+                        if (!data && data !== 0) return '-';
+                        return '<span class="tooltips" data-placement="top" data-original-title="Base: \u20B9' + (row.price || 0).toFixed(2) + ' + Tax: ' + (row.taxPercentage || 0) + '%">\u20B9' + parseFloat(data).toFixed(2) + '</span>';
+                    }
+                },
+                {
+                    title: "Status",
+                    data: "isActive",
+                    orderable: false,
+                    render: function (data) {
+                        if (data) {
+                            return '<span class="green_font">Active</span>';
+                        } else {
+                            return '<span class="red_font">Inactive</span>';
+                        }
+                    }
+                },
+                {
+                    title: "Action",
+                    data: null,
+                    orderable: false,
+                    createdCell: function (td) { $(td).css("min-width", "128px"); },
+                    render: function (data, type, row) {
+                        var str = "";
+                        if (isedit == "True") {
+                            str = '<a class="editclass btn seagreen_btnnew tooltips" data-placement="top" data-original-title="Edit" onclick="updateMeal(' + row.mealId + ')"> <i class="fa-regular fa-pen-to-square"></i> </a> ';
+
+                            if (row.isActive) {
+                                str += '<a class="Inactiveclass btn red_btnnew tooltips" data-placement="top" data-original-title="Inactive" onclick="statusChange(' + row.mealId + ')"><i class="fa-solid fa-xmark"></i></a>';
+                            } else {
+                                str += '<a class="Activeclass btn green_btnnew tooltips" data-placement="top" data-original-title="Active" onclick="statusChange(' + row.mealId + ')"><i class="fa-solid fa-check"></i></a>';
+                            }
+                        }
+                        if (isdelete == "True") {
+                            str += ' <a class="Deleteclass btn red_btnnew tooltips" data-placement="top" data-original-title="Delete" onclick="deleteMeal(' + row.mealId + ')"><i class="fa-regular fa-trash-can"></i></a>';
+                        }
+                        return str;
+                    }
+                }
+            ],
+            drawCallback: function () {
+                $('.tooltips').tooltip();
+                setTimeout(function () {
+                    $("#tblMeal_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+                }, 100);
+            }
+        });
+
+        $(document).off('click', '#export-button1').on('click', '#export-button1', function () {
+            exportMeals();
+        });
+    }
+
+    function loadFormData(canteenId, callback) {
+        var url = '@_webapiurl' + 'meals/form-data';
+        if (canteenId) {
+            url += '?canteenId=' + canteenId;
+        }
+
+        $.ajax({
+            type: "GET",
+            url: url,
+            headers: { 'Authorization': 'Bearer ' + '@_tokan' },
+            dataType: "json",
+            success: function (data) {
+                formDataCategories = data.categories || [];
+                populateCategoryDropdown();
+                if (callback) callback();
+            },
+            error: function (xhr) {
+                formDataCategories = [];
+                populateCategoryDropdown();
+                if (callback) callback();
+            }
+        });
+    }
+
+    function populateCategoryDropdown() {
+        // Modal dropdown
+        var $modal = $('#CategoryId');
+        $modal.empty().append('<option value="">Select Category</option>');
+        for (var i = 0; i < formDataCategories.length; i++) {
+            $modal.append('<option value="' + formDataCategories[i].categoryId + '">' +
+                escapeHtml(formDataCategories[i].categoryName) + '</option>');
+        }
+
+        // Filter dropdown
+        var $filter = $('#FilterCategoryId');
+        $filter.empty().append('<option value="">All Categories</option>');
+        for (var i = 0; i < formDataCategories.length; i++) {
+            $filter.append('<option value="' + formDataCategories[i].categoryId + '">' +
+                escapeHtml(formDataCategories[i].categoryName) + '</option>');
+        }
+    }
+
+    function saveMeal(e) {
+        checkSession();
+        e.preventDefault();
+
+        var mealId = $('#MealId').val();
+        var isUpdate = mealId && mealId !== "" && mealId !== "0";
+
+        // Validate required fields
+        if (!validateField('MealName')) return;
+
+        // Dietary type validation
+        var dietaryType = $('input[name="DietaryType"]:checked').val();
+        if (!dietaryType) {
+            toastr.warning("Please select a dietary type");
+            return;
+        }
+
+        var mealObj;
+        var url;
+        var method;
+
+        if (isUpdate) {
+            mealObj = {
+                mealName: $('#MealName').val().trim(),
+                mealDescription: $('#MealDescription').val().trim() || null,
+                categoryId: $('#CategoryId').val() ? parseInt($('#CategoryId').val()) : null,
+                dietaryType: parseInt(dietaryType),
+                isJainFriendly: $('#IsJainFriendly').is(':checked'),
+                imageUrl: $('#ImageUrl').val().trim() || "",
+                price: parseFloat($('#Price').val()) || 0,
+                taxPercentage: parseFloat($('#TaxPercentage').val()) || 0,
+                displayOrder: parseInt($('#DisplayOrder').val()) || 0
+            };
+            url = '@_webapiurl' + "meals/" + mealId;
+            method = "PUT";
+        } else {
+            mealObj = {
+                canteenId: parseInt(selectedCanteenId),
+                mealName: $('#MealName').val().trim(),
+                mealDescription: $('#MealDescription').val().trim() || null,
+                categoryId: $('#CategoryId').val() ? parseInt($('#CategoryId').val()) : null,
+                dietaryType: parseInt(dietaryType),
+                isJainFriendly: $('#IsJainFriendly').is(':checked'),
+                imageUrl: $('#ImageUrl').val().trim() || null,
+                price: parseFloat($('#Price').val()) || 0,
+                taxPercentage: parseFloat($('#TaxPercentage').val()) || 0,
+                displayOrder: parseInt($('#DisplayOrder').val()) || 0,
+                isActive: true
+            };
+            url = '@_webapiurl' + "meals";
+            method = "POST";
+        }
+
+        $.ajax({
+            type: method,
+            url: url,
+            headers: { 'Authorization': 'Bearer ' + '@_tokan' },
+            data: JSON.stringify(mealObj),
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            success: function (data) {
+                if (isUpdate) {
+                    toastr.success("Meal updated successfully");
+                    FillTable();
+                } else {
+                    toastr.success("Meal created successfully");
+                
+                        FillTable();
+                    
+                }
+                $('#mealModal').modal('hide');                                          
+            },
+            error: function (xhr) {
+                var errorMsg = "Error during save";
+                if (xhr.responseJSON) {
+                    if (xhr.responseJSON.detail) {
+                        errorMsg = xhr.responseJSON.detail;
+                    }
+                    if (xhr.responseJSON.errors) {
+                        for (var field in xhr.responseJSON.errors) {
+                            errorMsg = xhr.responseJSON.errors[field].join(", ");
+                            break;
+                        }
+                    }
+                }
+                toastr.error(errorMsg);
+            }
+        });
+    }
+
+    function updateMeal(mealId) {
+        checkSession();
+        frmClear();
+        removeFieldErrors();
+
+        var meal = MealData.find(function (value) { return value.mealId == mealId; });
+        if (!meal) {
+            toastr.error("Meal not found");
+            return;
+        }
+
+        // Load form data for the meal's canteen, then populate fields
+        loadFormData(selectedCanteenId, function () {
+            $('#MealId').val(meal.mealId);
+            $('#MealName').val(meal.mealName);
+            $('#MealDescription').val(meal.mealDescription || '');
+            $('#CategoryId').val(meal.categoryId || '');
+            $('input[name="DietaryType"][value="' + meal.dietaryType + '"]').prop('checked', true);
+            $('#IsJainFriendly').prop('checked', meal.isJainFriendly);
+            $('#ImageUrl').val(meal.imageUrl || '');
+            if (meal.imageUrl) {
+                showMealImagePreview(meal.imageUrl);
+            } else {
+                hideMealImagePreview();
+            }
+            $('#Price').val(meal.price || 0);
+            $('#TaxPercentage').val(meal.taxPercentage || 0);
+            updateFinalPrice();
+            $('#DisplayOrder').val(meal.displayOrder || 0);
+
+            $('#modalTitle').text('Edit Meal');
+            $('#mealModal').modal('toggle');
+        });
+    }
+
+    function deleteMeal(mealId) {
+        checkSession();
+
+        Swal.fire({
+            html: '<div class="swal_subtitle"><b>You want to delete this meal?</b></div>',
+            title: "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_error.svg' alt=''>Are you sure?",
+            showCloseButton: true,
+            showCancelButton: true,
+            focusConfirm: false,
+            cancelButtonText: 'Cancel',
+            confirmButtonText: 'Yes, delete it!',
+            allowOutsideClick: false,
+            allowEscapeKey: false,
+            customClass: {
+                confirmButton: 'swal-confirm-button-class',
+                cancelButton: 'swal-cancel-button-class'
+            }
+        }).then(function (result) {
+            if (result.isConfirmed) {
+                $.ajax({
+                    type: "DELETE",
+                    url: '@_webapiurl' + "meals/" + mealId,
+                    headers: { 'Authorization': 'Bearer ' + '@_tokan' },
+                    contentType: "application/json; charset=utf-8",
+                    success: function () {
+                        Swal.fire({
+                            html: '<div class="swal_subtitle"><b>Meal has been deleted.</b></div>',
+                            title: "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_success.svg' alt=''>Deleted!",
+                            showCloseButton: true,
+                            confirmButtonText: 'OK',
+                            allowOutsideClick: false,
+                            allowEscapeKey: false,
+                            customClass: {
+                                confirmButton: 'swal-confirm-button-class'
+                            }
+                        });
+                        $('img[src="/assets/images/icons/swal_icon/icon_success.svg"]').parent().parent().parent().addClass('swal_success');
+                        FillTable();
+                    },
+                    error: function (xhr) {
+                        var errorMsg = "Error during delete";
+                        if (xhr.responseJSON && xhr.responseJSON.detail) {
+                            errorMsg = xhr.responseJSON.detail;
+                        }
+                        Swal.fire({
+                            html: '<div class="swal_subtitle"><b>' + errorMsg + '</b></div>',
+                            title: "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_error.svg' alt=''>Error!",
+                            showCloseButton: true,
+                            confirmButtonText: 'OK',
+                            allowOutsideClick: false,
+                            allowEscapeKey: false,
+                            customClass: {
+                                confirmButton: 'swal-confirm-button-class'
+                            }
+                        });
+                        $('img[src="/assets/images/icons/swal_icon/icon_error.svg"]').parent().parent().parent().addClass('swal_error');
+                    }
+                });
+            }
+        });
+        $('img[src="/assets/images/icons/swal_icon/icon_error.svg"]').parent().parent().parent().addClass('swal_error');
+    }
+
+    function statusChange(mealId) {
+        checkSession();
+
+        var meal = MealData.find(function (value) { return value.mealId == mealId; });
+        if (!meal) {
+            toastr.error("Meal not found");
+            return;
+        }
+
+        var newStatus = !meal.isActive;
+        var actionText = newStatus ? "active" : "inactive";
+        var confirmIcon = newStatus ? 'icon_success.svg' : 'icon_error.svg';
+        var confirmClass = newStatus ? 'swal_success' : 'swal_error';
+        var impactText = newStatus ? '' : '<br><small class="text-danger">This meal will be removed from future daily menus and ordering.</small>';
+
+        Swal.fire({
+            html: '<div class="swal_subtitle"><b>You want to ' + actionText + ' this meal?</b>' + impactText + '</div>',
+            title: "<img class='margin-right-5' src='/assets/images/icons/swal_icon/" + confirmIcon + "' alt=''>Are you sure?",
+            showCloseButton: true,
+            showCancelButton: true,
+            focusConfirm: false,
+            cancelButtonText: 'Cancel',
+            confirmButtonText: 'Yes, ' + actionText + ' it!',
+            allowOutsideClick: false,
+            allowEscapeKey: false,
+            customClass: {
+                confirmButton: 'swal-confirm-button-class',
+                cancelButton: 'swal-cancel-button-class'
+            }
+        }).then(function (result) {
+            if (result.isConfirmed) {
+                $.ajax({
+                    type: "PATCH",
+                    url: '@_webapiurl' + "meals/" + mealId + "/status",
+                    headers: { 'Authorization': 'Bearer ' + '@_tokan' },
+                    data: JSON.stringify({ isActive: newStatus }),
+                    contentType: "application/json; charset=utf-8",
+                    dataType: "json",
+                    success: function () {
+                        Swal.fire({
+                            html: '<div class="swal_subtitle"><b>Meal has been ' + (newStatus ? "active" : "inactive") + '.</b></div>',
+                            title: "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_success.svg' alt=''>Success!",
+                            showCloseButton: true,
+                            confirmButtonText: 'OK',
+                            allowOutsideClick: false,
+                            allowEscapeKey: false,
+                            customClass: {
+                                confirmButton: 'swal-confirm-button-class'
+                            }
+                        });
+                        $('img[src="/assets/images/icons/swal_icon/icon_success.svg"]').parent().parent().parent().addClass('swal_success');
+                        FillTable();
+                    },
+                    error: function (xhr) {
+                        var errorMsg = "Error during status change";
+                        if (xhr.responseJSON && xhr.responseJSON.detail) {
+                            errorMsg = xhr.responseJSON.detail;
+                        }
+                        Swal.fire({
+                            html: '<div class="swal_subtitle"><b>' + errorMsg + '</b></div>',
+                            title: "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_error.svg' alt=''>Error!",
+                            showCloseButton: true,
+                            confirmButtonText: 'OK',
+                            allowOutsideClick: false,
+                            allowEscapeKey: false,
+                            customClass: {
+                                confirmButton: 'swal-confirm-button-class'
+                            }
+                        });
+                        $('img[src="/assets/images/icons/swal_icon/icon_error.svg"]').parent().parent().parent().addClass('swal_error');
+                    }
+                });
+            }
+        });
+        $('img[src="/assets/images/icons/swal_icon/' + confirmIcon + '"]').parent().parent().parent().addClass(confirmClass);
+    }
+
+    function exportMeals() {
+        checkSession();
+        if (!mealTable) return;
+
+        var searchTerm = mealTable.search() || "";
+        var canteenId = selectedCanteenId || "";
+        var categoryId = $('#FilterCategoryId').val() || "";
+        var dietaryType = $('#FilterDietaryType').val() || "";
+        var isActive = $('#FilterStatusId').val() || "";
+
+        var mainObj = {
+            canteenId: canteenId,
+            categoryId: categoryId,
+            dietaryType: dietaryType,
+            isActive: isActive,
+            searchTerm: searchTerm
+        };
+
+        $.ajax({
+            url: '/cms/ExportMealsExcel',
+            type: 'POST',
+            data: JSON.stringify(mainObj),
+            contentType: 'application/json',
+            beforeSend: function () {
+                $("#ajax_loader").show();
+            },
+            success: function (response) {
+                if (response.success && response.filePath) {
+                    window.location.href = response.filePath;
+                } else {
+                    toastr.error(response.message || "Failed to generate export file.");
+                }
+            },
+            error: function () {
+                toastr.error("An error occurred while exporting data.");
+            },
+            complete: function () {
+                $("#ajax_loader").hide();
+            }
+        });
+    }
+
+    function updateSummary(summary) {
+        if (!summary) {
+            $('#mealSummary').hide();
+            return;
+        }
+        $('#summaryTotal').text(summary.totalMeals || 0);
+        $('#summaryVeg').text(summary.vegCount || 0);
+        $('#summaryNonVeg').text(summary.nonVegCount || 0);
+        $('#summaryVegan').text(summary.veganCount || 0);
+        $('#summaryActive').text(summary.activeCount || 0);
+        $('#summaryInactive').text(summary.inactiveCount || 0);
+        $('#mealSummary').show();
+    }
+
+    function getDietaryDisplay(dietaryType, isJainFriendly) {
+        var html = '';
+        switch (dietaryType) {
+            case 1:
+                html = '<i class="fa-solid fa-circle" style="color:#22C55E;font-size:8px;vertical-align:middle;"></i> <span>Vegetarian</span>';
+                break;
+            case 2:
+                html = '<i class="fa-solid fa-circle" style="color:#EF4444;font-size:8px;vertical-align:middle;"></i> <span>Non-Vegetarian</span>';
+                break;
+            case 3:
+                html = '<i class="fa-solid fa-circle" style="color:#10B981;font-size:8px;vertical-align:middle;"></i> <span>Vegan</span>';
+                break;
+            default:
+                html = '-';
+        }
+        if (isJainFriendly) {
+            html += '<br><small class="text-muted">Jain Friendly</small>';
+        }
+        return html;
+    }
+
+    function escapeHtml(text) {
+        if (!text) return '';
+        var map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
+        return text.replace(/[&<>"']/g, function (m) { return map[m]; });
+    }
+
+    function validateField(fieldId) {
+        var value = $('#' + fieldId).val();
+        if (!value || value.trim() === "") {
+            $("#" + fieldId).addClass('field_error');
+            $("#" + fieldId).focus();
+            return false;
+        }
+        $("#" + fieldId).removeClass('field_error');
+        return true;
+    }
+
+    function removeFieldErrors() {
+        $("#MealName").removeClass('field_error');
+    }
+
+    function frmClear() {
+        $('#MealId').val("");
+        $('#MealName').val("");
+        $('#MealDescription').val("");
+        $('#CategoryId').val("");
+        $('input[name="DietaryType"]').prop('checked', false);
+        $('input[name="DietaryType"][value="1"]').prop('checked', true);
+        $('#IsJainFriendly').prop('checked', false);
+        $('#ImageUrl').val("");
+        $('#MealImageFile').val("");
+        hideMealImagePreview();
+        $('#DisplayOrder').val("0");
+
+        $('#Price').val('0');
+        $('#TaxPercentage').val('0');
+        $('#FinalPriceDisplay').text('\u20B90.00');
+    }
+
+    function updateFinalPrice() {
+        var price = parseFloat($('#Price').val()) || 0;
+        var tax = parseFloat($('#TaxPercentage').val()) || 0;
+        var finalPrice = price + (price * tax / 100);
+        $('#FinalPriceDisplay').text('\u20B9' + finalPrice.toFixed(2));
+    }
+
+    // ==================== Meal Image Upload ====================
+
+    function initMealImageUpload() {
+        $('#MealImageFile').off('change').on('change', function () {
+            var file = this.files[0];
+            if (!file) return;
+
+            // Validate size
+            if (file.size > 1024 * 1024) {
+                toastr.warning("File size must be less than 1 MB.");
+                $(this).val('');
+                return;
+            }
+
+            // Validate extension
+            var allowedExts = ['.jpg', '.jpeg', '.png', '.bmp'];
+            var ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+            if (allowedExts.indexOf(ext) === -1) {
+                toastr.warning("Only .jpg, .jpeg, .png, .bmp files are allowed.");
+                $(this).val('');
+                return;
+            }
+
+            // Upload via AJAX
+            var formData = new FormData();
+            formData.append('MealImageFile', file);
+
+            $.ajax({
+                url: '/cms/UploadMealImage',
+                type: 'POST',
+                data: formData,
+                processData: false,
+                contentType: false,
+                success: function (response) {
+                    if (response.success) {
+                        $('#ImageUrl').val(response.imagePath);
+                        showMealImagePreview(response.imagePath);
+                        toastr.success("Image uploaded successfully");
+                    } else {
+                        toastr.error(response.message || "Upload failed");
+                    }
+                },
+                error: function () {
+                    toastr.error("Error uploading image");
+                }
+            });
+
+            $(this).val('');
+        });
+
+        $('#btnRemoveMealImage').off('click').on('click', function () {
+            $('#ImageUrl').val('');
+            $('#MealImageFile').val('');
+            hideMealImagePreview();
+        });
+    }
+
+    function showMealImagePreview(imagePath) {
+        if (imagePath) {
+            $('#mealPreviewImg').attr('src', imagePath);
+            $('#btnRemoveMealImage').show();
+        }
+    }
+
+    function hideMealImagePreview() {
+        $('#mealPreviewImg').attr('src', '/assets/images/icon_food.svg');
+        $('#btnRemoveMealImage').hide();
+    }
+
+    function checkSession() {
+        $.ajax({
+            type: "GET",
+            async: false,
+            url: "/ESS/checkSession",
+            contentType: "application/json; charset=utf-8",
+            success: function (data) {
+                if (data.isRedirect) {
+                    window.location.href = data.redirectUrl;
+                }
+            },
+            error: function (data) {
+                window.location.href = data;
+            }
+        });
+    }
+</script>
+
+<style>
+    .field_error {
+        border-color: #dc3545 !important;
+    }
+
+    #mealSummary {
+        padding: 8px;
+        background: #f8f9fa;
+        border-radius: 6px !important;
+        margin-bottom: 10px;
+    }
+
+        #mealSummary span {
+            margin-right: 15px;
+        }
+
+    .dietary-radio-group label {
+        margin-right: 20px;
+        cursor: pointer;
+        font-weight: normal;
+    }
+
+    .dietary-radio-group input[type="radio"] {
+        margin-right: 5px;
+    }
+</style>
+
+@if (obj.CanView)
+{
+    <div class="page-bar">
+        @if (_RoleId == 1 || _RoleId == 6805 || _RoleId == 6806 || _RoleId == 6811)
+        {
+            <ul class="page-breadcrumb">
+                <li>
+                    @if (isClientDBMatchFlag == "True")
+                    {
+                        <a href="/Admin/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+                    }
+                    else
+                    {
+                        <a href="/Dashboard/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+                    }
+                </li>
+                <li>
+                    <span><i class="fa-light fa-angle-right"></i> Canteen Management</span>
+                </li>
+                <li>
+                    <span><i class="fa-light fa-angle-right"></i> Meal Master</span>
+                </li>
+            </ul>
+        }
+        else
+        {
+            <ul class="page-breadcrumb">
+                <li>
+                    @if (isClientDBMatchFlag == "true")
+                    {
+                        <a href="/Admin/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+                    }
+                    else
+                    {
+                        <a href="/Dashboard/EmployeeDashboard"><i class="fa-regular fa-house"></i></a>
+                    }
+                </li>
+                <li>
+                    <span><i class="fa-light fa-angle-right"></i> Meal Master</span>
+                </li>
+            </ul>
+        }
+        <div class="page-toolbar text-right">
+            <a href="javascript:;" class="btn icon_transparent_btn tooltips" id="Filter_search" data-placement="left" data-original-title="Filter"><i class="fa-light fa-filter"></i></a>
+            @if (obj.CanAdd)
+            {
+                <a id="AddMeal" class="btn icon_transparent_btn tooltips" data-placement="left" data-original-title="Add Meal"><i class="fa-solid fa-plus"></i></a>
+            }
+        </div>
+    </div>
+
+    <div class="filter_portlet_wrapper full-width payrollfilter_height">
+
+        <!-- Datatable Block : Begin -->
+        <div class="portlet filter_portlet_tbl">
+            <div class="portlet-body">
+                <div class="row">
+                    <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                        <!-- Summary Row -->
+                        <div id="mealSummary" style="display:none;">
+                            <span>Total: <b id="summaryTotal">0</b></span>
+                            <span><i class="fa-solid fa-circle" style="color:#22C55E;font-size:8px;vertical-align:middle;"></i> Veg: <b id="summaryVeg">0</b></span>
+                            <span><i class="fa-solid fa-circle" style="color:#EF4444;font-size:8px;vertical-align:middle;"></i> Non-Veg: <b id="summaryNonVeg">0</b></span>
+                            <span><i class="fa-solid fa-circle" style="color:#10B981;font-size:8px;vertical-align:middle;"></i> Vegan: <b id="summaryVegan">0</b></span>
+                            <span>Active: <b id="summaryActive">0</b></span>
+                            <span>Inactive: <b id="summaryInactive">0</b></span>
+                        </div>
+
+                        <div id="divtblMeal" class="table-scrollable">
+                            <div id="tblMealBlock" style="display:none;">
+                                <div class="table-responsive" id="tableResponsive">
+                                    <table id="tblMeal" class="new_datatbl table table-striped table-bordered table-hover table-checkable order-column"></table>
+                                </div>
+                            </div>
+                            <div id="NotificationGrid-empty" style="display: none">
+                                <div class="datanotfound">
+                                    <img src="~/assets/images/emptyscreen_3.png" height="148" width="280" alt="No Data Found Icon">
+                                    <p class="datanotfound_title">No data found</p>
+                                    <p id="emptyMessage">No meals have been configured yet.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Datatable Block : End -->
+        <!-- Filter Block : Begin -->
+        <div class="portlet filter_boxModal">
+            <div class="filterbox_header">
+                <div class="d-flex align-items-center justify-content-between">
+                    <h4 class="filter-title">Filters</h4>
+                    <button type="button" class="filterclose_btn"><i class="fa-light fa-xmark"></i></button>
+                </div>
+            </div>
+            <div class="filterbox_body">
+                <div class="col-lg-12">
+                    <div class="form-group">
+                        <label>Canteen</label>
+                        <select class="form-control input-sm" id="FilterCanteenId">
+                            <option value="">Select Canteen</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="col-lg-12">
+                    <div class="form-group">
+                        <label>Category</label>
+                        <select class="form-control input-sm" id="FilterCategoryId">
+                            <option value="">All Categories</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="col-lg-12">
+                    <div class="form-group">
+                        <label>Dietary Type</label>
+                        <select class="form-control input-sm" id="FilterDietaryType">
+                            <option value="">All</option>
+                            <option value="1">Vegetarian</option>
+                            <option value="2">Non-Vegetarian</option>
+                            <option value="3">Vegan</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="col-lg-12">
+                    <div class="form-group">
+                        <label>Status</label>
+                        <select class="form-control input-sm" id="FilterStatusId">
+                            <option value="">All</option>
+                            <option value="true">Active</option>
+                            <option value="false">Inactive</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="filterbox_footer">
+                <div class="text-right">
+                    <button type="button" id="Clear_OPration" class="btn clear_btn margin-left-5 tooltips" data-placement="top" data-original-title="Clear filters"><i class="fa-regular fa-eraser"></i></button>
+                    <button type="button" id="Search_OPration" class="btn icon_btn margin-left-5 tooltips" data-placement="top" data-original-title="Search filters"><i class="fa-solid fa-magnifying-glass"></i></button>
+                </div>
+            </div>
+        </div>
+        <!-- Filter Block : End -->
+
+    </div>
+
+    <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+        <div id='ajax_loader' class="modal_bg loading">
+            <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading" />
+        </div>
+    </div>
+
+    <!-- Add/Edit Modal -->
+    <div id="mealModal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    <h4 class="modal-title" id="modalTitle">Add Meal</h4>
+                </div>
+                <div class="modal-body">
+                    <div class="modal-card">
+                        <fieldset>
+                            <div class="row">
+                                <div class="col-lg-12" hidden>
+                                    <div class="form-group">
+                                        <input type="hidden" id="MealId" value="">
+                                    </div>
+                                </div>
+
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label>Meal Name <span class="required" style="color:red;"> * </span></label>
+                                        <input type="text" class="form-control input-sm" id="MealName" placeholder="Enter meal name" maxlength="100">
+                                    </div>
+                                </div>
+
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label>Category</label>
+                                        <select class="form-control input-sm" id="CategoryId">
+                                            <option value="">Select Category</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div class="col-md-6">
+                                    <div class="row">
+                                        <div class="col-sm-6 col-xs-12">
+                                            <div class="form-group">
+                                                <label>Price (<span>&#8377;</span>)</label>
+                                                <input type="number" class="form-control input-sm" id="Price" placeholder="0.00" min="0" max="99999.99" step="0.01" value="0">
+                                            </div>
+                                        </div>
+
+                                        <div class="col-sm-6 col-xs-12">
+                                            <div class="form-group">
+                                                <label>Tax (%)</label>
+                                                <input type="number" class="form-control input-sm" id="TaxPercentage" placeholder="0" min="0" max="100" step="0.01" value="0">
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="row">
+                                        <div class="col-sm-6 col-xs-12">
+                                            <div class="form-group">
+                                                <label>Final Price</label>
+                                                <div class="form-control input-sm" id="FinalPriceDisplay" style="background:#f5f5f5;font-weight:600;">&#8377;0.00</div>
+                                            </div>
+                                        </div>
+
+                                        <div class="col-sm-6 col-xs-12">
+                                            <div class="form-group">
+                                                <label>Display Order</label>
+                                                <input type="text" class="form-control input-sm" id="DisplayOrder" placeholder="0" maxlength="5" value="0">
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>                                
+
+                                <div class="col-lg-12">
+                                    <div class="form-group">
+                                        <label>Description</label>
+                                        <textarea class="form-control input-sm" id="MealDescription" rows="2" placeholder="Enter meal description" maxlength="500"></textarea>
+                                    </div>
+                                </div>
+
+                                <div class="col-lg-12">
+                                    <div class="form-group">
+                                        <label>Dietary Type <span class="required" style="color:red;"> * </span></label>
+                                        <div class="dietary-radio-group">
+                                            <label>
+                                                <input type="radio" name="DietaryType" value="1" checked>
+                                                <span style="position: relative; top: -3px;"><i class="fa-solid fa-circle" style="color:#22C55E;font-size:8px;vertical-align:middle;"></i> Vegetarian</span>
+                                            </label>
+                                            <label>
+                                                <input type="radio" name="DietaryType" value="2">
+                                                <span style="position: relative; top: -3px;"><i class="fa-solid fa-circle" style="color:#EF4444;font-size:8px;vertical-align:middle;"></i> Non-Vegetarian</span>
+                                            </label>
+                                            <label>
+                                                <input type="radio" name="DietaryType" value="3">
+                                                <span style="position: relative; top: -3px;"><i class="fa-solid fa-circle" style="color:#10B981;font-size:8px;vertical-align:middle;"></i> Vegan</span>
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="col-lg-6 col-md-6">
+                                    <div class="form-group">
+                                        <label>
+                                            <input type="checkbox" id="IsJainFriendly"> Jain Friendly
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <div class="col-lg-6 col-md-6">
+                                    <div class="form-group">
+                                        <label>Meal Image</label>
+                                        <input type="hidden" id="ImageUrl" value="">
+                                        <div class="upload-box">
+                                            <div class="fileinput fileinput-new" data-provides="fileinput" id="mealFileinput">
+                                                <div class="fileinput-new profile_img" id="mealImagePreview">
+                                                    <img src="/assets/images/icon_food.svg" alt="" id="mealPreviewImg" onerror="this.onerror=null; this.src='/assets/images/icon_food.svg';" />
+                                                </div>
+                                                <div class="profile_img fileinput-preview fileinput-exists profile_img"></div>
+                                                <div class="upload-overlay">
+                                                    <div style="display: flex;">
+                                                        <span class="btn blueupload_btn btn-file">
+                                                            <span class="fileinput-new btn-block"><i class="fa-regular fa-arrow-up-from-bracket"></i></span>
+                                                            <span class="fileinput-exists"><i class="fa-regular fa-pen-to-square"></i></span>
+                                                            <input type="file" id="MealImageFile" accept=".jpg,.jpeg,.png,.bmp">
+                                                        </span>
+                                                        <a href="javascript:;" class="btn redupload_btn" id="btnRemoveMealImage" style="display:none;"><i class="fa-light fa-trash-can"></i></a>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="text-muted" style="font-size:11px;margin-top:3px;">Max 1 MB (.jpg, .png, .bmp)</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </fieldset>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <div class="row">
+                        <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                            <button type="button" class="btn clear_btn" data-dismiss="modal"><i class="fa-light fa-xmark"></i> Cancel</button>
+                            <button type="button" id="btnMealSubmit" class="btn save_btn"><i class="fa-light fa-floppy-disk"></i> Save</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    <div class="alert alert-danger">
+        <strong>Unauthorized Access.</strong> You do not have permission to view this page.
+    </div>
+}

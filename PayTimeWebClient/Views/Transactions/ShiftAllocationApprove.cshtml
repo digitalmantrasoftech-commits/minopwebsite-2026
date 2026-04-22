@@ -1,0 +1,680 @@
+﻿@using System.Configuration;
+@{
+    ViewBag.Title = "ShiftAllocationApprove";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    string _isdateformat = HttpContext.Current.Session["IsDateFormat"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    int _cmpid = 0;
+    int _branchid = 0;
+    int _empid = 0;
+    if (_RoleId == 6805)
+    {
+        _cmpid = Convert.ToInt32(HttpContext.Current.Session["ClientCompanyId"]);
+    }
+    if (_RoleId == 6806)
+    {
+        _cmpid = Convert.ToInt32(HttpContext.Current.Session["ClientCompanyId"]);
+        _branchid = Convert.ToInt32(HttpContext.Current.Session["BranchId"]);
+        _empid = Convert.ToInt32(HttpContext.Current.Session["EmpId"].ToString());
+    }
+    if (_RoleId > 1 && _RoleId != 6805 && _RoleId != 6806)
+    {
+        _cmpid = Convert.ToInt32(HttpContext.Current.Session["ClientCompanyId"]);
+        _branchid = Convert.ToInt32(HttpContext.Current.Session["BranchId"]);
+        _empid = Convert.ToInt32(HttpContext.Current.Session["EmpId"].ToString());
+    }
+}
+<style>
+    .appoval_actionbtn .icon_btn, .appoval_actionbtn .clear_btn {
+        height: 26px;
+        width: 26px;
+        line-height: 26px !important;
+        padding: 0;
+    }
+</style>
+<script>
+    var token = '@_tokan';
+    var cmpid = '@_cmpid';
+    var branchid = '@_branchid';
+    var roleid = '@_RoleId';
+    var empid = '@_empid';
+    var table;
+    $(document).ready(function () {
+        fillShift();
+        var $Companyselect = $("#shiftId").multiselect({
+            selectAllValue: 'multiselect-all',
+            enableCaseInsensitiveFiltering: true,
+            includeSelectAllOption: true,
+            allSelectedText: 'All Select',
+            enableFiltering: true,
+            maxHeight: '300',
+            buttonWidth: '100%',
+            enableClickableOptGroups: true,
+            nonSelectedText: 'Select Shift'
+        });
+        const ShiftApprove = {
+            roleId: roleid,
+            companyId: cmpid,
+            branchId: branchid,
+            EmpId: empid
+        }
+        $.ajax({
+            url: webapiuri + "Transaction/GetShiftAllocationApproveData",
+            type: 'POST',
+            headers: { 'Authorization': token },
+            data: JSON.stringify(ShiftApprove),
+            contentType: "application/json; charset=utf-8",
+            beforeSend: function (xhr) {
+                $('#ajax_loader').show();
+            },
+            success: function (res) {
+                if (!res || res.length === 0) {
+                    $("#shift-empty").show();
+                    $("#tableResponsive").hide();
+                    $("#dataTables_tbl_header").hide();
+                } else {
+                    $("#shift-empty").hide();
+                    $("#tableResponsive").show();
+                    $("#dataTables_tbl_header").show();
+                    LoadDatatable(res);
+                }
+                $("#ajax_loader").hide();
+            },
+            complete: function () {
+                $("#ajax_loader").hide();
+            },
+            error: function (xhr, status, error) {
+                console.error("AJAX error:", status, error);
+            }
+        });
+
+        $("#tblShiftAllocationApprove").on('click', '.approve', function () {
+            var rowData = $('#tblShiftAllocationApprove').DataTable().row($(this).closest('tr')).data();
+            var approveId = rowData.approveId;
+
+            var requestData = {
+                All: 0,
+                Flag: 0,
+                approveIds: [approveId]
+            };
+
+            $.ajax({
+                url: webapiuri + "Transaction/UpdateShiftAllocationApprove",
+                type: 'POST',
+                headers: { 'Authorization': token },
+                data: JSON.stringify(requestData),
+                contentType: "application/json; charset=utf-8",
+                success: function (res) {
+                    toastr.remove();
+                    toastr.success("Shift Allocation Approve Succesfully.")
+                    setTimeout(function () {
+                        window.location.href = window.location.href;
+                    }, 1000);
+                },
+                error: function (xhr, status, error) {
+                    toastr.error("Error Occur in Shift Allocation Approve.")
+                }
+            });
+        });
+        $("#tblShiftAllocationApprove").on('click', '.cancel', function () {
+            var rowData = $('#tblShiftAllocationApprove').DataTable().row($(this).closest('tr')).data();
+            var approveId = rowData.approveId;
+
+            var requestData = {
+                All: 0,
+                Flag: 1,
+                approveIds: [approveId]
+            };
+
+            $.ajax({
+                url: webapiuri + "Transaction/UpdateShiftAllocationApprove",
+                type: 'POST',
+                headers: { 'Authorization': token },
+                data: JSON.stringify(requestData),
+                contentType: "application/json; charset=utf-8",
+                success: function (res) {
+                    if (res) {
+                        toastr.remove();
+                        toastr.success("Shift Allocation Reject Succesfully.")
+                    }
+                    setTimeout(function () {
+                        window.location.href = window.location.href;
+                    }, 1000);
+                },
+                error: function (xhr, status, error) {
+                    toastr.error("Error Occur in Shift Allocation Reject.")
+                }
+            });
+        });
+
+        $("#btnactive").click(function () {            
+            ApproveOrCancelShift(0);
+        });
+        $("#btnDeactive").click(function () {
+            ApproveOrCancelShift(1);
+        });
+
+        $("#Search_operation").click(function () {            
+            var shift = $("#shiftId").val();
+            var status = $("#shiftStatus").val();
+            var fromDate = $("#FromDate").val();
+            var toDate = $("#ToDate").val();
+            if (!shift && shift == null) {
+                toastr.remove();
+                toastr.error("Please select Shift.");
+                return false;
+            }
+            if (!status && status == null) {
+                toastr.remove();
+                toastr.error("Please select Status.");
+                return false;
+            }
+            if ($("#FromDate").val() == "") {
+                toastr.remove();
+                toastr.error("Please select Form Date.");
+                return false;
+            }            
+            if ($("#ToDate").val() == "") {
+                toastr.remove();
+                toastr.error("Please select To Date.");                
+                return false;
+            }           
+            if (fromDate > toDate) {
+                toastr.remove();
+                toastr.error("To date should be greater than from date.");
+                return false;
+            }
+            if ("@_isdateformat" == "dd-mm-yyyy") {
+                if ($("#FromDate").val() !== "" && $("#FromDate").val() !== "undefined" && $("#ToDate").val() !== "" && $("#ToDate").val() !== "undefined") {
+                    var fromDate = $("#FromDate").val().split("-");
+                    var _Fromdate = fromDate[2] + "-" + fromDate[1] + "-" + fromDate[0];
+                    var toDate = $("#ToDate").val().split("-");
+                    var _toDate = toDate[2] + "-" + toDate[1] + "-" + toDate[0];
+                }
+                else {
+                    _Fromdate = "";
+                    _toDate = "";
+                }
+            }
+            else if ("@_isdateformat" == "mm-dd-yyyy") {
+                if ($("#FromDate").val() !== "" && $("#FromDate").val() !== "undefined" && $("#ToDate").val() !== "" && $("#ToDate").val() !== "undefined") {
+                    var fromDate = $("#FromDate").val().split("-");
+                    var _Fromdate = fromDate[2] + "-" + fromDate[0] + "-" + fromDate[1];
+                    var toDate = $("#ToDate").val().split("-");
+                    var _toDate = toDate[2] + "-" + toDate[0] + "-" + toDate[1];
+                }
+                else {
+                    _Fromdate = "";
+                    _toDate = "";
+                }
+            }
+            else if ("@_isdateformat" == "yyyy-mm-dd") {
+                if ($("#FromDate").val() !== "" && $("#FromDate").val() !== "undefined" && $("#ToDate").val() !== "" && $("#ToDate").val() !== "undefined") {
+                    var fromDate = $("#FromDate").val().split("-");
+                    var _Fromdate = fromDate[0] + "-" + fromDate[1] + "-" + fromDate[2];
+                    var toDate = $("#ToDate").val().split("-");
+                    var _toDate = toDate[0] + "-" + toDate[1] + "-" + toDate[2];
+                }
+                else {
+                    _Fromdate = "";
+                    _toDate = "";
+                }
+            }
+            else if ("@_isdateformat" == "yyyy-M-dd") {
+                if ($("#FromDate").val() !== "" && $("#FromDate").val() !== "undefined" && $("#ToDate").val() !== "" && $("#ToDate").val() !== "undefined") {
+                    var fromDate = $("#FromDate").val().split("-");
+                    var getMonth = fromDate[1];
+                    var _Fromdate = fromDate[0] + "-" + (GetMonthNumber(getMonth).toString().length > 1 ? GetMonthNumber(getMonth) : "0" + GetMonthNumber(getMonth)) + "-" + fromDate[2];
+                    var toDate = $("#ToDate").val().split("-");
+                    var getMonth = toDate[1];
+                    var _toDate = toDate[0] + "-" + (GetMonthNumber(getMonth).toString().length > 1 ? GetMonthNumber(getMonth) : "0" + GetMonthNumber(getMonth)) + "-" + toDate[2];
+                }
+                else {
+                    _Fromdate = "";
+                    _toDate = "";
+                }
+            }
+            else if ("@_isdateformat" == "M-dd-yyyy") {
+                if ($("#FromDate").val() !== "" && $("#FromDate").val() !== "undefined" && $("#ToDate").val() !== "" && $("#ToDate").val() !== "undefined") {
+                    var fromDate = $("#FromDate").val().split("-");
+                    var getMonth = fromDate[0];
+                    var _Fromdate = fromDate[2] + "-" + (GetMonthNumber(getMonth).toString().length > 1 ? GetMonthNumber(getMonth) : "0" + GetMonthNumber(getMonth)) + "-" + fromDate[1];
+                    var toDate = $("#ToDate").val().split("-");
+                    var getMonth = toDate[0];
+                    var _toDate = toDate[2] + "-" + (GetMonthNumber(getMonth).toString().length > 1 ? GetMonthNumber(getMonth) : "0" + GetMonthNumber(getMonth)) + "-" + toDate[1];
+                }
+                else {
+                    _Fromdate = "";
+                    _toDate = "";
+                }
+            }
+            else if ("@_isdateformat" == "dd-M-yyyy") {
+                if ($("#FromDate").val() !== "" && $("#FromDate").val() !== "undefined" && $("#ToDate").val() !== "" && $("#ToDate").val() !== "undefined") {
+                    var fromDate = $("#FromDate").val().split("-");
+                    var getMonth = fromDate[1];
+                    var _Fromdate = fromDate[2] + "-" + (GetMonthNumber(getMonth).toString().length > 1 ? GetMonthNumber(getMonth) : "0" + GetMonthNumber(getMonth)) + "-" + fromDate[0];
+                    var toDate = $("#ToDate").val().split("-");
+                    var getMonth = toDate[1];
+                    var _toDate = toDate[2] + "-" + (GetMonthNumber(getMonth).toString().length > 1 ? GetMonthNumber(getMonth) : "0" + GetMonthNumber(getMonth)) + "-" + toDate[0];
+                }
+                else {
+                    _Fromdate = "";
+                    _toDate = "";
+                }
+            }
+            const data = {
+                shift: shift,
+                status: status,
+                fromDate: _Fromdate,
+                toDate: _toDate,
+                roleId: roleid,
+                companyId: cmpid,
+                branchId: branchid,
+                EmpId: empid
+            }
+            $.ajax({
+                url: webapiuri + "Transaction/ShiftAllocationApproveFilter",
+                type: 'POST',
+                headers: { 'Authorization': token },
+                data: JSON.stringify(data),
+                contentType: "application/json; charset=utf-8",
+                beforeSend: function (xhr) {
+                    $('#ajax_loader').show();
+                },
+                success: function (res) {                    
+                    if (!res || res.length === 0) {
+                        $("#shift-empty1").show();
+                        $("#shift-empty").hide();
+                        $("#tableResponsive").hide();
+                        $("#dataTables_tbl_header").hide();
+                    } else {
+                        $("#shift-empty1").hide();
+                        $("#shift-empty").hide();
+                        $("#tableResponsive").show();
+                        $("#dataTables_tbl_header").show();
+                        LoadDatatable(res);
+                        toggleColumnsByStatus(status);
+                        const wrapper = $(".filter_portlet_wrapper");
+                        wrapper.addClass("full-width");
+                    }                    
+                    $('#ajax_loader').hide();
+                },
+                error: function (xhr, status, error) {
+                    toastr.error("Error Occur in Filter.")
+                }
+            });
+        });
+
+        $(document).on("change", "#selectAll", function () {
+            var checked = $(this).is(":checked");
+            table.rows().every(function () {
+                $(this.node()).find(".rowCheckbox").prop("checked", checked);
+            });
+            if (checked) $("#appactionbtn").show();
+            else $("#appactionbtn").hide();
+        });
+        $(document).on("change", ".rowCheckbox", function () {
+            var anyChecked = $(".rowCheckbox:checked").length > 0;
+
+            if (anyChecked) {
+                $("#appactionbtn").show();
+            } else {
+                $("#appactionbtn").hide();
+            }
+        });
+
+        $("#clear_operation").click(function () {
+            $("#shiftId").val('0');
+            $("#shiftId").multiselect('refresh');
+            $("#shiftStatus").val(-1).trigger('change');
+            $("#FromDate").val("");
+            $("#ToDate").val("");
+        });
+
+        // Filter Add - JS and HTML Code =========>
+        $("#Filter_search").click(function () {
+            const wrapper = $(".filter_portlet_wrapper");
+            wrapper.toggleClass("full-width");
+
+            var screenWidth = $(window).width();
+            if (screenWidth >= 300 && screenWidth <= 600) {
+                $('.filter_portlet_tbl').toggle();
+                $('.filter_portlet_wrapper .filter_boxModal').css('width', '100%');
+            }
+        });
+
+        // Close filter panel on close button click
+        $(".filterclose_btn").click(function () {
+            const wrapper = $(".filter_portlet_wrapper");
+            wrapper.addClass("full-width");
+
+            var screenWidth = $(window).width();
+            if (screenWidth >= 300 && screenWidth <= 600) {
+                $(".filter_portlet_tbl").css("display", "block");
+            }
+        });
+
+        $('#tblShiftAllocationApprove').on('click', '#selectAll', function () {
+            var checked = $(this).is(':checked');
+            $('#tblShiftAllocationApprove tbody input.rowCheckbox').prop('checked', checked);
+        });
+
+        $('#tblShiftAllocationApprove tbody').on('change', '.rowCheckbox', function () {
+            var allChecked = $('#tblShiftAllocationApprove tbody input.rowCheckbox').length ===
+                $('#tblShiftAllocationApprove tbody input.rowCheckbox:checked').length;
+            $('#selectAll').prop('checked', allChecked);
+        });
+        //table.on('draw', function () {
+        //    var allChecked = $('#tblShiftAllocationApprove tbody input.rowCheckbox').length ===
+        //        $('#tblShiftAllocationApprove tbody input.rowCheckbox:checked').length;
+        //    $('#selectAll').prop('checked', allChecked);
+        //});
+    });
+
+    function LoadDatatable(data) {
+        $("#dataTables_tbl_header").remove();
+         table = $("#tblShiftAllocationApprove").DataTable({
+            dom: _domCommon,
+            language: _languageCommon,            
+            deferRender: true,
+            data: data,
+            destroy: true,
+            columns: [
+                {
+                    title: '<input type="checkbox" id="selectAll"> All',
+                    data: null,
+                    orderable: false,
+                    render: function (data, type, row, meta) {
+                        return `<input type="checkbox" class="rowCheckbox" value="${row.approveId}">`;
+                    }
+                },
+                { title: "approveId", data: "approveId", visible: false },
+                { title: "EmpId", data: "EmpId", visible: false },
+                { title: "Employee code", data: "Empcode" },
+                { title: "Emp Name", data: "EmpName" },
+                { title: "ShiftCode", data: "ShiftCode", visible: false },
+                { title: "Shift Name", data: "ShiftName" },
+                { title: "Shift Date", data: "Shift Date" },
+                { title: "flag", data: "flag", visible: false },
+                {
+                    title: "Action",
+                    data: null,
+                    orderable:false,
+                    render: function (data, type, row, meta) {
+                        if (row.flag === 0) {
+                            return `
+                            <a class="btn green_btnnew approve tooltips" data-placement="top" title="Approve"><i class="fa-solid fa-check"></i></a>
+                            <a class="btn red_btnnew cancel tooltips" data-placement="top" title="Reject"><i class="fa-solid fa-xmark"></i></a>`;
+                        }else {
+                            return ""; 
+                        }
+                    }
+                }
+            ],
+            initComplete: function () {
+                const visibleTable = $('table:visible').attr('id');
+                $("#buttons").append(`
+                    <div id="export-button" class="export-button tooltips" data-placement="bottom" data-original-title="Download" data-table-id="${visibleTable}">
+                        <img src="../Newlayout/images/download_icon.svg" alt="Download icon">
+                    </div>
+                `);
+            },
+            drawCallback: function () {
+               $('.tooltips').tooltip();
+            }
+         });
+        var selectedRows = {};
+        $('#tblShiftAllocationApprove tbody').off('change', '.rowCheckbox').on('change', '.rowCheckbox', function () {
+            var rowId = $(this).val();
+            if ($(this).is(':checked')) {
+                selectedRows[rowId] = true;
+            } else {
+                delete selectedRows[rowId];
+            }
+            var allChecked = data.length === Object.keys(selectedRows).length;
+            $('#selectAll').prop('checked', allChecked);
+        });
+
+        $('#tblShiftAllocationApprove').off('click', '#selectAll').on('click', '#selectAll', function () {
+            var checked = $(this).is(':checked');
+            if (checked) {
+                data.forEach(r => selectedRows[r.approveId] = true);
+            } else {
+                selectedRows = {};
+            }
+            $('#tblShiftAllocationApprove tbody input.rowCheckbox').prop('checked', checked);
+        });
+
+        table.on('draw', function () {
+            $('#tblShiftAllocationApprove tbody input.rowCheckbox').each(function () {
+                var rowId = $(this).val();
+                $(this).prop('checked', !!selectedRows[rowId]);
+            });
+        });
+        setTimeout(function () {
+            $("#" + "tblShiftAllocationApprove" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+            $('.tooltips').tooltip();
+        }, 100);
+    }
+    function ApproveOrCancelShift(flag) {
+        debugger
+        let isSelectAll = $("#selectAll").is(":checked");
+        let approveIds = [];
+
+        if (isSelectAll) {
+            var data = {
+                All: 1,
+                Flag: flag,
+                approveIds: 0,
+                roleId: roleid,
+                companyId: cmpid,
+                branchId: branchid,
+            };
+
+            updateShiftAllocation(data);
+        } else {
+            $("#tblShiftAllocationApprove .rowCheckbox:checked").each(function () {
+                let approveId = $(this).val();
+                approveIds.push(approveId);
+            });
+
+            if (approveIds.length === 0) {
+                alert("Please select at least one record.");
+                return;
+            }
+
+            var data = {
+                All: 0,
+                Flag: flag,
+                approveIds: approveIds,
+                roleId: roleid,
+                companyId: cmpid,
+                branchId: branchid,
+            };
+            updateShiftAllocation(data);
+        }
+    }
+    function updateShiftAllocation(data) {
+        $.ajax({
+            url: webapiuri + "Transaction/UpdateShiftAllocationApprove",
+            type: 'POST',
+            headers: { 'Authorization': token },
+            data: JSON.stringify(data),
+            contentType: "application/json; charset=utf-8",
+            success: function (res) {
+                if (data.Flag == 0) {
+                    toastr.remove();
+                    toastr.success("Shift Allocation Approve Succesfully.");
+                } else {
+                    toastr.remove();
+                    toastr.success("Shift Allocation Reject Succesfully.");
+                }
+                setTimeout(function () {
+                    window.location.href = window.location.href;
+                }, 1000);
+            },
+            error: function (xhr, status, error) {
+                toastr.error("Error Occur in Shift Allocation Approve or Reject");
+            }
+        });
+    }
+    function toggleColumnsByStatus(status) {
+        if (!table) return;
+        if (status === "0") {
+            table.column(0).visible(true);
+            table.column(9).visible(true);
+        } else {
+            table.column(0).visible(false);
+            table.column(9).visible(false);
+        }
+    }
+    function fillShift() {
+        $("#shiftId").empty();
+        $.ajax({
+            type: "GET",
+            url: webapiuri + 'Master/ShiftMasterGetAll',
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            headers: {
+                'Authorization': token
+            },
+            success: function (data) {
+                var markup = '';
+                data.sort(function (a, b) {
+                    return a.ShiftName.localeCompare(b.ShiftName);
+                });
+
+                for (var x = 0; x < data.length; x++) {
+                    markup += '<option value="' + data[x].ShiftId + '">' +
+                        data[x].ShiftName +
+                        '</option>';
+                }
+                $('#shiftId').append(markup);
+                $('#shiftId').multiselect('rebuild');
+            },
+            error: function (jqXHR) {
+                console.error("Error loading shifts", jqXHR);
+            }
+        });
+    }
+</script>
+<!-- Page Bar : Begin -->
+<div class="page-bar">
+    <ul class="page-breadcrumb">
+        <li>
+            <a href="/Admin/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+        </li>
+        <li>
+            <span><i class="fa-light fa-angle-right"></i> Shift Allocation Approve</span>
+        </li>
+    </ul>
+    <div class="page-toolbar">
+        <div class="text-right">
+            <a href="javascript:;" class="btn icon_transparent_btn tooltips" id="Filter_search" data-placement="left" data-original-title="Filter" data-toggle="tooltip"><i class="fa-light fa-filter" aria-hidden="true"></i> </a>
+        </div>
+    </div>
+</div>
+<!-- Page Bar : End -->
+<!-- Ajax Loader : Begin -->
+<div id='ajax_loader' class="modal_bg loading" aria-hidden="true">
+    <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" />
+</div>
+<!-- Ajax Loader : End -->
+
+
+<div class="filter_portlet_wrapper full-width">
+    <!-- Datatable Block : Begin -->
+    <div class="portlet filter_portlet_tbl">
+        <div class="portlet-body">
+            <div class="appoval_actionbtn" id="appactionbtn" style="display:none">
+                <button type="button" id="btnactive" class="btn icon_btn tooltips" data-placement="top" data-original-title="Approve"><i class="fa-solid fa-check"></i></button>
+                <button type="button" id="btnDeactive" class="btn clear_btn margin-left-5 tooltips" data-placement="top" data-original-title="Reject"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="table-responsive" id="tableResponsive">
+                <table class="new_datatbl table table-striped table-bordered table-hover table-checkable order-column" id="tblShiftAllocationApprove">
+                    <thead></thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+            <div id="shift-empty" style="display: none">
+                <div class="datanotfound">
+                    <img src="~/assets/images/emptyscreen_1.png" width="280" height="148" alt="Nodata Found Icon">
+                    <p class="datanotfound_title">No records Found.</p>
+                    <p class="">No entries found. Please add a record to get started.</p>
+                </div>
+            </div>
+            <div id="shift-empty1" style="display: none">
+                <div class="datanotfound">
+                    <img src="~/assets/images/emptyscreen_3.png" width="280" height="148" alt="Nodata Found Icon">
+                    <p class="datanotfound_title">No records Found.</p>
+                    <p class="">No matching records found for the selected filters.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Datatable Block : End -->
+    <!-- Filter Block : Begin -->
+    <div class="portlet filter_boxModal">
+        <div class="filterbox_header">
+            <div class="d-flex align-items-center justify-content-between">
+                <h4 class="filter-title">Filters</h4>
+                <button type="button" class="filterclose_btn"><i class="fa-light fa-xmark"></i></button>
+            </div>
+        </div>
+        <div class="filterbox_body">
+            <div class="col-lg-12">
+                <div class="form-group">
+                    <label>Shift<span class="required" aria-required="true">*</span></label>
+                    <select id="shiftId" class="mt-multiselect btn blue btn-outline" multiple="multiple" data-width="100%">
+                    </select>
+                </div>
+            </div>
+            <div class="col-lg-12">
+                <div class="form-group">
+                    <label>Status<span class="required" aria-required="true">*</span></label>
+                    <select class="form-control input-sm select2" id="shiftStatus">
+                        <option value="-1">All</option>
+                        <option value="1">Approve</option>
+                        <option value="0">Pending</option>
+                        <option value="2">Reject</option>
+                    </select>
+                </div>
+            </div>
+            <div class="col-lg-12">
+                <div class="form-group data_picker_box">
+                    <label class="control-label">From Date<span class="required" aria-required="true">*</span></label>
+                    <div class="input-group input-group-sm date date-picker" id="" data-date="@DateTime.Now" data-date-format="@_isdateformat" data-date-viewmode="years">
+                        <span class="input-group-btn">
+                            <button class="btn default" type="button">
+                                <i class="fa-light fa-calendar-days"></i>
+                            </button>
+                        </span>
+                        <input type="text" class="form-control" id="FromDate" data-date-format="@_isdateformat" placeholder="@_isdateformat.Replace("M","MMM")" autocomplete="off">
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-12">
+                <div class="form-group data_picker_box">
+                    <label class="control-label">To Date<span class="required" aria-required="true">*</span></label>
+                    <div class="input-group input-group-sm date date-picker" id="" data-date="@DateTime.Now" data-date-format="@_isdateformat" data-date-viewmode="years">
+                        <span class="input-group-btn">
+                            <button class="btn default" type="button">
+                                <i class="fa-light fa-calendar-days"></i>
+                            </button>
+                        </span>
+                        <input type="text" class="form-control" id="ToDate" data-date-format="@_isdateformat" placeholder="@_isdateformat.Replace("M","MMM")" autocomplete="off">
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="filterbox_footer">
+            <div class="text-right">
+                <button type="submit" id="clear_operation" class="clear_btn tooltips" data-placement="top" data-original-title="Clear Filters"><i class="fa-regular fa-eraser"></i></button>
+                <button type="submit" id="Search_operation" class="icon_btn margin-left-5 tooltips" data-placement="top" data-original-title="Search Filters"><i class="fa-solid fa-magnifying-glass"></i></button>
+            </div>
+        </div>
+    </div>
+    <!-- Filter Block : End -->
+</div>

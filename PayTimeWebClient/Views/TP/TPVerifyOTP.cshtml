@@ -1,0 +1,205 @@
+﻿@using System.Configuration;
+@{
+    ViewBag.Title = "TPVerifyOTP";
+    Layout = "";    
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    string _weburl = ConfigurationManager.AppSettings["weburlminop"].ToString();
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+}
+<head>
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta content="width=device-width, initial-scale=1" name="viewport" />
+</head>
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="~/AssetsNew/plugins/toastr/toastr.js"></script>
+<link href="~/Content/toastr.min.css" rel="stylesheet" />
+<style>
+    .otp-container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 80vh;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    .otp-card {
+        background: white;
+        padding: 40px;
+        border-radius: 8px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        text-align: center;
+        width: 100%;
+        max-width: 400px;
+    }
+
+        .otp-card h3 {
+            color: #275097;
+            margin-bottom: 10px;
+        }
+
+        .otp-card p {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 25px;
+        }
+
+    .input-group {
+        margin-bottom: 20px;
+    }
+
+    #otpInput {
+        width: 100%;
+        padding: 12px;
+        font-size: 18px;
+        text-align: center;
+        letter-spacing: 4px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        box-sizing: border-box;
+    }
+
+    .btn-primary {
+        background-color: #275097;
+        color: white;
+        border: none;
+        padding: 12px 20px;
+        width: 100%;
+        border-radius: 4px;
+        font-weight: bold;
+        cursor: pointer;
+    }
+
+        .btn-primary:hover {
+            background-color: #1e3f7a;
+        }
+
+    .timer-section {
+        margin-top: 20px;
+        font-size: 13px;
+    }
+
+    .btn-link {
+        background: none;
+        border: none;
+        color: #275097;
+        cursor: pointer;
+        text-decoration: underline;
+        display: none;
+        margin: 0 auto;
+    }
+
+        .btn-link:disabled {
+            color: #ccc;
+            cursor: not-allowed;
+        }
+
+    #timer {
+        font-weight: bold;
+        color: #d9534f;
+    }
+</style>
+<script>
+    const token = '@_tokan';
+    const webapiurl = '@_webapiurl';
+    const weburl = '@_weburl';
+    let timerInterval;
+    const email = "@ViewBag.TraineeEmail";
+    const flag = "@ViewBag.FormFlag";
+   // const email="abc@yopmail.com"
+    $(document).ready(function () {
+        SendOTPEmai(email);
+        $("#btnResend").click(function () {
+            SendOTPEmai(email);
+        })
+    });
+    function SendOTPEmai(email){
+        $.ajax({
+            url: webapiurl + "TPOnboarding/SendOtp?email=" +encodeURIComponent(email),
+            type: 'POST',
+            headers: {
+                'Authorization': token
+            },
+            success: function (res) {
+                startTimer();
+            },
+            error: function () {
+                console.log("Error in sending OTP email.")
+            }
+        });
+    }
+    function submitOtp() {
+        const otp = document.getElementById("otpInput").value;
+        $.ajax({
+            url: webapiurl + "TPOnboarding/VerifyOtp",
+            type: 'POST',
+            headers: {
+                'Authorization': token
+            },
+            data: JSON.stringify({ Email: email, Otp: otp, Flag: flag }),
+            contentType: 'application/json',
+            success: function (res) {
+                if (res.success) {
+                    if (res.applicationId && res.applicationId !== "0") {
+                        sessionStorage.setItem("currentAppId", res.applicationId);
+                    }
+                    if (flag == 1) {
+                        window.location.href = weburl + "TP/TpApplicationForm";
+                    }
+                    else if (flag == 2) {
+                        window.location.href = weburl + "TP/TPmedicalform";
+                    } else if (flag == 3) {
+                        window.location.href = weburl + "TP/TPonboardingForm";
+                    } else if (flag == 5) {
+                        window.location.href = weburl + "TP/TpApplicationForm";
+                    } 
+                    else {
+                        window.location.href = weburl + "TP/TpDownloadDocument";
+                    }
+                }
+                else {
+                    toastr.error("OTP does not match. Please try again.");
+                }
+            },
+            error: function () {
+                toastr.error("OTP does not match. Please try again.");
+            }
+        });
+    }
+    function startTimer() {
+        clearInterval(timerInterval);
+        timeLeft = 300;
+        $('#btnResend').hide();
+        $('#timerText').show();
+
+        timerInterval = setInterval(function () {
+            timeLeft--;
+            let mins = Math.floor(timeLeft / 60);
+            let secs = timeLeft % 60;
+
+            $('#timer').text(`${mins}:${secs < 10 ? '0' : ''}${secs}`);
+
+            if (timeLeft <= 0) {
+                clearInterval(timerInterval);
+                $('#timerText').hide();
+                $('#btnResend').show().prop('disabled', false);
+            }
+        }, 1000);
+    }
+</script>
+
+
+<div class="otp-container">
+    <div class="otp-card">
+        <p>A 6-digit code has been sent to your email ID. Please enter it.<strong><span id="userEmail"></span></strong></p>        
+        <div class="input-group">
+            <input type="text" id="otpInput" maxlength="6" placeholder="Enter 6-digit OTP" autocomplete="off">
+        </div>
+
+        <button id="btnVerify" onclick="submitOtp()" class="btn-primary">Verify & Proceed</button>
+
+        <div class="timer-section">
+            <span id="timerText">Resend OTP in <span id="timer"></span></span>
+            <button id="btnResend" class="btn-link" disabled>Resend Code</button>
+        </div>
+    </div>
+</div>

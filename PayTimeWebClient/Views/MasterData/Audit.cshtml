@@ -1,0 +1,1280 @@
+﻿@using System.Configuration;
+@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@{
+    ViewBag.Title = "Audit Log Details";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    //string _Message = ViewBag.msg;
+    //string _error = ViewBag.error;
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    string _companyCode = HttpContext.Current.Session["cmpcode"].ToString();
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+    string _isdateformat = HttpContext.Current.Session["IsDateFormat"].ToString();
+    string _dbName = HttpContext.Current.Session["DbName"].ToString();
+    string _userEmail = HttpContext.Current.Session["UserEmail"].ToString();
+
+    string isClientDBMatchFlag = HttpContext.Current.Session["IsClientDBMatch"] != null
+? HttpContext.Current.Session["IsClientDBMatch"].ToString()
+: "false"; // Default to "false" if the session is null
+}
+<script src="~/Scripts/timeme.js"></script>
+<script src="~/Scripts/Helpers/noDataHandler.js"></script>
+<script src="~/AssetsNew/js/CommonValidation.js"></script>
+<style>
+    .search_operation_btn {
+        border: 1px solid #2291c8;
+        background-color: #2291c8;
+        color: white;
+        border-radius: 3px;
+        display: inline-block;
+        font-weight: 400;
+        text-align: center;
+        vertical-align: middle;
+        padding: 5px;
+        margin: 20px 0px 0px 0px;
+    }
+
+    #hideDiv {
+        display: none;
+    }
+</style>
+
+<script type="text/javascript">
+    var isdateformat = '@_isdateformat';
+    var UserEmail = '@_userEmail';
+
+    $(document).ready(function () {
+        $("#filtersaction").show();
+        $('#FromDate').datepicker({
+            format: "@_isdateformat",
+            autoclose: true
+        });
+        $('#ToDate').datepicker({
+            format: "@_isdateformat",
+            autoclose: true
+
+        });
+        frmclear();
+        $("#Clear_OPration").click(function () {
+            frmclear();
+            $("#NotificationGrid-empty").hide();
+            $("#tableResponsive").hide();
+            $("#NotificationGrid-empty1").show();
+        });
+        $("#hideDiv").css("display", "block");
+        if ($('#Select_Operation').val() == 0) {
+            $("#tableResponsive").hide();
+            $("#NotificationGrid-empty").show();
+        }
+        $("#Search_OPration").click(function (event) {
+            $("#FromDate").removeClass('field_error');
+            $("#ToDate").removeClass('field_error');
+            if ($("#FromDate").val() == "") {
+                $("#FromDate").addClass('field_error');
+                $("#FromDate").focus();
+                event.preventDefault();
+                return false;
+            }
+            else {
+                $("#FromDate").removeClass('field_error');
+            }
+            if ($("#ToDate").val() == "") {
+                $("#ToDate").focus();
+                $("#ToDate").addClass('field_error');
+                event.preventDefault();
+                return false;
+            }
+            else {
+                $("#ToDate").removeClass('field_error');
+            }
+            if ("@_isdateformat" == "dd-mm-yyyy")
+            {
+                var fromDate = $("#FromDate").val().split("-");
+                var datefrom = new Date(fromDate[2], fromDate[1] - 1, fromDate[0]);
+            }
+            else {
+                var datefrom = new Date($('#FromDate').val());
+            }
+            if ("@_isdateformat" == "dd-mm-yyyy")
+            {
+                var toDate = $("#ToDate").val().split("-");
+                var todate = new Date(toDate[2], toDate[1] - 1, toDate[0]);
+            }
+            else {
+                var todate = new Date($('#ToDate').val());
+            }
+            if (datefrom > todate) {
+                toastr.remove();
+                toastr.error("To date should be greater than from date.");
+                return false;
+            }
+            $("#dataTables_tbl_header").remove();
+            var screenWidth = $(window).width();
+            if (screenWidth >= 300 && screenWidth <= 600) {
+                $(".filter_portlet_tbl").show();
+            }
+            const wrapper = $(".filter_portlet_wrapper");
+            wrapper.addClass("full-width");
+            if ($('#Select_Operation').val() == 1) {
+                employee(1, 1);
+            }
+            if ($('#Select_Operation').val() == 2) {
+                device(1, 2);
+            }
+            if ($('#Select_Operation').val() == 3) {
+                shift(1, 3);
+            }
+            if ($('#Select_Operation').val() == 4) {
+                Policy(1, 4);
+            }
+            if ($('#Select_Operation').val() == 5) {
+                Attendance(1, 5);
+            }
+            if ($('#Select_Operation').val() == 6) {
+                Branch(1, 6);
+            }
+            
+        });
+        $('#Select_Operation').on('change', function () {
+            $("#tableResponsive").show();
+            if ($.fn.DataTable.isDataTable('#tblshift')) {
+                $('#tblshift').DataTable().clear().destroy();
+                $("#dataTables_tbl_header").remove();
+
+            }
+
+            if ($.fn.DataTable.isDataTable('#tblAuditpolicy')) {
+                $('#tblAuditpolicy').DataTable().clear().destroy();
+                $("#dataTables_tbl_header").remove();
+
+            }
+
+            if ($.fn.DataTable.isDataTable('#tblbranch')) {
+                $('#tblbranch').DataTable().clear().destroy();
+                $("#dataTables_tbl_header").remove();
+            }
+            $("#divemployee").css("display", "none");
+            $("#divdevice").css("display", "none");
+            $("#divshift").css("display", "none");
+            $("#divpolicy").css("display", "none");
+            $("#divattendance").css("display", "none");
+            $("#divbranch").css("display", "none");
+            if (this.value == "0") {
+                $("#Select_Fromdt").hide();
+                $("#Select_Todt").hide();
+                $("#Search_OPration").hide();
+                $("#FromDate").val('');
+                $("#ToDate").val('');
+                $("#Search_OPtion").hide();
+                $("#NotificationGrid-empty").show();
+                $("#tableResponsive").hide();
+                $("#Clear_OPration").hide();
+            }
+            else if (this.value == 1 || this.value == "2" || this.value == "3" || this.value == "4" || this.value == "5" || this.value == "6") {
+                $("#Select_Fromdt").show();
+                $("#Select_Todt").show();
+                $("#Search_OPration").show();
+                $("#Clear_OPration").show();
+                $("#FromDate").val('');
+                $("#ToDate").val('');
+                $("#Search_OPtion").show();
+                $("#FromDate").removeClass('field_error');
+                $("#ToDate").removeClass('field_error');
+            }
+
+            $("#FromDate").datepicker('setEndDate', new Date());
+            $("#ToDate").datepicker('setEndDate', new Date());
+            if (this.value == "1") {
+                employee(0, 1);
+                $("#divemployee").css("display", "block");
+            }
+            else {
+                $("#divemployee").css("display", "none");
+            }
+            if (this.value == "2") {
+                device(0, 2);
+                $("#divdevice").css("display", "block");
+            }
+            else {
+                $("#divdevice").css("display", "none");
+            }
+            if (this.value == "3") {
+                shift(0, 3);
+                $("#divshift").css("display", "block");
+                $("#NotificationGrid-empty1").hide();
+            }
+            else {
+                $("#divshift").css("display", "none");
+            }
+            if (this.value == "4") {
+                Policy(0, 4);
+                $("#divpolicy").css("display", "block");
+                $("#NotificationGrid-empty1").hide();
+            }
+            else {
+                $("#divpolicy").css("display", "none");
+            }
+            if (this.value == "5") {
+                Attendance(0, 5);
+                $("#divattendance").css("display", "block");
+            }
+            else {
+                $("#divattendance").css("display", "none");
+            }
+            if (this.value == "6") {
+                Branch(0, 6);
+                $("#divbranch").css("display", "block");
+                $("#NotificationGrid-empty1").hide();
+            }
+            else {
+                $("#divbranch").css("display", "none");
+            }
+
+        });
+        //$("#filter_open_div").show();
+        //$("#Filter_search").click(function () {
+        //    $("#filter_open_div").toggle();
+        //});
+
+        $("#Filter_search").click(function () {
+            const wrapper = $(".filter_portlet_wrapper");
+            wrapper.toggleClass("full-width");
+
+            var screenWidth = $(window).width();
+            if (screenWidth >= 300 && screenWidth <= 600) {
+                $('.filter_portlet_tbl').toggle();
+                $('.filter_portlet_wrapper .filter_boxModal').css('width', '100%');
+            }
+        });
+
+        // Close filter panel on close button click
+        $(".filterclose_btn").click(function () {
+            const wrapper = $(".filter_portlet_wrapper");
+            wrapper.addClass("full-width");
+
+            var screenWidth = $(window).width();
+            if (screenWidth >= 300 && screenWidth <= 600) {
+                $(".filter_portlet_tbl").css("display", "block");
+            }
+        });
+
+        $("#Select_Operation").change(function () {
+            const selectedValue = $(this).val()
+
+            if (selectedValue == 3 || selectedValue == 4 || selectedValue == 6) {
+                $("#tableResponsive").show();
+                $("#hideDiv").show();
+                $("#NotificationGrid-empty").hide();
+            }
+        });
+
+    });
+
+    function previewclass(id) {
+        window.open('/PayTime/SamplePolicyAuditdata?id=' + id + ' ', ' _blank');
+    }
+    function employee(Type, tblid) {
+        var fdate = new Date($('#FromDate').val());
+        var fday = fdate.getDate();
+        if (fday <= 9) {
+            fday = "0" + fday;
+        }
+        var fmonth = fdate.getMonth() + 1;
+        if (fmonth <= 9) {
+            fmonth = "0" + fmonth;
+        }
+        var fyear = fdate.getFullYear();
+        var fDate = fyear + "-" + fmonth + "-" + fday;
+
+        var tDate = new Date($("#ToDate ").val());
+        var tday;
+        var tmonth;
+        var tyear;
+        var ttdate = new Date(tDate);
+        tday = ttdate.getDate();
+        if (tday <= 9) {
+            tday = "0" + tday;
+        }
+        tmonth = ttdate.getMonth() + 1;
+        if (tmonth <= 9) {
+            tmonth = "0" + tmonth;
+        }
+        tyear = ttdate.getFullYear();
+        tDate = tyear + "-" + tmonth + "-" + tday;
+        var obj = {
+            Type: Type,
+            tblid: tblid,
+            FromDate: fDate,
+            ToDate: tDate,
+            UserEmail: UserEmail
+        };
+        var employee = $('#tblemployee').DataTable({
+            "destroy": true,
+            "processing": true,
+            "ajax":
+            {
+                type: "POST",
+                url: "/MasterData/GetEmployeeAuditData?Type=" + Type + "&tblid=" + tblid + "&FromDate='" + fDate + "'&ToDate=" + tDate + "'&UserEmail=" + UserEmail,
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                async: false,
+                dataSrc: "",
+                beforeSend: function () {
+                    $("#ajax_loader_audit").show();
+                },
+                complete: function () {
+                    $('#ajax_loader_audit').hide(); // Hide loader after request completes
+                }
+            },
+            dom: 'lBfrtip',
+            buttons: [
+                {
+                    extend: 'excelHtml5',
+                    text: 'Excel',
+                    titleAttr: 'Excel',
+                    exportOptions: {
+                        columns: [0, 1, 2, 3, 4, 5, 6, 7]
+                    },
+                }
+            ],
+            "columns": [
+                { "data": "EmpName" },
+                { "data": "Empcode" },
+                { "data": "EmpPunchID" },
+                { "data": "BranchName" },
+                { "data": "UserEmail" },
+                { "data": "status" },
+                { "data": "ModifyBy" },
+                { "data": "ModifyDate" }
+            ]
+        });
+    }
+    function device(Type, tblid) {
+        var fdate = new Date($('#FromDate').val());
+        var fday = fdate.getDate();
+        if (fday <= 9) {
+            fday = "0" + fday;
+        }
+        var fmonth = fdate.getMonth() + 1;
+        if (fmonth <= 9) {
+            fmonth = "0" + fmonth;
+        }
+        var fyear = fdate.getFullYear();
+        var fDate = fyear + "-" + fmonth + "-" + fday;
+
+        var tDate = new Date($("#ToDate ").val());
+        var tday;
+        var tmonth;
+        var tyear;
+        var ttdate = new Date(tDate);
+        tday = ttdate.getDate();
+        if (tday <= 9) {
+            tday = "0" + tday;
+        }
+        tmonth = ttdate.getMonth() + 1;
+        if (tmonth <= 9) {
+            tmonth = "0" + tmonth;
+        }
+        tyear = ttdate.getFullYear();
+        tDate = tyear + "-" + tmonth + "-" + tday;
+        var obj = {
+            Type: Type,
+            tblid: tblid,
+            FromDate: fDate,
+            ToDate: tDate
+        };
+        var device = $('#tbldevice').DataTable({
+            "destroy": true,
+            "processing": true,
+            "ajax":
+            {
+                type: "POST",
+                url: "/MasterData/GetAuditDeviceData?Type=" + Type + "&tblid=" + tblid + "&FromDate='" + fDate + "'&ToDate=" + tDate + "'&UserEmail=" + UserEmail,
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                async: false,
+                dataSrc: "",
+                beforeSend: function () {
+                    $("#ajax_loader_audit").show();
+                },
+                complete: function () {
+                    $('#ajax_loader_audit').hide(); // Hide loader after request completes
+                }
+            },
+            dom: 'lBfrtip',
+            buttons: [
+                {
+                    extend: 'excelHtml5',
+                    text: 'Excel',
+                    titleAttr: 'Excel',
+                    exportOptions: {
+                        columns: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+                    },
+                }
+            ],
+            "columns": [
+                { "data": "BranchName" },
+                { "data": "DeviceName" },
+                { "data": "DeviceSrNo" },
+                { "data": "DeviceCode" },
+                { "data": "DeviceIP" },
+                { "data": "DeviceMode" },
+                { "data": "DeviceType" },
+                { "data": "DeviceStatus" },
+                { "data": "LastActivity" },
+                { "data": "ModifyBy" },
+                { "data": "ModifyDate" }
+            ]
+        });
+    }
+    function shift(Type, tblid) {
+        //to get the dynamic date format
+        if ("@_isdateformat" == "dd-mm-yyyy") {
+            var fromDate = $("#FromDate").val().split("-");
+            var fdate = new Date(fromDate[2], fromDate[1] - 1, fromDate[0]);
+        }
+        else {
+            var fdate =new Date($('#FromDate').val());
+        }
+        var fday = fdate.getDate();
+        if (fday <= 9) {
+            fday = "0" + fday;
+        }
+        var fmonth = fdate.getMonth() + 1;
+        if (fmonth <= 9) {
+            fmonth = "0" + fmonth;
+        }
+        var fyear = fdate.getFullYear();
+        var fDate = fyear + "-" + fmonth + "-" + fday;
+        if ("@_isdateformat" == "dd-mm-yyyy") {
+            var toDate = $("#ToDate").val().split("-");
+            var tDate = new Date(toDate[2], toDate[1] - 1, toDate[0]);
+        }
+        else {
+            var tDate = new Date($('#ToDate').val());
+        }
+        //var tDate = new Date($("#ToDate ").val());
+        var tday;
+        var tmonth;
+        var tyear;
+        var ttdate = new Date(tDate);
+        tday = ttdate.getDate();
+        if (tday <= 9) {
+            tday = "0" + tday;
+        }
+        tmonth = ttdate.getMonth() + 1;
+        if (tmonth <= 9) {
+            tmonth = "0" + tmonth;
+        }
+        tyear = ttdate.getFullYear();
+        tDate = tyear + "-" + tmonth + "-" + tday;
+        var obj = {
+            Type: Type,
+            tblid: tblid,
+            FromDate: fDate,
+            ToDate: tDate
+        };
+        var shift = $('#tblshift').DataTable({
+            "destroy": true,
+            "processing": true,
+            "ajax":
+            {
+                type: "POST",
+                url: "/MasterData/GetShiftAuditData?Type=" + Type + "&tblid=" + tblid + "&FromDate=" + fDate + "&ToDate=" + tDate + "'&UserEmail=" + UserEmail,
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                async: false,
+                dataSrc: "",
+                beforeSend: function () {
+                    $("#ajax_loader_audit").show();
+                },
+                complete: function () {
+                    $('#ajax_loader_audit').hide(); // Hide loader after request completes
+                }
+            },
+            //dom: 'lBfrtip',
+            dom: _domCommon,
+            language: _languageCommon,
+            buttons: [
+                {
+                    extend: 'excelHtml5',
+                    text: 'Excel',
+                    titleAttr: 'Excel',
+                    exportOptions: {
+                        columns: [0, 1, 2, 3, 4, 5, 6, 7, 8]
+                    },
+                }
+            ],
+            "columns": [
+                { "data": "Shiftname" },
+                { "data": "ShiftShortName" },
+                { "data": "StartTime" },
+                { "data": "Endtime" },
+                { "data": "MinHrsHalfDay" },
+                { "data": "MinHrsFullDay" },
+                { "data": "RecessDur" },
+                { "data": "ModifyBy" },
+                {
+                    "data": "ModifyDate",
+                    "render": function (data) {
+                        if ("@_isdateformat" == "dd-mm-yyyy") {
+                            var date = new Date(data);
+                            var month = date.getMonth() + 1;
+                            if (month < 10) {
+                                month = '0' + month;
+                            }
+                            var day = date.getDate();
+                            return (day > 9 ? day : "0" + day) + "-" + month + "-" + date.getFullYear() + " " + (date.getHours() > 10 ? date.getHours() : "0" + date.getHours()) + ":" + (date.getMinutes() > 10 ? date.getMinutes() : "0" + date.getMinutes()) + ":" + (date.getSeconds() > 10 ? date.getSeconds() : "0" + date.getSeconds());
+                        }
+                        else if ("@_isdateformat" == "mm-dd-yyyy") {
+                            var date = new Date(data);
+                            var month = date.getMonth() + 1;
+                            if (month < 10) {
+                                month = '0' + month;
+                            }
+                            var day = date.getDate();
+                            return month + "-" + (day > 9 ? day : "0" + day) + "-" + date.getFullYear() + " " + (date.getHours() > 10 ? date.getHours() : "0" + date.getHours()) + ":" + (date.getMinutes() > 10 ? date.getMinutes() : "0" + date.getMinutes()) + ":" + (date.getSeconds() > 10 ? date.getSeconds() : "0" + date.getSeconds());
+                        }
+                        else if ("@_isdateformat" == "yyyy-mm-dd") {
+                            var date = new Date(data);
+                            var month = date.getMonth() + 1;
+                            if (month < 10) {
+                                month = '0' + month;
+                            }
+                            var day = date.getDate();
+                            return date.getFullYear() + "-" + month + "-" + (day > 9 ? day : "0" + day) + " " + (date.getHours() > 10 ? date.getHours() : "0" + date.getHours()) + ":" + (date.getMinutes() > 10 ? date.getMinutes() : "0" + date.getMinutes()) + ":" + (date.getSeconds() > 10 ? date.getSeconds() : "0" + date.getSeconds());
+                        }
+                        var Responce = getDateformatSelectedmonth("@_isdateformat", data);
+                        return Responce;
+                    }
+                }
+            ],
+            "columnDefs": [
+                {
+                    "targets": 7,
+                    render: function (data, type, full, meta) {
+                        if (type === 'display' && data != null && data.trim() !== '') {
+                            return obfuscateEmail(data);
+                        }
+                        return data;
+                    }
+                },
+            ],
+            initComplete: function (json) {
+                if (json.json.length == 0) {
+                    const wrapper = $(".filter_portlet_wrapper");
+                    wrapper.removeClass("full-width");
+                }
+                if (json != null) {
+                    const list = json.json;
+                    handleGridVisibility("tblempty", "NotificationGrid-empty", list, {
+                        imageUrl: "emptyscreen_3.png",
+                        subText: "  No matching records found for the selected filters."
+                    });
+                }
+                const visibleTable = $('table:visible').attr('id');
+                $("#buttons").append(`
+                    <div id="export-button" class="export-button tooltips" data-placement="bottom" data-original-title="Download" data-table-id="${visibleTable}">
+                        <img src="../Newlayout/images/download_icon.svg" alt="Download icon">
+                    </div>
+                `);
+            }
+        });
+        setTimeout(function () {
+            $("#" + "tblshift" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+            $('.tooltips').tooltip();
+        }, 100);
+       // datatable_res();
+    }
+    function Policy(Type, tblid) {
+        //to get the dynamic date format
+        if ("@_isdateformat" == "dd-mm-yyyy") {
+            var fromDate = $("#FromDate").val().split("-");
+            var fdate = new Date(fromDate[2], fromDate[1] - 1, fromDate[0]);
+        }
+        else {
+            var fdate = new Date($('#FromDate').val());
+        }
+        //var fdate = new Date($('#FromDate').val());
+        var fday = fdate.getDate();
+        if (fday <= 9) {
+            fday = "0" + fday;
+        }
+        var fmonth = fdate.getMonth() + 1;
+        if (fmonth <= 9) {
+            fmonth = "0" + fmonth;
+        }
+        var fyear = fdate.getFullYear();
+        var fDate = fyear + "-" + fmonth + "-" + fday;
+        if ("@_isdateformat" == "dd-mm-yyyy") {
+            var toDate = $("#ToDate").val().split("-");
+            var tDate = new Date(toDate[2], toDate[1] - 1, toDate[0]);
+        }
+        else {
+            var tDate = new Date($('#ToDate').val());
+        }
+        //var tDate = new Date($("#ToDate ").val());
+        var tday;
+        var tmonth;
+        var tyear;
+        var ttdate = new Date(tDate);
+        tday = ttdate.getDate();
+        if (tday <= 9) {
+            tday = "0" + tday;
+        }
+        tmonth = ttdate.getMonth() + 1;
+        if (tmonth <= 9) {
+            tmonth = "0" + tmonth;
+        }
+        tyear = ttdate.getFullYear();
+        tDate = tyear + "-" + tmonth + "-" + tday;
+        var obj = {
+            Type: Type,
+            tblid: tblid,
+            FromDate: fDate,
+            ToDate: tDate
+        };
+        var policy = $('#tblAuditpolicy').DataTable({
+            "destroy": true,
+            "processing": true,
+            "ajax":
+            {
+                type: "POST",
+                url: "/MasterData/GetPolicyAuditData?Type=" + Type + "&tblid=" + tblid + "&FromDate=" + fDate + "&ToDate=" + tDate + "'&UserEmail=" + UserEmail,
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                async: false,
+                dataSrc: "",
+                beforeSend: function () {
+                    $("#ajax_loader_audit").show();
+                },
+                complete: function () {
+                    $('#ajax_loader_audit').hide(); // Hide loader after request completes
+                }
+            },
+            //dom: 'lBfrtip',
+            dom: _domCommon,
+            language: _languageCommon,
+            buttons: [
+                {
+                    extend: 'excelHtml5',
+                    text: 'Excel',
+                    titleAttr: 'Excel',
+                    exportOptions: {
+                        columns: [1, 2, 3]
+                    },
+                }
+            ],
+            "columnDefs": [
+                {
+
+                    "targets": 4,
+                    "data": null,
+                    "render": function (data, type, full, meta) {
+                        if ('@obj.CanView.ToString()' == 'True') {
+                            data = "<a class='previewclass1 btn btn-xs blue' onclick=previewclass(" + data.PolicyId + ")><i class='fa-regular fa-eye'></i></a>";
+                        }
+                        else {
+                            data = "";
+                        }
+                        return data;
+                    }
+                }],
+            "columns": [
+                { "data": "PolicyId" },
+                { "data": "PolicyName" },
+                { "data": "ModifyBy" },
+                {
+                    "data": "ModifyDate",
+                    "render": function (data) {
+                        if ("@_isdateformat" == "dd-mm-yyyy") {
+                            var date = new Date(data);
+                            var month = date.getMonth() + 1;
+                            if (month < 10) {
+                                month = '0' + month;
+                            }
+                            var day = date.getDate();
+                            return (day > 9 ? day : "0" + day) + "-" + month + "-" + date.getFullYear() + " " + (date.getHours() > 10 ? date.getHours() : "0" + date.getHours()) + ":" + (date.getMinutes() > 10 ? date.getMinutes() : "0" + date.getMinutes()) + ":" + (date.getSeconds() > 10 ? date.getSeconds() : "0" + date.getSeconds());
+                        }
+                        else if ("@_isdateformat" == "mm-dd-yyyy") {
+                            var date = new Date(data);
+                            var month = date.getMonth() + 1;
+                            if (month < 10) {
+                                month = '0' + month;
+                            }
+                            var day = date.getDate();
+                            return month + "-" + (day > 9 ? day : "0" + day) + "-" + date.getFullYear() + " " + (date.getHours() > 10 ? date.getHours() : "0" + date.getHours()) + ":" + (date.getMinutes() > 10 ? date.getMinutes() : "0" + date.getMinutes()) + ":" + (date.getSeconds() > 10 ? date.getSeconds() : "0" + date.getSeconds());
+                        }
+                        else if ("@_isdateformat" == "yyyy-mm-dd") {
+                            var date = new Date(data);
+                            var month = date.getMonth() + 1;
+                            if (month < 10) {
+                                month = '0' + month;
+                            }
+                            var day = date.getDate();
+                            return date.getFullYear() + "-" + month + "-" + (day > 9 ? day : "0" + day) + " " + (date.getHours() > 10 ? date.getHours() : "0" + date.getHours()) + ":" + (date.getMinutes() > 10 ? date.getMinutes() : "0" + date.getMinutes()) + ":" + (date.getSeconds() > 10 ? date.getSeconds() : "0" + date.getSeconds());
+                        }
+                        var Responce = getDateformatSelectedmonth("@_isdateformat", data);
+                        return Responce;
+                    }
+
+                }
+            ],
+            "columnDefs": [
+                {
+                    "targets": 2,
+                    render: function (data, type, full, meta) {
+                        if (type === 'display' && data != null && data.trim() !== '') {
+                            return obfuscateEmail(data);
+                        }
+                        return data;
+                    }
+                },
+            ],
+            initComplete: function (json) {
+                if (json.json.length == 0) {
+                    const wrapper = $(".filter_portlet_wrapper");
+                    wrapper.removeClass("full-width");
+                }
+                if (json != null) {
+                    const list = json.json;
+                    handleGridVisibility("tblempty", "NotificationGrid-empty", list, {
+                        imageUrl: "emptyscreen_3.png",
+                        subText: "  No matching records found for the selected filters."
+                    });
+                }
+                const visibleTable = $('table:visible').attr('id');
+                $("#buttons").append(`
+                    <div id="export-button" class="export-button tooltips" data-placement="bottom" data-original-title="Download" data-table-id="${visibleTable}">
+                        <img src="../Newlayout/images/download_icon.svg" alt="Download icon">
+                    </div>
+                `);
+            }
+
+        });
+        setTimeout(function () {
+            $("#" + "tblAuditpolicy" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+            $('.tooltips').tooltip();
+        }, 100);
+        $('#tblAuditpolicy').DataTable().columns([0]).visible(false);
+       // datatable_res();
+    }
+    function Attendance(Type, tblid) {
+        var fdate = new Date($('#FromDate').val());
+        var fday = fdate.getDate();
+        if (fday <= 9) {
+            fday = "0" + fday;
+        }
+        var fmonth = fdate.getMonth() + 1;
+        if (fmonth <= 9) {
+            fmonth = "0" + fmonth;
+        }
+        var fyear = fdate.getFullYear();
+        var fDate = fyear + "-" + fmonth + "-" + fday;
+
+        var tDate = new Date($("#ToDate ").val());
+        var tday;
+        var tmonth;
+        var tyear;
+        var ttdate = new Date(tDate);
+        tday = ttdate.getDate();
+        if (tday <= 9) {
+            tday = "0" + tday;
+        }
+        tmonth = ttdate.getMonth() + 1;
+        if (tmonth <= 9) {
+            tmonth = "0" + tmonth;
+        }
+        tyear = ttdate.getFullYear();
+        tDate = tyear + "-" + tmonth + "-" + tday
+        var obj = {
+            Type: Type,
+            tblid: tblid,
+            FromDate: fDate,
+            ToDate: tDate
+        };
+
+        var attendance = $('#tblattendance').DataTable({
+            "destroy": true,
+            "processing": true,
+            "ajax":
+            {
+                type: "POST",
+                url: "/MasterData/GetAttendanceAuditdata?Type=" + Type + "&tblid=" + tblid + "&FromDate='" + fDate + "'&ToDate=" + tDate + "'&UserEmail=" + UserEmail,
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                async: false,
+                dataSrc: "",
+                beforeSend: function () {
+                    $("#ajax_loader_audit").show();
+                },
+                complete: function () {
+                    $('#ajax_loader_audit').hide(); // Hide loader after request completes
+                }
+            },
+            dom: 'Bfrtip',
+            buttons: [
+                {
+                    extend: 'excelHtml5',
+                    text: 'Excel',
+                    titleAttr: 'Excel',
+                    exportOptions: {
+                        columns: [2, 3, 5, 6, 10, 11, 15]
+                    },
+                }
+            ],
+            "columns": [
+                { "data": "EmpId" },
+                { "data": "punchdate" },
+                { "data": "punchmode" },
+                { "data": "punchtime" },
+                { "data": "punchremark" },
+                { "data": "inoutduration" },
+                { "data": "ModifyBy" },
+                { "data": "ModifyDate" }
+
+            ]
+        });
+    }
+    function Branch(Type, tblid)
+    {
+        //to get the dynamic date format
+        if ("@_isdateformat" == "dd-mm-yyyy") {
+            var fromDate = $("#FromDate").val().split("-");
+            var fdate = new Date(fromDate[2], fromDate[1] - 1, fromDate[0]);
+        }
+        else {
+            var fdate = new Date($('#FromDate').val());
+        }
+        var fday = fdate.getDate();
+        if (fday <= 9) {
+            fday = "0" + fday;
+        }
+        var fmonth = fdate.getMonth() + 1;
+        if (fmonth <= 9) {
+            fmonth = "0" + fmonth;
+        }
+        var fyear = fdate.getFullYear();
+        var fDate = fyear + "-" + fmonth + "-" + fday;
+        if ("@_isdateformat" == "dd-mm-yyyy") {
+            var toDate = $("#ToDate").val().split("-");
+            var tDate = new Date(toDate[2], toDate[1] - 1, toDate[0]);
+        }
+        else {
+            var tDate = new Date($('#ToDate').val());
+        }
+        //var tDate = new Date($("#ToDate ").val());
+        var tday;
+        var tmonth;
+        var tyear;
+        var ttdate = new Date(tDate);
+        tday = ttdate.getDate();
+        if (tday <= 9) {
+            tday = "0" + tday;
+        }
+        tmonth = ttdate.getMonth() + 1;
+        if (tmonth <= 9) {
+            tmonth = "0" + tmonth;
+        }
+        tyear = ttdate.getFullYear();
+        tDate = tyear + "-" + tmonth + "-" + tday;
+        var obj = {
+            Type: Type,
+            tblid: tblid,
+            FromDate: fDate,
+            ToDate: tDate
+        };
+
+        var Branch = $('#tblbranch').DataTable({
+            "destroy": true,
+            "processing": false,
+            "ajax":
+            {
+                type: "POST",
+                url: "/MasterData/GetBranchAuditdata?Type=" + Type + "&tblid=" + tblid + "&FromDate=" + fDate + "&ToDate=" + tDate + "'&UserEmail=" + UserEmail,
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                async: false,
+                dataSrc: "",
+                beforeSend: function ()
+                {
+                    $("#ajax_loader_audit").show();
+                },
+                complete: function () {
+                    $('#ajax_loader_audit').hide(); // Hide loader after request completes
+                }
+            },
+            //dom: 'lBfrtip',
+            dom: _domCommon,
+            language: _languageCommon,
+            buttons: [
+                {
+                    extend: 'excelHtml5',
+                    text: 'Excel',
+                    titleAttr: 'Excel',
+                    exportOptions: {
+                        columns: [0, 1, 2, 3, 4]
+                    },
+                }
+            ],
+
+            "columns": [
+                { "data": "BranchName" },
+                { "data": "CompanyName" },
+                {"data":"ReportingBranchName"},
+                { "data": "ModifyBy" },
+                {
+                    "data": "ModifyDate",
+                    "render": function (data) {
+                        if ("@_isdateformat" == "dd-mm-yyyy") {
+                            var date = new Date(data);
+                            var month = date.getMonth() + 1;
+                            if (month < 10) {
+                                month = '0' + month;
+                            }
+                            var day = date.getDate();
+                            return (day > 9 ? day : "0" + day) + "-" + month + "-" + date.getFullYear() + " " + (date.getHours() > 10 ? date.getHours() : "0" + date.getHours()) + ":" + (date.getMinutes() > 10 ? date.getMinutes() : "0" + date.getMinutes()) + ":" + (date.getSeconds() > 10 ? date.getSeconds() : "0" + date.getSeconds());
+                        }
+                        else if ("@_isdateformat" == "mm-dd-yyyy") {
+                            var date = new Date(data);
+                            var month = date.getMonth() + 1;
+                            if (month < 10) {
+                                month = '0' + month;
+                            }
+                            var day = date.getDate();
+                            return month + "-" + (day > 9 ? day : "0" + day) + "-" + date.getFullYear() + " " + (date.getHours() > 10 ? date.getHours() : "0" + date.getHours()) + ":" + (date.getMinutes() > 10 ? date.getMinutes() : "0" + date.getMinutes()) + ":" + (date.getSeconds() > 10 ? date.getSeconds() : "0" + date.getSeconds());
+                        }
+                        else if ("@_isdateformat" == "yyyy-mm-dd") {
+                            var date = new Date(data);
+                            var month = date.getMonth() + 1;
+                            if (month < 10) {
+                                month = '0' + month;
+                            }
+                            var day = date.getDate();
+                            return date.getFullYear() + "-" + month + "-" + (day > 9 ? day : "0" + day) + " " + (date.getHours() > 10 ? date.getHours() : "0" + date.getHours()) + ":" + (date.getMinutes() > 10 ? date.getMinutes() : "0" + date.getMinutes()) + ":" + (date.getSeconds() > 10 ? date.getSeconds() : "0" + date.getSeconds());
+                        }
+                        var Responce = getDateformatSelectedmonth("@_isdateformat", data);
+                        return Responce;
+                    }
+                }
+            ],
+            "columnDefs": [
+                {
+                    "targets": 3,
+                    render: function (data, type, full, meta) {
+                        if (type === 'display' && data != null && data.trim() !== '') {
+                            return obfuscateEmail(data);
+                        }
+                        return data;
+                    }
+                },
+            ],
+            initComplete: function (json) {
+                if (json.json.length == 0) {                    
+                    const wrapper = $(".filter_portlet_wrapper");
+                    wrapper.removeClass("full-width");
+                }
+                if (json != null) {
+                    const list = json.json;
+                    handleGridVisibility("tblempty", "NotificationGrid-empty", list, {
+                        imageUrl: "emptyscreen_3.png",
+                        subText: "  No matching records found for the selected filters."
+                    });
+                }
+                const visibleTable = $('table:visible').attr('id');
+                $("#buttons").append(`
+                    <div id="export-button" class="export-button tooltips" data-placement="bottom" data-original-title="Download" data-table-id="${visibleTable}">
+                        <img src="../Newlayout/images/download_icon.svg" alt="Download icon">
+                    </div>
+                `);
+            }
+
+        });
+        setTimeout(function () {
+            $("#" + "tblbranch" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+            $('.tooltips').tooltip();
+        }, 100);
+       // datatable_res();
+    }
+    function frmclear() {
+        $("#Select_Operation").val(0);
+        $("#Select_Fromdt").hide();
+        $("#Select_Todt").hide();
+        $("#Search_OPration").hide();
+        $("#Clear_OPration").hide();
+        $("#FromDate").val('');
+        $("#ToDate").val('');
+        $("#Search_OPtion").hide();
+        if ($.fn.DataTable.isDataTable('#tblshift')) {
+            $('#tblshift').DataTable().clear().destroy();
+            $("#dataTables_tbl_header").remove();
+        }
+        if ($.fn.DataTable.isDataTable('#tblAuditpolicy')) {
+            $('#tblAuditpolicy').DataTable().clear().destroy();
+            $("#dataTables_tbl_header").remove();
+        }
+        if ($.fn.DataTable.isDataTable('#tblbranch')) {
+            $('#tblbranch').DataTable().clear().destroy();
+            $("#dataTables_tbl_header").remove();
+        }
+        $("#divemployee").css("display", "none");
+        $("#divdevice").css("display", "none");
+        $("#divshift").css("display", "none");
+        $("#divpolicy").css("display", "none");
+        $("#divattendance").css("display", "none");
+        $("#divbranch").css("display", "none");
+    }
+</script>
+
+<div class="page-bar">
+    @if (_RoleId == 1)
+    {
+        <ul class="page-breadcrumb">
+            <li>
+                @if (isClientDBMatchFlag == "True")
+                {
+                    <a href="/Admin/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+                }
+                else
+                {
+                    <a href="/Dashboard/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+                }
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> Audit</span>
+            </li>
+        </ul>
+    }
+
+    <div class="page-toolbar text-right">
+        <a href="javascript:;" class="btn icon_transparent_btn tooltips" id="Filter_search" data-placement="left" data-original-title="Filter" data-toggle="tooltip"><i class="fa-light fa-filter" aria-hidden="true"></i> </a>
+    </div>
+</div>
+
+@if (_RoleId == 1)
+{
+    <div class="row">
+        <div id='ajax_loader_audit' class="modal_bg loading" aria-hidden="true">
+            <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading" />
+        </div>
+    </div>
+
+    <div class="filter_portlet_wrapper full-width">
+        <!-- Datatable Block : Begin -->
+        <div class="portlet filter_portlet_tbl" id="hideDiv">
+            <div class="portlet-body">
+                <div class="row">
+                    <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 clsTable">
+                        <div id="tblempty">
+                            <div class="table-responsive" id="tableResponsive">
+                                <div id="divemployee" style="display:none;">
+                                    <table class="table table-striped table-bordered table-hover  order-column" id="tblemployee">
+                                        <thead>
+                                            <tr>
+                                                <th>EmpName</th>
+                                                <th>EmpCode</th>
+                                                <th>EmpPunchId</th>
+                                                <th>BranchName</th>
+                                                <th>EmailId</th>
+                                                <th>Status</th>
+                                                <th>ModifyBy</th>
+                                                <th>ModifyDate</th>
+                                            </tr>
+                                        </thead>
+                                    </table>
+                                </div>
+                                <div id="divdevice" style="display:none;">
+                                    <table class="table table-striped table-bordered table-hover  order-column" id="tbldevice">
+                                        <thead>
+                                            <tr>
+                                                <th>BranchName</th>
+                                                <th>DeviceName</th>
+                                                <th>DeviceSrNo</th>
+                                                <th>DeviceCode</th>
+                                                <th>DeviceIP</th>
+                                                <th>DeviceMode</th>
+                                                <th>DeviceType</th>
+                                                <th>DeviceStatus</th>
+                                                <th>LastActivity</th>
+                                                <th>ModifyBy</th>
+                                                <th>ModifyDate</th>
+                                            </tr>
+                                        </thead>
+                                    </table>
+                                </div>
+                                <div id="divshift" style="display:none;">
+
+                                    <table class="new_datatbl table table-striped table-bordered table-hover order-column" id="tblshift">
+                                        <thead>
+                                            <tr>
+                                                <th>Shift Name</th>
+                                                <th>Shift Short Name</th>
+                                                <th>Start Time</th>
+                                                <th>End Time</th>
+                                                <th>Min Hrs HalfDay</th>
+                                                <th>Min Hrs FullDay</th>
+                                                <th>Recess Duration</th>
+                                                <th>Modify By</th>
+                                                <th>Modify Date <i class='fa-regular fa-circle-info tooltips' data-placement='bottom' title='Date format is : @_isdateformat.ToUpper()' style='color: #295097;'></i></th>
+                                            </tr>
+                                        </thead>
+                                    </table>
+
+                                </div>
+                                <div id="divpolicy" style="display:none;">
+
+                                    <table class="new_datatbl table table-striped table-bordered table-hover  order-column" id="tblAuditpolicy">
+                                        <thead>
+                                            <tr>
+                                                <th id="poid" hidden>Policy Id</th>
+                                                <th>Policy Name</th>
+                                                <th>Modify By</th>
+                                                <th>Modify Date <i class='fa-regular fa-circle-info tooltips' data-placement='bottom' title='Date format is : @_isdateformat.ToUpper()' style='color: #295097;'></i></th>
+                                                <th>Action</th>
+                                            </tr>
+                                        </thead>
+                                    </table>
+
+                                </div>
+                                <div id="divattendance" style="display:none;">
+                                    <table class="table table-striped table-bordered table-hover  order-column" id="tblattendance">
+                                        <thead>
+                                            <tr>
+                                                <th>EmpId</th>
+                                                <th>PunchDate</th>
+                                                <th>punchMode</th>
+                                                <th>punchTime</th>
+                                                <th>punchRemark</th>
+                                                <th>InOutDuration</th>
+                                                <th>ModifyBy</th>
+                                                <th>ModifyDate</th>
+                                            </tr>
+                                        </thead>
+                                    </table>
+                                </div>
+                                <div id="divbranch" style="display:none;">
+
+                                    <table class="new_datatbl table table-striped table-bordered table-hover order-column" id="tblbranch">
+                                        <thead>
+                                            <tr>
+                                                <th>Branch Name</th>
+                                                <th>Company Name</th>
+                                                <th>Reporting Branch Name</th>
+                                                <th>Modify By</th>
+                                                <th>Modify Date <i class='fa-regular fa-circle-info tooltips' data-placement='bottom' title='Date format is : @_isdateformat.ToUpper()' style='color: #295097;'></i></th>
+                                            </tr>
+                                        </thead>
+                                    </table>
+
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div id="NotificationGrid-empty" style="display: none">
+                    <div class="datanotfound">
+                        <img src="~/assets/images/emptyscreen_3.png" height="148" width="280" alt="No Data Found Icon">
+                        <p class="datanotfound_title">No data show</p>
+                        <p class="datanotfound_subtitle">Start by applying a filter to view relevant data.</p>
+                    </div>
+                </div>
+                <div id="NotificationGrid-empty1" style="display: none">
+                    <div class="datanotfound">
+                        <img src="~/assets/images/emptyscreen_3.png" height="148" width="280" alt="No Data Found Icon">
+                        <p class="datanotfound_title">No data show</p>
+                        <p class="datanotfound_subtitle">Start by applying a filter to view relevant data.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Datatable Block : End -->
+        <!-- Filter Block : Begin -->
+        <div class="portlet filter_boxModal">
+            <div class="filterbox_header">
+                <div class="d-flex align-items-center justify-content-between">
+                    <h4 class="filter-title">Filters</h4>
+                    <button type="button" class="filterclose_btn"><i class="fa-light fa-xmark"></i></button>
+                </div>
+            </div>
+            <div class="filterbox_body">
+                <div class="col-lg-12">
+                    <div class="form-group">
+                        <label class="control-label">Audit<span class="required" aria-required="true"> * </span></label>
+                        <select class="form-control" id="Select_Operation">
+                            <option value="0">Select Audit</option>
+                            @*<option value="1">Employee</option>
+                                <option value="2">Device</option>*@
+                            <option value="6">Branch</option>
+                            <option value="4">Policy</option>
+                            <option value="3">Shift</option>
+                            @*<option value="5">Attendance</option>*@
+                        </select>
+                    </div>
+                </div>
+                <div class="col-lg-12" id="Select_Fromdt">
+                    <div class="form-group data_picker_box">
+                        <label class="control-label">From<span class="required" aria-required="true"> * </span></label>
+                        <div class="input-group input-group-sm date date-picker" data-date="@DateTime.Now" data-date-format="@_isdateformat" data-date-end-date="0d" data-date-viewmode="years">
+                            <span class="input-group-btn">
+                                <button class="btn default btn-sm" type="button">
+                                    <i class="fa-light fa-calendar-days"></i>
+                                </button>
+                            </span>
+                            @if (@_isdateformat == "dd-M-yyyy" || @_isdateformat == "M-dd-yyyy" || @_isdateformat == "yyyy-M-dd")
+                            {
+                                <input class="form-control" id="FromDate" name="FromDate" type="text" placeholder="@_isdateformat.Replace("M","MMM")" autocomplete="off">
+                            }
+                            else
+                            {
+                                <input class="form-control" id="FromDate" name="FromDate" type="text" placeholder="@_isdateformat" autocomplete="off">
+                            }
+                        </div>
+                    </div>
+                </div>
+                <div class="col-lg-12" id="Select_Todt">
+                    <div class="form-group data_picker_box">
+                        <label class="control-label">To<span class="required" aria-required="true"> * </span></label>
+                        <div class="input-group input-group-sm date date-picker" data-date="@DateTime.Now" data-date-format="@_isdateformat" data-date-end-date="0d" data-date-viewmode="years">
+                            <span class="input-group-btn">
+                                <button class="btn default btn-sm" type="button">
+                                    <i class="fa-light fa-calendar-days"></i>
+                                </button>
+                            </span>
+                            @if (@_isdateformat == "dd-M-yyyy" || @_isdateformat == "M-dd-yyyy" || @_isdateformat == "yyyy-M-dd")
+                            {
+                                <input class="form-control" id="ToDate" name="ToDate" type="text" placeholder="@_isdateformat.Replace("M","MMM")" autocomplete="off">
+                            }
+                            else
+                            {
+                                <input class="form-control" id="ToDate" name="ToDate" type="text" placeholder="@_isdateformat" autocomplete="off">
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="filterbox_footer">
+                <div class="text-right">
+                    <button type="button" id="Clear_OPration" class="clear_btn tooltips" data-placement="top" data-original-title="Clear Filters"><i class="fa-regular fa-eraser"></i></button>
+                    <button type="button" id="Search_OPration" class="icon_btn margin-left-5 tooltips" data-placement="top" data-original-title="Search Filters"><i class="fa-solid fa-magnifying-glass"></i></button>
+                </div>
+            </div>
+        </div>
+        <!-- Filter Block : End -->
+    </div>
+}
+else
+{
+    <span style="color:red">@PayTimeWebClient.Resource.Resource.UnauthorizedAccess.</span>
+}

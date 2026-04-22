@@ -1,0 +1,2702 @@
+﻿@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@using System.Configuration;
+@using System.Data
+@using System
+@model DataTable
+@{
+    ViewBag.Title = "ExitEmployeeRequest";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiurlpayroll = ConfigurationManager.AppSettings["webapipaytimePayroll"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    int empid = Convert.ToInt32(HttpContext.Current.Session["EmpId"]);
+    int userid = Convert.ToInt32(HttpContext.Current.Session["UserId"]);
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+    string _lockAttendanceDay = HttpContext.Current.Session["lockAttendanceDay"].ToString();
+    string _CheckCustomClientDBName = ConfigurationManager.AppSettings["CheckCustomClientDBName"].ToString();
+    string _dbName = HttpContext.Current.Session["DbName"].ToString();
+    int _CheckFastrackdb = 0;
+    if (_CheckCustomClientDBName.Contains(_dbName))
+    {
+        _CheckFastrackdb = 1;
+    }
+
+    string _isdateformat = HttpContext.Current.Session["IsDateFormat"].ToString();
+}
+
+<link href="/Newlayout/css/payrollstructure.css" rel="stylesheet">
+<script src="~/Newlayout/js/sweet_alert_payroll.js"></script>
+<script src="~/Scripts/Helpers/noDataHandler.js"></script>
+
+<style type="text/css">
+    .dataTables_wrapper .dataTables_filter, .buttons-columns {
+        display: none !important;
+    }
+
+    .dataTables_wrapper {
+        padding: 0px 0 0px 0;
+    }
+
+    .fixed-column {
+        width: 178px !important;
+        min-width: 178px !important;
+        right: 1px;
+        position: sticky !important;
+        background-color: #fff !important;
+        box-shadow: -2px 2px 4px 0px rgba(0, 0, 0, 0.20);
+    }
+</style>
+
+<script type="text/javascript">
+
+    var ExitEmployeeId = 0;
+    var _gridstatus = "0";
+    var WorkFlowId = 0;
+    var DepartmentId = 0;
+    var BranchId = 0;
+    var EmpId = 0;
+    var EvaluationBy = 0;
+    var IsClearance = 0;
+    var ExitInterview = 0;
+    var exitemployeetable = "";
+    var ParseLeavingDate = 0;
+    var Status = 1;
+
+    $(document).ready(function () {
+        checkSession();
+        //Validation
+        $("#interviewplace").keypress(function (e) {
+            var keyCode = e.which;
+            var Responce = validateKeyPress(keyCode);
+            if (Responce == true) {
+            }
+            else { e.preventDefault(); }
+        });
+
+        //$("#reason").keypress(function (e) {
+        //    var keyCode = e.which;
+        //    var Responce = validateKeyPress(keyCode);
+        //    if (Responce == true) {
+        //    }
+        //    else { e.preventDefault(); }
+        //});
+
+
+        $("#reason").keypress(function (e) {
+            var maxLength = 45;
+            var currentLength = $(this).val().length;
+
+            // Allow backspace, delete, arrow keys, etc.
+            if (e.which === 0 || e.which === 8 || e.which === 46 || (e.which >= 37 && e.which <= 40)) {
+                return true;
+            }
+            if (currentLength >= maxLength) {
+                e.preventDefault();
+            }
+        });
+
+
+
+        $("#leavingdate").keypress(function (e) {
+            var charCode = e.which || e.keyCode;
+            var charStr = String.fromCharCode(charCode);
+            var regex = /^[0-9\/\-\:\s]$/;
+            if (!regex.test(charStr)) {
+                e.preventDefault();
+            }
+        });
+        $("#leavingdate").on("blur", function () {
+            var dateValue = $(this).val();
+            var dateTimeRegex = /^\d{2}[\/\-]\d{2}[\/\-]\d{4}\s\d{2}:\d{2}$/;
+            if (!dateTimeRegex.test(dateValue)) {
+                $(this).val("");
+                return false;
+            }
+        });
+
+        $("#interviewdate").keypress(function (e) {
+            var charCode = e.which || e.keyCode;
+            var charStr = String.fromCharCode(charCode);
+            var regex = /^[0-9\/\-\:\s]$/;
+            if (!regex.test(charStr)) {
+                e.preventDefault();
+            }
+        });
+        $("#interviewdate").on("blur", function () {
+            var dateValue = $(this).val();
+            var dateTimeRegex = /^\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}$/;
+            if (!dateTimeRegex.test(dateValue)) {
+                //$("#interviewdate").addClass('field_error');
+                //event.preventDefault();
+                $(this).val("");
+                return false;
+            }
+        });
+
+        $("#interviewtime").keypress(function (e) {
+            // Allow only numbers, colon (:) and backspace
+            var charCode = e.which || e.keyCode;
+            var charStr = String.fromCharCode(charCode);
+            var regex = /^[0-9:]$/;
+            if (!regex.test(charStr)) {
+                e.preventDefault();
+            }
+        });
+
+        $("#interviewtime").on("blur", function () {
+            var timeValue = $(this).val();
+            var timeRegex = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
+            if (!timeRegex.test(timeValue)) {
+                $(this).val("");
+                return false;
+            }
+        });
+
+
+        // Add Emp Exit Request button click code
+        $("#AddEmpExit_btn").on('click', function () {
+
+            checkSession();
+            //( edited by soumya 19/09/2025
+            ExitEmployeeId = 0;
+            IsClearance = 0;
+            ExitInterview = 0;
+            $("#EmpExitRequest_form").find("input, select, textarea").each(function () {
+                if (this.type === "checkbox" || this.type === "radio") {
+                    this.checked = false;
+                } else {
+                    $(this).val('');
+                }
+            });
+            $("#CompanyID, #BranchIds, #EmpIds, #exittype, #isclearance, #workflow, #exitinterview, #DeptIds, #evaluationby").val("0");
+            $(".field_error").removeClass("field_error");// till here soumya)
+            $("#exitclearance_tbl").hide();
+            $("#exitclearance_tbl_wrapper").hide();
+            $("#AddEmpExit_btn").hide();
+            $("#EmpExitRequest_form").show();
+            $("#back_exitClear").hide();
+            $("#Back_btn").show();
+            $("#clearancelevel").hide();
+        });
+
+        // Back button click code
+        $("#Back_btn").on('click', function () {
+            checkSession();
+            $("#EmpExitRequest_form").hide();
+            $("#back_exitClear").show();
+            $("#Back_btn").hide();
+            $("#exitclearance_tbl").show();
+            $("#exitclearance_tbl_wrapper").show();
+            $("#AddEmpExit_btn").show();
+            $("#CompanyID").val(0).trigger('change');
+            $("#BranchIds").val(0).trigger('change');
+            $("#EmpIds").val(0).trigger('change');
+            $("#exittype").val(0).trigger('change');
+            $("#leavingdate").val("");
+            $("#isclearance").val(0).trigger('change');
+            $("#workflow").val(0).trigger('change');
+            $("#exitinterview").val(0).trigger('change');
+            $("#DeptIds").val(0).trigger('change');
+            $("#evaluationby").val(0).trigger('change');
+            $("#interviewdate").val("");
+            $("#interviewtime").val("");
+            $("#interviewplace").val("");
+            $("#reason").val("");
+        });
+
+        //Click on edit button
+        $('body').on('click', '.editemprequest', function () {
+
+            checkSession();
+            $("#exitclearance_tbl").hide();
+            $("#exitclearance_tbl_wrapper").hide();
+            $("#AddEmpExit_btn").hide();
+            $("#EmpExitRequest_form").show();
+            $("#back_exitClear").hide();
+            $("#Back_btn").show();
+
+            var row = $(this).closest('tr');
+            ExitEmployeeId = row.find('.ExitEmployeeId').text();
+
+            $.ajax({
+                type: "GET",
+                headers: { 'Authorization': '@_tokan' },
+                url: '@_webapiurlpayroll' + 'Full_FinalSettlement/GetExitEmployeeRequestid',
+                data: { ExitEmployeeId: ExitEmployeeId },
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                beforeSend: function () {
+                    $("#ajax_loader").show();
+                },
+                success: function (response) {
+
+                    if (response && response.length > 0) {
+                        response.forEach((data, index) => {
+                            var CompanyID = data.CompanyID ? data.CompanyID.toString().split(',') : [];
+                            BranchId = data.BranchId ? data.BranchId.toString().split(',') : [];
+                            EmpId = data.EmpId ? data.EmpId.toString().split(',') : [];
+                            DepartmentId = data.DepartmentId ? data.DepartmentId.toString().split(',') : [];
+                            IsClearance = data.IsClearance ? data.IsClearance.toString().split(',') : [];
+                            WorkFlowId = data.WorkFlowId ? data.WorkFlowId.toString().split(',') : [];
+                            var ExitType = data.ExitType ? data.ExitType.toString().split(',') : [];
+                            var ExitInterview = data.ExitInterview ? data.ExitInterview.toString().split(',') : [];
+                             EvaluationBy = data.EvaluationBy ? data.EvaluationBy.toString().split(',') : [];
+                            var InterviewPlace = data.InterviewPlace ? data.InterviewPlace.toString().split(',') : [];
+                            var Reason = data.Reason ? data.Reason.toString().split(',') : [];
+                            Status = data.Status ? data.Status.toString().split(',') : [];
+
+                            var LeavingDate = data.LeavingDate ? data.LeavingDate.toString().split(',').map(function (dateTime) {
+                                return dateTime.split('T')[0];
+                            }) : [];
+                            var parsedDate = new Date(LeavingDate);
+                            var dateformat = "@_isdateformat";
+                            var LeavingDate = formatDate(parsedDate, dateformat)
+
+
+                            var InterviewDate = data.InterviewDate ? data.InterviewDate.toString().split(',').map(function (dateTime) {
+                                return dateTime.split('T')[0];
+                            }) : [];
+                            var parsedDate = new Date(InterviewDate);
+                            var dateformat = "@_isdateformat";
+                            var InterviewDate = formatDate(parsedDate, dateformat)
+
+                            var InterviewTime = data.InterviewTime ? data.InterviewTime.toString().split(',').map(function (dateTime) {
+                                return dateTime.split('T')[0];
+                            }) : [];
+
+                            if (!InterviewTime) {
+                                InterviewTime = "12:00 AM";
+                            } else {
+                                if (!InterviewTime.includes(":")) {
+                                    InterviewTime += ":00";
+                                }
+                                let [hours, minutes] = InterviewTime.trim().split(":").map(Number);
+                                let modifier = "AM";
+                                if (hours >= 12) {
+                                    modifier = "PM";
+                                    if (hours > 12) {
+                                        hours -= 12;
+                                    }
+                                } else if (hours === 0) {
+                                    hours = 12;
+                                }
+                                let hoursStr = hours.toString();
+                                let minutesStr = minutes.toString().padStart(2, '0');
+                                InterviewTime = `${hoursStr}:${minutesStr} ${modifier}`;
+                            }
+
+
+
+                            $('#CompanyID').val(CompanyID).trigger('change');
+                            $('#BranchIds').val(BranchId).trigger('change');
+                            //$('#EmpIds').val(EmpId).trigger('change');
+                            $('#exittype').val(ExitType).trigger('change');
+                            $("#leavingdate").val(LeavingDate);
+                            $("#reason").val(Reason);
+                            $('#isclearance').val(IsClearance).trigger('change');
+                            $('#exitinterview').val(ExitInterview).trigger('change');
+
+                            if (IsClearance == 1) {
+                                $("#clearancelevel").show();
+                                $("#viewflow").hide();
+                                getallworkflow(1);
+                                $('#workflow').val(WorkFlowId).trigger('change');
+                            }
+                            else {
+                                $("#clearancelevel").hide();
+                            }
+
+                            if (ExitInterview == 1) {
+                                $("#exitinterview_level").show();
+                                $('#DeptIds').val(DepartmentId).trigger('change');
+                                $('#evaluationby').val(EvaluationBy).trigger('change');
+                                $("#interviewdate").val(InterviewDate);
+                                $("#interviewtime").val(InterviewTime);
+                                $("#interviewplace").val(InterviewPlace);
+                            }
+                            else {
+                                $("#exitinterview_level").hide();
+                            }
+                        });
+                    }
+                },
+                error: function (xhr) {
+                    toastr.error(xhr.responseJSON?.title || "An unexpected error occurred. Please try again.");
+                },
+                complete: function () {
+                    $("#ajax_loader").hide();
+                }
+            });
+        });
+
+
+        //Send for Approval
+        $(document).on('click', '.sendforapproval', function () {
+
+            checkSession();
+            var row = $(this).closest('tr');
+            var ExitEmployeeId = row.find('.ExitEmployeeId').text().trim();
+            var EmpCode = row.find('.EmpCode').text().trim();
+            var EmpName = row.find('.EmpName').text().trim();
+
+            $.ajax({
+                type: "GET",
+                headers: { 'Authorization': '@_tokan' },
+                url: '@_webapiurlpayroll' + 'Full_FinalSettlement/ApprovalClearance',
+                data: { ExitEmployeeId: ExitEmployeeId, EmpName: EmpName },
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                beforeSend: function () {
+                    $("#ajax_loader").show();
+                },
+                success: function (response) {
+
+                    toastr.remove();
+                    if (response.success && response.responseCode == 200) {
+                        toastr.success(response.message);
+                        $("#exitclearance_tbl, #exitclearance_tbl_wrapper").show();
+                        $("#sendforapproval").prop("disabled", true);
+                        $("#ajax_loader").show();
+                        setTimeout(function () {
+                            window.location.reload(true);
+                        }, 500);
+                    } else {
+                        toastr.error(response.message);
+                    }
+                },
+                error: function (xhr) {
+                    console.error("GET Error:", xhr.status, xhr.responseText);
+                    toastr.error(xhr.responseJSON?.title || "An unexpected error occurred. Please try again.");
+                },
+                complete: function () {
+                    $("#ajax_loader").hide();
+                }
+            });
+        });
+
+
+
+        //When click on approve and reject
+        $("body").on('click', '.approvalrejection', function () {
+
+            checkSession();
+            var row = $(this).closest('tr');
+            var ExitEmployeeId = row.find('.ExitEmployeeId').text().trim();
+            var EmpCode = row.find('.EmpCode').text().trim();
+            var EmpName = row.find('.EmpName').text().trim();
+            var WorkFlowId = row.find('.WorkFlowId').text().trim();
+            var LevelId = row.find('.LevelId').text().trim();
+
+            var empid = '@empid';
+            //Swal.fire({
+            //    html: `
+            //        <div class="swal_title margin-bottom-10"><b>Employee Exit Approval</b></div>
+            //        <div class="swal_subtitle margin-bottom-10">Would you like to approve or reject the exit request?</div>
+            //        <input type="text" id="responseText" class="swal2-input" placeholder="Enter your comments">`,
+            //    title: "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_question.svg' alt=''>Question",
+            //    showCancelButton: true,
+            //    confirmButtonText: 'Approve',
+            //    cancelButtonText: 'Reject',
+            //    closeOnConfirm: true,
+            //    showCloseButton: true,
+            //    showCancelButton: true,
+            //    focusConfirm: false,
+            //    allowOutsideClick: false,
+            //    allowEscapeKey: false,
+            //    customClass: {
+            //        confirmButton: 'swal-confirm-button-class',
+            //        cancelButton: 'swal-cancel-button-class'
+            //    },
+            //    /*preConfirm: () => document.getElementById("responseText").value*/
+            //    preConfirm: () => {
+            //        const input = document.getElementById("responseText");
+            //        const value = input.value.trim();
+
+            //        if (!value) {
+            //            input.classList.add("field_error");
+            //            Swal.showValidationMessage("Comment is required.");
+            //            return false;
+            //        }
+
+            //        input.classList.remove("field_error");
+            //        return value; // pass the trimmed comment to the .then block
+            //    },
+            //    preDeny: () => {
+            //        const input = document.getElementById("responseText");
+            //        const value = input.value.trim();
+
+            //        if (!value) {
+            //            input.classList.add("field_error");
+            //            Swal.showValidationMessage("Comment is required.");
+            //            return false;
+            //        }
+
+            //        input.classList.remove("field_error");
+            //        return value; // pass the trimmed comment to the .then block
+            //    },
+            //}).then(function (result) {
+            //    debugger;
+            //    if (result.isConfirmed || result.dismiss === Swal.DismissReason.cancel) {
+            //        var Remarks = document.getElementById("responseText").value.trim();
+            //        const input = document.getElementById("responseText");
+            //        const value = input.value.trim();
+
+            //        if (value) {
+            //            input.classList.remove("field_error");
+            //            var isApproved = result.isConfirmed;
+            //            processApproval(empid, Remarks, isApproved, ExitEmployeeId, EmpCode, EmpName);
+            //            //return Swal.showValidationMessage("Comment is required.");
+            //        }
+            //        else {
+            //            input.classList.add("field_error");
+            //            Swal.showValidationMessage("Comment is required.");
+            //            return false;
+            //        }
+            //    }
+            //});
+            //$('img[src="/assets/images/icons/swal_icon/icon_question.svg"]').parent().parent().parent().addClass('swal_question');
+
+            Swal.fire({
+                html: `
+                    <div class="swal_title margin-bottom-10"><b>Employee Exit Approval</b></div>
+                    <div class="swal_subtitle margin-bottom-10">Would you like to approve or reject the exit request?</div>
+                    <input type="text" id="responseText" class="swal2-input" placeholder="Enter your comments">`,
+                title: "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_question.svg' alt=''>Question",
+                showCancelButton: true,
+                confirmButtonText: 'Approve',
+                cancelButtonText: 'Reject',
+                closeOnConfirm: true,
+                showCloseButton: true,
+                showCancelButton: true,
+                focusConfirm: false,
+                allowOutsideClick: false,
+                allowEscapeKey: false,
+                customClass: {
+                    confirmButton: 'swal-confirm-button-class',
+                    cancelButton: 'swal-cancel-button-class'
+                },
+
+                preConfirm: () => document.getElementById("responseText").value
+            }).then(function (result) {
+                if (result.isConfirmed || result.dismiss === Swal.DismissReason.cancel) {
+                    var Remarks = document.getElementById("responseText").value.trim();
+                    var isApproved = result.isConfirmed;
+                    processApproval(empid, Remarks, isApproved, ExitEmployeeId, WorkFlowId, LevelId, EmpCode, EmpName);
+                }
+            });
+            $('img[src="/assets/images/icons/swal_icon/icon_question.svg"]').parent().parent().parent().addClass('swal_question');
+        });
+
+
+
+        // Function to call the Approved and reject on backened call
+        function processApproval(empid, Remarks, isApproved, ExitEmployeeId, WorkFlowId, LevelId, EmpCode, EmpName) {
+
+            var obj = {
+                "EmpCode": EmpCode,
+                "EmpName": EmpName,
+                "empid": empid,
+                "ExitEmployeeId": ExitEmployeeId,
+                "WorkFlowId": WorkFlowId,
+                "LevelId": LevelId,
+                "Remarks": Remarks,
+                "isapproved": isApproved
+            };
+            checkSession();
+            $.ajax({
+                type: "POST",
+                headers: { 'Authorization': '@_tokan' },
+                url: '@_webapiurlpayroll' + 'Full_FinalSettlement/ApprovalorRejectedExitEmployee',
+                data: JSON.stringify(obj),
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                beforeSend: function () {
+                    $("#ajax_loader").show();
+                },
+                success: function (response) {
+
+                    toastr.remove();
+                    if (response.success && response.responseCode == 200) {
+
+                        $.ajax({
+                            type: "GET",
+                            headers: { 'Authorization': '@_tokan' },
+                            url: '@_webapiurlpayroll' + 'Full_FinalSettlement/ApprovalClearance',
+                            data: { ExitEmployeeId: ExitEmployeeId, EmpName: EmpName },
+                            contentType: "application/json; charset=utf-8",
+                            dataType: "json",
+                            beforeSend: function () {
+                                $("#ajax_loader").show();
+                            },
+                            success: function (response) {
+
+                                toastr.remove();
+                                if (response.success && response.responseCode == 200) {
+                                    toastr.success(response.message);
+                                    //exitemployeerequesttbl();
+                                    $("#exitclearance_tbl, #exitclearance_tbl_wrapper").show();
+                                    setTimeout(function () {
+                                        window.location.reload(true);
+                                    }, 10);
+                                }
+                                else if (response.success === false && response.responseCode == 205) {
+                                    toastr.success(response.message);
+                                }
+                                else {
+                                    toastr.error(response.message);
+                                }
+                            },
+                            error: function (xhr) {
+                                console.error("GET Error:", xhr.status, xhr.responseText);
+                                toastr.error(xhr.responseJSON?.title || "An unexpected error occurred. Please try again.");
+                            },
+                            complete: function () {
+                                $("#ajax_loader").hide();
+                            }
+                        });
+
+
+                        toastr.success(response.message);
+                        $("#exitclearance_tbl, #exitclearance_tbl_wrapper").show();
+                        setTimeout(function () {
+                            window.location.reload(true);
+                        }, 5000);
+                    } else {
+                        toastr.error(response.message);
+                    }
+                },
+                error: function (xhr, status, error) {
+                    toastr.remove();
+                    toastr.error("An error occurred: " + error);
+                    console.error("Error:", status, error);
+                },
+                complete: function () {
+                    $("#ajax_loader").hide();
+                }
+            });
+        }
+
+
+
+        //When click on view button
+        $('body').on('click', '.viewclearance', function () {
+            checkSession();
+            $(".viewclearance").attr("data-toggle", "modal");
+            $(".viewclearance").attr("data-target", "#viewflow_modal");
+            var row = $(this).closest('tr');
+            ExitEmployeeId = row.find('.ExitEmployeeId').text();
+            IsClearance = row.find('.IsClearance').text();
+            if (IsClearance == "Yes") {
+                GetWorkFlowView(ExitEmployeeId);
+            }
+            else {
+
+            }
+        });
+
+
+        // View flow Modal Code
+        $("#viewflow").on('click', function () {
+            checkSession();
+            $("#viewflow").attr("data-toggle", "modal");
+            $("#viewflow").attr("data-target", "#viewflow_modal");
+            WorkFlowId = $("#workflow").val();
+            IsClearance = $("#isclearance").val();
+            if (IsClearance == "1") {
+                GetViewforWorkflowID(WorkFlowId);
+            }
+            else {
+
+            }
+        });
+
+
+        //When click on print button
+        $("body").on('click', '.printclearance', function () {
+        
+            checkSession();
+            $(".printclearance").attr("data-toggle", "modal");
+            $(".printclearance").attr("data-target", "#PrintDocs_modal");
+
+            $('.toggle-vis').each(function (index) {
+            
+                $('.toggle-vis').prop('checked', false);
+            });
+
+            var row = $(this).closest('tr');
+            ExitEmployeeId = row.find('.ExitEmployeeId').text();
+        });
+
+        // Event handler for Select All checkbox
+        //$('#select_all').change(function () {
+        //    debugger;
+        //    checkSession();
+        //    if ($(this).prop('checked')) {
+        //        $('.toggle-vis').prop('checked', true);
+        //    } else {
+        //        $('.toggle-vis').prop('checked', false);
+        //    }
+        //});
+
+
+        //$('.no-due-checkbox').on('change', function () {
+        //    if ($(this).prop('checked')) {
+        //        // Uncheck all others
+        //        $('.no-due-checkbox').not(this).prop('checked', false);
+        //        console.log($(this).attr('id') + ' is selected.');
+        //    } else {
+        //        console.log($(this).attr('id') + ' is deselected.');
+        //    }
+        //});
+
+        //Added by Damini on 26-08-2025
+        $('input[type="checkbox"]').on('change', function () {
+            if ($(this).prop('checked')) {
+                // Uncheck all other checkboxes
+                $('input[type="checkbox"]').not(this).prop('checked', false);
+                console.log($(this).attr('id') + ' is selected.');
+            } else {
+                console.log($(this).attr('id') + ' is deselected.');
+            }
+        });
+
+
+
+
+        $("#Printbtn").on('click', function () {
+         
+            checkSession();
+            var checkboxValues = '';
+            $('.toggle-vis').each(function (index) {
+                if ($(this).prop('checked')) {
+               
+                    if (checkboxValues !== '') {
+                        checkboxValues += ',';
+                    }
+                    checkboxValues += $(this).val();
+                }
+            });
+
+            if (checkboxValues != "") {
+                if (typeof ExitEmployeeId === "undefined" || isNaN(ExitEmployeeId)) {
+                    console.error("ExitEmployeeId is not valid:", ExitEmployeeId);
+                    return;
+                }
+                $.ajax({
+                    type: "GET",
+                    url: '@_webapiurlpayroll' + "Full_FinalSettlement/PrintExitEmployeeRequest?ExitEmployeeId=" + ExitEmployeeId + "&Print_value=" + checkboxValues,
+                    headers: { 'Authorization': '@_tokan' },
+                    contentType: "application/json; charset=utf-8",
+                    dataType: "json",
+                    beforeSend: function () {
+                        $("#ajax_loader").show();
+                    },
+                    success: function (response, status, xhr) {
+                        if (response && response.length > 0) {
+                            var newWindow = window.open();
+                            newWindow.document.title = "Employee Exit Request Print";
+                            newWindow.document.write(response);
+                            newWindow.document.close();
+                        } else if (typeof response === "undefined" || response === undefined) {
+                            toastr.error("No data found");
+                        } else {
+                            toastr.error("No data found");
+                        }
+                    },
+                    error: function (jqXHR, ajaxOptions, thrownError) {
+                        $('.loading').hide();
+                        if (jqXHR.status == 500) {
+                            toastr.error("InternalServerError");
+                        } else if (jqXHR.status == 400) {
+                            toastr.error("BadRequest");
+                        } else if (jqXHR.status == 401) {
+                            window.location.href = "/PayTime/LoginPage";
+                        }
+                    },
+                    complete: function () {
+                        $("#ajax_loader").hide();
+                    }
+                });
+            }
+            else {
+                toastr.remove();
+                toastr.error("Please select form");
+            }
+        });
+
+
+        // Clearance Select YES then Open New Block code
+        $('#isclearance').on('change', function () {
+            checkSession();
+            IsClearance = $(this).val();
+            if (IsClearance === "1") {
+                $("#clearancelevel").show();
+                $("#viewflow").hide();
+                getallworkflow(1);
+            } else {
+                $("#clearancelevel").hide();
+            }
+        });
+
+        // Exit Interview Select YES then Open New Block code
+        $('#exitinterview').on('change', function () {
+            checkSession();
+            if ($(this).val() === "1") {
+                $("#exitinterview_level").show();
+                //fillDepartment();
+                fillEvaluationBy();
+            } else {
+                $("#exitinterview_level").hide();
+            }
+        });
+
+
+        //Click on Submit button to save the data
+        $("#btnsubmit").on('click', function () {
+
+            checkSession();
+            IsClearance = $("#isclearance").val();
+            ExitInterview = $("#exitinterview").val();
+
+            if ($("#CompanyID").val() == "0" || $("#CompanyID").val() == "") {
+                toastr.remove();
+                toastr.error("Please select company.");
+                $("#CompanyID").addClass('field_error');
+                event.preventDefault();
+                return false;
+            } else {
+                $("#CompanyID").removeClass('field_error');
+            }
+            if ($("#BranchIds").val() == "0" || $("#BranchIds").val() == null) {
+                toastr.remove();
+                toastr.error("Please select branch.");
+                $("#BranchIds").addClass('field_error');
+                event.preventDefault();
+                return false;
+            } else {
+                $("#BranchIds").removeClass('field_error');
+            }
+            if($("#EmpIds").val() == "0" || $("#EmpIds").val() == null) {
+                toastr.remove();
+                toastr.error("Please select employee.");
+                $("#EmpIds").addClass('field_error');
+                event.preventDefault();
+                return false;
+            }
+            else {
+                $("#EmpIds").removeClass('field_error');
+            }
+            if ($("#exittype").val() == "0" || $("#exittype").val() == null) {
+                toastr.remove();
+                toastr.error("Please select exit type.");
+                $("#exittype").addClass('field_error');
+                event.preventDefault();
+                return false;
+            }
+            else {
+                $("#exittype").removeClass('field_error');
+            }
+            if ($("#leavingdate").val().trim() == "") {
+                toastr.remove();
+                toastr.error("Please enter leaving date.");
+                $("#leavingdate").addClass('field_error');
+                event.preventDefault();
+                return false;
+            } else {
+                $("#leavingdate").removeClass('field_error');
+            }
+            if ($("#isclearance").val() == "0" || $("#isclearance").val() == null) {
+                toastr.remove();
+                toastr.error("Please select isclearance.");
+                $("#isclearance").addClass('field_error');
+                event.preventDefault();
+                return false;
+            } else {
+                $("#isclearance").removeClass('field_error');
+            }
+
+            if (IsClearance == 1) {
+                if ($("#workflow").val() == "0" || $("#workflow").val() == null) {
+                    toastr.remove();
+                    toastr.error("Please select workflow.");
+                    $("#workflow").addClass('field_error');
+                    event.preventDefault();
+                    return false;
+                } else {
+                    $("#workflow").removeClass('field_error');
+                }
+                if ($("#exitinterview").val() == "0" || $("#exitinterview").val() == null) {
+                    toastr.remove();
+                    toastr.error("Please select exit interview.");
+                    $("#exitinterview").addClass('field_error');
+                    event.preventDefault();
+                    return false;
+                } else {
+                    $("#exitinterview").removeClass('field_error');
+                }
+            }
+            else {
+                if ($("#exitinterview").val() == "0" || $("#exitinterview").val() == null) {
+                    toastr.remove();
+                    toastr.error("Please select exit interview.");
+                    $("#exitinterview").addClass('field_error');
+                    event.preventDefault();
+                    return false;
+                } else {
+                    $("#exitinterview").removeClass('field_error');
+                }
+            }
+
+            if (ExitInterview == 1) {
+                if ($("#DeptIds").val() == "0" || $("#DeptIds").val() == null) {
+                    toastr.remove();
+                    toastr.error("Please select department.");
+                    $("#DeptIds").addClass('field_error');
+                    event.preventDefault();
+                    return false;
+                } else {
+                    $("#DeptIds").removeClass('field_error');
+                }
+                if ($("#evaluationby").val() == "0" || $("#evaluationby").val() == null) {
+                    toastr.remove();
+                    toastr.error("Please select evaluation by.");
+                    $("#evaluationby").addClass('field_error');
+                    event.preventDefault();
+                    return false;
+                } else {
+                    $("#evaluationby").removeClass('field_error');
+                }
+                if ($("#interviewdate").val().trim() == "") {
+                    $("#interviewdate").focus();
+                    toastr.remove();
+                    toastr.error("Please enter interview date.");
+                    $("#interviewdate").addClass('field_error');
+                    event.preventDefault();
+                    return false;
+                } else {
+                    $("#interviewdate").removeClass('field_error');
+                }
+                if ($("#interviewtime").val().trim() == "") {
+                    $("#interviewtime").focus();
+                    toastr.remove();
+                    toastr.error("Please enter interview time.");
+                    $("#interviewtime").addClass('field_error');
+                    event.preventDefault();
+                    return false;
+                } else {
+                    $("#interviewtime").removeClass('field_error');
+                }
+                if ($("#interviewplace").val().trim() == "") {
+                    $("#interviewplace").focus();
+                    toastr.remove();
+                    toastr.error("Please enter interview place.");
+                    $("#interviewplace").addClass('field_error');
+                    event.preventDefault();
+                    return false;
+                } else {
+                    $("#interviewplace").removeClass('field_error');
+                }
+                if ($("#reason").val().trim() == "") {
+                    $("#reason").focus();
+                    toastr.remove();
+                    toastr.error("Please enter reason.");
+                    $("#reason").addClass('field_error');
+                    event.preventDefault();
+                    return false;
+                } else {
+                    $("#reason").removeClass('field_error');
+                }
+            }
+            else {
+                if ($("#reason").val().trim() == "") {
+                    $("#reason").focus();
+                    toastr.remove();
+                    toastr.error("Please enter reason.");
+                    $("#reason").addClass('field_error');
+                    event.preventDefault();
+                    return false;
+                } else {
+                    $("#reason").removeClass('field_error');
+                }
+            }
+
+
+            let interviewTime = $("#interviewtime").val();
+            //Convert into 24 hours time format
+            if (!interviewTime) {
+                interviewTime = "00:00";
+            } else {
+                if (!interviewTime.includes(":")) {
+                    interviewTime += ":00";
+                }
+                let [timePart, modifier] = interviewTime.trim().split(" ");
+                let [hours, minutes] = timePart.split(":").map(Number);
+
+                if (modifier === "PM" && hours < 12) {
+                    hours += 12;
+                } else if (modifier === "AM" && hours === 12) {
+                    hours = 0;
+                }
+                let hoursStr = hours.toString().padStart(2, '0');
+                let minutesStr = minutes.toString().padStart(2, '0');
+                interviewTime = `${hoursStr}:${minutesStr}`;
+            }
+
+
+            var UserId = @userid;
+            let requestObj = {
+                "ExitEmployeeId": ExitEmployeeId,
+                "CompanyID": $("#CompanyID").val(),
+                "BranchId": $("#BranchIds").val(),
+                "EmpId": $("#EmpIds").val(),
+                "ExitType": $("#exittype").val(),
+                "LeavingDate": parseDateSafe($("#leavingdate").val()),
+                "IsClearance": IsClearance,
+                "WorkFlowId": $("#workflow").val() || 0,
+                "ExitInterview": ExitInterview,
+                "DepartmentId": $("#DeptIds").val() || 0,
+                "EvaluationBy": $("#evaluationby").val() || 0,
+                /*  "InterviewDate": parseDateSafe($("#interviewdate").val()),*/
+                "InterviewDate": $("#interviewdate").val().trim() ? parseDateSafe($("#interviewdate").val()) : "0001-01-01T00:00:00",
+                "InterviewTime": interviewTime,
+                "InterviewPlace": $("#interviewplace").val().trim() || "",
+                "Reason": $("#reason").val().trim(),
+                "Status": parseInt(Status),
+                "UserId": UserId
+            };
+
+            @*if (requestObj.ExitEmployeeId == 0) {
+                $.ajax({
+                    type: "POST",
+                    headers: { 'Authorization': '@_tokan' },
+                    url: '@_webapiurlpayroll' + 'Full_FinalSettlement/CreateExitEmployeeRequest',
+                    data: JSON.stringify(requestObj),
+                    contentType: "application/json; charset=utf-8",
+                    dataType: "json",
+                    beforeSend: function () {
+                        $("#ajax_loader").show();
+                    },
+                    success: function (response) {
+                        toastr.remove();
+                        if (response.success && response.responseCode === 201) {
+                            toastr.success("Exit employee request added successfully.");
+                            $("#exitclearance_tbl").show();
+                            $("#exitclearance_tbl_wrapper").show();
+                            setTimeout(function () {
+                                window.location.reload(true);
+                            }, 10);
+                        } else {
+                            toastr.error(response.message || "An error occurred while adding the ExitEmployeeRequest.");
+                        }
+                    },
+                    error: function (xhr) {
+                        toastr.error(xhr.responseJSON?.title || "An unexpected error occurred. Please try again.");
+                    },
+                    complete: function () {
+                        $("#ajax_loader").hide();
+                    }
+                });
+            }
+            else {
+                $.ajax({
+                    type: "POST",
+                    headers: { 'Authorization': '@_tokan' },
+                    url: '@_webapiurlpayroll' + 'Full_FinalSettlement/UpdateExitEmployeeRequest',
+                    data: JSON.stringify(requestObj),
+                    contentType: "application/json; charset=utf-8",
+                    dataType: "json",
+                    beforeSend: function () {
+                        $("#ajax_loader").show();
+                    },
+                    success: function (response) {
+                        if (response.success == true && response.responseCode == 206) {
+                            toastr.remove();
+                            toastr.success("Exit employee request updated successfully.");
+                            $("#exitclearance_tbl").show();
+                            $("#exitclearance_tbl_wrapper").show();
+                            setTimeout(function () {
+                                window.location.reload(true);
+                            }, 10);
+                        }
+                        else if (response.success == false && response.responseCode == 210) {
+                            toastr.remove();
+                            toastr.error(response.message);
+                        } else if (response.success == false && response.responseCode == 205) {
+                            toastr.remove();
+                            toastr.error(response.message);
+                        }
+                    },
+                    error: function (xhr) {
+                        toastr.error(xhr.responseJSON?.title || "An unexpected error occurred. Please try again.");
+                    },
+                    complete: function () {
+                        $("#ajax_loader").hide();
+                    }
+                });
+            }*@
+
+            if (requestObj.ExitEmployeeId > 0) {
+                $.ajax({
+                    type: "POST",
+                    headers: { 'Authorization': '@_tokan' },
+                    url: '@_webapiurlpayroll' + 'Full_FinalSettlement/UpdateExitEmployeeRequest',
+                    data: JSON.stringify(requestObj),
+                    contentType: "application/json; charset=utf-8",
+                    dataType: "json",
+                    beforeSend: function () {
+                        $("#ajax_loader").show();
+                    },
+                    success: function (response) {
+                        if (response.success == true && response.responseCode == 206) {
+                            toastr.remove();
+                            toastr.success("Exit employee request updated successfully.");
+                            $("#exitclearance_tbl").show();
+                            $("#exitclearance_tbl_wrapper").show();
+                            setTimeout(function () {
+                                window.location.reload(true);
+                            }, 10);
+                        }
+                        else if (response.success == false && response.responseCode == 210) {
+                            toastr.remove();
+                            toastr.error(response.message);
+                        } else if (response.success == false && response.responseCode == 205) {
+                            toastr.remove();
+                            toastr.error(response.message);
+                        }
+                    },
+                    error: function (xhr) {
+                        toastr.error(xhr.responseJSON?.title || "An unexpected error occurred. Please try again.");
+                    },
+                    complete: function () {
+                        $("#ajax_loader").hide();
+                    }
+                });
+            }
+            else {
+                 $.ajax({
+                    type: "POST",
+                    headers: { 'Authorization': '@_tokan' },
+                    url: '@_webapiurlpayroll' + 'Full_FinalSettlement/CreateExitEmployeeRequest',
+                    data: JSON.stringify(requestObj),
+                    contentType: "application/json; charset=utf-8",
+                    dataType: "json",
+                    beforeSend: function () {
+                        $("#ajax_loader").show();
+                    },
+                    success: function (response) {
+                        toastr.remove();
+                        if (response.success && response.responseCode === 201) {
+                            toastr.success("Exit employee request added successfully.");
+                            $("#exitclearance_tbl").show();
+                            $("#exitclearance_tbl_wrapper").show();
+                            setTimeout(function () {
+                                window.location.reload(true);
+                            }, 10);
+                        } else {
+                            toastr.error(response.message || "An error occurred while adding the ExitEmployeeRequest.");
+                        }
+                    },
+                    error: function (xhr) {
+                        toastr.error(xhr.responseJSON?.title || "An unexpected error occurred. Please try again.");
+                    },
+                    complete: function () {
+                        $("#ajax_loader").hide();
+                    }
+                });
+            }
+        });
+
+
+        //When click on dropdown on the grid
+        $('body').on('change', '#Search_dropdown', function () {
+
+            checkSession();
+            status = $(this).val();
+            if (status === "0") {
+                $('#exitclearance_tbl tbody tr').show();
+                return;
+            }
+            if (status == 1) {
+                _gridstatus = "Pending";
+            }
+            else if (status == 2) {
+                _gridstatus = "Approved";
+            }
+            else if (status == 3) {
+                _gridstatus = "Rejected";
+            }
+            else if (status == 4) {
+                _gridstatus = "Sending for Approval";
+            }
+            else if (status == 5) {
+                _gridstatus = "Pending for Approval";
+            }
+            else if (status == 6) {
+                _gridstatus = "Pending for Rerequest";
+            }
+            else if (status == 7) {
+                _gridstatus = "Sending for Rerequest";
+            }
+            $('#exitclearance_tbl tbody tr').hide();
+            $('#exitclearance_tbl tbody tr').each(function () {
+                var rowStatus = $(this).find('td').eq(9).text().trim();
+                if (rowStatus === _gridstatus) {
+                    $(this).show();
+                }
+            });
+        });
+
+           //Use to parse the 6 date format (DD-MMM-YYYY, DD-MM-YYYY, MMM-DD-YYYY, MM-DD-YYYY, YYYY-MMM-DD, YYYY-MM-DD)
+            function parseDateSafe(value) {
+                if (!value) return null;
+                const monthNames = {
+                    Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5,
+                    Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11
+                };
+                value = value.trim().replace(/[\s]+/g, '');
+                const patterns = [
+                    { regex: /^(\d{2})-([A-Za-z]{3})-(\d{4})$/, order: ['D', 'M', 'Y'] },
+                    { regex: /^(\d{2})-(\d{2})-(\d{4})$/, order: ['D', 'N', 'Y'] },
+                    { regex: /^([A-Za-z]{3})-(\d{2})-(\d{4})$/, order: ['M', 'D', 'Y'] },
+                    { regex: /^(\d{2})-(\d{2})-(\d{4})$/, order: ['N', 'D', 'Y'] },
+                    { regex: /^(\d{4})-([A-Za-z]{3})-(\d{2})$/, order: ['Y', 'M', 'D'] },
+                    { regex: /^(\d{4})-(\d{2})-(\d{2})$/, order: ['Y', 'N', 'D'] }
+                ];
+                for (let pattern of patterns) {
+                    const match = value.match(pattern.regex);
+                    if (match) {
+                        let day, month, year;
+                        pattern.order.forEach((part, i) => {
+                            const val = match[i + 1];
+                            switch (part) {
+                                case 'D': day = parseInt(val); break;
+                                case 'M': month = monthNames[val.substring(0, 3)] ?? -1; break;
+                                case 'N': month = parseInt(val) - 1; break;
+                                case 'Y': year = parseInt(val); break;
+                            }
+                        });
+                        const date = new Date(year, month, day);
+                        if (!isNaN(date)) {
+                            // Manual formatting to YYYY-MM-DD (local date)
+                            const mm = String(month + 1).padStart(2, '0');
+                            const dd = String(day).padStart(2, '0');
+                            return `${year}-${mm}-${dd}`;
+                        }
+                    }
+                }
+                // fallback
+                const fallback = new Date(value);
+                if (isNaN(fallback)) return null;
+                return fallback.toISOString().split("T")[0];
+        }
+
+
+        function formatDate(date, format) {
+            if (isNaN(date)) return '';
+            const monthNames = [
+                "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+            ];
+            const map = {
+                yyyy: date.getFullYear(),
+                yy: String(date.getFullYear()).slice(-2),
+                M: monthNames[date.getMonth()],
+                mm: String(date.getMonth() + 1).padStart(2, '0'),
+                dd: String(date.getDate()).padStart(2, '0')
+            };
+            return format.replace(/yyyy|M|mm|dd|yy/g, matched => map[matched]);
+        }
+
+
+        exitemployeerequesttbl();
+        //Bind the grid of exitclearancerequest
+
+        function exitemployeerequesttbl() {
+
+            $(".no_recoed").hide();
+            var EmpId = @empid;
+            var exitemployeetable = $('#exitclearance_tbl').DataTable({
+                dom: _domCommon,
+                language: _languageCommon,
+            });
+            setTimeout(function () {
+                $("#" + "exitclearance_tbl" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+                $('.tooltips').tooltip();
+            }, 100);
+            checkSession();
+            $.ajax({
+                type: "GET",
+                headers: { 'Authorization': '@_tokan' },
+                url: '@_webapiurlpayroll' + 'Full_FinalSettlement/GetAllExitEmployeeRequest',
+                data: { EmpId: EmpId },
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                beforeSend: function () {
+                    $("#ajax_loader").show();
+                },
+                success: function (response) {
+                    if (response != null) {
+                        const wf = response;
+                        handleGridVisibility("tblempty", "NotificationGrid-empty", wf, {
+                            imageUrl: "emptyscreen_1.png",
+                            subText: "No entries found. Please add a record to get started."
+                        });
+                    }
+                    var RoleId = @_RoleId;
+                    if (RoleId != '1' && RoleId != '6805' && RoleId != '6806') {
+                        if (response.length === 0 || response.every(item => item.StatusApproval == 0)) {
+                            $("#back_exitClear").hide();
+                            $(".no_recoed").show();
+                            return;
+                        } else {
+                            $("#back_exitClear").show();
+                            $(".no_recoed").hide();
+                        }
+                    }
+
+
+                    if (response.length > 0) {
+                        if ($.fn.DataTable.isDataTable("#exitclearance_tbl")) {
+                            $('#exitclearance_tbl').DataTable().destroy();
+                        }
+                        $("#exitclearance_tbl tbody").empty();
+
+                        var table = '';
+
+                        for (var i = 0; i < response.length; i++) {
+                            var tbl = "<tr>";
+                           /* tbl += "<td class='SrNo'>" + (i + 1) + "</td>";*/
+                            tbl += "<td style='display:none' class='ExitEmployeeId'>" + response[i].ExitEmployeeId + "</td>";
+                            tbl += "<td style='display:none' class='WorkFlowId'>" + response[i].WorkFlowId + "</td>";
+                            tbl += "<td style='display:none' class='LevelId'>" + response[i].LevelId + "</td>";
+                            tbl += "<td class='EmpCode'>" + (response[i].EmpCode || '') + "</td>";
+                            tbl += "<td class='EmpName'>" + (response[i].EmpName || '') + "</td>";
+
+                            var ExitType = response[i].ExitType;
+                            var exitTypeText = '';
+                            if (ExitType == 1) {
+                                exitTypeText = "Resignation";
+                            } else if (ExitType == 2) {
+                                exitTypeText = "Termination";
+                            } else if (ExitType == 3) {
+                                exitTypeText = "End of Contract";
+                            }
+                            else {
+                                exitTypeText = "";
+                            }
+                            tbl += "<td class='ExitType'>" + (exitTypeText || '') + "</td>";
+
+                            IsClearance = response[i].IsClearance;
+                            ExitInterview = response[i].ExitInterview;
+                            var IsClearanceText = '';
+                            if (IsClearance == 1) {
+                                IsClearanceText = "Yes";
+                            } else {
+                                IsClearanceText = "No";
+                            }
+
+                            tbl += "<td class='IsClearance'>" + (IsClearanceText || '') + "</td>";
+
+                            var ExitInterviewText = '';
+                            if (ExitInterview == 1) {
+                                ExitInterviewText = "Yes";
+                            }
+                            else {
+                                ExitInterviewText = "No";
+                            }
+
+                            tbl += "<td class='ExitInterview'>" + (ExitInterviewText || '') + "</td>";
+
+                            tbl += "<td class='DepartmentName'>" + (response[i].DepartmentName || '') + "</td>";
+
+                            /*let EmpResignDate = new Date(response[i].EmpResignDate).toISOString().split('T')[0];*/
+                            let EmpResignDate = response[i].EmpResignDate;
+                           /* var parsedDate = new Date(EmpResignDate);*/
+                            var parsedDate = EmpResignDate ? new Date(EmpResignDate) : null;
+                             var dateformat = "@_isdateformat";
+                            if (!EmpResignDate || isNaN(parsedDate.getTime()) || parsedDate.toISOString().split('T')[0] === "1970-01-01") {
+                                tbl += "<td class='EmpResignDate'></td>";
+                            } else {
+                                tbl += "<td class='EmpResignDate'>" + formatDate(parsedDate, dateformat) + "</td>";
+                            }
+
+
+                            var LeavingDate = response[i].LeavingDate;
+                            var parsedDate = new Date(LeavingDate);
+                            var dateformat = "@_isdateformat";
+                            if (!isNaN(parsedDate)) {
+                                tbl += "<td class='LeavingDate'>" + formatDate(parsedDate, dateformat) + "</td>";
+                            } else {
+                                tbl += "<td class='LeavingDate'>" + parseDateSafe(LeavingDate) + "</td>";
+                            }
+
+
+                            var RoleId = @_RoleId;
+                            var statusText = "";
+                            var statusClass = "";
+                            /* var status = (RoleId == '6805') ? response[i].StatusApproval : response[i].Status;*/
+
+                            //if (RoleId == '6805') {
+                            //    var status = response[i].Status;
+                            //}
+                            //else {
+                            //    var status = response[i].Status;
+                            //}
+                            var status = response[i].Status;
+
+                            if (RoleId != '1' && RoleId != '6805' && RoleId != '6806') {
+                                if (response[i].StatusApproval == 1) {
+                                    status = response[i].Status;
+
+                                }
+                                else {
+                                    status = response[i].StatusApproval;
+
+                                }
+                            }
+
+                            if (status == 4) {
+                                if (RoleId != '1' && RoleId != '6805' && RoleId != '6806') {
+                                    statusText = "Pending for Approval";
+                                    statusClass = "blue_font";
+                                } else {
+                                    statusText = "Sending for Approval";
+                                    statusClass = "purple_font";
+                                }
+                            } else if (status == 1) {
+                                statusText = "Pending";
+                                statusClass = "orange_font";
+                            } else if (status == 2) {
+                                statusText = "Approved";
+                                statusClass = "green_font";
+                            } else if (status == 3) {
+                                statusText = "Rejected";
+                                statusClass = "red_font";
+                            }
+                            else if (status == 5) {
+                                statusText = "Pending for Rerequest";
+                                statusClass = "blue_font";
+                            }
+                            else if (status == 6) {
+                                if (RoleId != '1' && RoleId != '6805' && RoleId != '6806') {
+                                    statusText = "Pending for Approval";
+                                    statusClass = "blue_font";
+                                } else {
+                                    statusText = "Sending for Approval";
+                                    statusClass = "purple_font";
+                                }
+                            }
+
+                            tbl += `<td class='status ${statusClass}'>${statusText}</td>`;
+                            tbl += "<td class='Reason'>" + (response[i].Reason || '') + "</td>";
+
+                            if (RoleId != '1' && RoleId != '6805' && RoleId != '6806') {
+                                tbl += "<td class='Remarks'>" + (response[i].Remarks || '') + "</td>";
+                            }
+
+                            var actionButtons = '';
+                            if (IsClearance == 1) {
+                                if (status == 1) {
+                                    actionButtons = "<a href='javascript:;' class='editemprequest btn seagreen_btnnew tooltips' data-placement='left' data-original-title='Edit'> <i class='fa-regular fa-pen-to-square'></i></a>" +
+                                        "<a href='javascript:;' class='viewclearance btn blue_btnnew tooltips' data-placement='left' data-original-title='View'> <i class='fa-regular fa-eye'></i></a>" +
+                                        "<a href='javascript:;' class='printclearance btn blue_btnnew tooltips disabled' data-placement='left' data-original-title='Print' style='pointer-events: none; opacity: 0.5;'> <i class='fa-regular fa-print'></i> </a>" +
+                                        "<a href='javascript:;' class='sendforapproval btn blue_btnnew tooltips' data-placement='left' data-original-title='Send for Approval'><i class='fa-solid fa-paper-plane'></i></a>";
+                                } else if (status == 2) {
+                                    if (RoleId != '1' && RoleId != '6805' && RoleId != '6806') {
+                                        actionButtons = "<a href='javascript:;' class='editemprequest btn seagreen_btnnew tooltips disabled' data-placement='left' data-original-title='This button is disabled' style='pointer-events: none; opacity: 0.5;'> <i class='fa-regular fa-pen-to-square'></i> </a>" +
+                                            "<a href='javascript:;' class='viewclearance btn blue_btnnew tooltips' data-placement='left' data-original-title='View'> <i class='fa-regular fa-eye'></i></a>";
+                                    }
+                                    else {
+                                        actionButtons = "<a href='javascript:;' class='editemprequest btn seagreen_btnnew tooltips disabled' data-placement='left' data-original-title='This button is disabled' style='pointer-events: none; opacity: 0.5;'> <i class='fa-regular fa-pen-to-square'></i> </a>" +
+                                            "<a href='javascript:;' class='viewclearance btn blue_btnnew tooltips' data-placement='left' data-original-title='View'> <i class='fa-regular fa-eye'></i></a>" +
+                                            "<a href='javascript:;' class='printclearance btn blue_btnnew tooltips' data-placement='left' data-original-title='Print'> <i class='fa-regular fa-print'></i> </a>";
+                                    }
+                                } else if (status == 3) {
+                                    if (RoleId != '1' && RoleId != '6805' && RoleId != '6806') {
+                                        actionButtons = "<a href='javascript:;' class='editemprequest btn seagreen_btnnew tooltips disabled' data-placement='left' data-original-title='This button is disabled' style='pointer-events: none; opacity: 0.5;'> <i class='fa-regular fa-pen-to-square'></i> </a>" +
+                                            "<a href='javascript:;' class='viewclearance btn blue_btnnew tooltips' data-placement='left' data-original-title='View'> <i class='fa-regular fa-eye'></i></a>";
+                                    }
+                                    else {
+                                        actionButtons = "<a href='javascript:;' class='editemprequest btn seagreen_btnnew tooltips' data-placement='left' data-original-title='Edit'> <i class='fa-regular fa-pen-to-square'></i></a>" +
+                                            "<a href='javascript:;' class='viewclearance btn blue_btnnew tooltips' data-placement='left' data-original-title='View'> <i class='fa-regular fa-eye'></i></a>" +
+                                            "<a href='javascript:;' class='printclearance btn blue_btnnew tooltips disabled' data-placement='left' data-original-title='Print' style='pointer-events: none; opacity: 0.5;'> <i class='fa-regular fa-print'></i> </a>";
+                                    }
+                                } else if (status == 4) {
+                                    if (RoleId != '1' && RoleId != '6805' && RoleId != '6806') {
+                                        actionButtons = "<a href='javascript:;' class='editemprequest btn seagreen_btnnew tooltips' data-placement='left' data-original-title='Edit' style='pointer-events: none; opacity: 0.5;'> <i class='fa-regular fa-pen-to-square'></i></a>" +
+                                            "<a href='javascript:;' class='viewclearance btn blue_btnnew tooltips' data-placement='left' data-original-title='View'> <i class='fa-regular fa-eye'></i></a>" +
+                                            //"<a href='javascript:;' class='printclearance btn blue_btnnew tooltips disabled' data-placement='left' data-original-title='Print' style='pointer-events: none; opacity: 0.5;'> <i class='fa-regular fa-print'></i> </a>" +
+                                           // "<a href='javascript:;' class='sendforapproval btn blue_btnnew tooltips' data-placement='left' data-original-title='Send for Approval' style='pointer-events: none; opacity: 0.5;'><i class='fa-solid fa-paper-plane'></i></a>" +
+                                            "<a href='javascript:;' class='approvalrejection btn blue_btnnew tooltips' data-placement='left' data-original-title='Approval/Rejection'><i class='fa-solid fa-check'></i></a>";
+                                    }
+                                    else {
+                                        actionButtons = "<a href='javascript:;' class='editemprequest btn seagreen_btnnew tooltips' data-placement='left' data-original-title='Edit' style='pointer-events: none; opacity: 0.5;'> <i class='fa-regular fa-pen-to-square'></i></a>" +
+                                            "<a href='javascript:;' class='viewclearance btn blue_btnnew tooltips' data-placement='left' data-original-title='View'> <i class='fa-regular fa-eye'></i></a>" +
+                                            "<a href='javascript:;' class='printclearance btn blue_btnnew tooltips disabled' data-placement='left' data-original-title='Print' style='pointer-events: none; opacity: 0.5;'> <i class='fa-regular fa-print'></i> </a>" +
+                                            "<a href='javascript:;' class='sendforapproval btn blue_btnnew tooltips' data-placement='left' data-original-title='Send for Approval' style='pointer-events: none; opacity: 0.5;'><i class='fa-solid fa-paper-plane'></i></a>";
+                                    }
+                                }
+                                else if (status == 5) {
+                                    actionButtons = "<a href='javascript:;' class='editemprequest btn seagreen_btnnew tooltips' data-placement='left' data-original-title='Edit'> <i class='fa-regular fa-pen-to-square'></i></a>" +
+                                        "<a href='javascript:;' class='viewclearance btn blue_btnnew tooltips' data-placement='left' data-original-title='View'> <i class='fa-regular fa-eye'></i></a>" +
+                                        "<a href='javascript:;' class='printclearance btn blue_btnnew tooltips disabled' data-placement='left' data-original-title='Print' style='pointer-events: none; opacity: 0.5;'> <i class='fa-regular fa-print'></i> </a>" +
+                                        "<a href='javascript:;' class='sendforapproval btn blue_btnnew tooltips' data-placement='left' data-original-title='Send for Approval'><i class='fa-solid fa-paper-plane'></i></a>";
+                                }
+                                else if (status == 6) {
+                                    if (RoleId != '1' && RoleId != '6805' && RoleId != '6806') {
+                                        actionButtons = "<a href='javascript:;' class='editemprequest btn seagreen_btnnew tooltips' data-placement='left' data-original-title='Edit' style='pointer-events: none; opacity: 0.5;'> <i class='fa-regular fa-pen-to-square'></i></a>" +
+                                            "<a href='javascript:;' class='viewclearance btn blue_btnnew tooltips' data-placement='left' data-original-title='View'> <i class='fa-regular fa-eye'></i></a>" +
+                                            //"<a href='javascript:;' class='printclearance btn blue_btnnew tooltips disabled' data-placement='left' data-original-title='Print' style='pointer-events: none; opacity: 0.5;'> <i class='fa-regular fa-print'></i> </a>" +
+                                            // "<a href='javascript:;' class='sendforapproval btn blue_btnnew tooltips' data-placement='left' data-original-title='Send for Approval' style='pointer-events: none; opacity: 0.5;'><i class='fa-solid fa-paper-plane'></i></a>" +
+                                            "<a href='javascript:;' class='approvalrejection btn blue_btnnew tooltips' data-placement='left' data-original-title='Approval/Rejection'><i class='fa-solid fa-check'></i></a>";
+                                    }
+                                    else {
+                                        actionButtons = "<a href='javascript:;' class='editemprequest btn seagreen_btnnew tooltips' data-placement='left' data-original-title='Edit' style='pointer-events: none; opacity: 0.5;'> <i class='fa-regular fa-pen-to-square'></i></a>" +
+                                            "<a href='javascript:;' class='viewclearance btn blue_btnnew tooltips' data-placement='left' data-original-title='View'> <i class='fa-regular fa-eye'></i></a>" +
+                                            "<a href='javascript:;' class='printclearance btn blue_btnnew tooltips disabled' data-placement='left' data-original-title='Print' style='pointer-events: none; opacity: 0.5;'> <i class='fa-regular fa-print'></i> </a>" +
+                                            "<a href='javascript:;' class='sendforapproval btn blue_btnnew tooltips' data-placement='left' data-original-title='Send for Approval' style='pointer-events: none; opacity: 0.5;'><i class='fa-solid fa-paper-plane'></i></a>";
+                                    }
+                                }
+                            }
+                            else if (IsClearance == 2 && ExitInterview == 2) {
+                                if (status == 2) {
+                                    actionButtons = "<a href='javascript:;' class='editemprequest btn seagreen_btnnew tooltips disabled' data-placement='left' data-original-title='This button is disabled' style='pointer-events: none; opacity: 0.5;'> <i class='fa-regular fa-pen-to-square'></i> </a>" +
+                                        "<a href='javascript:;' class='printclearance btn blue_btnnew tooltips' data-placement='left' data-original-title='Print'> <i class='fa-regular fa-print'></i> </a>";
+                                }
+                            }
+                            else if (IsClearance == 2 && ExitInterview == 1) {
+                                if (status == 2) {
+                                    actionButtons = "<a href='javascript:;' class='editemprequest btn seagreen_btnnew tooltips disabled' data-placement='left' data-original-title='This button is disabled' style='pointer-events: none; opacity: 0.5;'> <i class='fa-regular fa-pen-to-square'></i> </a>" +
+                                        "<a href='javascript:;' class='printclearance btn blue_btnnew tooltips' data-placement='left' data-original-title='Print'> <i class='fa-regular fa-print'></i> </a>";
+                                }
+                            }
+                            else {
+                                if (status == 1) {
+                                    actionButtons = "<a href='javascript:;' class='editemprequest btn seagreen_btnnew tooltips' data-placement='left' data-original-title='Edit'> <i class='fa-regular fa-pen-to-square'></i></a>" +
+                                        "<a href='javascript:;' class='viewclearance btn blue_btnnew tooltips' data-placement='left' data-original-title='View'  style='pointer-events: none; opacity: 0.5;'> <i class='fa-regular fa-eye'></i></a>" +
+                                        "<a href='javascript:;' class='printclearance btn blue_btnnew tooltips disabled' data-placement='left' data-original-title='Print' style='pointer-events: none; opacity: 0.5;'> <i class='fa-regular fa-print'></i> </a>";
+                                       /* "<a href='javascript:;' class='sendforapproval btn blue_btnnew tooltips' data-placement='left' data-original-title='Send for Approval'><i class='fa-solid fa-paper-plane'></i></a>";*/
+                                } else if (status == 2) {
+                                    if (RoleId != '1' && RoleId != '6805' && RoleId != '6806') {
+                                        actionButtons = "<a href='javascript:;' class='editemprequest btn seagreen_btnnew tooltips disabled' data-placement='left' data-original-title='This button is disabled' style='pointer-events: none; opacity: 0.5;'> <i class='fa-regular fa-pen-to-square'></i> </a>" +
+                                            "<a href='javascript:;' class='viewclearance btn blue_btnnew tooltips' data-placement='left' data-original-title='View'> <i class='fa-regular fa-eye'></i></a>";
+                                    }
+                                    else {
+                                        actionButtons = "<a href='javascript:;' class='editemprequest btn seagreen_btnnew tooltips disabled' data-placement='left' data-original-title='This button is disabled' style='pointer-events: none; opacity: 0.5;'> <i class='fa-regular fa-pen-to-square'></i> </a>" +
+                                            "<a href='javascript:;' class='viewclearance btn blue_btnnew tooltips' data-placement='left' data-original-title='View'> <i class='fa-regular fa-eye'></i></a>" +
+                                            "<a href='javascript:;' class='printclearance btn blue_btnnew tooltips' data-placement='left' data-original-title='Print'> <i class='fa-regular fa-print'></i> </a>";
+                                    }
+                                } else if (status == 3) {
+                                    actionButtons = "<a href='javascript:;' class='editemprequest btn seagreen_btnnew tooltips' data-placement='left' data-original-title='Edit'> <i class='fa-regular fa-pen-to-square'></i></a>" +
+                                        "<a href='javascript:;' class='viewclearance btn blue_btnnew tooltips' data-placement='left' data-original-title='View'  style='pointer-events: none; opacity: 0.5;'> <i class='fa-regular fa-eye'></i></a>" +
+                                        "<a href='javascript:;' class='printclearance btn blue_btnnew tooltips disabled' data-placement='left' data-original-title='Print' style='pointer-events: none; opacity: 0.5;'> <i class='fa-regular fa-print'></i> </a>";
+                                } else if (status == 4) {
+                                    if (RoleId != '1' && RoleId != '6805' && RoleId != '6806') {
+                                        actionButtons = "<a href='javascript:;' class='editemprequest btn seagreen_btnnew tooltips' data-placement='left' data-original-title='Edit' style='pointer-events: none; opacity: 0.5;'> <i class='fa-regular fa-pen-to-square'></i></a>" +
+                                            "<a href='javascript:;' class='viewclearance btn blue_btnnew tooltips' data-placement='left' data-original-title='View'> <i class='fa-regular fa-eye'></i></a>" +
+                                            "<a href='javascript:;' class='printclearance btn blue_btnnew tooltips disabled' data-placement='left' data-original-title='Print' style='pointer-events: none; opacity: 0.5;'> <i class='fa-regular fa-print'></i> </a>" +
+                                            "<a href='javascript:;' class='sendforapproval btn blue_btnnew tooltips' data-placement='left' data-original-title='Send for Approval' style='pointer-events: none; opacity: 0.5;'><i class='fa-solid fa-paper-plane'></i></a>" +
+                                            "<a href='javascript:;' class='approvalrejection btn blue_btnnew tooltips' data-placement='left' data-original-title='Approval/Rejection'><i class='fa-solid fa-check'></i></a>";
+                                    }
+                                    else {
+                                        actionButtons = "<a href='javascript:;' class='editemprequest btn seagreen_btnnew tooltips' data-placement='leftleft' data-original-title='Edit' style='pointer-events: none; opacity: 0.5;'> <i class='fa-regular fa-pen-to-square'></i></a>" +
+                                            "<a href='javascript:;' class='viewclearance btn blue_btnnew tooltips' data-placement='left' data-original-title='View'> <i class='fa-regular fa-eye'></i></a>" +
+                                            "<a href='javascript:;' class='printclearance btn blue_btnnew tooltips disabled' data-placement='left' data-original-title='Print' style='pointer-events: none; opacity: 0.5;'> <i class='fa-regular fa-print'></i> </a>" +
+                                            "<a href='javascript:;' class='sendforapproval btn blue_btnnew tooltips' data-placement='left' data-original-title='Send for Approval' style='pointer-events: none; opacity: 0.5;'><i class='fa-solid fa-paper-plane'></i></a>";
+                                    }
+                                }
+                                else if (status == 5) {
+                                    actionButtons = "<a href='javascript:;' class='editemprequest btn seagreen_btnnew tooltips' data-placement='left' data-original-title='Edit'> <i class='fa-regular fa-pen-to-square'></i></a>" +
+                                        "<a href='javascript:;' class='viewclearance btn blue_btnnew tooltips' data-placement='left' data-original-title='View'> <i class='fa-regular fa-eye'></i></a>" +
+                                        "<a href='javascript:;' class='printclearance btn blue_btnnew tooltips disabled' data-placement='left' data-original-title='Print' style='pointer-events: none; opacity: 0.5;'> <i class='fa-regular fa-print'></i> </a>" +
+                                        "<a href='javascript:;' class='sendforapproval btn blue_btnnew tooltips' data-placement='left' data-original-title='Send for Approval'><i class='fa-solid fa-paper-plane'></i></a>";
+                                }
+                                else if (status == 6) {
+                                    if (RoleId != '1' && RoleId != '6805' && RoleId != '6806') {
+                                        actionButtons = "<a href='javascript:;' class='editemprequest btn seagreen_btnnew tooltips' data-placement='left' data-original-title='Edit' style='pointer-events: none; opacity: 0.5;'> <i class='fa-regular fa-pen-to-square'></i></a>" +
+                                            "<a href='javascript:;' class='viewclearance btn blue_btnnew tooltips' data-placement='left' data-original-title='View'> <i class='fa-regular fa-eye'></i></a>" +
+                                            //"<a href='javascript:;' class='printclearance btn blue_btnnew tooltips disabled' data-placement='left' data-original-title='Print' style='pointer-events: none; opacity: 0.5;'> <i class='fa-regular fa-print'></i> </a>" +
+                                            // "<a href='javascript:;' class='sendforapproval btn blue_btnnew tooltips' data-placement='left' data-original-title='Send for Approval' style='pointer-events: none; opacity: 0.5;'><i class='fa-solid fa-paper-plane'></i></a>" +
+                                            "<a href='javascript:;' class='approvalrejection btn blue_btnnew tooltips' data-placement='left' data-original-title='Approval/Rejection'><i class='fa-solid fa-check'></i></a>";
+                                    }
+                                    else {
+                                        actionButtons = "<a href='javascript:;' class='editemprequest btn seagreen_btnnew tooltips' data-placement='left' data-original-title='Edit' style='pointer-events: none; opacity: 0.5;'> <i class='fa-regular fa-pen-to-square'></i></a>" +
+                                            "<a href='javascript:;' class='viewclearance btn blue_btnnew tooltips' data-placement='left' data-original-title='View'> <i class='fa-regular fa-eye'></i></a>" +
+                                            "<a href='javascript:;' class='printclearance btn blue_btnnew tooltips disabled' data-placement='left' data-original-title='Print' style='pointer-events: none; opacity: 0.5;'> <i class='fa-regular fa-print'></i> </a>" +
+                                            "<a href='javascript:;' class='sendforapproval btn blue_btnnew tooltips' data-placement='left' data-original-title='Send for Approval' style='pointer-events: none; opacity: 0.5;'><i class='fa-solid fa-paper-plane'></i></a>";
+                                    }
+                                }
+                            }
+
+                            tbl += "<td class='fixed-column'>" + actionButtons + "</td>";
+
+                            tbl += "</tr>";
+                            table += tbl;
+                        }
+                        $("#exitclearance_tbl tbody").html(table);
+                        $('#exitclearance_tbl').destroy;
+                    }
+
+                    // Initialize DataTable
+                    $("#dataTables_tbl_header").remove();
+                    exitemployeetable = $("#exitclearance_tbl").DataTable({
+                        //dom: "<'row'<'col-lg-3 col-sm-5 col-xs-12'<'record_btn_main'l,><'dt-buttons'Bf>><'col-lg-9 col-sm-7 col-xs-12'<'selected_emp_main'>>>" +
+                        //    "<'row'<'col-sm-12 margin-bottom-10'<'customforms_table'tr'>>>" +
+                        //    "<'row'<'col-md-5 col-sm-5'i><'col-md-7 col-sm-7'p>>",
+                        dom: _domColumn,
+                        language: _languageColumn,
+                        destroy: true,
+                        processing: true,
+                        paging: true,
+                        buttons: [
+                            {
+                                extend: 'excelHtml5',
+                                exportOptions: {
+                                    columns: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+                                }
+                            },
+                        ],
+                        initComplete: function (settings, json) {
+                            const visibleTable = $('table:visible').attr('id');
+                            $("#buttons").append(`
+                                <div id="export-button" class="export-button tooltips" data-placement="bottom" data-original-title="Download" data-table-id="${visibleTable}">
+                                    <img src="../Newlayout/images/download_icon.svg" alt="Download icon">
+                                </div>
+                            `);
+                            $("#exitclearance_tbl thead tr:eq(1)").remove();
+
+                            var RoleId = @_RoleId;
+                            if (RoleId != '1' && RoleId != '6805' && RoleId != '6806') {
+                                var footer = '<tr> <th style="display:none;">ExitEmployeeId</th> <th>EmpCode</th> <th>EmployeeName</th> <th>ExitType</th> <th>IsClearance</th> <th>Exit Interview</th> <th>Department</th> <th>ResignationDate</th> <th>LeavingDate</th> <th>Status</th> <th>Reason</th> <th>Remarks</th> <th class="fixed-column">Action</th> </tr> ';
+                            }
+                            else {
+                                var footer = '<tr> <th style="display:none;">ExitEmployeeId</th> <th>EmpCode</th> <th>EmployeeName</th> <th>ExitType</th> <th>IsClearance</th> <th>Exit Interview</th> <th>Department</th> <th>ResignationDate</th> <th>LeavingDate</th> <th>Status</th> <th>Reason</th> <th class="fixed-column">Action</th> </tr> ';
+                            }
+
+                            $("#exitclearance_tbl thead").append(footer);
+                        },
+                        "columnDefs": [
+                            { "orderable": false, "targets": [-1] }
+                        ],
+                        "lengthMenu": [
+                            [10, 25, 50, 100],
+                            [10, 25, 50, 100],
+                        ],
+                        drawCallback: function () {
+                            $('.tooltips').tooltip();
+                        },
+                    });
+                    setTimeout(function () {
+                        $("#" + "exitclearance_tbl" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+                        $('.tooltips').tooltip();
+                    }, 100);
+                    // Add search functionality to the table
+                    $("#exitclearance_tbl thead tr:eq(1) th").each(function (index) {
+                        var RoleId = @_RoleId;
+                        if (RoleId != '1' && RoleId != '6805' && RoleId != '6806') {
+                            if ([1, 2, 3, 4, 5, 6, 7, 8, 10].includes(index)) {
+                                $(this).html('<input type="text" class="search_input" placeholder="Search" /><i class="clm-search"></i>');
+                            } else {
+                                $(this).html('');
+                            }
+                        } else {
+                            if ([1, 2, 3, 4, 5, 6, 8, 7, 9, 10, 11].includes(index)) {
+                                $(this).html('<input type="text" class="search_input" placeholder="Search" /><i class="clm-search"></i>');
+                            } else {
+                                $(this).html('');
+                            }
+                        }
+                    });
+
+                    $("#exitclearance_tbl thead").on("keyup", "input", function () {
+
+                        var columnIndex = $(this).parent().index();
+                        exitemployeetable
+                            .columns(columnIndex)
+                            .search(this.value)
+                            .draw();
+                    });
+
+                    // Handle dropdown filter for status
+                    $("#exitclearance_tbl thead tr:eq(1) th:eq(9)").html('<select class="form-control input-sm adrp" id="Search_dropdown">' +
+                        '<option value="0" selected>All</option>' +
+                        '<option class="orange_font" value="1">Pending</option>' +
+                        '<option class="green_font" value="2">Approved</option>' +
+                        '<option class="red_font" value="3">Rejected</option>' +
+                        '<option class="purple_font" value="4">Sending for Approval</option>' +
+                        '<option class="blue_font" value="5">Pending for Approval</option>' +
+                        '<option class="purple_font" value="7">Sending for Rerequest</option>' +
+                        '<option class="blue_font" value="6">Pending for Rerequest</option>' +
+                        '</select>');
+                },
+                complete: function () {
+                    $("#ajax_loaderaddon").hide();
+                }
+            });
+        }
+
+
+
+        function GetWorkFlowView(ExitEmployeeId) {
+            checkSession();
+            $.ajax({
+                type: "GET",
+                headers: { 'Authorization': '@_tokan' },
+                url: '@_webapiurlpayroll' + 'Full_FinalSettlement/GetWorkFlowView',
+                data: { ExitEmployeeId: ExitEmployeeId },
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                beforeSend: function () {
+                    $("#ajax_loader").show();
+                },
+                success: function (response) {
+
+                    if (response && response.length > 0) {
+                        var modalContent = '';
+
+                        response.forEach(function (data, index) {
+                             var status = data.StatusApproval;
+                             var RoleId = @_RoleId;
+
+                            statustext = "";
+
+
+                            if (status == 1) {
+                                if (RoleId != '1' && RoleId != '6805' && RoleId != '6806') {
+                                    statustext = "Pending for Approval";
+                                    statusClass = "blue_font";
+                                } else {
+                                    statustext = "Sending for Approval";
+                                    statusClass = "purple_font";
+                                }
+                            }
+                            else if (status == 0) {
+                                statustext = "Pending";
+                                statusClass = "orange_font";
+                            }
+                            else if (status == 2) {
+                                statustext = "Approved";
+                                statusClass = "green_font";
+                            }
+                            else if (status == 3) {
+                                statustext = "Rejected";
+                                statusClass = "red_font";
+                            }
+                            else {
+                                statustext = "Pending";
+                                statusClass = "orange_font";
+                            }
+                            //else if (status == 4)
+                            //{
+                            //    statustext = "Pending";
+                            //    statusClass = "orange_font";
+                            //}
+
+                            modalContent += `
+                        <div class="clearance-level-block">
+                            <div>Level <span>${index + 1}</span></div>
+                            <div class="level-approval">
+                                Name: <span class="margin-left-5 margin-right-5">${data.EmpName}</span>
+                                <div class="level-date">${new Date(data.ApprovalDate).toLocaleString().replace('T', ' ').split('.')[0]}<span class="margin-left-5"></span></div>
+                            </div>
+                            <div class="level-data">
+                                <div>Department: <span>${data.DepartmentName}</span></div>
+                                <div class="level-status">Status: <span class="${statusClass}">${statustext}</span></div>
+                            </div>
+                        </div>`;
+                        });
+
+                        $("#viewflow_modal .modal-body").html(modalContent);
+                        $("#view_workflow").modal('show');
+
+                    } else {
+                        $("#create_workflow").show();
+                        $("#workflow_form").hide();
+                        $("#create_newworkflowbtn").hide();
+                    }
+                },
+                error: function (jqXHR, textStatus, errorThrown) {
+                    console.error("Error:", textStatus, errorThrown);
+                },
+                complete: function () {
+                    $("#ajax_loader").hide();
+                }
+            });
+        }
+
+        function GetViewforWorkflowID(WorkFlowId) {
+            checkSession();
+            $.ajax({
+                type: "GET",
+                headers: { 'Authorization': '@_tokan' },
+                url: '@_webapiurlpayroll' + 'Full_FinalSettlement/GetViewforWorkflowID',
+                data: { WorkFlowId: WorkFlowId },
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                beforeSend: function () {
+                    $("#ajax_loader").show();
+                },
+                success: function (response) {
+
+                    if (response && response.length > 0) {
+                        var modalContent = '';
+
+                        response.forEach(function (data, index) {
+                            var status = data.Status;
+                            statustext = "";
+                            if (status == 1) {
+                                statustext = "Pending";
+                                statusClass = "orange_font";
+                            }
+                            else if (status == 2) {
+                                statustext = "Approved";
+                                statusClass = "green_font";
+                            }
+                            else if (status == 3) {
+                                statustext = "Rejected";
+                                statusClass = "red_font";
+                            }
+                            else {
+                                statustext = "Pending";
+                                statusClass = "orange_font";
+                            }
+
+                            modalContent += `
+                <div class="clearance-level-block">
+                    <div>Level <span>${index + 1}</span></div>
+                    <div class="level-approval">
+                        Name: <span class="margin-left-5">${data.EmpName}</span>
+                         <div class="level-date">${new Date(data.created_date).toLocaleString().replace('T', ' ').split('.')[0]}<span class="margin-left-5"></span></div>
+                    </div>
+                    <div class="level-data">
+                        <div>Department: <span>${data.ChecklistTitles}</span></div>
+                    </div>
+                </div>`;
+                        });
+
+                        $("#viewflow_modal .modal-body").html(modalContent);
+                        $("#view_workflow").modal('show');
+
+                    } else {
+                        $("#create_workflow").show();
+                        $("#workflow_form").hide();
+                        $("#create_newworkflowbtn").hide();
+                    }
+                },
+                error: function (jqXHR, textStatus, errorThrown) {
+                    console.error("Error:", textStatus, errorThrown);
+                },
+                complete: function () {
+                    $("#ajax_loader").hide();
+                }
+            });
+        }
+
+
+        //Bind Company, Branch and Employee
+        $('#CompanyID').change(function () {
+
+            checkSession();
+            var s = $('#CompanyID').val();
+            $('#CompanyName').val($("#CompanyID option:selected").text());
+            if (s != null) {
+                fillBranchbycompnyid(s, "");
+            } else {
+                $('#BranchIds').empty();
+            }
+            $("#DeptIds").empty();
+            var branid = $('#CompanyID option:selected');
+            var CompanyArray = [];
+            $(branid).each(function (index, branid) {
+                CompanyArray.push([$(this).val()]);
+            });
+            if (CompanyArray == "") {
+                $("#txt5").val(0);
+            }
+            else {
+                $("#txt5").val(CompanyArray);
+            }
+            var Arrbranch = $("#txt5").val();
+            CompIdlst = Arrbranch;
+        });
+
+        $('#BranchIds').change(function () {
+
+            checkSession();
+            var s = $('#BranchIds').val();
+            $('#BranchName').val($('#BranchIds :selected').text());
+            //$("#BranchIds").append("<option value='' selected>Select Branch</option>")
+            fillDepartment(s, "");
+            getEmp(s, "");
+        });
+
+
+        fillCompany();
+        fillBranchbycompnyid();
+        fillEvaluationBy();
+
+        function getallworkflow(Status) {
+            checkSession();
+            $.ajax({
+                type: "GET",
+                headers: { 'Authorization': '@_tokan' },
+                url: '@_webapiurlpayroll' + 'Full_FinalSettlement/GetAllWorkFlow',
+                data: { Status: Status },
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                beforeSend: function () {
+                    $("#ajax_loader").show();
+                },
+                success: function (response) {
+
+                    if (response.length > 0) {
+                        $("#workflow").empty();
+                        $("#workflow").append("<option value='0' selected>Select Workflow</option>");
+                        response.sort(function (a, b) {
+                            return a.WorkFlowName.localeCompare(b.WorkFlowName);
+                        });
+                        var markup = "";
+                        for (var x = 0; x < response.length; x++) {
+                            markup += "<option value=" + response[x].WorkFlowId + ">" + response[x].WorkFlowName + "</option>";
+                        }
+                        $("#workflow").append(markup);
+                        $("#workflow").val(WorkFlowId).trigger('change');
+
+                        $(document).on('change', '#workflow', function () {
+                            var workflowid = $("#workflow").val();
+                            if (workflowid && workflowid > 0) {
+                                $("#viewflow").show();
+                            } else {
+                                $("#viewflow").hide();
+                            }
+                        });
+                    }
+                },
+                error: function (xhr, ajaxOptions, thrownError) {
+                    if (xhr.status == 404) {
+                        toastr.error(thrownError);
+                    } else if (xhr.status == 500) {
+                        toastr.error("InternalServerError");
+                    } else if (xhr.status == 400) {
+                        toastr.error("BadRequest");
+                    } else if (xhr.status == 419) {
+                        window.location.href = "/PayTime/LoginPage";
+                    } else {
+                        toastr.error(thrownError);
+                    }
+                },
+                complete: function () {
+                    $("#ajax_loader").hide();
+                }
+            });
+        }
+
+        function fillCompany() {
+
+            checkSession();
+            $.ajax({
+                type: "GET",
+                url: '@_webapiurl' + "Master/CompanyGetAll",
+                headers: { 'Authorization': '@_tokan' },
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                success: function (data) {
+                    $("#CompanyID").empty();
+                    $("#CompanyID").append("<option value='0' selected>Select Company</option>");
+                    var markup = '';
+                    data.sort(function (a, b) {
+                        return a.CompanyName.localeCompare(b.CompanyName);
+                    });
+                    for (var x = 0; x < data.length; x++) {
+                        markup += "<option value=" + data[x].CompanyID + ">" + data[x].CompanyName + "</option>";
+                    }
+                    $("#CompanyID").append(markup);
+                },
+                error: function (xhr, ajaxOptions, thrownError) {
+                    if (xhr.status == 404) {
+                        toastr.error(thrownError);
+                    } else if (xhr.status == 500) {
+                        toastr.error("InternalServerError");
+                    } else if (xhr.status == 400) {
+                        toastr.error("BadRequest");
+                    } else if (xhr.status == 419) {
+                        window.location.href = "/PayTime/LoginPage";
+                    } else {
+                        toastr.error(thrownError);
+                    }
+                }
+            });
+        }
+
+        function fillBranchbycompnyid(companyid, selectedBranch) {
+
+            $('#BranchIds').empty();
+            $("#ajax_loaderaddon").show();
+            $("#ajax_loader").show();
+            checkSession();
+            $.ajax({
+                type: "GET",
+                headers: { 'Authorization': '@_tokan' },
+                url: '@_webapiurl' + "Master/BranchGetAll",
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                success: function (data) {
+                    $("#BranchIds").append("<option value='0' selected>Select Branch</option>");
+                    var markup = '';
+                    var companyIdsToFind = companyid;
+                    if (companyid != null) {
+                        var filteredData = data.filter(function (item) {
+                            return companyid == item.CompanyID;
+                        });
+
+                        filteredData.sort(function (a, b) {
+                            return a.branchname.localeCompare(b.branchname);
+                        });
+
+                        filteredData.forEach(function (branch) {
+                            if (selectedBranch && selectedBranch.length > 0) {
+                                var isSelected = selectedBranch.includes(branch.BranchId.toString());
+                                markup += `<option value="${branch.BranchId}" ${isSelected ? 'selected="selected"' : ''}>${branch.branchname}</option>`;
+                            } else {
+                                markup += `<option value="${branch.BranchId}">${branch.branchname}</option>`;
+                            }
+                        });
+
+                        // Append all options to the dropdown
+                        $('#BranchIds').append(markup);
+
+                        // Set the branch ID if available
+                        $('#BranchIds').val(BranchId).trigger('change');
+
+                        // Change event handler
+                        $(document.body).on('change', '#BranchIds', function () {
+
+                            var branchid = $('#BranchIds option:selected');
+                            var BranchArray = [];
+
+                            branchid.each(function () {
+                                BranchArray.push($(this).val());
+                            });
+
+                            if (BranchArray.length === 0) {
+                                $("#txt2").val(0);
+                            } else {
+                                $("#txt2").val(BranchArray.join(","));
+                            }
+
+                            BranchIdlst = $("#txt2").val();
+                            getEmp();
+                        });
+                    } else {
+                       // $('#BranchIds').append("<option value='' disabled>No branch available</option>");
+                    }
+                },
+                error: function (xhr, ajaxOptions, thrownError) {
+                    if (xhr.status == 404) {
+                        toastr.error(thrownError);
+                    } else if (xhr.status == 500) {
+                        toastr.error("Internal Server Error");
+                    } else if (xhr.status == 400) {
+                        toastr.error("Bad Request");
+                    } else if (xhr.status == 419) {
+                        window.location.href = "/PayTime/LoginPage";
+                    } else {
+                        toastr.error(thrownError);
+                    }
+                },
+                complete: function () {
+                    $("#ajax_loader").hide();
+                }
+            });
+        }
+
+        function getEmp() {
+
+            $('#EmpIds').empty();
+            var cID = $("#CompanyID").val();
+            var bID = $("#BranchIds").val();
+            checkSession();
+            $.ajax({
+                type: "GET",
+                url: '@_webapiurl' + 'Master/GetEmployeeByComBranch?ComapnyId=' + cID + '&Branchid=' + bID,
+                headers: { 'Authorization': '@_tokan' },
+                contentType: "application/json; charset=utf-8",
+                datatype: "json",
+                async: "false",
+                success: function (response) {
+                    var markup = '';
+                    $('#EmpIds').empty();
+                    $('#EmpIds').append("<option value='0' selected>Select Employee</option>");
+                    if (response != null) {
+                        for (var i = 0; i < response.length; i++) {
+                            var empcode = response[i].Empcode || ''; //soumya 22/07/2005
+                            markup += '<option value="' + response[i].EmpId + '">' + response[i].EmpName + ' (' + empcode + ')</option>'; //soumya 22/07/2005
+                        }
+                        $("#EmpIds").append(markup);
+
+                        //if (typeof EmpId !== 'undefined' && EmpId !== "") {
+                        //    $('#EmpIds').val(EmpId).trigger('change');
+                        //}
+                        $('#EmpIds').val(EmpId).trigger('change');
+
+                        $(document.body).on('change', '#EmpIds', function () {
+                            var Empid = $('#EmpIds option:selected');
+                            var Emparray = [];
+                            $(Empid).each(function (index, deptid) {
+                                Emparray.push([$(this).val()]);
+                            });
+                            if (Emparray == "") {
+                                $("#txt4").val(0);
+                            }
+                            else {
+                                $("#txt4").val(Emparray);
+                            }
+                            var ArrEmp = $("#txt4").val();
+                            EmpIdlst = ArrEmp;
+                        });
+                    }
+                    else {
+                        $('#EmpIds').append("<option value='' disabled>No employees found</option>");
+                    }
+                }
+            });
+        }
+
+
+        //Bind department depend on the company and branch
+        function fillDepartment(BranchId, selectedDept) {
+
+            checkSession();
+            $("#DeptIds").empty();
+            $.ajax({
+                type: "POST",
+                url: "/MasterData/GetDeptbyBranchstrnew?BranchId=" + BranchId,
+                contentType: "application/json; charset=utf-8",
+                datatype: "json",
+                async: "false",
+                success: function (response) {
+
+                    $("#DeptIds").append("<option value='0' selected>Select Department</option>");
+                    if (response != null) {
+                        for (var i = 0; i < response.length; i++) {
+                            if (selectedDept.length != 0 && selectedDept != null) {
+                                var re = new RegExp("(^|,)" + response[i].Value + "($|,)");
+                                if (re.test(selectedDept) == true) {
+                                    $('#DeptIds').append('<option value="' + response[i].Value + '" selected>' + response[i].Text + '</option>');
+                                }
+                                else {
+                                    $('#DeptIds').append('<option value="' + response[i].Value + '">' + response[i].Text + '</option>');
+                                }
+                            }
+                            else {
+                                $('#DeptIds').append('<option value="' + response[i].Value + '">' + response[i].Text + '</option>');
+                            }
+                        }
+
+                        $('#DeptIds').val(DepartmentId).trigger('change');
+
+                        $(document.body).on('change', '#DeptIds', function () {
+
+                            $("#spvalidation").hide();
+                            var deptid = $('#DeptIds option:selected');
+                            var DeptArray = [];
+                            $(deptid).each(function (index, deptid) {
+                                DeptArray.push([$(this).val()]);
+                            });
+                            if (DeptArray == "") {
+                                $("#txt3").val(0);
+                            }
+                            else {
+                                $("#txt3").val(DeptArray);
+                                $("#spValidation").hide();
+                            }
+                            var ArrDept = $("#txt3").val();
+                            DeptIdlst = ArrDept;
+                            $("#DeptIds").val(DeptIdlst);
+                            fillEvaluationBy();
+                            //fillEvaluationBy(branchId, deptId, selectedEmp, null);
+                        });
+                    }
+                    $(".loading").hide();
+                },
+                beforeSend: function () {
+                    $(".loading").show();
+                },
+                error: function () {
+                    $(".loading").hide();
+                }
+            });
+        }
+
+        function fillEvaluationBy() {
+            var ajaxData = {
+                /*branchid: BranchId,*/
+                /*departmentid: deptId,*/
+                branchid: $("#BranchIds").val(),
+                departmentid: $("#DeptIds").val(),
+                isActiveEmployee: 1
+            };
+            checkSession();
+            $.ajax({
+                type: "GET",
+                url: "/MasterData/GetEmpByBranchDept",
+                data: ajaxData,
+                contentType: "application/json; charset=utf-8",
+                datatype: "json",
+                async: false,
+                success: function (response) {
+                    var $evaluationby = $("#evaluationby");
+                    $evaluationby.empty();
+                    $evaluationby.append("<option value='0' selected>Select Evaluation By</option>");
+
+                    if (response && response.length > 0) {
+                        response.forEach(emp => {
+                            var isSelected = typeof selectedEmp !== "undefined" && selectedEmp.split(',').includes(emp.EmpId.toString());
+                            $evaluationby.append(`<option value="${emp.EmpId}" ${isSelected ? "selected" : ""}>${emp.EmpName}</option>`);
+                        });
+
+                        $evaluationby.select2({
+                            placeholder: "Select Evaluation By",
+                            allowClear: false,
+                            width: '100%'
+                        });
+
+                        $('#evaluationby').val(EvaluationBy).trigger('change');
+
+                        // Set Selected Values
+                        //if (typeof selectedEmp !== "undefined" && selectedEmp) {
+                        //    $evaluationby.val(selectedEmp.split(',')).trigger('change');
+                        //}
+                    } else {
+                        $evaluationby.append("<option value='' disabled>No evaluation available</option>");
+                    }
+                },
+                error: function () {
+                    toastr.error("Error loading employees. Please try again.");
+                }
+            });
+        }
+
+
+        //This is bind all department
+        @*function fillDepartment() {
+            debugger;
+            $.ajax({
+                type: "GET",
+                url: '@_webapiurl' + "Master/DepartmentGetAll",
+                headers: { 'Authorization': '@_tokan' },
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                success: function (data) {
+                    debugger;
+                    $("#DeptIds").empty();
+                    $("#DeptIds").append("<option value='' selected>Select Department</option>");
+                    var markup = '';
+                    data.sort(function (a, b) {
+                        return a.DepartmentName.localeCompare(b.DepartmentName);
+                    });
+                    for (var x = 0; x < data.length; x++) {
+                        markup += "<option value=" + data[x].DepartmentId + ">" + data[x].DepartmentName + "</option>";
+                    }
+                    $("#DeptIds").append(markup);
+                    $('#DeptIds').val(DepartmentId).trigger('change');
+                },
+                error: function (xhr, ajaxOptions, thrownError) {
+                    if (xhr.status == 404) {
+                        toastr.error(thrownError);
+                    } else if (xhr.status == 500) {
+                        toastr.error("InternalServerError");
+                    } else if (xhr.status == 400) {
+                        toastr.error("BadRequest");
+                    } else if (xhr.status == 419) {
+                        window.location.href = "/PayTime/LoginPage";
+                    } else {
+                        toastr.error(thrownError);
+                    }
+                }
+            });
+        }*@
+
+    });
+
+    function checkSession() {
+        $.ajax({
+            type: "GET",
+            async: false,
+            url: "/ESS/checkSession",
+            contentType: "application/json; charset=utf-8",
+            success: function (data) {
+                if (data.isRedirect) {
+                    window.location.href = data.redirectUrl;
+                }
+            },
+            error: function (data) {
+                window.location.href = data;
+            }
+        });
+    }
+
+</script>
+
+<div class="page-bar">
+    <ul class="page-breadcrumb">
+        <li>
+            <a href="@(_CheckFastrackdb == 1 ? "/Admin/AdminDashboard" : "/Dashboard/AdminDashboard")"><i class="fa-regular fa-house"></i></a>
+        </li>
+        <li>
+            <span><i class="fa-light fa-angle-right"></i> Exit Employee Request</span>
+        </li>
+    </ul>
+    <div class="page-toolbar">
+        @if (_RoleId == 1)
+        {
+            <a href="javascript:;" id="Back_btn" class="btn icon_transparent_btn tooltips" data-placement="left" data-original-title="Back" style="display:none"><i class="fa-regular fa-arrow-left"></i></a>
+            <a href="javascript:;" id="AddEmpExit_btn" class="btn icon_transparent_btn tooltips" data-placement="left" data-original-title="Add Employee Exit Request"><i class="fa-solid fa-plus"></i></a>
+        }
+    </div>
+</div>
+
+
+<div class="row">
+    <div id="ajax_loader" class="modal_bg loading" aria-hidden="true" style="display: none;">
+        <img src="/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading">
+    </div>
+</div>
+
+<!-- Datatable Block : Begin -->
+<div class="portlet">
+    <div class="portlet-body">
+        <div class="row">
+            <div class="col-lg-12" id="back_exitClear">
+                <!-- ExitEmployee Datatable : Begin -->
+                <div id="tblempty">
+                    <div class="table-responsive" id="tableResponsive">
+                        <table id="exitclearance_tbl" class="new_datatbl table table-striped table-bordered table_box_border table-hover serch_datatable table-checkable order-column">
+                            <thead>
+                                <tr>
+                                    @*<th style="min-width: 70px;">Sr No.</th>*@
+                                    <th style="display:none">ExitEmployeeId</th>
+                                    <th style="display:none">LevelId</th>
+                                    <th style="display:none">WorkFlowId</th>
+                                    <th style="min-width: 140px;">Employee Code</th>
+                                    <th style="min-width: 200px;">Employee Name</th>
+                                    <th style="min-width: 100px;">Exit Type</th>
+                                    <th style="min-width: 100px;">Is Clearance</th>
+                                    <th style="min-width: 100px;">Exit Interview</th>
+                                    <th style="min-width: 120px;">Department</th>
+                                    <th style="min-width: 120px;">Resignation Date</th>
+                                    <th style="min-width: 120px;">Last Working Date</th>
+                                    <th style="min-width: 100px;">Status</th>
+                                    <th style="min-width: 140px;">Reason</th>
+                                    @if (_RoleId != 1 && _RoleId != 6805 && _RoleId != 6806)
+                                    {
+                                        <th style="min-width: 140px;">Remarks</th>
+                                    }
+                                    <th class="fixed-column" style="min-width: 150px;">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                            <tfoot>
+                                @*<tr>
+                                        <th>Sr No.</th>
+                                        <th>Employee Name</th>
+                                        <th>Department</th>
+                                        <th>Employee Code</th>
+                                        <th>Exit Type</th>
+                                        <th>Resignation Date</th>
+                                        <th>Last Working Date</th>
+                                        <th>Status</th>
+                                        <th>Reason</th>
+                                        <th class="fixed-column">Action</th>
+                                    </tr>*@
+                            </tfoot>
+                        </table>
+                        <!-- ExitEmployee Datatable : End -->
+                    </div>
+                </div>
+                <div id="NotificationGrid-empty" style="display: none">
+                    <div class="datanotfound">
+                        <img src="" height="148" width="280" alt="Nodata Found Icon">
+                        <p class="datanotfound_title"></p> <!-- titleText -->
+                        <p class=""></p><!-- subText -->
+                    </div>
+                </div>
+            </div>
+            <div class="nodata_block no_recoed" style="display:none">
+                <div class="datanotfound">
+                    <img src="~/assets/images/emptyscreen_1.png" height="148" width="280" alt="Nodata Found Icon">
+                    <p class="datanotfound_title">No data found</p> 
+                    <p class="">No entries found. Please add a record to get started.</p>
+                </div>
+            </div>
+
+            <!-- WorkFlow Form : Begin -->
+            <div class="workflow_block" id="EmpExitRequest_form" style="display: none">
+                <div class="EmpExitRequest_height_card">
+                    <!-- Left Side Form Data : Begin -->
+                    <div class="col-lg-12">
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label class="control-label">Company<span class="required" aria-required="true">*</span></label>
+                                    <input type="hidden" id="txt3" value="0" />
+                                    <select class="form-control input-sm select2" id="CompanyID">
+                                        <option value="0" disabled selected>Select Company</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label class="control-label">Branch<span class="required" aria-required="true">*</span></label>
+                                    <input type="hidden" id="txt3" value="0" />
+                                    <select class="form-control input-sm select2" id="BranchIds">
+                                        <option value="0" disabled selected>Select Branch</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label class="control-label">Employee<span class="required" aria-required="true">*</span></label>
+                                    <input type="hidden" id="txt3" value="0" />
+                                    <select class="form-control input-sm select2" id="EmpIds">
+                                        <option value="0" disabled selected>Select Employee</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label class="control-label">Exit Type<span class="required" aria-required="true">*</span></label>
+                                    <select class="form-control input-sm select2" id="exittype">
+                                        <option value="0">Please Select</option>
+                                        <option value="1">Resignation</option>
+                                        <option value="2">Termination</option>
+                                        <option value="3">End of Contract</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="form-group data_picker_box">
+                                    <label class="control-label">Leaving Date (Last Working Date)<span class="required" aria-required="true">*</span></label>
+                                    <div class="input-group input-group-sm date date-picker" id="" data-date="@DateTime.Now" data-date-format="@_isdateformat" data-date-viewmode="years">
+                                        <span class="input-group-btn">
+                                            <button class="btn default" type="button">
+                                                <i class="fa-light fa-calendar-days"></i>
+                                            </button>
+                                        </span>
+                                        <input type="text" class="form-control" id="leavingdate" data-date-format="@_isdateformat" placeholder="@_isdateformat.Replace("M","MMM")" autocomplete="off">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label class="control-label">Is Clearance<span class="required" aria-required="true">*</span></label>
+                                    <select class="form-control input-sm select2" id="isclearance">
+                                        <option value="0">Please Select</option>
+                                        <option value="1">Yes</option>
+                                        <option value="2">No</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Clearance Level Block : Begin -->
+                        <div class="flow_hidden" id="clearancelevel" style="display: none;">
+                            <p>Clearance Form</p>
+                            <div class="row">
+                                <div class="col-md-4">
+                                    <div class="form-group margin-bottom-0">
+                                        <label class="control-label">Workflow<span class="required" aria-required="true">*</span></label>
+                                        <select class="form-control input-sm select2" id="workflow">
+                                            <option value="0" disabled selected>Select Workflow</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col-md-4" style="margin-top: 22px;">
+                                    <button type="button" class="btn save_btn" id="viewflow"><i class="fa-regular fa-eye"></i> View Flow</button>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Clearance Level Block : End -->
+
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="form-group">
+                                    <label class="control-label">Exit Interview<span class="required" aria-required="true">*</span></label>
+                                    <select class="form-control input-sm select2" id="exitinterview">
+                                        <option value="0">Please Select</option>
+                                        <option value="1">Yes</option>
+                                        <option value="2">No</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Exit Interview Form Block : Begin -->
+                        <div class="flow_hidden" id="exitinterview_level" style="display: none;">
+                            <p>Exit Interview Form</p>
+                            <div class="row">
+                                <div class="col-md-4">
+                                    <div class="form-group">
+                                        <label class="control-label">Department<span class="required" aria-required="true">*</span></label>
+                                        <select class="form-control input-sm select2" id="DeptIds">
+                                            <option value="0" disabled selected>Select Department</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="form-group">
+                                        <label class="control-label">Evaluation By<span class="required" aria-required="true">*</span></label>
+                                        <select class="form-control input-sm select2" id="evaluationby">
+                                            <option value="0" disabled selected>Select Evaluation</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="form-group data_picker_box">
+                                        <label class="control-label">Interview Date<span class="required" aria-required="true">*</span></label>
+                                        <div class="input-group input-group-sm date date-picker" id="" data-date="@DateTime.Now" data-date-format="@_isdateformat" data-date-viewmode="years">
+                                            <span class="input-group-btn">
+                                                <button class="btn default" type="button">
+                                                    <i class="fa-light fa-calendar-days"></i>
+                                                </button>
+                                            </span>
+                                            <input type="text" class="form-control" id="interviewdate" data-date-format="@_isdateformat" placeholder="@_isdateformat.Replace("M","MMM")" autocomplete="off">
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="form-group data_picker_box">
+                                        <label>Interview Time<span class="required" aria-required="true">*</span></label>
+                                        <div class="input-group input-group-sm">
+                                            <input type="text" class="form-control timepicker" id="interviewtime" name="StartTime" placeholder="00:00" autocomplete="off">
+                                            <span class="input-group-btn">
+                                                <button class="btn default" type="button" id="interviewtime">
+                                                    <i class="fa-regular fa-clock"></i>
+                                                </button>
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="form-group">
+                                        <label class="control-label">Interview Place<span class="required" aria-required="true">*</span></label>
+                                        <input type="text" id="interviewplace" placeholder="Please Enter" class="form-control" name="">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Exit Interview Form Block : End -->
+                        <div class="row">
+                            @*<div class="col-md-4">
+                                    <div class="form-group">
+                                        <label class="control-label">Inactive Employee After FNF<span class="required" aria-required="true">*</span></label>
+                                        <select class="form-control input-sm select2" id="">
+                                            <option value="1">Please Select</option>
+                                            <option value="2">Yes</option>
+                                            <option value="3">No</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="form-group">
+                                        <label class="control-label">Restrict User On Login<span class="required" aria-required="true">*</span></label>
+                                        <select class="form-control input-sm select2" id="">
+                                            <option value="1">Please Select</option>
+                                            <option value="2">Yes</option>
+                                            <option value="3">No</option>
+                                        </select>
+                                    </div>
+                                </div>*@
+                            <div class="col-lg-12">
+                                <div class="form-group">
+                                    <label>Reason<span class="required" aria-required="true">*</span></label>
+                                    <textarea id="reason" maxlength="100" name="reason" class="form-control input-sm" rows="4" placeholder="Enter Reason"></textarea>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Left Side Form Data : End -->
+                </div>
+                <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                    <button type="button" class="btn save_btn" id="btnsubmit">Submit</button>
+                </div>
+            </div>
+            <!-- WorkFlow Form : End -->
+        </div>
+    </div>
+</div>
+<!-- Datatable Block : Begin -->
+<!-- View Clearance Request Status Modal : Begin -->
+<div id="viewflow_modal" class="modal fade bs-modal-sm" role="dialog" data-keyboard="false" data-backdrop="static">
+    <div class="modal-dialog">
+        <!-- Modal content-->
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal">×</button>
+                <h4 class="modal-title">View Clearance Request Status</h4>
+            </div>
+            <div class="modal-body nomodalfooter">
+                <div class="modal-card">
+                    @*<div class="clearance-level-block">
+                            <div>Level <span>1</span></div>
+                            <div class="level-approval">
+                                Name : <span class="margin-left-5"> Samit Patel</span>
+                                <div class="level-date">10-01-2025 <span class="margin-left-5">11:30am</span></div>
+                            </div>
+                            <div class="level-data">
+                                <div>Department : <span>Software Cloud</span></div>
+                                <div class="level-status">Status : <span class="orange_font">Pending</span></div>
+                            </div>
+                        </div>
+                        <div class="clearance-level-block">
+                            <div>Level <span>2</span></div>
+                            <div class="level-approval">
+                                Name : <span class="margin-left-5"> Nilesh Katakia</span>
+                                <div class="level-date">10-01-2025 <span class="margin-left-5">11:30am</span></div>
+                            </div>
+                            <div class="level-data">
+                                <div>Department : <span>IT</span></div>
+                                <div class="level-status">Status : <span class="orange_font">Pending</span></div>
+                            </div>
+                        </div>
+                        <div class="clearance-level-block">
+                            <div>Level <span>3</span></div>
+                            <div class="level-approval">
+                                Name : <span class="margin-left-5"> Ronika Sequirea</span>
+                                <div class="level-date">10-01-2025 <span class="margin-left-5">11:30am</span></div>
+                            </div>
+                            <div class="level-data">
+                                <div>Department : <span>Travel/Sim Card</span></div>
+                                <div class="level-status">Status : <span class="green_font">Approved</span></div>
+                            </div>
+                        </div>
+                        <div class="clearance-level-block">
+                            <div>Level <span>4</span></div>
+                            <div class="level-approval">
+                                Name : <span class="margin-left-5"> Anurag Somani</span>
+                                <div class="level-date">10-01-2025 <span class="margin-left-5">11:30am</span></div>
+                            </div>
+                            <div class="level-data">
+                                <div>Department : <span>Accounts</span></div>
+                                <div class="level-status">Status : <span class="red_font">Rejected</span></div>
+                            </div>
+                        </div>
+                        <div class="clearance-level-block">
+                            <div>Level <span>5</span></div>
+                            <div class="level-approval">
+                                Name : <span class="margin-left-5"> Subhash Joshi</span>
+                                <div class="level-date">10-01-2025 <span class="margin-left-5">11:30am</span></div>
+                            </div>
+                            <div class="level-data">
+                                <div>Department : <span>Administration</span></div>
+                                <div class="level-status">Status : <span class="orange_font">Pending</span></div>
+                            </div>
+                        </div>
+                        <div class="clearance-level-block">
+                            <div>Level <span>6</span></div>
+                            <div class="level-approval">
+                                Name : <span class="margin-left-5"> Mukund Kotadia</span>
+                                <div class="level-date">10-01-2025 <span class="margin-left-5">11:30am</span></div>
+                            </div>
+                            <div class="level-data">
+                                <div>Department : <span>HR</span></div>
+                                <div class="level-status">Status : <span class="orange_font">Pending</span></div>
+                            </div>
+                        </div>*@
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- View Clearance Request Status Modal : End -->
+<!-- Add Strength Modal : Begin -->
+<div id="PrintDocs_modal" class="modal fade bs-modal-sm" role="dialog" data-keyboard="false" tabindex="-1" data-backdrop="static">
+    <div class="modal-dialog modal-sm w-500">
+        <!-- Modal content-->
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal">&times;</button>
+                <h4 class="modal-title">Print Sections</h4>
+            </div>
+            <div class="modal-body">
+                <div class="modal-card">
+                    <fieldset>
+                        <div class="row">
+                            <div class="col-lg-12">
+                                <div class="printdocs_block">
+                                    <ul>
+                                        @*<li>
+                                            <label class="toggle-vis">
+                                                <input type="checkbox" name="EmpName" class="toggle-vis" id="select_all">
+                                                <span> Select All</span>
+                                            </label>
+                                        </li>*@
+                                        <li>
+                                            <label class="toggle-vis">
+                                                <input type="checkbox" name="NoDue" class="toggle-vis" value="1" id="no_due">
+                                                <span>No Dues Certificate </span>
+                                            </label>
+                                        </li>
+                                        <li>
+                                            <label class="toggle-vis">
+                                                <input type="checkbox" name="FNFReceipt" class="toggle-vis" value="2" id="fnf_receipt">
+                                                <span>FNF Receipt</span>
+                                            </label>
+                                        </li>
+                                        <li>
+                                            <label class="toggle-vis">
+                                                <input type="checkbox" name="ExitInterview" class="toggle-vis" value="3" id="exit_interview">
+                                                <span>Exit Interview Form</span>
+                                            </label>
+                                        </li>
+                                        <li>
+                                            <label class="toggle-vis">
+                                                <input type="checkbox" name="RelievingLetter" class="toggle-vis" value="4" id="relieving_letter">
+                                                <span>Relieving Letter</span>
+                                            </label>
+                                        </li>
+                                        <li>
+                                            <label class="toggle-vis">
+                                                <input type="checkbox" name="RelievingLetter" class="toggle-vis" value="5" id="fnf_letter">
+                                                <span>FNF Letter</span>
+                                            </label>
+                                        </li>
+                                        <li>
+                                            <label class="toggle-vis">
+                                                <input type="checkbox" name="RelievingLetter" class="toggle-vis" value="6" id="experience_letter">
+                                                <span>Experience Letter</span>
+                                            </label>
+                                        </li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </fieldset>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <div class="row">
+                    <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                        <input type="button" class="btn apply_filter_btn_emp" value="Print" id="Printbtn">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Add Strength Modal : End -->

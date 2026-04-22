@@ -1,0 +1,2481 @@
+﻿@using System.Configuration;
+@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@{
+    ViewBag.Title = "AdminDashboard";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    string _companyCode = HttpContext.Current.Session["cmpcode"].ToString();
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+
+    string _companyid = string.Empty;
+    string _branchid = string.Empty;
+    if (_RoleId == 6805 || _RoleId == 6806)
+    {
+        _companyid = HttpContext.Current.Session["ClientCompanyId"].ToString();
+        _branchid = HttpContext.Current.Session["BranchId"].ToString();
+    }
+    else
+    {
+        _companyid = "0";
+    }
+    
+   
+    string _datenow = DateTime.Now.ToString("dd, MMM yyyy");
+    string _isdateformat = HttpContext.Current.Session["IsDateFormat"].ToString();
+}
+
+<style>
+    /* Optional: Makes the sample page fill the window. */
+    html, body {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+    }
+
+    #infowindow-content {
+        display: none;
+    }
+
+    #map #infowindow-content {
+        display: inline;
+    }
+
+
+    #map_content {
+        /*width: 500px;*/
+        height: 500px;
+        position: relative !important;
+    }
+
+    #right-panel {
+        position: relative;
+        font-family: 'Roboto','sans-serif';
+        line-height: 30px;
+        padding-left: 10px;
+        height: 300px;
+        padding: 0px 0px 11px 64px;
+        float: left;
+        width: 100%;
+        overflow: auto;
+        background: aliceblue;
+    }
+</style>
+@*<script src="~/assets/plugins/markerAnimate.js"></script>*@
+<script type="text/javascript">
+    var token = '@_tokan';
+    var webapiurl = '@_webapiurl';
+    var emproleid = '@_RoleId';
+    var schoolid = '@_companyid';
+    //for calendar fill in emp dashboard
+    var selecteddate = "";
+    var date = new Date();
+    //var firstDay = new Date(date.getFullYear(), date.getMonth(), 1);
+    //var lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+    var firstDay = date;
+    var lastDay = date;
+    var i = "";
+    var j = "";
+    var k = "";
+    var l = "";
+    if (firstDay.getMonth() <= 8) {
+        i = "0" + (firstDay.getMonth() + 1);
+    }
+    else {
+        i = (firstDay.getMonth() + 1);
+    }
+
+    if (lastDay.getMonth() <= 8) {
+        j = "0" + (lastDay.getMonth() + 1);
+    }
+    else {
+        j = (lastDay.getMonth() + 1);
+    }
+
+    if (firstDay.getDate() < 10) {
+        k = "0" + (firstDay.getDate());
+    }
+    else {
+        k = (firstDay.getDate());
+    }
+    if (lastDay.getDate() < 10) {
+        l = "0" + (lastDay.getDate());
+    }
+    else {
+        l = (lastDay.getDate());
+    }
+    var FirstDayWithSlashes = (firstDay.getFullYear()) + '-' + i + '-' + k;
+    //alert(FirstDayWithSlashes);
+    var lastDayWithSlashes = (lastDay.getFullYear()) + '-' + j + '-' + l;
+
+    if (emproleid == 6805) {
+        //alert(schoolid);
+        $("#CompanyID").val(schoolid);
+        //alert($("#CompanyID").val());
+    }
+
+
+    var cmpId = $("#CompanyID").val();
+    var branchId = $("#BranchId").val();
+    if (cmpId == null || cmpId == "") {
+        cmpId = 0;
+    }
+    if (branchId == "" || branchId == null) {
+        branchId = 0;
+    }
+    var map, marker, infoWindow, pos, geocoder, placeId, request;
+    var markers = [];
+    var numDeltas = 100;
+    var delay = 10; //milliseconds
+    var m = 0;
+    var deltaLat;
+    var deltaLng;
+    $(document).ready(function () {
+
+        Highcharts.setOptions({
+            global: {
+                useUTC: false
+            },
+            lang: {
+                thousandsSep: ','
+            }
+        });
+        //dashboard count
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(function (position) {
+                pos = {
+                    lat: position.coords.latitude,
+                    lng: position.coords.longitude
+                };
+                initMap(pos);
+
+            }, function () {
+                handleLocationError(true, infoWindow, map.getCenter());
+            });
+        } else {
+            // Browser doesn't support Geolocation
+            handleLocationError(false, infoWindow, map.getCenter());
+        }
+        Fillallcnt();
+        requestGPSData();
+
+
+        //Live Punch Chart - Start
+        chart = Highcharts.chart('containerLivePunch', {
+            chart: {
+                type: 'spline',
+                events: {
+                    load: requestData
+                }
+            },
+            title: {
+                text: "Today's Live Attendance"
+            },
+            xAxis: {
+                type: 'datetime',
+                tickPixelInterval: 150
+            },
+            yAxis: {
+                title: {
+                    text: 'Studnet present in School',
+                    //margin: 15
+                },
+                allowDecimals: false,
+                minRange: 1
+                //min: 0
+            },
+            tooltip: {
+                formatter: function () {
+                    return '<b>' + this.series.name + '</b><br/>' +
+                        Highcharts.dateFormat('Time : %H:%M:%S', this.x) + '<br/>' +
+                        'No:' + this.y;
+                }
+            },
+            series: [{
+                name: 'Attendance',
+                data: []
+            }]
+        });
+
+        //Time Pie Chart - Start
+        $.ajax({
+            url: '@_webapiurl' + 'DashBoard/AdminTimePieChartPunch?cmpId=@_companyid',
+            type: "GET",
+            headers: { 'Authorization': '@_tokan' },
+            success: function (data) {
+                if (data.isRedirect) {
+                    window.location.href = data.redirectUrl;
+                }
+                var Isdata = false;
+                var series = new Array();
+                for (var i = 0; i < data.length; i++) {
+                    if (data[i].PunchCount > 0) {
+                        Isdata = true;
+                    }
+                    series.push([data[i].TimeRange, data[i].PunchCount]);
+                }
+                if (Isdata) {
+                    $("#TimePieemptydata").hide();
+                    $("#containerTimePie").show();
+                    TimePieChart(series);
+                }
+                else {
+                    $("#containerTimePie").hide();
+                    $("#TimePieemptydata").show();
+                }
+            },
+            cache: false
+        });
+        //Time Pie Chart - End
+        $("#CompanyID").val(null);
+        $("#select2-CompanyID-container").html("Select school");
+        $("#select2-CompanyID-container").attr("title", "Select school");
+
+        $("#quick-search-switcher").click(function () {
+            $("#quick-search").toggleClass("quick-search-visible");
+        });
+        $('#chartdate').change(function () {
+
+            if (emproleid == 6805) {
+                //alert(schoolid);
+                $("#CompanyID").val(schoolid);
+                //alert($("#CompanyID").val());
+            }
+
+            if ($("#CompanyID").val() == "") {
+                alert("please select school.");
+                $("#CompanyID").addClass('.field_error');
+                event.preventDefault();//or return false
+                return false;
+            }
+
+            //$("#tblBirthdayEmployee").empty();
+            //$("#tbllateIn").empty();
+            //$("#tblearlyout").empty();
+            //$("#tbldevice").empty();
+            //$("#tblatwork").empty();
+
+            selecteddate = $('#chartdate').val();
+
+            var chartdate = new Date(selecteddate);
+            //firstDay = new Date(chartdate.getFullYear(), chartdate.getMonth(), 1);
+            //lastDay = new Date(chartdate.getFullYear(), chartdate.getMonth() + 1, 0);
+            var firstDay = chartdate;
+            var lastDay = chartdate;
+            if (firstDay.getMonth() <= 8) {
+                i = "0" + (firstDay.getMonth() + 1);
+            }
+            else {
+                i = (firstDay.getMonth() + 1);
+            }
+            if (lastDay.getMonth() <= 8) {
+                j = "0" + (lastDay.getMonth() + 1);
+            }
+            else {
+                j = (lastDay.getMonth() + 1);
+            }
+
+            if (firstDay.getDate() < 10) {
+                k = "0" + (firstDay.getDate());
+            }
+            else {
+                k = (firstDay.getDate());
+            }
+            if (lastDay.getDate() < 10) {
+                l = "0" + (lastDay.getDate());
+            }
+            else {
+                l = (lastDay.getDate());
+            }
+            FirstDayWithSlashes = (firstDay.getFullYear()) + '-' + i + '-' + k;
+            lastDayWithSlashes = (lastDay.getFullYear()) + '-' + j + '-' + l;
+            $.ajax({
+                type: "POST",
+                url: "/Dashboard/AdminDashboardCounters?cmpId=" + $("#CompanyID").val() + "&branchId=" + $("#BranchId").val() + "&fdate=" + FirstDayWithSlashes + "",
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                beforeSend: function (xhr) {
+                    xhr.setRequestHeader("Authorization", token);
+                    $('.loading').show();
+                },
+                success: function (response) {
+                    $('.loading').hide();
+                    if (response.isRedirect) {
+                        window.location.href = response.redirectUrl;
+                    }
+                    Fillallcnt();
+                    //$("#allempcounter").html(response[0].EmpCount);
+                    //$("#atworkcounter").html(response[0].AtWork);
+                    //$("#bdaycounter").html(response[0].BirthdayCount);
+                    //$("#licounter").html(response[0].LICount);
+                    //$("#earlyoutcount").html(response[0].EOCount);
+                    //$("#getdevicecounter").html(response[0].DeviceCount);
+                },
+                error: function (jqXHR, ajaxOptions, thrownError) {
+                    $('.loading').hide();
+
+                    if (jqXHR.status == 500) { //InternalServerError = 500,
+                        toastr.error("InternalServerError");
+                    } else if (jqXHR.status == 400) { //BadRequest = 400,
+                        toastr.error("BadRequest");
+                    } else if (jqXHR.status == 401) {
+                        window.location.href = "/PayTime/LoginPage";
+                    }
+                },
+            });
+
+            FillAttendanceChart();
+            //FillHoursSummary($("#CompanyID").val(), $("#BranchId").val());
+            //fillBranchbycompnyid(s, "");
+
+
+        });
+        $('#CompanyID').change(function () {
+            var s = $('#CompanyID').val();
+            fillBranchbycompnyid(s, "");
+            if ($("#CompanyID").val() == "" || $("#CompanyID").val() == null) {
+                cmpId = "0";
+                branchId = "0";
+            }
+            else {
+                cmpId = $('#CompanyID').val();
+            }
+        });
+        $('#BranchId').change(function () {
+            if ($("#BranchId").val() == "" || $("#BranchId").val() == null) {
+                branchId = "0";
+            }
+            else {
+                branchId = $('#BranchId').val();
+            }
+        });
+
+        FillAttendanceChart();
+        //HoursSummaryChart();
+
+        //FillEmployeeLeaveChart(cmpId, branchId);
+        //FillHoursSummary(cmpId, branchId);
+
+        function fillBranchbycompnyid(companyid, selectbranch) {
+            $('#BranchId').empty();
+            $.ajax(
+             {
+                 type: "GET",
+                 url: "/MasterData/GetBranchbycomapny",
+                 data: { comapanyid: companyid },
+                 contentType: "application/json; charset=utf-8",
+                 dataType: "json",
+                 beforeSend: function (xhr) {
+                     $('.loading').show();
+                 },
+                 success: function (data) {
+                     if (data.isRedirect) {
+                         window.location.href = data.redirectUrl;
+                     }
+                     $('.loading').hide();
+                     var markup = '';
+                     for (var x = 0; x < data.length; x++) {
+                         markup += "<option value=" + data[x].BranchId + ">" + data[x].BranchName + "</option>";
+                     }
+                     var newOption = '<option selected="selected"  value="">Select class</option>';
+                     $('#BranchId').html(newOption);
+                     $('#BranchId').append(markup);
+                     $('#BranchId').val(selectbranch);
+                 },
+                 error: function (jqXHR, ajaxOptions, thrownError) {
+                     $('.loading').hide();
+
+                     if (jqXHR.status == 500) { //InternalServerError = 500,
+                         toastr.error("InternalServerError");
+                     } else if (jqXHR.status == 400) { //BadRequest = 400,
+                         toastr.error("BadRequest");
+                     } else if (jqXHR.status == 401) {
+                         window.location.href = "/PayTime/LoginPage";
+                     }
+                 },
+             });
+        }
+
+        // $('#tblEmployee').DataTable();
+        //$('#tblBirthdayEmployee').DataTable();
+
+        $("#btnsearch").click(function () {
+            if ($("#CompanyID").val() == "") {
+                alert("please select School.");
+                $("#CompanyID").addClass('.field_error');
+                event.preventDefault();//or return false
+                return false;
+            }
+
+            //alert(FirstDayWithSlashes);
+            $.ajax({
+                type: "POST",
+                url: "/Dashboard/AdminDashboardCounters?cmpId=" + $("#CompanyID").val() + "&branchId=" + $("#BranchId").val() + "&fdate=" + FirstDayWithSlashes + "",
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                beforeSend: function (xhr) {
+                    xhr.setRequestHeader("Authorization", token);
+                    $(".loading").show();
+                },
+                success: function (response) {
+                    $(".loading").hide();
+                    if (response.isRedirect) {
+                        window.location.href = response.redirectUrl;
+                    }
+                    Fillallcnt();
+                    //$("#allempcounter").html(response[0].EmpCount);
+                    //$("#atworkcounter").html(response[0].AtWork);
+                    //$("#bdaycounter").html(response[0].BirthdayCount);
+                    //$("#licounter").html(response[0].LICount);
+                    //$("#earlyoutcount").html(response[0].EOCount);
+                    //$("#getdevicecounter").html(response[0].DeviceCount);
+                },
+                error: function (jqXHR, ajaxOptions, thrownError) {
+                    $('.loading').hide();
+
+                    if (jqXHR.status == 500) { //InternalServerError = 500,
+                        toastr.error("InternalServerError");
+                    } else if (jqXHR.status == 400) { //BadRequest = 400,
+                        toastr.error("BadRequest");
+                    } else if (jqXHR.status == 401) {
+                        window.location.href = "/PayTime/LoginPage";
+                    }
+                },
+            });
+
+
+
+            FillAttendanceChart();
+
+            //FillAtworkChart(cmpId, branchId);
+            //FillEmployeeLeaveChart(cmpId, branchId);
+            //FillHoursSummary(cmpId, branchId)
+        });
+        if ('@ViewBag.cbid' != null) {
+            $("#CompanyID").val('@ViewBag.cbid');
+            var cmpids = $("#CompanyID").val();
+            var brids = '@ViewBag.bid';
+            fillBranchbycompnyid(cmpids, brids);
+            $("#BranchId option[value = '" + brids + "' ]").prop('selected', true);
+            $('#BranchId').trigger('change.select2');
+        }
+        else {
+            $("#CompanyID").val(0);
+        }
+        if (emproleid == 6805) {
+            //alert(schoolid);
+            $("#CompanyID").val(schoolid);
+            //alert($("#CompanyID").val());
+
+        }
+        //type=0
+        $("#showemp").on('click', function () {
+            if ($("#allempcounter").html() != 0) {
+
+
+
+                $("#showemp").attr("data-toggle", "modal");
+                $("#showemp").attr("data-target", "#frmviewEmp");
+
+                $.ajax({
+                    type: "POST",
+                    url: "/Dashboard/AdminDashboardDetails?type=0&cmpId=" + $("#CompanyID").val() + "&branchId=" + $("#BranchId").val() + "&fdate=" + FirstDayWithSlashes + "&tdate=" + lastDayWithSlashes + "",
+                    contentType: "application/json; charset=utf-8",
+                    dataType: "json",
+                    beforeSend: function (xhr) {
+                        xhr.setRequestHeader("Authorization", token);
+                    },
+                    success: function (response) {
+                        if (response.isRedirect) {
+                            window.location.href = response.redirectUrl;
+                        }
+                        var table = "";
+                        //$("#tblEmployee")
+                        $("#tblEmployee").empty();
+                        if (response != null) {
+                            var obj = JSON.parse(response);
+                            //alert(obj);
+                            for (var i = 0; i < obj.length; i++) {
+                                var Des = (obj[i].Designation == null) ? " " : obj[i].Designation;
+                                var tbl = "<tr class='odd gradeX'>";
+                                tbl = tbl + "<td>" + obj[i].EmpName;
+                                tbl = tbl + "</td>";
+                                tbl = tbl + "<td>" + obj[i].PunchId;
+                                tbl = tbl + "</td>";
+                                //tbl = tbl + "<td>" + obj[i].DOJ;
+                                //tbl = tbl + "</td>";
+                                tbl = tbl + "<td>" + obj[i].DOB;
+                                tbl = tbl + "</td>";
+                                tbl = tbl + "<td>" + obj[i].Department;
+                                tbl = tbl + "</td>";
+                                //tbl = tbl + "<td>" + Des;
+                                //tbl = tbl + "</td>";
+                                tbl = tbl + "<td>" + obj[i].class;
+                                tbl = tbl + "</td>";
+                                tbl = tbl + "<td>" + obj[i].School;
+                                tbl = tbl + "</td>";
+                                tbl = tbl + "</tr>";
+                                table += tbl;
+                            }
+                        }
+                        $("#tblEmployee").destroy;
+                        $('#tblEmployee').append(table);
+                        $('#tblEmployee').dataTable({
+                            // "data": data.d,
+                            "destroy": true,
+                            "columns": [
+                                 { "title": "Name" },
+                                { "title": "Punch ID" },
+                                 //{ "title": "Date of Join" },
+                                 { "title": "Date of Birth" },
+                                { "title": "Division" },
+                                  //{ "title": "Designation" },
+                                    { "title": "class" },
+                                    { "title": "School" }
+                            ],
+                            "dom": 'Bfrtip',
+                            "buttons": [
+                                'excelHtml5'
+                            ]
+                        });
+                        $(".loading").hide();
+                    },
+                    beforeSend: function () {
+                        $(".loading").show();
+                    },
+                    error: function (jqXHR, ajaxOptions, thrownError) {
+                        $('.loading').hide();
+
+                        if (jqXHR.status == 500) { //InternalServerError = 500,
+                            toastr.error("InternalServerError");
+                        } else if (jqXHR.status == 400) { //BadRequest = 400,
+                            toastr.error("BadRequest");
+                        } else if (jqXHR.status == 401) {
+                            window.location.href = "/PayTime/LoginPage";
+                        }
+                    },
+                });
+            }
+
+
+            //$('#tblEmployee').data.reload();
+        });
+
+        //type =1
+        $("#atwork").click(function () {
+
+            $("#tblatwork").empty();
+            if ($("#atworkcounter").html() != 0) {
+                $("#atwork").attr("data-toggle", "modal");
+                $("#atwork").attr("data-target", "#frmatwork");
+                $.ajax({
+                    type: "POST",
+                    url: "/Dashboard/AdminDashboardDetails?type=1&cmpId=" + schoolid + "&branchId=0&fdate=" + FirstDayWithSlashes + "&tdate=" + lastDayWithSlashes + "",
+                    contentType: "application/json; charset=utf-8",
+                    dataType: "json",
+                    beforeSend: function (xhr) {
+                        xhr.setRequestHeader("Authorization", token);
+                    },
+                    success: function (response) {
+                        if (response.isRedirect) {
+                            window.location.href = response.redirectUrl;
+                        }
+                        var table = "";
+                        $("#tblatwork").empty();
+                        if (response != null) {
+                            var obj = JSON.parse(response);
+
+                            for (var i = 0; i < obj.length; i++) {
+                                var tbl = "<tr class='odd gradeX'>";
+                                tbl = tbl + "<td>" + obj[i].EmpName;
+                                tbl = tbl + "</td>";
+                                tbl = tbl + "<td>" + obj[i].ShiftName;
+                                tbl = tbl + "</td>";
+                                tbl = tbl + "<td>" + obj[i].InTime;
+                                tbl = tbl + "</td>";
+                                tbl = tbl + "<td>" + obj[i].Mode;
+                                tbl = tbl + "</td>";
+                                tbl = tbl + "</tr>";
+                                table += tbl;
+                            }
+                        }
+                        $("#tblatwork").destroy;
+                        $('#tblatwork').append(table);
+                        $('#tblatwork').dataTable({
+                            // "data": data.d,
+                            "destroy": true,
+                            "columns": [
+                                { "title": "Name" },
+                                { "title": "Shift" },
+                                { "title": "IN OUT" },
+                                { "title": "Status" },
+                            ],
+                            "dom": 'Bfrtip',
+                            "buttons": [
+                                'excelHtml5'
+                            ]
+                        });
+                        $(".loading").hide();
+                    },
+                    beforeSend: function () {
+                        $(".loading").show();
+                    },
+                    error: function (jqXHR, ajaxOptions, thrownError) {
+                        $('.loading').hide();
+
+                        if (jqXHR.status == 500) { //InternalServerError = 500,
+                            toastr.error("InternalServerError");
+                        } else if (jqXHR.status == 400) { //BadRequest = 400,
+                            toastr.error("BadRequest");
+                        } else if (jqXHR.status == 401) {
+                            window.location.href = "/PayTime/LoginPage";
+                        }
+                    },
+                });
+            }
+            else {
+                $("#atwork").attr("data-target", "#");
+            }
+        });
+
+        //type=2
+        $("#birthdayEmp").on('click', function () {
+            $("#tblBirthdayEmployee").empty();
+            if ($("#bdaycounter").html() != 0) {
+                $("#birthdayEmp").attr("data-toggle", "modal");
+                $("#birthdayEmp").attr("data-target", "#frmviewBirthdayemp");
+                $.ajax({
+                    type: "POST",
+                    url: "/Dashboard/AdminDashboardDetails?type=2&cmpId=" + $("#CompanyID").val() + "&branchId=" + $("#BranchId").val() + "&fdate=" + FirstDayWithSlashes + "&tdate=" + lastDayWithSlashes + "",
+                    contentType: "application/json; charset=utf-8",
+                    dataType: "json",
+                    beforeSend: function (xhr) {
+                        xhr.setRequestHeader("Authorization", token);
+                    },
+                    success: function (response) {
+                        if (response.isRedirect) {
+                            window.location.href = response.redirectUrl;
+                        }
+                        var table = "";
+                        $("#tblBirthdayEmployee").empty();
+                        if (response != null) {
+                            var obj = JSON.parse(response);
+                            for (var i = 0; i < obj.length; i++) {
+                                var tbl = "<tr class='odd gradeX'>";
+                                tbl = tbl + "<td>" + obj[i].EmpName;
+                                tbl = tbl + "</td>";
+                                tbl = tbl + "<td>" + obj[i].EmpMNo;
+                                tbl = tbl + "</td>";
+                                tbl = tbl + "<td>" + obj[i].CompanyName;
+                                tbl = tbl + "</td>";
+                                tbl = tbl + "<td>" + obj[i].BranchName;
+                                tbl = tbl + "</td>";
+                                tbl = tbl + "<td>" + obj[i].DepartmentName;
+                                tbl = tbl + "</td>";
+                                //tbl = tbl + "<td>" + obj[i].DesignationName;
+                                //tbl = tbl + "</td>";
+                                tbl = tbl + "</tr>";
+                                table += tbl;
+                            }
+                        }
+                        $("#tblBirthdayEmployee").destroy;
+                        $('#tblBirthdayEmployee').append(table);
+                        $('#tblBirthdayEmployee').dataTable({
+                            // "data": data.d,
+                            "destroy": true,
+                            "columns": [
+                                 { "title": "Name" },
+                                { "title": "Mobile" },
+                                { "title": "School" },
+                                { "title": "Class" },
+                                  { "title": "Division" }
+                                    //{ "title": "Designation" }
+                            ]
+                        });
+                        $(".loading").hide();
+                    },
+                    beforeSend: function () {
+                        $(".loading").show();
+                    },
+                    error: function (jqXHR, ajaxOptions, thrownError) {
+                        $('.loading').hide();
+
+                        if (jqXHR.status == 500) { //InternalServerError = 500,
+                            toastr.error("InternalServerError");
+                        } else if (jqXHR.status == 400) { //BadRequest = 400,
+                            toastr.error("BadRequest");
+                        } else if (jqXHR.status == 401) {
+                            window.location.href = "/PayTime/LoginPage";
+                        }
+                    },
+                });
+            }
+            else {
+                $("#birthdayEmp").attr("data-target", "#");
+            }
+
+        });
+
+        //type =3
+        $("#licountclick").click(function () {
+            $("#tbllateIn").empty();
+            if ($("#licounter").html() != 0) {
+                $("#licountclick").attr("data-toggle", "modal");
+                $("#licountclick").attr("data-target", "#frmlateIn");
+                $.ajax({
+                    type: "POST",
+                    url: "/Dashboard/AdminDashboardDetails?type=3&cmpId=" + $("#CompanyID").val() + "&branchId=" + $("#BranchId").val() + "&fdate=" + FirstDayWithSlashes + "&tdate=" + lastDayWithSlashes + "",
+                    contentType: "application/json; charset=utf-8",
+                    dataType: "json",
+                    beforeSend: function (xhr) {
+                        xhr.setRequestHeader("Authorization", token);
+                    },
+                    success: function (response) {
+                        if (response.isRedirect) {
+                            window.location.href = response.redirectUrl;
+                        }
+                        var table = "";
+                        $("#tbllateIn").empty();
+                        if (response != null) {
+                            var obj = JSON.parse(response);
+                            for (var i = 0; i < obj.length; i++) {
+                                var Des = (obj[i].DesignationName == null) ? " " : obj[i].DesignationName;
+                                var tbl = "<tr class='odd gradeX'>";
+                                tbl = tbl + "<td>" + obj[i].EmpName;
+                                tbl = tbl + "</td>";
+                                tbl = tbl + "<td>" + obj[i].DepartmentName;
+                                tbl = tbl + "</td>";
+                                //tbl = tbl + "<td>" + Des;
+                                //tbl = tbl + "</td>";
+                                tbl = tbl + "<td>" + obj[i].ShiftStartTime;
+                                tbl = tbl + "</td>";
+                                tbl = tbl + "<td>" + obj[i].InTime;
+                                tbl = tbl + "</td>";
+                                tbl = tbl + "<td>" + obj[i].LateInMins;
+                                tbl = tbl + "</td>";
+                                tbl = tbl + "</tr>";
+                                table += tbl;
+                            }
+                        }
+                        $("#tbllateIn").destroy;
+                        $('#tbllateIn').append(table);
+                        $('#tbllateIn').dataTable({
+                            // "data": data.d,
+                            "destroy": true,
+                            "columns": [
+                                 { "title": "Student" },
+                                { "title": "Division" },
+                                //{ "title": "Designation" },
+                                { "title": "Shift Start Time" },
+                                  { "title": "In Time" },
+                                  { "title": "Late Mins" }
+                            ]
+                        });
+                        $(".loading").hide();
+                    },
+                    beforeSend: function () {
+                        $(".loading").show();
+                    },
+                    error: function (jqXHR, ajaxOptions, thrownError) {
+                        $('.loading').hide();
+
+                        if (jqXHR.status == 500) { //InternalServerError = 500,
+                            toastr.error("InternalServerError");
+                        } else if (jqXHR.status == 400) { //BadRequest = 400,
+                            toastr.error("BadRequest");
+                        } else if (jqXHR.status == 401) {
+                            window.location.href = "/PayTime/LoginPage";
+                        }
+                    },
+                });
+            }
+            else {
+                $("#licountclick").attr("data-target", "#");
+            }
+        });
+
+        //type = 4
+        $("#earlyoutclick").click(function () {
+            $("#tblearlyout").empty();
+            if ($("#earlyoutcount").html() != 0) {
+                $("#earlyoutclick").attr("data-toggle", "modal");
+                $("#earlyoutclick").attr("data-target", "#frmearlyout");
+                $.ajax({
+                    type: "POST",
+                    url: "/Dashboard/AdminDashboardDetails?type=4&cmpId=" + $("#CompanyID").val() + "&branchId=" + $("#BranchId").val() + "&fdate=" + FirstDayWithSlashes + "&tdate=" + lastDayWithSlashes + "",
+                    contentType: "application/json; charset=utf-8",
+                    dataType: "json",
+                    beforeSend: function (xhr) {
+                        xhr.setRequestHeader("Authorization", token);
+                    },
+                    success: function (response) {
+                        if (response.isRedirect) {
+                            window.location.href = response.redirectUrl;
+                        }
+                        var table = "";
+                        $("#tblearlyout").empty();
+                        if (response != null) {
+                            var obj = JSON.parse(response);
+                            for (var i = 0; i < obj.length; i++) {
+                                var Des = (obj[i].DesignationName == null) ? " " : obj[i].DesignationName;
+                                var tbl = "<tr class='odd gradeX'>";
+                                tbl = tbl + "<td>" + obj[i].EmpName;
+                                tbl = tbl + "</td>";
+                                tbl = tbl + "<td>" + obj[i].DepartmentName;
+                                tbl = tbl + "</td>";
+                                //tbl = tbl + "<td>" + Des;
+                                //tbl = tbl + "</td>";
+                                tbl = tbl + "<td>" + obj[i].ShiftEndTime;
+                                tbl = tbl + "</td>";
+                                tbl = tbl + "<td>" + obj[i].OutTime;
+                                tbl = tbl + "</td>";
+                                tbl = tbl + "<td>" + obj[i].EarlyOutMin;
+                                tbl = tbl + "</td>";
+                                tbl = tbl + "</tr>";
+                                table += tbl;
+                            }
+                        }
+                        $("#tblearlyout").destroy;
+                        $('#tblearlyout').append(table);
+                        $('#tblearlyout').dataTable({
+                            // "data": data.d,
+                            "destroy": true,
+                            "columns": [
+                                 { "title": "Student" },
+                                { "title": "Division" },
+                                //{ "title": "Designation" },
+                                { "title": "Shift End Time" },
+                                  { "title": "Out Time" },
+                                  { "title": "Early Out Mins" }
+                            ]
+                        });
+                        $(".loading").hide();
+                    },
+                    beforeSend: function () {
+                        $(".loading").show();
+                    },
+                    error: function (jqXHR, ajaxOptions, thrownError) {
+                        $('.loading').hide();
+
+                        if (jqXHR.status == 500) { //InternalServerError = 500,
+                            toastr.error("InternalServerError");
+                        } else if (jqXHR.status == 400) { //BadRequest = 400,
+                            toastr.error("BadRequest");
+                        } else if (jqXHR.status == 401) {
+                            window.location.href = "/PayTime/LoginPage";
+                        }
+                    },
+                });
+            }
+            else {
+                $("#earlyoutclick").attr("data-target", "#");
+            }
+        });
+
+        //type = 5
+        $("#devicecount").click(function () {
+            $("#tbldevice").empty();
+            if ($("#getdevicecounter").html() != 0) {
+                $("#devicecount").attr("data-toggle", "modal");
+                $("#devicecount").attr("data-target", "#frmdevice");
+                $.ajax({
+                    type: "POST",
+                    url: "/Dashboard/AdminDashboardDetails?type=5&cmpId=" + $("#CompanyID").val() + "&branchId=" + $("#BranchId").val() + "&fdate=" + FirstDayWithSlashes + "&tdate=" + lastDayWithSlashes + "",
+                    contentType: "application/json; charset=utf-8",
+                    dataType: "json",
+                    beforeSend: function (xhr) {
+                        xhr.setRequestHeader("Authorization", token);
+                    },
+                    success: function (response) {
+                        if (response.isRedirect) {
+                            window.location.href = response.redirectUrl;
+                        }
+                        var obj = JSON.parse(response);
+                        var table = "";
+                        $("#tbldevice").empty();
+                        if (response != null) {
+                            for (var i = 0; i < obj.length; i++) {
+                                var tbl = "<tr class='odd gradeX'>";
+                                tbl = tbl + "<td>" + obj[i].DeviceName;
+                                tbl = tbl + "</td>";
+                                tbl = tbl + "<td>" + obj[i].DeviceSrNo;
+                                tbl = tbl + "</td>";
+                                tbl = tbl + "<td>" + obj[i].DeviceIP;
+                                tbl = tbl + "</td>";
+                                tbl = tbl + "<td>" + obj[i].DevicePort;
+                                tbl = tbl + "</td>";
+                                tbl = tbl + "<td>" + obj[i].Mode;
+                                tbl = tbl + "</td>";
+                                tbl = tbl + "<td>" + obj[i].DeviceCode;
+                                tbl = tbl + "</td>";
+                                tbl = tbl + "<td>" + obj[i].DeviceType;
+                                tbl = tbl + "</td>";
+                                if (obj[i].DeviceStatus.toLowerCase() == "Standby") {
+                                    tbl = tbl + "<td style='color:#FFBF00;'><b>" + obj[i].DeviceStatus;
+                                    tbl = tbl + "</b></td>";
+                                }
+                                else if (obj[i].DeviceStatus.toLowerCase() == "online") {
+                                    tbl = tbl + "<td style='color:green;'><b>" + obj[i].DeviceStatus;
+                                    tbl = tbl + "</b></td>";
+                                }
+                                else {
+                                    tbl = tbl + "<td style='color:#FFBF00;'><b>" + obj[i].DeviceStatus;
+                                    tbl = tbl + "</b></td>";
+                                }
+                                tbl = tbl + "</tr>";
+                                table += tbl;
+                            }
+                        }
+                        $("#tbldevice").destroy;
+                        $('#tbldevice').append(table);
+                        $('#tbldevice').dataTable({
+                            // "data": data.d,
+                            "destroy": true,
+                            "columns": [
+                                  { "title": "Name" },
+                                    { "title": "Device Sr no" },
+                                 { "title": "Device IP" },
+                                   { "title": "Device Port" },
+                                    { "title": "Mode" },
+                                 { "title": "Code" },
+                                { "title": "Device Type" },
+                                { "title": "Status" }
+                            ]
+                        });
+                        $(".loading").hide();
+                    },
+                    beforeSend: function () {
+                        $(".loading").show();
+                    },
+                    error: function (jqXHR, ajaxOptions, thrownError) {
+                        $('.loading').hide();
+
+                        if (jqXHR.status == 500) { //InternalServerError = 500,
+                            toastr.error("InternalServerError");
+                        } else if (jqXHR.status == 400) { //BadRequest = 400,
+                            toastr.error("BadRequest");
+                        } else if (jqXHR.status == 401) {
+                            window.location.href = "/PayTime/LoginPage";
+                        }
+                    },
+                });
+            }
+
+            else {
+                $("#devicecount").attr("data-target", "#");
+            }
+        });
+
+
+
+
+    });
+    var delay = 2000;
+    function Fillallcnt() {
+
+        FillStrength();
+        //FillBirthday();
+        //FillLateIn();
+        //FillEarlyOut();
+        //FillDevices();
+
+    }
+
+
+    function FillStrength() {
+        if (emproleid == 6805) {
+            //alert(schoolid);
+            //$("#CompanyID").val(schoolid);
+            //alert($("#CompanyID").val());
+            cmpId = schoolid;
+        }
+
+        $.ajax({
+            type: "GET",
+            url: "@_webapiurl" + "DashBoard/GetAdminDashBoardCount",
+            data: { cmpId: cmpId, branchId: branchId, fdate: FirstDayWithSlashes, tdate: lastDayWithSlashes, reqid: 0 },
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            beforeSend: function (xhr) {
+
+                xhr.setRequestHeader("Authorization", token);
+                setTimeout(delay);
+                loadingAjax('ajax_loaderallemp');
+            },
+            success: function (data) {
+                if (data.isRedirect) {
+                    window.location.href = data.redirectUrl;
+                }
+                $('#ajax_loaderallemp').hide();
+                $("#allempcounter").html(data[0].Rescnt);
+                //$("#ctnallemp").val(data[0].Rescnt);
+                FillAtwork(data[0].Rescnt);
+            },
+            error: function () {
+                $("#allempcounter").html(0);
+                $("#ctnallemp").val(0);
+                console.log("FillStrength method in admindashboard Get call.", date.toString());
+            }
+        });
+    }
+    function FillAtwork(vallemp) {
+
+        $.ajax({
+            type: "GET",
+            url: "@_webapiurl" + "DashBoard/GetAdminDashBoardCount",
+            data: { cmpId: cmpId, branchId: branchId, fdate: FirstDayWithSlashes, tdate: lastDayWithSlashes, reqid: 1 },
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            beforeSend: function (xhr) {
+                loadingAjax('ajax_loaderAtwork');
+                xhr.setRequestHeader("Authorization", token);
+                setTimeout(delay);
+            },
+            success: function (data) {
+                if (data.isRedirect) {
+                    window.location.href = data.redirectUrl;
+                }
+                $('#ajax_loaderAtwork').hide();
+                $("#atworkcounter").html(data[0].Rescnt);
+
+                var vatwrk = data[0].Rescnt;
+                var series = new Array();
+                series.push(vatwrk, vallemp);
+                if (series[1] > 0) {
+                    $("#empemptydata").hide();
+                    $("#EmpAtworkChart").show();
+                    EmployeeAtWork1(series);
+                }
+                else {
+                    $("#EmpAtworkChart").hide();
+                    $("#empemptydata").show();
+                }
+                FillBirthday();
+
+
+            },
+            error: function () {
+                $("#atworkcounter").html(0);
+                //$("#ctnatwrkemp").val(0);
+                console.log("FillStrength method in admindashboard Get call.", date.toString());
+            }
+        });
+
+
+    }
+    function FillBirthday() {
+        $.ajax({
+            type: "GET",
+            url: "@_webapiurl" + "DashBoard/GetAdminDashBoardCount",
+            data: { cmpId: cmpId, branchId: branchId, fdate: FirstDayWithSlashes, tdate: lastDayWithSlashes, reqid: 2 },
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            beforeSend: function (xhr) {
+                xhr.setRequestHeader("Authorization", token);
+                setTimeout(delay);
+                loadingAjax('ajax_loaderbirthday');
+            },
+            success: function (data) {
+                if (data.isRedirect) {
+                    window.location.href = data.redirectUrl;
+                }
+                $('#ajax_loaderbirthday').hide();
+                $("#bdaycounter").html(data[0].Rescnt);
+                FillLateIn();
+            },
+            error: function () {
+                $("#bdaycounter").html(0);
+                console.log("FillStrength method in admindashboard Get call.", date.toString());
+            }
+        });
+
+    }
+    function FillLateIn() {
+        $.ajax({
+            type: "GET",
+            url: "@_webapiurl" + "DashBoard/GetAdminDashBoardCount",
+            data: { cmpId: cmpId, branchId: branchId, fdate: FirstDayWithSlashes, tdate: lastDayWithSlashes, reqid: 3 },
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            beforeSend: function (xhr) {
+                xhr.setRequestHeader("Authorization", token);
+                setTimeout(delay);
+                loadingAjax('ajax_loaderLateIn');
+            },
+            success: function (data) {
+                if (data.isRedirect) {
+                    window.location.href = data.redirectUrl;
+                }
+                $('#ajax_loaderLateIn').hide();
+                $("#licounter").html(data[0].Rescnt);
+                FillEarlyOut();
+            },
+            error: function () {
+                $("#licounter").html(0);
+                console.log("FillStrength method in admindashboard Get call.", date.toString());
+            }
+        });
+
+    }
+    function FillEarlyOut() {
+        $.ajax({
+            type: "GET",
+            url: "@_webapiurl" + "DashBoard/GetAdminDashBoardCount",
+            data: { cmpId: cmpId, branchId: branchId, fdate: FirstDayWithSlashes, tdate: lastDayWithSlashes, reqid: 4 },
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            beforeSend: function (xhr) {
+                loadingAjax('ajax_loaderEarlyOUT');
+                xhr.setRequestHeader("Authorization", token);
+                setTimeout(delay);
+
+            },
+            success: function (data) {
+                if (data.isRedirect) {
+                    window.location.href = data.redirectUrl;
+                }
+                $('#ajax_loaderEarlyOUT').hide();
+                $("#earlyoutcount").html(data[0].Rescnt);
+                FillDevices();
+            },
+            error: function () {
+                $("#earlyoutcount").html(0);
+                console.log("FillStrength method in admindashboard Get call.", date.toString());
+            }
+        });
+
+    }
+    function FillDevices() {
+        $.ajax({
+            type: "GET",
+            url: "@_webapiurl" + "DashBoard/GetAdminDashBoardCount",
+            data: { cmpId: cmpId, branchId: branchId, fdate: FirstDayWithSlashes, tdate: lastDayWithSlashes, reqid: 5 },
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            beforeSend: function (xhr) {
+                loadingAjax('ajax_loaderDevice');
+                xhr.setRequestHeader("Authorization", token);
+                setTimeout(delay);
+            },
+            success: function (data) {
+                if (data.isRedirect) {
+                    window.location.href = data.redirectUrl;
+                }
+                $('#ajax_loaderDevice').hide();
+                $("#getdevicecounter").html(data[0].Rescnt);
+
+            },
+            error: function () {
+                $("#getdevicecounter").html(0);
+                console.log("FillStrength method in admindashboard Get call.", date.toString());
+            }
+        });
+    }
+
+
+    function FillAttendanceChart() {
+
+
+        $.ajax({
+            type: "GET",
+            url: "/PayTime/FillChartAdminDashboard",
+            data: { fromdate: FirstDayWithSlashes, todate: lastDayWithSlashes, statusflg: 1, finalStatus: "", cmpId: cmpId, branchId: branchId },
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            success: function (data) {
+                if (data.isRedirect) {
+                    window.location.href = data.redirectUrl;
+                }
+                var objser = JSON.parse(data);
+                var series = new Array();
+                for (var i in objser) {
+                    var serie = new Array(objser[i].FinalStatus, objser[i].CountStatus);
+                    series.push(serie);
+                }
+                if (series.length > 0) {
+                    $("#emptydata").hide();
+                    $("#containerAdmin").show();
+                    AdminPiachart1(series, FirstDayWithSlashes, lastDayWithSlashes, cmpId, branchId);
+                }
+                else {
+                    $("#containerAdmin").hide();
+                    $("#emptydata").show();
+                }
+
+            },
+            error: function (jqXHR, ajaxOptions, thrownError) {
+
+                if (jqXHR.status == 500) { //InternalServerError = 500,
+                    toastr.error("InternalServerError");
+                } else if (jqXHR.status == 400) { //BadRequest = 400,
+                    toastr.error("BadRequest");
+                } else if (jqXHR.status == 401) {
+                    window.location.href = "/PayTime/LoginPage";
+                }
+            },
+        });
+    }
+
+    @*function FillAtworkChart() {
+
+        //var vatwork = $("#ctnatwrkemp").val();
+        //var vallemp = $("#ctnallemp").val();
+        //alert(vatwork+'--'+vallemp);
+        //var series = new Array();
+        //series.push(vatwork, vallemp);
+        //if (series[1] > 0) {
+        //    alert(series[1]);
+        //    $("#empemptydata").hide();
+        //    $("#EmpAtworkChart").show();
+        //    EmployeeAtWork(series);
+        //}
+        //else {
+        //    $("#EmpAtworkChart").hide();
+        //    $("#empemptydata").show();
+        //}
+
+
+
+        $.ajax({
+            type: "GET",
+            url: "@_webapiurl" + "DashBoard/GetAdminDashBoardCount",
+            data: { cmpId: cmpId, branchId: branchId, fdate: FirstDayWithSlashes, reqid: 6 },
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            beforeSend: function (xhr) {
+                xhr.setRequestHeader("Authorization", token);
+            },
+            success: function (data) {
+                if (data.isRedirect) {
+                    window.location.href = data.redirectUrl;
+                }
+                var series = new Array();
+                series.push(data[0].Rescnt, data[0].Totalemp);
+                if (series[1] > 0) {
+                    $("#empemptydata").hide();
+                    $("#EmpAtworkChart").show();
+                    EmployeeAtWork(series);
+                }
+                else {
+                    $("#EmpAtworkChart").hide();
+                    $("#empemptydata").show();
+                }
+
+            },
+            error: function () {
+                console.log("FillAtworkChart method in admindashboard Get call.", date.toString());
+            }
+        });
+    }*@
+    function AdminPiachart1(series, FirstDayWithSlashes, lastDayWithSlashes, cmpId, branchId) {
+        Highcharts.chart('containerAdmin', {
+            chart: {
+                plotBackgroundColor: null,
+                plotBorderWidth: 0,
+                plotShadow: false,
+                type: 'pie'
+            },
+            title: {
+                text: 'Attendance Summary <br/> ' + FirstDayWithSlashes //+ ' To ' + lastDayWithSlashes + '  '
+            },
+            tooltip: {
+                pointFormat: '{point.name}: {point.y} '
+            },
+
+            plotOptions: {
+                series: {
+                    cursor: 'pointer',
+                    point: {
+                        events: {
+                            click: function () {
+                                var nm = this.name;
+                                var i = this.name;
+                                if (i == "Present") {
+                                    i = "P";
+                                }
+                                else if (i == "Absent") {
+                                    i = "A";
+                                }
+                                else if (i == "Error") {
+                                    i = "E";
+                                }
+                                else if (i == "Leave") {
+                                    i = "Leave";
+                                }
+                                else if (i == "Weekly Off") {
+                                    i = "WO";
+                                }
+                                else if (i == "HalfDay") {
+                                    i = "HD";
+                                }
+                                else if (i == "Holiday") {
+                                    i = "H";
+                                }
+                                else if (i == "LessHours") {
+                                    i = "LH";
+                                }
+                                else if (i == "At School" || i == "At Work") {
+                                    i = "E";
+                                }
+                                else {
+                                    i = "";
+                                }
+
+                                $.ajax({
+                                    type: "GET",
+                                    url: "/PayTime/FillChartAdminDashboard",
+                                    data: { fromdate: FirstDayWithSlashes, todate: lastDayWithSlashes, statusflg: 2, finalStatus: i, cmpId: cmpId, branchId: branchId },
+                                    contentType: "application/json; charset=utf-8",
+                                    dataType: "json",
+                                    success: function (data) {
+                                        $("#tblattndstatus").empty();
+                                        $('#eventContent').modal('show');
+                                        $("#statusTitle").text(nm);
+                                        var table = "";
+                                        if (data != null) {
+                                            var convertdata = JSON.parse(data);
+                                            for (var j = 0; j < convertdata.length; j++) {
+                                                var tbl = "<tr class='odd gradeX'>";
+                                                tbl = tbl + "<td hidden>" + convertdata[j].empid;
+                                                tbl = tbl + "<td>" + convertdata[j].EmpName;
+                                                tbl = tbl + "<td>" + convertdata[j].AttnDate;
+                                                tbl = tbl + "</td>";
+                                                if (convertdata[j].FinalStatus == "A" || convertdata[j].FinalStatus == "H" || convertdata[j].FinalStatus == "L" || convertdata[j].FinalStatus == "WO") {
+                                                    tbl = tbl + "<td>00:00";
+                                                    tbl = tbl + "</td>";
+                                                    tbl = tbl + "<td>00:00";
+                                                    tbl = tbl + "</td>";
+                                                }
+                                                else {
+                                                    tbl = tbl + "<td>" + convertdata[j].InTime;
+                                                    tbl = tbl + "</td>";
+                                                    tbl = tbl + "<td>" + convertdata[j].OutTime;
+                                                    tbl = tbl + "</td>";
+
+                                                }
+                                                tbl = tbl + "<td>" + convertdata[j].FinalStatus;
+                                                tbl = tbl + "</td>";
+                                                tbl = tbl + "</tr>";
+                                                table += tbl;
+                                            }
+                                        }
+                                        $("#tblattndstatus").destroy;
+                                        $('#tblattndstatus').append(table);
+                                        $('#tblattndstatus').dataTable({
+                                            "columnDefs": [
+                                      {
+                                          "targets": [0],
+                                          "visible": false,
+                                          "searchable": false,
+                                      }],
+                                            // "data": data.d,
+                                            "destroy": true,
+                                            "columns": [
+                                                    { "title": "ID" },
+                                                    { "title": "Student" },
+                                                    { "title": "Attendance Date(@_isdateformat)" },
+                                                 { "title": "In Time" },
+                                                { "title": "Out Time" },
+                                                { "title": "Status" }
+                                            ]
+                                        });
+                                        $(".loading").hide();
+                                    },
+                                    beforeSend: function () {
+                                        $(".loading").show();
+                                    },
+                                    error: function (jqXHR, ajaxOptions, thrownError) {
+
+                                        if (jqXHR.status == 500) { //InternalServerError = 500,
+                                            toastr.error("InternalServerError");
+                                        } else if (jqXHR.status == 400) { //BadRequest = 400,
+                                            toastr.error("BadRequest");
+                                        } else if (jqXHR.status == 401) {
+                                            window.location.href = "/PayTime/LoginPage";
+                                        }
+                                    },
+                                });
+                            }
+                        }
+                    }
+                },
+                //setOptions: {
+                //    lang: {
+                //        noData: 'Personalized no data message'
+                //    }
+                //},
+
+                pie: {
+                    allowPointSelect: true,
+                    cursor: 'pointer',
+                    dataLabels: {
+                        enabled: false,
+                        format: '<b>{point.name}</b>: {point.y:.0f}'
+                    },
+                    showInLegend: true
+                }
+            },
+            series: [{
+                name: 'Status',
+                minRange: 0.1,
+                colorByPoint: true,
+                data: series
+            }]
+        });
+    }
+    function EmployeeAtWork1(series) {
+        Highcharts.chart('EmpAtworkChart', {
+            chart: {
+                type: 'bar'
+            },
+            title: {
+                text: 'Student At School'
+            },
+            //subtitle: {
+            //    text: 'Source: <a href="https://en.wikipedia.org/wiki/World_population">Wikipedia.org</a>'
+            //},
+            xAxis: {
+                categories: ['Student At School', 'Total Strength'],
+                title: {
+                    text: null
+                }
+            },
+            yAxis: {
+                title: {
+                    text: '',
+                    align: 'high'
+                },
+                labels: {
+                    overflow: 'justify'
+                }
+            },
+            //tooltip: {
+            //    valueSuffix: ' Employees'
+            //},
+            plotOptions: {
+                bar: {
+                    dataLabels: {
+                        enabled: true
+                    }
+                }
+            },
+            //legend: {
+            //    layout: 'vertical',
+            //    align: 'right',
+            //    verticalAlign: 'top',
+            //    x: -40,
+            //    y: 80,
+            //    floating: false,
+            //    borderWidth: 1,
+            //    // backgroundColor: ((Highcharts.theme && Highcharts.theme.legendBackgroundColor) || '#FFFFFF'),
+            //    shadow: true
+            //},
+            credits: {
+                enabled: false
+            },
+            series: [{
+                name: 'student',
+                data: series
+            }]
+        });
+    }
+    function FillEmployeeLeaveChart(cmpId, branchId) {
+        var d = new Date();
+        var day = d.getDate();
+        var month = d.getMonth() + 1;
+        var year = d.getFullYear();
+        if (day < 10) {
+            day = "0" + day;
+        }
+        if (month < 10) {
+            month = "0" + month;
+        }
+        var leavedate = year + "-" + month + "-" + day;
+        $.ajax({
+            type: "GET",
+            url: "/PayTime/FillLeaveChart",
+            data: { leavedate: leavedate, cmpId: cmpId, branchId: branchId },
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            success: function (data) {
+                if (data.isRedirect) {
+                    window.location.href = data.redirectUrl;
+                }
+                var objser = JSON.parse(data);
+                var serie = new Array();
+                serie.push(['Today', objser[0].Today_LCount]);
+                serie.push(['Tomorrow', objser[0].Tomorrow_LCount]);
+                serie.push(['Next 7 Days', objser[0].SevenDay_LCount]);
+                //serie.push(['Today', 3.0]);
+                //serie.push(['Tomorrow', 1.0]);
+                //serie.push(['Next 7 Days', 1.0]);
+                if (objser[0].Today_LCount == 0 && objser[0].Tomorrow_LCount == 0 && objser[0].SevenDay_LCount == 0) {
+                    $("#emptyleavedata").show();
+                    $("#containerleave").hide();
+
+                }
+                else {
+                    $("#emptyleavedata").hide();
+                    $("#containerleave").show();
+                    EmployeeOnLeave(serie);
+                }
+            },
+            error: function (jqXHR, ajaxOptions, thrownError) {
+
+                if (jqXHR.status == 500) { //InternalServerError = 500,
+                    toastr.error("InternalServerError");
+                } else if (jqXHR.status == 400) { //BadRequest = 400,
+                    toastr.error("BadRequest");
+                } else if (jqXHR.status == 401) {
+                    window.location.href = "/PayTime/LoginPage";
+                }
+            },
+        });
+    }
+
+
+    function initMap(vpos) {
+        map = new google.maps.Map(document.getElementById('map_content'), {
+            center: vpos,
+            zoom: 14,
+
+            mapTypeId: google.maps.MapTypeId.ROADMAP
+        });
+
+
+        //google.maps.Marker.prototype.animateTo = function (newPosition, options) {
+        //    defaultOptions = {
+        //        duration: 1000,
+        //        easing: 'linear',
+        //        complete: null,
+        //        pan: null
+        //    }
+        //    options = options || {};
+
+        //    // complete missing options
+        //    for (key in defaultOptions) {
+        //        options[key] = options[key] || defaultOptions[key];
+        //    }
+
+        //    // throw exception if easing function doesn't exist
+        //    if (options.easing != 'linear') {
+        //        if (typeof jQuery == 'undefined' || !jQuery.easing[options.easing]) {
+        //            throw '"' + options.easing + '" easing function doesn\'t exist. Include jQuery and/or the jQuery easing plugin and use the right function name.';
+        //            return;
+        //        }
+        //    }
+
+        //    // make sure the pan option is valid
+        //    if (options.pan !== null) {
+        //        if (options.pan !== 'center' && options.pan !== 'inbounds') {
+        //            return;
+        //        }
+        //    }
+
+        //    window.requestAnimationFrame = window.requestAnimationFrame || window.mozRequestAnimationFrame || window.webkitRequestAnimationFrame || window.msRequestAnimationFrame;
+        //    window.cancelAnimationFrame = window.cancelAnimationFrame || window.mozCancelAnimationFrame;
+
+        //    // save current position. prefixed to avoid name collisions. separate for lat/lng to avoid calling lat()/lng() in every frame
+        //    this.AT_startPosition_lat = this.getPosition().lat();
+        //    this.AT_startPosition_lng = this.getPosition().lng();
+        //    var newPosition_lat = newPosition.lat();
+        //    var newPosition_lng = newPosition.lng();
+        //    var newPoint = new google.maps.LatLng(newPosition.lat(), newPosition.lng());
+
+        //    if (options.pan === 'center') {
+        //        this.map.setCenter(newPoint);
+        //    }
+
+        //    if (options.pan === 'inbounds') {
+        //        if (!this.map.getBounds().contains(newPoint)) {
+        //            var mapbounds = this.map.getBounds();
+        //            mapbounds.extend(newPoint);
+        //            this.map.fitBounds(mapbounds);
+        //        }
+        //    }
+
+        //    // crossing the 180° meridian and going the long way around the earth?
+        //    if (Math.abs(newPosition_lng - this.AT_startPosition_lng) > 180) {
+        //        if (newPosition_lng > this.AT_startPosition_lng) {
+        //            newPosition_lng -= 360;
+        //        } else {
+        //            newPosition_lng += 360;
+        //        }
+        //    }
+
+        //    var animateStep = function (marker, startTime) {
+        //        var ellapsedTime = (new Date()).getTime() - startTime;
+        //        var durationRatio = ellapsedTime / options.duration; // 0 - 1
+        //        var easingDurationRatio = durationRatio;
+
+        //        // use jQuery easing if it's not linear
+        //        if (options.easing !== 'linear') {
+        //            easingDurationRatio = jQuery.easing[options.easing](durationRatio, ellapsedTime, 0, 1, options.duration);
+        //        }
+
+        //        if (durationRatio < 1) {
+        //            var deltaPosition = new google.maps.LatLng(marker.AT_startPosition_lat + (newPosition_lat - marker.AT_startPosition_lat) * easingDurationRatio,
+        //                marker.AT_startPosition_lng + (newPosition_lng - marker.AT_startPosition_lng) * easingDurationRatio);
+        //            marker.setPosition(deltaPosition);
+
+        //            // use requestAnimationFrame if it exists on this browser. If not, use setTimeout with ~60 fps
+        //            if (window.requestAnimationFrame) {
+        //                marker.AT_animationHandler = window.requestAnimationFrame(function () {
+        //                    animateStep(marker, startTime)
+        //                });
+        //            } else {
+        //                marker.AT_animationHandler = setTimeout(function () {
+        //                    animateStep(marker, startTime)
+        //                }, 17);
+        //            }
+
+        //        } else {
+
+        //            marker.setPosition(newPosition);
+
+        //            if (typeof options.complete === 'function') {
+        //                options.complete();
+        //            }
+
+        //        }
+        //    }
+
+        //    // stop possibly running animation
+        //    if (window.cancelAnimationFrame) {
+        //        window.cancelAnimationFrame(this.AT_animationHandler);
+        //    } else {
+        //        clearTimeout(this.AT_animationHandler);
+        //    }
+
+        //    animateStep(this, (new Date()).getTime());
+        //}
+
+        //var clickHandler = new ClickEventHandler(map, pos);
+        //map.addListener('click', function (event) {
+        //    pos = event.latLng;
+        //    map = new google.maps.Map(document.getElementById('map_content'), {
+        //        center: pos,
+        //        zoom: 15,
+        //        mapTypeId: google.maps.MapTypeId.ROADMAP
+        //    });
+
+
+        //    settextvalue(event, 0);
+        //    var clickHandler = new ClickEventHandler(map, pos);
+
+        //});
+
+        //setMarkers(map);
+
+    }
+
+
+
+    function clearMarkers() {
+        setMapOnAll(null);
+    }
+
+    function showMarkers() {
+        setMapOnAll(map);
+    }
+
+    function setMapOnAll(map) {
+        for (var i = 0; i < markers.length; i++) {
+            markers[i].setMap(map);
+        }
+    }
+
+    function deleteMarkers() {
+        clearMarkers();
+        marker = [];
+    }
+
+    function transition(result) {
+        m = 0;
+        deltaLat = (result[0] - position[0]) / numDeltas;
+        deltaLng = (result[1] - position[1]) / numDeltas;
+        moveMarker();
+    }
+
+    function moveMarker() {
+        position[0] += deltaLat;
+        position[1] += deltaLng;
+        var latlng = new google.maps.LatLng(position[0], position[1]);
+        marker.setPosition(latlng);
+        if (i != numDeltas) {
+            i++;
+            setTimeout(moveMarker, delay);
+        }
+    }
+
+    function setMarkers(map, data) {
+        //alert(data);
+        // Adds markers to the map.
+
+        // Marker sizes are expressed as a Size of X,Y where the origin of the image
+        // (0,0) is located in the top left of the image.
+
+        // Origins, anchor positions and coordinates of the marker increase in the X
+        // direction to the right and in the Y direction down.
+        var image = {
+            //url: 'https://developers.google.com/maps/documentation/javascript/examples/full/images/beachflag.png',
+            url: '/assets/images/bus-untracked.png',
+            // This marker is 20 pixels wide by 32 pixels high.
+            size: new google.maps.Size(32, 32),
+            // The origin for this image is (0, 0).
+            origin: new google.maps.Point(0, 0),
+            // The anchor for this image is the base of the flagpole at (0, 32).
+            anchor: new google.maps.Point(0, 32)
+        };
+
+        var schoolimage = {
+            //url: 'https://developers.google.com/maps/documentation/javascript/examples/full/images/beachflag.png',
+            url: '/assets/images/School.png',
+            // This marker is 20 pixels wide by 32 pixels high.
+            size: new google.maps.Size(32, 32),
+            // The origin for this image is (0, 0).
+            origin: new google.maps.Point(0, 0),
+            // The anchor for this image is the base of the flagpole at (0, 32).
+            anchor: new google.maps.Point(0, 32)
+        };
+
+        // Shapes define the clickable region of the icon. The type defines an HTML
+        // <area> element 'poly' which traces out a polygon as a series of X,Y points.
+        // The final coordinate closes the poly by connecting to the first coordinate.
+        var shape = {
+            coords: [1, 1, 1, 20, 18, 20, 18, 1],
+            type: 'poly'
+        };
+        //for (var i = 0; i < beaches.length; i++) {
+        //    var beach = beaches[i];
+        //    var marker = new google.maps.Marker({
+        //        position: { lat: beach[1], lng: beach[2] },
+        //        map: map,
+        //        icon: image,
+        //        shape: shape,
+        //        title: beach[0],
+        //        zIndex: beach[3]
+        //    });
+        //}
+        //data = [
+        //['Navrangpura', 23.0365, 72.5611, 1],
+        //['Vastrapur', 23.0350, 72.5293, 2],
+        //['Naranpura', 23.0552, 72.5585, 3]
+        //];
+        var bounds = new google.maps.LatLngBounds();
+        //alert(bounds);
+        for (var i = 0; i < data.length; i++) {
+            //var Details = data[i];
+            loc = new google.maps.LatLng(parseFloat(data[i].Latitude), parseFloat(data[i].Longitude));
+            bounds.extend(loc);
+            var marker = new google.maps.Marker({
+                position: { lat: parseFloat(data[i].Latitude), lng: parseFloat(data[i].Longitude) },
+                map: map,
+                icon: image,
+                shape: shape,
+                //title: data[i].VehicleNo,
+                zIndex: i + 1
+            });
+
+            var content = "<h5><b> Bus : " + data[i].VehicleNo + "</b></h5>";
+            var infowindow = new google.maps.InfoWindow()
+
+             google.maps.event.addListener(marker, 'click', (function (marker, content, infowindow) {
+                 return function () {
+                     infowindow.setContent(content);
+                     infowindow.open(map, marker);
+                 };
+             })(marker, content, infowindow));
+            //marker.setMap(null);
+            //marker.setMap(map);
+            //marker.animateTo(loc, { easing: "linear", duration: 1000 });
+            //m = 0;
+            //deltaLat = (parseFloat(data[i].Latitude) - pos.lat) / numDeltas;
+            //deltaLng = (parseFloat(data[i].Longitude) - pos.lng) / numDeltas;
+            //moveMarker();
+            markers.push(marker);
+        }
+        marker.addListener('mouseover', function () {
+            infowindow.setContent(content);
+            infowindow.open(map, this);
+        });
+
+        // assuming you also want to hide the infowindow when user mouses-out
+        marker.addListener('mouseout', function () {
+            infowindow.close();
+        });
+        map.fitBounds(bounds);
+        map.panToBounds(bounds);
+    }
+
+
+
+    //function settextvalue(event, nom) {
+    //    if (event.placeId) {
+    //        service = new google.maps.places.PlacesService(map);
+    //        service.getDetails({
+    //            placeId: event.placeId
+    //        }, function (place, status) {
+    //            if (status === google.maps.places.PlacesServiceStatus.OK) {
+    //                if (nom == 0) {
+    //                    $("#searchboxinput").val(place.name);
+    //                    $("#hdnfrm").val(event.latLng);
+    //                    $("#searchboxlbl1").show();
+    //                }
+    //                else {
+    //                    //$("#searchboxlbl1").show();
+    //                    $("#btnsubmit").show();
+    //                    $("#vehicalnolbl").show();
+    //                    $("#Routecodelbl").show();
+    //                    $("#routecode").val('');
+    //                    $("#vehicalno").val('');
+    //                    $("#searchboxinput1").val(place.name);
+    //                    $("#hdnto").val(event.latLng);
+    //                }
+
+    //            }
+    //        });
+    //    }
+    //}
+    //var ClickEventHandler = function (map, origin) {
+
+    //    this.origin = origin;
+    //    this.map = map;
+
+    //    this.directionsService = new google.maps.DirectionsService;
+    //    this.directionsDisplay = new google.maps.DirectionsRenderer;
+    //    this.directionsDisplay.setMap(map);
+    //    this.directionsDisplay.setPanel(document.getElementById('right-panel'));
+    //    this.placesService = new google.maps.places.PlacesService(map);
+    //    this.infowindow = new google.maps.InfoWindow;
+    //    this.infowindowContent = document.getElementById('infowindow-content');
+    //    this.infowindow.setContent(this.infowindowContent);
+
+    //    // Listen for clicks on the map.
+    //    this.map.addListener('click', this.handleClick.bind(this));
+    //};
+
+    //ClickEventHandler.prototype.handleClick = function (event) {
+    //    console.log('You clicked on: ' + event.latLng);
+    //    settextvalue(event, 1);
+    //    // If the event has a placeId, use it.
+    //    if (event.placeId) {
+    //        console.log('You clicked on place:' + event.placeId);
+
+    //        // Calling e.stop() on the event prevents the default info window from
+    //        // showing.
+    //        // If you call stop here when there is no placeId you will prevent some
+    //        // other map click event handlers from receiving the event.
+    //        event.stop();
+    //        this.calculateAndDisplayRoute(event.placeId);
+    //        //this.getPlaceInformation(event.placeId);
+    //    }
+    //};
+
+    //ClickEventHandler.prototype.calculateAndDisplayRoute = function (placeId) {
+    //    var me = this;
+    //    this.directionsService.route({
+    //        origin: this.origin,
+
+    //        destination: { placeId: placeId },
+    //        travelMode: 'DRIVING'
+
+    //    }, function (response, status) {
+    //        //alert(response);
+    //        if (status === 'OK') {
+    //            me.directionsDisplay.setDirections(response);
+    //            map.setZoom(15);
+    //        } else {
+    //            window.alert('Directions request failed due to ' + status);
+    //        }
+    //    });
+    //};
+
+    //ClickEventHandler.prototype.getPlaceInformation = function (placeId) {
+    //    var me = this;
+    //    this.placesService.getDetails({ placeId: placeId }, function (place, status) {
+
+    //        if (status === 'OK') {
+    //            //alert(place.geometry.location);
+    //            me.infowindow.close();
+
+    //            me.infowindow.setPosition(place.geometry.location);
+    //            me.infowindowContent.children['place-icon'].src = place.icon;
+    //            me.infowindowContent.children['place-name'].textContent = place.name;
+    //            me.infowindowContent.children['place-id'].textContent = place.place_id;
+    //            me.infowindowContent.children['place-address'].textContent =
+    //                place.formatted_address;
+    //            me.infowindow.open(me.map);
+    //        }
+    //    });
+    //};
+
+    //function handleLocationError(browserHasGeolocation, infoWindow, pos) {
+
+    //    infoWindow.setPosition(pos);
+    //    infoWindow.setContent(browserHasGeolocation ?
+    //                          'Error: The Geolocation service failed.' :
+    //                          'Error: Your browser doesn\'t support geolocation.');
+    //    infoWindow.open(map);
+    //}
+
+
+    function requestGPSData() {
+        $.ajax({
+            url: '@_webapiurl' + 'Transaction/GetGPSData',
+            type: "GET",
+            headers: { 'Authorization': '@_tokan' },
+            success: function (data)
+            {
+                deleteMarkers();
+                //alert('Markers');
+                setMarkers(map, data);
+                setTimeout(requestGPSData, 2000);
+            },
+            cache: false
+        });
+    }
+
+
+    function requestData() {
+        $.ajax({
+            url: '@_webapiurl' + 'DashBoard/AdminLiveAttendanceschool?cmpId=@_companyid&brid=0&roleid=@_RoleId',
+            type: "GET",
+            headers: { 'Authorization': '@_tokan' },
+            success: function (point) {
+                if (point[0].attendance != "0") {
+                    $("#liveemptydata").hide();
+                    $("#containerLivePunch").show();
+                    var series = chart.series[0],
+                        shift = series.data.length > 20; // shift if the series is longer than 20
+                    // add the point
+                    chart.series[0].addPoint([(new Date()).getTime(), parseInt(point[0].attendance)], true, shift);
+                    // call it again after one second
+                    setTimeout(requestData, 1000);
+                } else {
+                    $("#containerLivePunch").hide();
+                    $("#liveemptydata").show();
+                }
+            },
+            cache: false
+        });
+    }
+    function TimePieChart(series) {
+        Highcharts.chart('containerTimePie', {
+            chart: {
+                type: 'pie',
+                options3d: {
+                    enabled: true,
+                    alpha: 45
+                }
+            },
+            title: {
+                text: "Today's Punch time wise"
+            },
+            plotOptions: {
+                pie: {
+                    innerSize: 100,
+                    depth: 45
+                }
+            },
+            series: [{
+                name: 'Punches',
+                data: series
+            }]
+        });
+    }
+
+    function loadingAjax(div_id) {
+        $("#" + div_id).show();
+        $("#" + div_id).html('<img src="/LandingAssets/images/loading.gif" style="cursor: auto; width:30px;" alt="loading" title="loading"/>');
+    }
+
+</script>
+
+<div class="page-bar">
+
+    <ul class="page-breadcrumb">
+        <li>
+            <a href="/School/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+        </li>
+        <li>
+            <span><i class="fa-light fa-angle-right"></i> Admin Dashboard</span>
+        </li>
+    </ul>
+
+</div>
+@if (obj.CanView && Convert.ToInt32(Session["IsSchool"]) == 1)
+{
+    <div class="row" hidden>
+        @using (Html.BeginForm("AdminDashboard", "PayTime", FormMethod.Post, new { @class = "quick-search admin_search", id = "quick-search" }))
+        {
+        <fieldset>
+            <div>
+
+
+                <div class="col-md-4 col-sm-4 margin-top-30">
+                    <div class="form-group">
+                        @Html.DropDownList("CompanyID", new SelectList(ViewBag.Companyslist, "CompanyID", "CompanyName"), "Select School", new { @class = "form-control select2 input-sm" })
+                    </div>
+                </div>
+                <div class="col-md-4 col-sm-4 margin-top-30">
+                    <div class="form-group">
+                        @Html.DropDownList("BranchId", new SelectList(new[] { "" }), "Select Class", new { @class = "form-control select2 input-sm" })
+                    </div>
+                </div>
+
+                <div class="col-md-2 col-sm-2  margin-top-30">
+                    @*Search By:*@
+                    <div class="input-group  input-group-sm  date date-picker" data-date="@DateTime.Now" data-date-format="yyyy-mm-dd" data-date-viewmode="years" id="resigndate">
+                        <span class="input-group-btn">
+                            <button class="btn default" type="button" disabled>
+                                <i class="fa-light fa-calendar-days"></i>
+                            </button>
+                        </span>
+                        <input type="text" placeholder="YYYY-MM-DD" value="@DateTime.Now.ToString("yyyy-MM-dd")" class="form-control" id="chartdate" name="chartdate">
+                        @*<span class="input-group-addon"><i style="padding:10px;"></i></span>*@
+                    </div>
+                </div>
+
+                <div class="col-md-2">
+                    <button type="button" class="btn-block" id="btnsearch">
+                        Search
+                        <span class="ladda-spinner"></span><div class="ladda-progress" style="width: 0px;"></div>
+                    </button>
+                </div>
+                <div class="switcher">
+                    <button id="quick-search-switcher" data-original-title="Find Employee" data-placement="bottom" class="tooltips" type="button"><i class="fa-solid fa-magnifying-glass"></i></button>
+                </div>
+            </div>
+        </fieldset>
+        }
+    </div>
+    <div class="row">
+        <div class="col-lg-4 col-md-12 col-sm-6 col-xs-12">
+            <h1 class="page-title">
+
+                <!-- <small>statistics, charts, recent events and reports</small>-->
+            </h1>
+        </div>
+    </div>
+    <div class="clearfix"></div>
+    <div class="row">
+        <div class="col-lg-3 col-md-4 col-sm-6 col-xs-12">
+            <a class="dashboard-stat dashboard-stat-v2 bg-b-blue" href="#" id="showemp" data-step="1" data-intro="This shows Count of total employees in company!">
+                <div class="visual">
+                    <i class="fa-light fa-chart-column"></i>
+                </div>
+                <div class="details">
+                    <div class="number">
+                        <span id="allempcounter">0</span>
+                        <input type="hidden" id="ctnallemp" />
+                    </div>
+                    <div id="ajax_loaderallemp" aria-hidden="true">
+                    </div>
+                </div>
+                <div class="desc notranslate">@PayTimeWebClient.Resource.Resource.Strength</div>
+            </a>
+        </div>
+        <div class="col-lg-3 col-md-4 col-sm-6 col-xs-12">
+            <a class="dashboard-stat dashboard-stat-v2 bg-b-red" id="atwork" data-step="2" data-intro="This shows count of total employees currently present in company!">
+                <div class="visual">
+                    <i class="fa-sharp fa-light fa-gears"></i>
+                </div>
+                <div class="details">
+                    <div class="number">
+                        <span id="atworkcounter">0</span>
+                        <input type="hidden" id="ctnatwrkemp" />
+                    </div>
+                    <div id="ajax_loaderAtwork" aria-hidden="true">
+                    </div>
+                </div>
+                <div class="desc">At School</div>
+
+            </a>
+        </div>
+        <div class="col-lg-3 col-md-4 col-sm-6 col-xs-12">
+            <a class="dashboard-stat dashboard-stat-v2 bg-b-orange" href="#" id="birthdayEmp" data-step="3" data-intro="This shows count of employee which has birthday today!">
+                <div class="visual">
+                    <i class="fa-light fa-cake-candles"></i>
+                </div>
+                <div class="details">
+                    <div class="number">
+                        <span id="bdaycounter">0</span>
+                    </div>
+                    <div id="ajax_loaderbirthday" aria-hidden="true">
+                    </div>
+                </div>
+                <div class="desc">@PayTimeWebClient.Resource.Resource.Birthday</div>
+            </a>
+        </div>
+        <div class="col-lg-2 col-md-4 col-sm-6 col-xs-12" hidden>
+            <a class="dashboard-stat dashboard-stat-v2 bg-b-purple" id="licountclick" data-step="4" data-intro="This shows count of employee which has came late today!">
+                <div class="visual">
+                    <i class="fa-light fa-child-reaching"></i>
+                </div>
+                <div class="details">
+                    <div class="number">
+                        <span id="licounter">0</span>
+                    </div>
+                    <div id="ajax_loaderLateIn" aria-hidden="true">
+                    </div>
+                </div>
+                <div class="desc">@PayTimeWebClient.Resource.Resource.LateIN</div>
+            </a>
+        </div>
+        <div class="col-lg-2 col-md-4 col-sm-6 col-xs-12" hidden>
+            <a class="dashboard-stat dashboard-stat-v2  bg-b-cyan" id="earlyoutclick" data-step="5" data-intro="This shows count of employee which went early today!">
+                <div class="visual">
+                    <i class="fa-regular fa-clock"></i>
+                </div>
+                <div class="details">
+                    <div class="number">
+                        <span id="earlyoutcount">0</span>
+                    </div>
+                    <div id="ajax_loaderEarlyOUT" aria-hidden="true">
+                    </div>
+                </div>
+                <div class="desc">@PayTimeWebClient.Resource.Resource.EarlyOUT</div>
+            </a>
+        </div>
+        <div class="col-lg-3 col-md-4 col-sm-6 col-xs-12">
+            <a class="dashboard-stat dashboard-stat-v2 bg-b-black" id="devicecount" data-step="6" data-intro="This shows total count of device in company!">
+                <div class="visual">
+                    <i class="fa-light fa-fax"></i>
+                </div>
+                <div class="details">
+                    <div class="number">
+                        <span id="getdevicecounter">0</span>
+                    </div>
+                    <div id="ajax_loaderDevice" aria-hidden="true">
+                    </div>
+                </div>
+                <div class="desc">@PayTimeWebClient.Resource.Resource.Device</div>
+            </a>
+        </div>
+    </div>
+
+    <div class="clearfix"></div>
+
+    <div class="row">
+        <div class="col-md-6">
+            <div class="portlet light portlet-fit bordered">
+                <div class="portlet-title">
+                    <div class="caption">
+                        <i class=" icon-layers font-dark"></i>
+                        <span class="caption-subject font-dark bold uppercase">Student at School</span>
+                    </div>
+                </div>
+                <div class="portlet-body">
+                    @*<div id="containercol" style="min-width: 310px; height: 400px; max-width: 600px; margin: 0 auto"></div>*@
+                    @*<div id="containerLivePunch" style="min-width: 310px; height: 400px; max-width: 600px; margin: 0 auto"></div>*@
+                    <div id="EmpAtworkChart"></div>
+
+
+                    <div id="empemptydata" style="min-width: 310px; height: 200px; max-width: 600px; margin: 0 auto" hidden>
+                        <div id="no_data_view" class="text-center">
+                            <img src="~/assets/images/nofeed.jpg" style="height:200px;" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="portlet light portlet-fit bordered" hidden>
+                <div class="portlet-title">
+                    <div class="caption">
+                        <i class=" icon-layers font-dark"></i>
+                        <span class="caption-subject font-dark bold uppercase">@PayTimeWebClient.Resource.Resource.AttendanceSummary</span>
+                    </div>
+                </div>
+                <div class="portlet-body">
+                    <div id="containerAdmin" style="min-width: 310px; height: 400px; max-width: 600px; margin: 0 auto"></div>
+
+                    <div id="emptydata" style="min-width: 310px; height: 200px; max-width: 600px; margin: 0 auto" hidden>
+                        @*<h2>@PayTimeWebClient.Resource.Resource.Nodatatodisplay</h2>*@
+                        <div id="no_data_view" class="text-center">
+                            <img style="height:200px;" src="~/assets/images/nofeed.jpg" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="eventContent" class="modal fade bs-modal-lg" role="dialog" data-keyboard="false" data-backdrop="static">
+                <div class="modal-dialog modal-lg">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <button type="button" class="close " data-dismiss="modal">&times;</button>
+                            <h4 class="modal-title" id="statusTitle"></h4>
+                        </div>
+                        <div class="modal-body">
+                            <fieldset>
+                                <div class="row">
+                                    <div class="col-md-12" id="empget">
+                                        <table id="tblattndstatus" class="table table-striped table-bordered table-hover table-checkable order-column "></table>
+                                    </div>
+                                </div>
+                            </fieldset>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+
+
+            <div id="frmleavedetails" class="modal fade bs-modal-lg" role="dialog" data-keyboard="false" data-backdrop="static">
+                <div class="modal-dialog modal-lg">
+                    <!-- Modal content-->
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <button type="button" class="close" data-dismiss="modal">&times;</button>
+                            <h4 class="modal-title">@PayTimeWebClient.Resource.Resource.EmployeeonLeave</h4>
+                        </div>
+                        <div class="modal-body">
+                            <fieldset>
+                                <div class="row">
+                                    <div class="col-md-12" id="empget">
+                                        <table id="tblleaveemployee" class="table table-striped table-bordered table-hover table-checkable order-column "></table>
+                                    </div>
+                                </div>
+                            </fieldset>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+
+
+        </div>
+        <div class="col-md-6">
+            <div class="portlet light portlet-fit bordered">
+                <div class="portlet-title">
+                    <div class="caption">
+                        <i class=" icon-layers font-dark"></i>
+                        <span class="caption-subject font-dark bold uppercase">Today's Attendance </span>
+                    </div>
+                </div>
+                <div class="portlet-body">
+                    @*<div id="containercol" style="min-width: 310px; height: 400px; max-width: 600px; margin: 0 auto"></div>*@
+                    <div id="containerLivePunch" style="min-width: 310px; height: 400px; max-width: 600px; margin: 0 auto"></div>
+
+
+
+                    <div id="liveemptydata" style="min-width: 310px; height: 200px; max-width: 600px; margin: 0 auto" hidden>
+                        <div id="no_data_view" class="text-center">
+                            <img src="~/assets/images/nofeed.jpg" style="height:200px;" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-6 col-xs-12 col-sm-12" hidden>
+
+            <div class="portlet portlet-fit light bordered">
+                <div class="portlet-title">
+                    <div class="caption">
+                        <i class=" icon-layers font-dark"></i>
+                        <span class="caption-subject font-dark bold uppercase">Time wise</span>
+
+                    </div>
+                </div>
+                <div class="portlet-body">
+                    @*<div id="EmpAtworkChart"></div>*@
+                    <div id="containerTimePie" style="min-width: 310px; height: 400px; max-width: 600px; margin: 0 auto"></div>
+                    <div id="TimePieemptydata" style="min-width: 310px; height: 200px; max-width: 600px; margin: 0 auto" hidden>
+                        <div id="no_data_view" class="text-center">
+                            <img src="~/assets/images/nofeed.jpg" style="height:200px;" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    @* type =0 Strength *@
+    <div class="row">
+        <div id="frmviewEmp" class="modal fade bs-modal-lg modal-scroll modal-overflow in" role="dialog" data-keyboard="false" data-backdrop="static">
+            <div class="modal-dialog modal-lg">
+                <!-- Modal content-->
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <button type="button" class="close" data-dismiss="modal">&times;</button>
+                        <h4 class="modal-title">TotalStudents</h4>
+                    </div>
+                    <div class="modal-body">
+                        <fieldset>
+                            <div class="row">
+                                <div class="col-md-12" id="empget">
+                                    <table id="tblEmployee" class="table table-striped table-bordered table-hover  order-column "></table>
+                                </div>
+                            </div>
+                        </fieldset>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* type =1 Atwork *@
+    <div class="row">
+        <div id="frmatwork" class="modal fade bs-modal-lg modal-scroll modal-overflow in" role="dialog" data-keyboard="false" data-backdrop="static">
+            <div class="modal-dialog modal-lg">
+                <!-- Modal content-->
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <button type="button" class="close" data-dismiss="modal">&times;</button>
+                        <h4 class="modal-title">AtSchool</h4>
+                    </div>
+                    <div class="modal-body">
+                        <fieldset>
+                            <div class="row">
+                                <div class="col-md-12" id="empget">
+                                    <table id="tblatwork" class="table table-striped table-bordered table-hover table-checkable order-column "></table>
+                                </div>
+                            </div>
+                        </fieldset>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* type =2 Birthday*@
+    <div class="row">
+        <div id="frmviewBirthdayemp" class="modal fade bs-modal-lg modal-scroll modal-overflow in" role="dialog" data-keyboard="false" data-backdrop="static">
+            <div class="modal-dialog modal-lg">
+                <!-- Modal content-->
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <button type="button" class="close" data-dismiss="modal">&times;</button>
+                        <h4 class="modal-title">@PayTimeWebClient.Resource.Resource.Birthday</h4>
+                    </div>
+                    <div class="modal-body">
+                        <fieldset>
+                            <div class="row">
+                                <div class="col-md-12" id="empget">
+                                    <table id="tblBirthdayEmployee" class="table table-striped table-bordered table-hover table-checkable order-column "></table>
+                                </div>
+                            </div>
+                        </fieldset>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* type =3  LateIN*@
+    <div class="row">
+        <div id="frmlateIn" class="modal fade bs-modal-lg modal-scroll modal-overflow in" role="dialog" data-keyboard="false" data-backdrop="static">
+            <div class="modal-dialog modal-lg">
+                <!-- Modal content-->
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <button type="button" class="close" data-dismiss="modal">&times;</button>
+                        <h4 class="modal-title">@PayTimeWebClient.Resource.Resource.LateIN</h4>
+                    </div>
+                    <div class="modal-body">
+                        <fieldset>
+                            <div class="row">
+                                <div class="col-md-12" id="empget">
+                                    <table id="tbllateIn" class="table table-striped table-bordered table-hover table-checkable order-column "></table>
+                                </div>
+                            </div>
+                        </fieldset>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* type =4  Early Out*@
+    <div class="row">
+        <div id="frmearlyout" class="modal fade bs-modal-lg modal-scroll modal-overflow in" role="dialog" data-keyboard="false" data-backdrop="static">
+            <div class="modal-dialog modal-lg">
+                <!-- Modal content-->
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <button type="button" class="close" data-dismiss="modal">&times;</button>
+                        <h4 class="modal-title">@PayTimeWebClient.Resource.Resource.EarlyOUT</h4>
+                    </div>
+                    <div class="modal-body">
+                        <fieldset>
+                            <div class="row">
+                                <div class="col-md-12" id="empget">
+                                    <table id="tblearlyout" class="table table-striped table-bordered table-hover table-checkable order-column "></table>
+                                </div>
+                            </div>
+                        </fieldset>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* type =5  Device*@
+    <div class="row">
+        <div id="frmdevice" class="modal fade bs-modal-lg modal-scroll modal-overflow in" role="dialog" data-keyboard="false" data-backdrop="static">
+            <div class="modal-dialog modal-lg">
+                <!-- Modal content-->
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <button type="button" class="close" data-dismiss="modal">&times;</button>
+                        <h4 class="modal-title">@PayTimeWebClient.Resource.Resource.Device</h4>
+                    </div>
+                    <div class="modal-body">
+                        <fieldset>
+                            <div class="row">
+                                <div class="col-md-12" id="empget">
+                                    <table id="tbldevice" class="table table-striped table-bordered table-hover table-checkable order-column "></table>
+                                </div>
+
+                            </div>
+                        </fieldset>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-12">
+            <div class="portlet light portlet-fit bordered">
+                <div class="portlet-title">
+                    <div class="caption">
+                        <i class=" icon-layers font-dark"></i>
+                        <span class="caption-subject font-dark bold uppercase">Bus tracking</span>
+                    </div>
+                </div>
+                <div class="portlet-body">
+                    <fieldset>
+                        <div id="map_content"></div>
+                    </fieldset>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div id="infowindow-content">
+        <img id="place-icon" src="" height="16" width="16">
+        <span id="place-name" class="title"></span><br>
+        Place ID <span id="place-id"></span><br>
+        <span id="place-address"></span>
+    </div>
+    <script type="text/javascript" src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBZKLtQG-hhnOXL3OFg7uJzlusQj38k0VU&libraries=places" async defer></script>
+
+}
+else
+{
+    <span style="color:red">@PayTimeWebClient.Resource.Resource.UnauthorizedAccess .</span>
+}

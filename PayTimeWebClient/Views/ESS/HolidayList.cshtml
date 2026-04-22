@@ -1,0 +1,1280 @@
+﻿@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@using System.Configuration;
+@{
+    ViewBag.Title = "HolidayList";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    string _isdateformat = HttpContext.Current.Session["IsDateFormat"].ToString();
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    string _companyCode = HttpContext.Current.Session["cmpcode"].ToString();
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+    string _companyid = "0";
+    string _branchid = "0";
+    int _EmpId = 0;
+    string _empName = "0";
+    if (_RoleId == 6805 || _RoleId == 6806 || _RoleId > 1)
+    {
+        _companyid = HttpContext.Current.Session["ClientCompanyId"].ToString();
+        _branchid = HttpContext.Current.Session["BranchId"].ToString();
+        _EmpId = Convert.ToInt32(HttpContext.Current.Session["EmpId"]);
+        _empName = HttpContext.Current.Session["EmpName"].ToString();
+    }
+    string isClientDBMatchFlag = HttpContext.Current.Session["IsClientDBMatch"] != null
+  ? HttpContext.Current.Session["IsClientDBMatch"].ToString()
+  : "false"; // Default to "false" if the session is null
+    int _OptHolidayLimit = Convert.ToInt32(HttpContext.Current.Session["OptHolidayLimit"]);
+    int _UserId = Convert.ToInt32(HttpContext.Current.Session["UserId"]);
+
+}
+<script src="~/AssetsNew/js/CommonValidation.js"></script>
+<link href="~/AssetsNew/css/introjs.css" rel="stylesheet" />
+<script src="~/Scripts/Helpers/noDataHandler.js"></script>
+<style type="text/css">
+    .mysubscription .nav-tabs {
+        margin: 0;
+        padding: 0;
+        border: none;
+        display: block;
+        margin-bottom: 10px;
+    }
+
+        .mysubscription .nav-tabs > li {
+            margin: 0;
+            float: none;
+            display: inline-block;
+        }
+
+            .mysubscription .nav-tabs > li > a {
+                margin: 0;
+                padding: 2px 10px 2px 10px;
+                font-size: 14px;
+                background-color: transparent;
+                border: 1px solid transparent;
+                color: #666666;
+                margin-right: 10px;
+            }
+
+                .mysubscription .nav-tabs > li > a:hover {
+                    color: #000000;
+                    border-bottom: 2px solid #a9a9a9 !important;
+                }
+
+            .mysubscription .nav-tabs > li.active > a {
+                background-color: transparent;
+                color: #000000;
+                border-bottom: 2px solid #a9a9a9 !important;
+                border-color: transparent;
+            }
+
+                .mysubscription .nav-tabs > li.active > a > i {
+                    color: #000000 !important;
+                }
+
+    .tab_content_box {
+        color: #333;
+        margin: 0;
+        padding: 0;
+    }
+
+        .tab_content_box .tab-pane {
+            margin: 0;
+            padding: 0;
+            border: 0;
+        }
+</style>
+<script type="text/javascript">
+    var isDateFormat = '@_isdateformat';
+    var count = 0;
+    var _NewEmpID = "@_EmpId";
+    var _NewEmpName = "@_empName";
+    var operation = "";
+    var delay = 2000;
+    var HolidayLimit = "@_OptHolidayLimit";
+    var _RoleIDnew = '@_RoleId';
+    var isactive = 1;
+    var Dt_table = "";
+    $(document).ready(function () {
+        if (@_RoleId != 1) {
+            loadHolidayTable();
+            tbloptional_Holiday();
+            tbloptional_Holiday_team();
+            tblgetEmployeeHeirachy();
+        }
+        else {
+            $('a[href="#optionalholiday"]').tab('show');
+            tbloptional_Holiday();
+        }
+        $('a[data-toggle="tab"]').on('shown.bs.tab', function (e) {
+            var target = $(e.target).attr("href");
+            if (target === "#holiday") {
+                loadHolidayTable();
+            }
+            if (target === "#optionalholiday") {
+                tbloptional_Holiday();
+            }
+            if (target === "#approvalrequest") {
+                tbloptional_Holiday_team();
+            }
+        });
+        $(document).on("change", ".checkbox", function () {
+            if ($(".checkbox:checked").length > 0) {
+                $("#btn_note_id").show();
+            } else {
+                $("#btn_note_id").hide();
+            }
+        });
+        function frmClear() {
+            $("#OptHoliday").val("0");
+            $("#HolidayDate").val("");
+            $("#HolidayToDate").val("");
+            $("#Empname").val("");
+        }
+        function filloptholiday(empid) {
+            $('#OptHoliday').empty();
+            $.ajax({
+                type: "GET",
+                url: '@_webapiurl' + "Master/GetHolidayOptionalall?empid=" + empid,
+                headers: { 'Authorization': '@_tokan' },
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                beforeSend: function () {
+                    $("#ajax_loader").show();
+                },
+                success: function (data) {
+                    if (data != null && data.length > 0) {
+                        $("#OptHoliday").append("<option value='0'>Select Holiday</option>");
+                        for (var i = 0; i < data.length; i++) {
+                            $("#OptHoliday").append("<option value='" + data[i].HolidayId + "'>" + data[i].HolidayName + "</option>");
+                        }
+                    }
+                },
+                error: function (error) {
+                    console.error("Error fetching optional holidays: " + error.statusText);
+                },
+                complete: function () {
+                    $("#ajax_loader").hide();
+                }
+            });
+        }
+
+        $("#OptHoliday").on('change', function () {
+            var HolidayId = $('#OptHoliday').val();
+            $.ajax({
+                type: "GET",
+                url: '@_webapiurl' + 'Master/GetHolidayOptionaldate?HolidayId=' + HolidayId,
+                headers: { 'Authorization': '@_tokan' },
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                beforeSend: function () {
+                    $("#ajax_loader").show();
+                },
+                success: function (data) {
+                    if (data && data.length > 0) {
+                        $("#HolidayDate").val(data[0].HolidayDate);
+                    }
+                },
+                error: function (error) {
+                    //alert("Error fetching cities: " + error.statusText);
+                },
+                complete: function () {
+                    $("#ajax_loader").hide();
+                }
+            });
+        });
+
+        $("#tblholidayoptionalapllied").on('click', '.clm_edit_btn', function () {
+            frmClear();
+            var row = $(this).closest('tr');
+            var empId = row.find('td.EmpId').text().trim();
+            var empName = row.find('td.EmpName').text().trim();
+            var holidayDate = row.find('td.HolidayDate').text().trim();
+            var optHolidayId = row.find('td.OptHolidayId').text().trim();
+            var holidayName = row.find('td.HolidayName').text().trim();
+            filloptholiday(empid);
+            $("#empid").val(empId);
+            $("#Empname").val(empName);
+            $("#HolidayDate").val(holidayDate);
+            $("#OptHolidayId").val(optHolidayId);
+            $("#OptHoliday option").each(function () {
+                if ($(this).text().trim() === holidayName) {
+                    $(this).prop("selected", true);
+                }
+            });
+            $('#OptHoliday').trigger('change.select2');
+            $("#Empname").prop("disabled", true);
+            $("#HolidayDate").prop("disabled", true);
+            $("#tblholidayoptionalapllied").attr("data-toggle", "modal");
+            $("#tblholidayoptionalapllied").attr("data-target", "#frmpopup");
+        });
+        //Update
+        $("#btnSubmit").click(function () {
+            if (($("#OptHoliday").val() == null || $("#OptHoliday").val() == "0")) {
+                $("#OptHoliday").addClass('field_error');
+                toastr.remove();
+                toastr.error("Please Optinal Holiday.");
+                return false;
+            }
+            var createdDate = new Date().toString("YYYY-MM-dd HH:mm:ss");
+            var empid = $("#empid").val();
+            var isactive = 1;
+            var holidayid = $("#OptHoliday").val();
+            var OptHolidayId = $("#OptHolidayId").val();
+            var obj = {
+                EmpId: empid,
+                HolidayId: holidayid,
+                CreatedDate: createdDate,
+                IsActive : isactive,
+                OptHolidayId: OptHolidayId
+            };
+            $.ajax({
+                url: '@_webapiurl' + 'Master/OptionalHolidayUpdate',
+                type: 'POST',
+                headers: { 'Authorization': '@_tokan' },
+                data: JSON.stringify(obj),
+                contentType: "application/json; charset=utf-8",
+                beforeSend: function () {
+                    $(".loading").show();
+                },
+                success: function (data) {
+                    if (data.isRedirect) {
+                        window.location.href = data.redirectUrl;
+                    }
+                    if (data.MegSts == "ok") {
+                        toastr.remove();
+                        toastr.success(data.Meg);
+                        $(".loading").hide();
+                        setTimeout(function () {
+                            window.location.reload(true);
+                        }, delay);
+
+                    }
+                    else {
+                        toastr.error("already exist");
+                    }
+                }
+            });
+        });
+         $("#btnactive").click(function () {
+                checkSession();
+                var HolidayOptionalRequest = [];
+                var checkboxChecked = false;
+                $("#tblholidayoptionallist .checkbox").each(function () {
+                    if ($(this).is(':checked')) {
+                        checkboxChecked = true;
+                        var row = $(this).closest('tr');
+                        var holidayDateStr = row.find('.HolidayDate').text().trim();
+                        var holidayToDateStr = row.find('.HolidayToDate').text().trim();
+                        var holidayDate = parseDateByFormat(holidayDateStr, isDateFormat);
+                        var holidayToDate = parseDateByFormat(holidayToDateStr, isDateFormat);
+                        var obj = {
+                            holidayname: row.find('.HolidayName').text().trim(),
+                            holidayDate: holidayDate,
+                            holidayToDate: holidayToDate,
+                            CreatedDate: row.find('.CreatedDate').text().trim(),
+                            HolidayId: row.find('.HolidayId').text().trim(),
+                            EmpId: _NewEmpID,
+                            IsActive: isactive
+                        };
+                        HolidayOptionalRequest.push(obj);
+                    }
+                });
+
+                if (!checkboxChecked) {
+                    toastr.error("Please select Holiday.");
+                    return false;
+                }
+                var checkedCount = $('#tblholidayoptionallist .checkbox:checked').length;
+                if (checkedCount != HolidayLimit) {
+                    toastr.error("Please select exactly " + HolidayLimit + " optional holiday(s).");
+                    return false;
+                }
+                var requestData = {
+                    HolidayOptionalRequest: HolidayOptionalRequest
+                };
+                $.ajax({
+                    url: '@_webapiurl' + 'Master/HolidayMasterOptionalCreate',
+                    type: 'POST',
+                    headers: { 'Authorization': '@_tokan' },
+                    data: JSON.stringify(requestData),
+                    contentType: "application/json; charset=utf-8",
+                    beforeSend: function () {
+                        $(".loading").show();
+                    },
+                    success: function (data) {
+                        if (data.isRedirect) {
+                            window.location.href = data.redirectUrl;
+                            return;
+                        }
+
+                        if (data.MegSts === "ok") {
+                            toastr.remove();
+                            toastr.success(data.Meg);
+                            $(".loading").hide();
+                            $("#getselectedHoliday").show();
+                            $("#GetOptionalholiday").hide();
+                            if ($.fn.dataTable.isDataTable('#tblholidayoptionalapllied')) {
+                                $('#tblholidayoptionalapllied').DataTable().destroy();
+                            }
+                            var objHoliday = {
+                                Roleid: _RoleIDnew,
+                                EmpId: _NewEmpID,
+                                flag:0
+                            };
+                            tbloptional_Holiday();
+                        } else {
+                            toastr.remove();
+                            toastr.error("Error.");
+                            $(".loading").hide();
+                        }
+                    },
+                    statusCode: {
+                        404: function () { alert('Cannot find resource'); },
+                        500: function () { alert('Internal server error'); }
+                    },
+                    error: function (jqXHR) {
+                        $(".loading").hide();
+                        if (jqXHR.status == 500) {
+                            toastr.error("InternalServerError");
+                        } else if (jqXHR.status == 400) {
+                            toastr.error("BadRequest");
+                        } else if (jqXHR.status == 401) {
+                            window.location.href = "/PayTime/LoginPage";
+                        }
+                    }
+                });
+            });
+        function loadHolidayTable() {
+            if ($.fn.DataTable.isDataTable("#tblHoliday")) {
+                $("#tblHoliday").DataTable().clear().destroy();
+            }
+            $.ajax({
+                url: '/ESS/GetHolidays',
+                type: 'GET',
+                dataType: 'json',
+                contentType: "application/json; charset=utf-8",
+                beforeSend: function () {
+                    $('.loading').show();
+                },
+                success: function (response) {
+                    if (response != null) {
+                        const holiday = response.Holidayslist;
+                        handleGridVisibility("tblempty", "NotificationGrid-empty", holiday, {
+                            imageUrl: "emptyscreen_1.png",
+                            subText: "No entries found. Please add a record to get started."
+                        });
+                    }
+                    if (response.isRedirect) {
+                        window.location.href = response.redirectUrl;
+                        return;
+                    }
+                    $("#tblHoliday tbody").empty();
+                    var table = '';
+                    for (var i = 0; i < response.Holidayslist.length; i++) {
+                        var holiday = response.Holidayslist[i];
+                        var sr = i + 1;
+                        var tbl = "<tr class='odd gradeX'>";
+                        tbl += "<td hidden>" + sr + "</td>";
+                        tbl += "<td class='HolidayId' hidden>" + holiday.HolidayId + "</td>";
+                        tbl += "<td class='HolidayName'>" + holiday.HolidayName + "</td>";
+                        tbl += "<td class='HolidayDate'>" + holiday.HolidayDate + "</td>";
+                        tbl += "<td class='HolidayToDate'>" + holiday.HolidayToDate + "</td>";
+                        tbl += "<td class='BranchName' hidden>" + holiday.BranchName + "</td>";
+                        tbl += "<td class='CountryName' hidden>" + holiday.CountryName + "</td>";
+                        tbl += "<td class='StateName' hidden>" + holiday.StateName + "</td>";
+                        tbl += "<td class='TimeZoneName' hidden>" + holiday.TimeZoneName + "</td>";
+                        tbl += "<td class='Religion' hidden>" + holiday.ReligionName + "</td>";
+                        tbl += "<td class='IsHolidayType' hidden>" + (holiday.IsHolidayType ? "compulsory" : "Optional") + "</td>";
+                        tbl += "<td class='HolidayApplicable' hidden>" + holiday.HolidayApplicable + "</td>";
+                        tbl += "<td class='CountryID' hidden>" + holiday.CountryId + "</td>";
+                        tbl += "<td class='StateId' hidden>" + holiday.StateId + "</td>";
+                        tbl += "</tr>";
+                        table += tbl;
+                    }
+                    $("#tblHoliday tbody").append(table);
+                    $("#dataTables_tbl_header").remove();
+                    $("#tblHoliday").DataTable({
+                        dom: _domCommon,
+                        language: _languageCommon,
+                        paging: true,
+                        searching: true,
+                        autoWidth: true,
+                        initComplete: function () {
+                            const reqid = 'tblHoliday';
+                            $("#buttons").append(`
+                            <div id="export-button" class="export-button tooltips" data-placement="bottom" data-original-title="Download" data-table-id="${reqid}">
+                                <img src="../Newlayout/images/download_icon.svg" alt="Download icon">
+                            </div>
+                           `);
+
+                        },
+                    });
+                    setTimeout(function () {
+                        $("#" + "tblHoliday" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+                        $('.tooltips').tooltip();
+                    }, 100);
+                },
+                error: function (jqXHR, ajaxOptions, thrownError) {
+                    $(".loading").hide();
+                    if (jqXHR.status === 500) {
+                        toastr.error("Internal Server Error");
+                    } else if (jqXHR.status === 400) {
+                        toastr.error("Bad Request");
+                    } else if (jqXHR.status === 401) {
+                        window.location.href = "/PayTime/LoginPage";
+                    }
+                },
+                complete: function () {
+                    $('.loading').hide();
+                }
+            });
+        }
+        function tbloptional_Holiday() {
+            $("#btn_note_id").hide();
+            $('#tblholidayoptionallist').DataTable().destroy();
+            $.ajax({
+                url: '@_webapiurl' + "Master/HolidayGetOptionalAll?cmpid=@_companyid&branchid=@_branchid",
+                method: 'GET',
+                headers: { 'Authorization': '@_tokan' },
+                dataType: 'json',
+                contentType: 'application/json',
+                beforeSend: function () {
+                    $('#ajax_loaderbranch').show();
+                },
+                buttons: [
+                       "excelHtml5",
+                ],
+                success: function (response) {
+                    if (response != null) {
+                        const holiday = response;
+                        handleGridVisibility("tblemptys", "NotificationGrid-emptys", holiday, {
+                            imageUrl: "emptyscreen_1.png",
+                            subText: "No entries found. Please add a record to get started."
+                        });
+                    }
+                    if (response.isRedirect) {
+                        window.location.href = response.redirectUrl;
+                    }
+                    $('#tblholidayoptionallist tbody').empty();
+                    var table = '';
+                    for (var i = 0; i < response.length; i++) {
+                        var tbl = "<tr class='odd gradeX'>";
+                        tbl += "<td><input type='checkbox' class='checkbox' /></td>";  // Add checkbox
+                        tbl += "<td class='HolidayId'hidden>" + response[i].HolidayId + "</td>";
+                        tbl += "<td class='HolidayName'>" + response[i].HolidayName + "</td>";
+                        tbl += "<td class='HolidayDate'>" + response[i].HolidayDate + "</td>";
+                        tbl += "<td class='HolidayToDate'>" + response[i].HolidayToDate + "</td>";
+                        tbl += "<td hidden>" + response[i].CountryId + "</td>";
+                        tbl += "<td hidden>" + response[i].BranchId + "</td>";
+                        tbl += "<td hidden>" + response[i].IsHolidayType + "</td>";
+                        tbl += "<td hidden>" + response[i].IsActive + "</td>";
+                        tbl += "</tr>";
+                        table += tbl;
+                    }
+                    $('#tblholidayoptionallist tbody').append(table);
+                    $("#dataTables_tbl_header").remove();
+                    $("#tblholidayoptionallist").DataTable({
+
+                        dom: _domCommon,
+                        language: _languageCommon,
+                        paging: true,
+                        searching: true,
+                        autoWidth: true,
+                        initComplete: function () {
+                            const reqid = 'tblholidayoptionallist';
+                            $("#buttons").append(`
+                            <div id="export-button" class="export-button tooltips" data-placement="bottom" data-original-title="Download" data-table-id="${reqid}">
+                                <img src="../Newlayout/images/download_icon.svg" alt="Download icon">
+                            </div>
+                           `);
+
+                        },
+                    }); setTimeout(function () {
+                        $("#" + "tblholidayoptionallist" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsiveOptional"));
+                        $('.tooltips').tooltip();
+                    }, 100);
+                    $("#tblholidayoptionallist").on("keyup", "input", function () {
+                        var t = $("#tblholidayoptionallist").DataTable();
+                        t.column($(this).parent().index())
+                            .search(this.value)
+                            .draw();
+                    });
+                    $('#tblholidayoptionallist').on('click', '.checkbox', function () {
+                        var checkedCount = $('#tblholidayoptionallist .checkbox:checked').length;
+                        if (this.checked && checkedCount > HolidayLimit) {
+                            alert("You can only select up to " + HolidayLimit + " holidays.");
+                            this.checked = false;
+                        }
+                    });
+                    $('#tblholidayoptionalapllied').DataTable().destroy();
+                     var objHoliday = {
+                         Roleid: _RoleIDnew,
+                         EmpId: _NewEmpID,
+                         flag: 0
+                     };
+                     $.ajax({
+                         url: '@_webapiurl' + 'Master/GetHolidayOptionalSelected',
+                         method: 'GET',
+                         headers: { 'Authorization': '@_tokan' },
+                         data: objHoliday,
+                         dataType: 'json',
+                         contentType: 'application/json',
+                         beforeSend: function () {
+                             $('#ajax_loaderbranch').show();
+                         },
+                         success: function (response) {
+                             if (response.isRedirect) {
+                                 window.location.href = response.redirectUrl;
+                             }
+                             $('#tblholidayoptionalapllied tbody').empty();
+                             var table = '';
+                             var _Flag = 0;
+                             if (response != null && response.length > 0) {
+                                 for (var i = 0; i < response.length; i++) {
+                                     if (response[i].Flag == 1) {
+                                             _Flag = 1;
+                                     }
+                                     if (response[i].EmpId == _NewEmpID) {
+                                         var tbl = "<tr class='odd gradeX'>";
+                                         tbl += "<td class= 'EmpId' hidden>" + response[i].EmpId + "</td>";
+                                         tbl += "<td  class='OptHolidayId'hidden>" + response[i].OptHolidayId + "</td>";
+                                         tbl += "<td  class='HolidayID'hidden>" + response[i].HolidayID + "</td>";
+                                         tbl += "<td class='EmpName'>" + response[i].EmpName + "</td>";
+                                         tbl += "<td class='HolidayName'>" + response[i].HolidayName + "</td>";
+                                         tbl += "<td class='HolidayDate'>" + response[i].HolidayDate + "</td>";
+                                         tbl += "<td class='HolidayToDate'>" + response[i].HolidayToDate + "</td>";
+                                         if (_RoleIDnew == 1) {
+                                             tbl += "<td><a class='editclass btn blue_btnnew tooltips clm_edit_btn' data-placement='top' title='Edit'><i class='fa-regular fa-pen-to-square'></i></a></td>";
+                                         }
+                                         else {
+                                             tbl += "<td class='Action'>" + 'Applied ' + "</td>";
+                                         }
+                                         tbl += "</tr>";
+                                         table += tbl;
+                                     }
+                                 }
+                                 $('#tblholidayoptionalapllied tbody').append(table);
+                                 $("#optionalholiday #dataTables_tbl_header").remove();
+                                 var t = $("#tblholidayoptionalapllied").DataTable({
+                                     dom: _domCommon,
+                                     language: _languageCommon,
+                                         paging: true,
+                                         autoWidth: true,
+                                         ordering: false,
+                                     buttons: ["excelHtml5"],
+                                     initComplete: function () {
+                                         const visibleTable = $('table:visible').attr('id');
+                                         $("#buttons").append(`
+                                        <div id="export-button" class="export-button tooltips" data-placement="top" data-original-title="Download" data-table-id="${visibleTable}">
+                                            <img src="../Newlayout/images/download_icon.svg" alt="Download icon">
+                                        </div>
+                                     `);
+
+                                     },
+                                 });
+                                 setTimeout(function () {
+                                     $("#" + "tblholidayoptionalapllied" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive10"));
+                                     $('.tooltips').tooltip();
+
+                                 }, 100);
+                                     $("#tblholidayoptionalapllied").on("keyup", "input", function () {
+                                         t.column($(this).parent().index())
+                                             .search(this.value)
+                                             .draw();
+                                     });
+                                     $('#getselectedHoliday').show();
+                                     $('#GetOptionalholiday').hide();
+                                     $("#btnactive").hide();
+                             } else {
+                                 $('#GetOptionalholiday').css('display', 'block');
+                                 $('#getselectedHoliday').css('display', 'none');
+                             }
+                             if (_RoleIDnew == 1) {
+                                 $('#GetOptionalholiday').hide();
+                                 $('#getselectedHoliday').show();
+                             }
+                             else {
+                                 var _empoptselect = 0;
+                                 for (var i = 0; i < response.length; i++) {
+                                     if (response[i].EmpId == _NewEmpID) {
+                                         _empoptselect = 1;
+                                     }
+                                 }
+
+                                 if (_empoptselect == 0) {
+                                     $('#getselectedHoliday').hide();
+                                     $('#GetOptionalholiday').show();
+                                     $("#btnactive").show();
+                                 }
+                             }
+                         },
+                         complete: function () {
+                             $('#ajax_loaderbranch').hide();
+                         }
+                         });
+                        }
+                    });
+        }
+        function tbloptional_Holiday_team() {
+            if ($.fn.dataTable.isDataTable('#tblholidayoptionalListManger')) {
+                $('#tblholidayoptionalListManger').DataTable().destroy();
+            }
+              var objHoliday = {
+                  Roleid: _RoleIDnew,
+                  EmpId: _NewEmpID,
+                  flag: 1
+            };
+            $("#dataTables_tbl_header").remove();
+            $('#tblholidayoptionalListManger').DataTable({
+                  ajax: {
+                      url: '@_webapiurl' + 'Master/GetHolidayOptionalSelected',
+                      method: 'GET',
+                      headers: { 'Authorization': '@_tokan' },
+                      data: objHoliday,
+                      dataType: 'json',
+                      contentType: 'application/json',
+                      dataSrc: '' ,
+                      beforeSend: function () {
+                          $('#ajax_loaderbranch').show();
+                      },
+                      error: function (jqXHR) {
+                          $(".loading").hide();
+                          if (jqXHR.status == 500) {
+                              toastr.error("InternalServerError");
+                          } else if (jqXHR.status == 400) {
+                              toastr.error("BadRequest");
+                          } else if (jqXHR.status == 401) {
+                              window.location.href = "/PayTime/LoginPage";
+                          }
+                      },
+                      complete: function () {
+                          $('#ajax_loaderbranch').hide();
+                      }
+                },
+                dom: _domCommon,
+                language: _languageCommon,
+                  columns: [
+                      { data: 'EmpName' },
+                      { data: 'HolidayName' },
+                      { data: 'HolidayDate' },
+                      { data: 'HolidayToDate' },
+                ],
+                initComplete: function (json) {
+                    if (json != null) {
+                        const Holiday = json.json;
+                        handleGridVisibility("tblemptyss", "NotificationGrid-emptyss", Holiday, {
+                            imageUrl: "emptyscreen_1.png",
+                            subText: "No entries found. Please add a record to get started."
+                        });
+                    }
+                    const reqid = 'tblholidayoptionalListManger';
+                    $("#buttons").append(`
+                            <div id="export-button" class="export-button tooltips" data-placement="bottom" data-original-title="Download" data-table-id="${reqid}">
+                                <img src="../Newlayout/images/download_icon.svg" alt="Download icon">
+                            </div>
+                           `);
+
+                },
+            });
+            setTimeout(function () {
+                $("#" + "tblholidayoptionalListManger" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsiveTeam"));
+                $('.tooltips').tooltip();
+            }, 100);
+        }
+        function tblgetEmployeeHeirachy() {
+           $.ajax(
+             {
+                 type: "GET",
+                 headers: { 'Authorization': '@_tokan' },
+                   url: '@_webapiurl' + 'Master/GetReportingEmployees',
+                 data: 'roleid=' + @_RoleId + '&loginempid=@_EmpId',
+                 contentType: "application/json; charset=utf-8",
+                 dataType: "json",
+                 beforeSend: function () {
+                     $("#ajax_loader").show();
+                 },
+                   success: function (data) {
+                     if (data.isRedirect) {
+                         window.location.href = data.redirectUrl;
+                     }
+                       if (data != null && data.length > 0) {
+                           if (data[0].empid > 0) {
+                               $('a[href="#approvalrequest"]').closest('li').show();
+                           }
+                           else {
+                               $('a[href="#approvalrequest"]').closest('li').hide();
+                           }
+                     }
+                     else {
+                         $('a[href="#approvalrequest"]').closest('li').hide();
+                     }
+                 },
+                 error: function (jqXHR, ajaxOptions, thrownError) {
+                     if (jqXHR.status == 500) {
+                         toastr.error("InternalServerError");
+                     } else if (jqXHR.status == 400) {
+                         toastr.error("BadRequest");
+                     } else if (jqXHR.status == 401) {
+                         window.location.href = "/PayTime/LoginPage";
+                     }
+                     $("#ajax_loader").hide();
+                 },
+                 complete: function () {
+                     $("#ajax_loader").hide();
+                 }
+             });
+        }
+        function checkSession() {
+            $.ajax({
+                type: "GET",
+                async: false,
+                url: "/ESS/checkSession",
+                contentType: "application/json; charset=utf-8",
+                success: function (data) {
+                    if (data.isRedirect) {
+                        window.location.href = data.redirectUrl;
+                    }
+                },
+                error: function (data) {
+                    window.location.href = data;
+                }
+            });
+        }
+        function parseDateByFormat(dateStr, format) {
+            if (format === "dd-mm-yyyy") {
+                var parts = dateStr.trim().split("-");
+                return new Date(parts[2], parts[1] - 1, parts[0]);
+            } else if (format === "mm-dd-yyyy") {
+                return moment(dateStr, "MM-DD-YYYY").toDate();
+            } else if (format === "yyyy-M-dd") {
+                return moment(dateStr, "YYYY-MMM-DD").toDate();
+            } else if (format === "M-dd-yyyy") {
+                return moment(dateStr, "MMM-DD-YYYY").toDate();
+            } else if (format === "dd-M-yyyy") {
+                return moment(dateStr, "DD-MMM-YYYY").toDate();
+            } else {
+                return new Date(dateStr);
+            }
+        }
+    });
+</script>
+<div class="page-bar" style="display: none">
+    @if (_RoleId == 1 || _RoleId == 6805 || _RoleId == 6806)
+    {
+        <ul class="page-breadcrumb">
+            <li>
+                @if (isClientDBMatchFlag == "True")
+                {
+                    <a href="/Admin/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+                }
+                else
+                {
+                    <a href="/Dashboard/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+                }
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> Holiday</span>
+            </li>
+        </ul>
+    }
+    else
+    {
+        <ul class="page-breadcrumb">
+            <li>
+                <a href="/Dashboard/EmployeeDashboard"><i class="fa-regular fa-house"></i></a>
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> Holiday</span>
+            </li>
+        </ul>
+    }
+</div>
+@if (obj.CanView)
+{
+    <div class="mysubscription">
+        <ul class="nav nav-tabs nav-tabs-custom" role="tablist">
+            @if (@_RoleId != 1)
+            {
+                <li class="nav-item active">
+                    <a class="nav-link" data-toggle="tab" href="#holiday" role="tab" aria-selected="false" id="">
+                        <i class="fa-light fa-clipboard-list"></i>
+                        <span class="">Holiday</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" data-toggle="tab" href="#optionalholiday" role="tab" aria-selected="true" id="">
+                        <i class="fa-light fa-file-check"></i>
+                        <span class="">Optional Holiday</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" data-toggle="tab" href="#approvalrequest" role="tab" aria-selected="false" id="">
+                        <i class="fa-light fa-person-circle-check"></i>
+                        <span class="d-none d-sm-block">Optional Holiday – Team</span>
+                    </a>
+                </li>
+            }
+            else
+            {
+                <li class="nav-item">
+                    <a class="nav-link" data-toggle="tab" href="#optionalholiday" role="tab" aria-selected="true" id="">
+                        <i class="fa-light fa-file-check"></i>
+                        <span class="">Optional Holiday</span>
+                    </a>
+                </li>
+            }
+        </ul>
+        <div id="ajax_loaderbranch" class="modal_bg loading" aria-hidden="true" style="z-index: 11111; display: none; ">
+            <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading" />
+        </div>
+        <!-- Tab panes -->
+        <div class="tab-content text-muted tab_content_box">
+            <!-- Tab1 Holiday -->
+            @if (_RoleId != 1)
+            {
+                <div class="tab-pane active" id="holiday" role="tabpanel">
+                    <div class="row">
+                        <div class="col-md-12">
+                            <div class="portlet">
+                                <div class="portlet-body">
+                                    <div style="width:100%;margin-left:auto;margin-right:auto;">
+                                        <div id="tblempty">
+                                            <div class="table-responsive" id="tableResponsive">
+                                                <table id="tblHoliday" class="table new_datatbl table-striped table-bordered table-hover table-checkable order-column ">
+                                                    <thead>
+                                                        <tr>
+                                                            <th hidden>Sr. No</th>
+                                                            <th hidden>ID</th>
+                                                            <th>Holiday Name</th>
+                                                            <th>From Date <i class='fa-regular fa-circle-info tooltips' data-placement='bottom' title='Date format is : @_isdateformat.ToUpper()' style='color: #295097;'></i></th>
+                                                            <th>To Date <i class='fa-regular fa-circle-info tooltips' data-placement='bottom' title='Date format is : @_isdateformat.ToUpper()' style='color: #295097;'></i></th>
+                                                            <th hidden>Branch</th>
+                                                            <th hidden>Country</th>
+                                                            <th hidden>State</th>
+                                                            <th hidden>TimeZone</th>
+                                                            <th hidden>Religion</th>
+                                                            <th hidden>HolidayType</th>
+                                                            <th hidden>HolidayApplicable</th>
+                                                            <th hidden>CountryID</th>
+                                                            <th hidden>StateID</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                        <div id="NotificationGrid-empty" style="display: none">
+                                            <div class="datanotfound">
+                                                <img src="" height="148" width="280" alt="Nodata Found Icon">
+                                                <p class="datanotfound_title"></p> <!-- titleText -->
+                                                <p class=""></p><!-- subText -->
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            }
+            <!-- Tab1 Holiday -->
+            <!-- Tab2 Optional Holiday -->
+            <div class="tab-pane" id="optionalholiday" role="tabpanel">
+                <div class="portlet" id="GetOptionalholiday" style="display:none;">
+                    <div class="portlet-body">
+                        <div class="row margin-bottom-10" id="btn_note_id">
+                            <div class="d-flex align-items-center">
+                                <div class="col-lg-8">
+                                    <span id="">You have selected an optional holiday. Click 'Apply' to confirm your optional Holiday.</span>
+                                    <span id="noteid" style="display:none;color: red; font-weight: bold; ">Note : You can not change in any attendence due to attendance locked. </span>
+                                    <span id="allnoteid" style="display:none;color: red; font-weight: bold; "> Note:This option is exclusively intended for viewing purposes and does not involve any operations or actions.</span>
+                                </div>
+                                <div class="col-lg-4 text-right">
+                                    <a id="btnactive" class="btn btn-sm blue"> <i class="fa-solid fa-check"></i> Apply</a>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                                <div id="tblemptys">
+                                    <div class="table-responsive" id="tableResponsiveOptional">
+                                        <table id="tblholidayoptionallist" class="table new_datatbl table-striped table-bordered table-hover table-checkable order-column">
+                                            <thead>
+                                                <tr>
+                                                    <th></th>
+                                                    <th hidden>HolidayId</th>
+                                                    <th>Holiday Name</th>
+                                                    <th>
+                                                        From Date
+                                                        <i class="fa-regular fa-circle-info tooltips" data-placement="bottom" title="Date format is : @_isdateformat.ToUpper()" style="color: #295097;"></i>
+                                                    </th>
+                                                    <th>
+                                                        To Date
+                                                        <i class="fa-regular fa-circle-info tooltips" data-placement="bottom" title="Date format is : @_isdateformat.ToUpper()" style="color: #295097;"></i>
+                                                    </th>
+                                                    <th hidden>CountryId</th>
+                                                    <th hidden>BranchId</th>
+                                                    <th hidden>IsHolidayType</th>
+                                                    <th hidden>IsActive</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                                <div id="NotificationGrid-emptys" style="display: none">
+                                    <div class="datanotfound">
+                                        <img src="" height="148" width="280" alt="Nodata Found Icon">
+                                        <p class="datanotfound_title"></p> <!-- titleText -->
+                                        <p class=""></p><!-- subText -->
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="portlet" id="getselectedHoliday" style="display:none;">
+                    <div class="portlet-body">
+                        <div class="row">
+                            <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                                <div class="table-responsive" id="tableResponsive10">
+                                    <table id="tblholidayoptionalapllied" class="table new_datatbl table-striped table-bordered table-hover table-checkable order-column">
+                                        <thead>
+                                            <tr>
+                                                <th hidden>EmpID</th>
+                                                <th hidden>OptHolidayId</th>
+                                                <th hidden>Holiday ID</th>
+                                                <th>EmpName</th>
+                                                <th>Holiday Name</th>
+                                                <th>
+                                                    From Date
+                                                    <i class="fa-regular fa-circle-info tooltips" data-placement="bottom" title="Date format is : @_isdateformat.ToUpper()" style="color: #295097;"></i>
+                                                </th>
+                                                <th>
+                                                    To Date
+                                                    <i class="fa-regular fa-circle-info tooltips" data-placement="bottom" title="Date format is : @_isdateformat.ToUpper()" style="color: #295097;"></i>
+                                                </th>
+                                                <th> Action </th>
+                                            </tr>
+                                        </thead>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div id="frmpopup" class="modal fade bs-modal-sm" role="dialog" data-keyboard="false" data-backdrop="static">
+                    <div class="modal-dialog modal-sm">
+                        <!-- Modal content-->
+                        <div class="modal-content ">
+                            <div class="modal-header">
+                                <button type="button" class="close" data-dismiss="modal">&times;</button>
+                                <h4 class="modal-title">Optional Holiday</h4>
+                            </div>
+                            <div class="modal-body">
+                                <div class="modal-card">
+                                    <fieldset>
+                                        <div class="row">
+                                            <input type="hidden" id="empid" name="empid" value="1" />
+                                            <input type="hidden" id="HolidayId" name="HolidayId" value="0" />
+                                            <input type="hidden" id="OptHolidayId" name="OptHolidayId" value="0" />
+                                            <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+
+                                                <div class="form-group">
+                                                    <label>Optional Holiday <span class="required" aria-required="true">*</span></label>
+                                                    <select class="select2 form-control input-sm" id="OptHoliday" name="OptHoliday">
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                                <div class="form-group">
+                                                    <div class="form-group data_picker_box">
+                                                        <label>Optional Holiday Date<span class="required" aria-required="true">*</span></label>
+                                                        <div class="input-group input-group-sm date date-picker">
+                                                            <span class="input-group-btn">
+                                                                <button class="btn default" type="button">
+                                                                    <i class="fa-light fa-calendar-days"></i>
+                                                                </button>
+                                                            </span>
+                                                            <input type="text" placeholder="Select Date" class="form-control" id="HolidayDate" name="">
+                                                        </div>
+                                                    </div>
+
+                                                </div>
+                                            </div>
+                                            <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                                <div class="form-group">
+                                                    <label>Employee Name</label>
+                                                    <input type="text" class="form-control input-sm ExTitle" name="Empname" id="Empname">
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </fieldset>
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <div class="row">
+                                    <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                                        <button type="submit" class=" btn save_btn" id="btnSubmit"><i class="fa-solid fa-check"></i> Save</button>
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Tab2 Optional Holiday -->
+            <!-- Tab2 Approval Request -->
+            @if (_RoleId != 1)
+            {
+                <div class="tab-pane" id="approvalrequest" role="tabpanel">
+                    <div class="portlet">
+                        <div class=" portlet-body">
+                            <div class="row">
+                                <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                                    <div id="tblemptyss">
+                                        <div class="table-responsive" id="tableResponsiveTeam">
+                                            <table id="tblholidayoptionalListManger" class="table new_datatbl table-striped table-bordered table-hover table-checkable order-column">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Employee Name</th>
+                                                        <th>Holiday Name</th>
+                                                        <th>From Date <i class='fa-regular fa-circle-info tooltips' data-placement='bottom' title='Date format is : @_isdateformat.ToUpper()' style='color: #295097;'></i></th>
+                                                        <th>To Date <i class='fa-regular fa-circle-info tooltips' data-placement='bottom' title='Date format is : @_isdateformat.ToUpper()' style='color: #295097;'></i></th>
+                                                    </tr>
+                                                </thead>
+                                            </table>
+                                        </div>
+                                    </div>
+                                    <div id="NotificationGrid-emptyss" style="display: none">
+                                        <div class="datanotfound">
+                                            <img src="" height="148" width="280" alt="Nodata Found Icon">
+                                            <p class="datanotfound_title"></p> <!-- titleText -->
+                                            <p class=""></p><!-- subText -->
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            }
+            <!-- Tab2 Approval Request -->
+        </div>
+    </div>
+
+
+}
+else
+{
+    <span style="color:red">Unauthorized Access.</span>
+}
+
+@*<script src="~/AssetsNew/js/introjs.js"></script>
+    <script>
+        var uniqueid = '@_EmpId';
+        var UserId1 = '@_UserId';
+        document.addEventListener('DOMContentLoaded', (event) => {
+            const tourState = sessionStorage.getItem('introJsState');
+
+            if (tourState === 'Holiday') {
+                const overlay = document.createElement('div');
+                overlay.id = 'tour-overlay-blocker';
+                document.body.appendChild(overlay);
+                const waitForElement = setInterval(() => {
+                    const headerElement = document.querySelector('#element_dataTables_tbl_header');
+
+                    // Check if element exists and is visible
+                    if (headerElement && headerElement.offsetHeight > 0 && headerElement.offsetWidth > 0) {
+                        clearInterval(waitForElement); // Stop checking once element is ready
+
+                        introJs().setOptions({
+                            steps: [
+                                {
+                                    title: "Enhanced Data View",
+                                    element: headerElement,
+                                    intro: `<div class='wel_icon text-center'><img src='/assets/images/tour/Gridshow.gif' height='211' width='430' style='border: 1px solid #b5b5b5; border-radius: 6px !important;'><p class='header'>All-in-One. Effortless. Efficient.</p></div>Access all table features in a single view—no more switching pages. Work faster with improved functionality and a seamless experience.`,
+                                },
+                                {
+                                    title: "Feedback",
+                                    element: document.querySelector("#tour-feedback-anchor"),
+                                    intro: "<div class='feedback-container'><h2>Thank You for Exploring!</h2> <p>We value your input—share your thoughts on the new feature below.</p> <div class='emoji-row'> <div class='emoji tooltips' id='emoji_1' data-placement='top' data-original-title='Angry'> <img src='/assets/images/tour/emoji_1.svg' alt='Angry'> </div> <div class='emoji tooltips'  id='emoji_2'  data-placement='top' data-original-title='Sad'> <img src='/assets/images/tour/emoji_2.svg' alt='Sad'> </div> <div class='emoji tooltips'  id='emoji_3'  data-placement='top' data-original-title='Neutral'> <img src='/assets/images/tour/emoji_3.svg' alt='Neutral'> </div> <div class='emoji tooltips'  id='emoji_4'  data-placement='top' data-original-title='Happy'> <img src='/assets/images/tour/emoji_4.svg' alt='Happy'> </div> <div class='emoji tooltips'  id='emoji_5'  data-placement='top' data-original-title='Awesome'> <img src='/assets/images/tour/emoji_5.svg' alt='Awesome'> </div> </div> <p>Your feedback helps us improve.</p><textarea placeholder='Share your thoughts...' id ='Comment' maxlength='100'></textarea><p id='SpecialChar' style='display: none; color: red; margin-top:0; font-size: 10px; margin-bottom:6px;'>*Error: Special characters are not allowed in the comment!</p><p id='Validation' style='display: none; color: red; margin-top:0;font-size: 10px;'>*Please provide your rating to help us improve your experience!</p> <div class='buttons'> <button class='submit-btn' id='btnSubmit'>Submit Feedback</button> </div></div>",
+                                    showButtons: false
+                                }
+                            ],
+                            doneLabel: " ",
+                            exitOnOverlayClick: false,
+                            exitOnEsc: false,
+                            keyboardNavigation: false,
+
+                        }).onchange(function (targetElement) {
+                            setTimeout(() => {
+                                $('.tooltips').tooltip();
+                            }, 500);
+
+                            if (this._currentStep === 1) {
+                                rating = 0;
+                                $('.emoji').removeClass('active');
+                                $('#Comment').val('');
+                                $('#Validation').hide();
+                                $("#SpecialChar").hide();
+                            }
+                        }).oncomplete(function () {
+                            GetFeedback();
+                            updateTourFlag();
+                        }).start();
+                    }
+                }, 100); // Checks every 100ms for element and visibility
+            }
+        });
+
+
+
+            $('body').on('click', '#emoji_1', function () {
+                rating = 1;
+            });
+            $('body').on('click', '#emoji_2', function () {
+                rating = 2;
+            });
+            $('body').on('click', '#emoji_3', function () {
+                rating = 3;
+            });
+            $('body').on('click', '#emoji_4', function () {
+                rating = 4;
+            });
+            $('body').on('click', '#emoji_5', function () {
+                rating = 5;
+            });
+            $('body').on('click', '#btnSubmit', function () {
+                GetFeedback();
+
+
+
+            });
+            $('body').on('click', '.emoji', function () {
+                $('.emoji').removeClass('active');
+                $(this).addClass('active');
+            });
+
+
+            function GetFeedback() {
+
+                let title = 'Menu Reformation';
+                let Ratings = rating;
+                let comments = $("#Comment").val();
+                let specialCharPattern = /[!`#$%^&*()?":{}|<>]/;
+                function validation() {
+
+                    let isValid = true;
+
+                    if (rating == 0) {
+                        $('#Validation').show();
+                        isValid = false;
+                    } else {
+                        $('#Validation').hide();
+                    }
+
+                    if (specialCharPattern.test(comments)) {
+                        $("#SpecialChar").show();
+                        isValid = false;
+                    } else {
+                        $("#SpecialChar").hide();
+                    }
+
+                    return isValid;
+                }
+                    if (validation()) {
+                    $.ajax({
+                        url: '@_webapiurl' + 'Master/TourFeedBack',
+                        headers: { 'Authorization': '@_tokan' },
+                        type: 'POST',
+                        contentType: 'application/json',
+                        data: JSON.stringify({
+                            title: title,
+                            UserId: '@_UserId',
+                            rating: Ratings,
+                            comments: comments
+                        }),
+                        success: function (response) {
+                            if (response.MegSts == null) {
+                                console.log("Your Feedback saved successfully");
+
+                            } else {
+                                console.error("Error during save feedback.");
+                            }
+                        },
+                        error: function (xhr, status, error) {
+                            console.error('Error during API call:', error);
+                        }
+                    });
+                    updateTourFlag();
+                }
+
+
+            }
+            function updateTourFlag() {
+
+                $.ajax({
+                    url: '@_webapiurl' + 'Master/UpdateTourFlag',
+                    headers: { 'Authorization': '@_tokan' },
+                    type: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({
+                        EmpId: '@_EmpId',
+                        UserId: '@_UserId',
+                        RoleId:'@_RoleId',
+                        HasTourCompletes: false
+                    }),
+                    success: function (response) {
+                        introJs().exit();
+                        Swal.fire({
+                            html: '<div class="swal_subtitle"><b>Thank you.!</b><p>We Saved Your Valuable Feedback. </p></div>',
+                            title: "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_success.svg' alt=''>Success",
+                            closeOnConfirm: true,
+                            showCloseButton: true,
+                            showCancelButton: false,
+                            focusConfirm: false,
+                            cancelButtonText: 'No',
+                            confirmButtonText: 'Done',
+                            allowOutsideClick: false,
+                            allowEscapeKey: false,
+                            customClass: {
+                                confirmButton: 'swal-confirm-button-class',
+                                cancelButton: 'swal-cancel-button-class'
+                            }
+                        });
+                        $('img[src="/assets/images/icons/swal_icon/icon_success.svg"]').parent().parent().parent().addClass('swal_success');
+
+                        if (response.MegSts == null) {
+                            console.log("Tour flag updated successfully.");
+                            sessionStorage.removeItem('introJsState');
+                            sessionStorage.setItem('hasTourCompleted_' + uniqueid + '_' + UserId1, 'False');
+                        } else {
+                            console.error("Error updating tour flag.");
+                        }
+                    },
+                    error: function (xhr, status, error) {
+                        console.error('Error during API call:', error);
+                    }
+                });
+            }
+
+
+    </script>*@
+

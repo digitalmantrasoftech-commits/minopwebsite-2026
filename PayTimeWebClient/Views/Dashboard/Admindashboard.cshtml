@@ -1,0 +1,2936 @@
+﻿@using System.Configuration;
+@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@{
+    ViewBag.Title = "AdminDashboard";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+@{
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    int _isPlanexp = Convert.ToInt32(HttpContext.Current.Session["isPlanExp"]);
+
+    string _compcode = HttpContext.Current.Session["cmpcode"].ToString();
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+
+    string _companyid = string.Empty;
+    string _branchid = string.Empty;
+    if (_RoleId == 6805)
+    {
+        _companyid = HttpContext.Current.Session["ClientCompanyId"].ToString();
+        _branchid = "0";
+    }
+    else if (_RoleId == 6806)
+    {
+        _companyid = HttpContext.Current.Session["ClientCompanyId"].ToString();
+        _branchid = HttpContext.Current.Session["BranchId"].ToString();
+    }
+    else
+    {
+        _companyid = HttpContext.Current.Session["CompanyId"].ToString();
+    }
+    string _datenow = DateTime.Now.ToString("dd, MMM yyyy");
+    string _isdateformat = HttpContext.Current.Session["IsDateFormat"].ToString();
+    string _CountryCode = HttpContext.Current.Session["CountryCode"].ToString();
+    string _dbName = HttpContext.Current.Session["DbName"].ToString();
+    int empid = Convert.ToInt32(HttpContext.Current.Session["EmpId"]);
+    string WidgetId = HttpContext.Current.Session["WidgetId"].ToString();
+    string Cmpid = HttpContext.Current.Session["ClientCompanyId"].ToString();
+    string _webapiEMSURL = ConfigurationManager.AppSettings["WebApiEMS"].ToString();
+    int UserId = Convert.ToInt32(HttpContext.Current.Session["UserId"]);
+    // bool hasTourCompletes = Convert.ToBoolean(HttpContext.Current.Session["admintour"]);
+    bool hasTourCompletes = Convert.ToBoolean(HttpContext.Current.Session["Hastourcompleted"]);
+    string isClientDBMatchFlag = HttpContext.Current.Session["IsClientDBMatch"] != null
+? HttpContext.Current.Session["IsClientDBMatch"].ToString()
+: "false"; // Default to "false" if the session is null
+
+    if (_RoleId == 6810)
+    {
+        _RoleId = 1;
+    }
+    Int64 _DatagridThsold = 0;
+
+    _DatagridThsold = Convert.ToInt64(HttpContext.Current.Session["DataGridThresold"]);
+}
+<link href="~/AssetsNew/css/introjs.css" rel="stylesheet" />
+<script src="~/Js_split/CryptoJs.js"></script>
+<script src="~/Newlayout/js/sortable.min.js"></script>
+<script src="//cdn.rawgit.com/rainabba/jquery-table2excel/1.1.0/dist/jquery.table2excel.min.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+<script>
+    var cmpId1 = '@Cmpid';
+    var roleId1 = '@_RoleId';
+
+    if (roleId1 == 1) {
+        cmpId1 = 0;
+    }
+
+    console.log('@WidgetId');
+    window.AppConfig = {
+        token: '@_tokan',
+        roleId: '@_RoleId',
+        webApiUrl: '@_webapiurl',
+        cmpId: cmpId1,
+        branchId: '@_branchid',
+        empid: '@empid',
+        widgetId: '@WidgetId',
+        UserId: '@UserId',
+        DataThreshHold : '@_DatagridThsold',
+        DateFormate: '@_isdateformat',
+        CompanyCode: '@_compcode',
+        webApiEmsUrl:'@_webapiEMSURL'
+    };
+
+    // code for hashing my external js
+    let jsFileUrl = "/Pages_JS/Dashboard/AdminDashBoardV2.js";
+    let url = "/Pages_JS/Dashboard/AdminDashBoardV2.js";
+
+    async function loadAndExecuteJS(url) {
+
+        try {
+
+
+            const response = await fetch(url);
+            const jsContent = await response.text();
+
+
+            const script = document.createElement('script');
+            script.type = 'text/javascript';
+            script.text = jsContent;
+            document.body.appendChild(script);
+
+
+            //const hashedContent = CryptoJS.SHA256(jsContent).toString(CryptoJS.enc.Hex);
+            //const hashDisplayElement = document.createElement('div');
+            //hashDisplayElement.textContent = `SHA-256 Hash: ${hashedContent}`;
+            //document.body.appendChild(hashDisplayElement);
+
+
+        } catch (error) {
+            console.error('Error loading or executing external JS:', error);
+        }
+    }
+
+
+    loadAndExecuteJS(jsFileUrl);
+</script>
+
+@*<script src="~/Js_split/Admindashboard.js?v=1.0.7"></script>*@
+<script src="~/Pages_JS/Dashboard/AdminDashboardDataGridPagination.js"></script>
+
+<style>
+    .highcharts-figure,
+    .highcharts-data-table table {
+        max-width: 100%;
+        margin: 10px auto;
+    }
+
+    #genderwise_chart {
+        overflow-x: auto; /* Enable horizontal scroll */
+        overflow-y: hidden; /* Enable horizontal scroll */
+        width: 100%; /* Ensure the container takes up full width */
+    }
+
+    .introjs-tooltip.introjs-floating {
+        margin-top: -210px !important;
+    }
+
+    @@media (min-width: 300px) and (max-width: 767px) {
+        .introjs-tooltip, .introjs-overlay, .introjs-helperLayer {
+            display: none !important;
+        }
+    }
+
+    .introjs-right {
+        top: 80px !important;
+    }
+
+    .table-loader {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        width: 100%;
+        height: 100vh;
+        text-align: center;
+        background: rgba(0, 0, 0, 0.40);
+        transform: translate(-50%, -50%);
+        z-index: 9999;
+    }
+    /* Make sure the highlight doesn't override background or text */
+
+    .intro-visible {
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+    }
+
+    .introjs-helperLayer {
+        background-color: transparent !important;
+    }
+
+    .page-footer {
+        display: block;
+    }
+
+    #overview_chart, #OT_chart, #attrition_chart, #customcharts_1, #customcharts_2 {
+        overflow-x: auto;
+        overflow-y: hidden;
+    }
+
+    /*#Presentpattern_chart .highcharts-container {
+        width: 100% !important;
+        height: 100% !important;
+        overflow-x: auto !important;
+    }
+
+    #overview_chart .highcharts-container, #overview_chart .highcharts-root,
+    #OT_chart .highcharts-container, #OT_chart .highcharts-root {
+        width: 100% !important;
+    }*/
+
+    .datanotfound P.datanotfound_subtitle {
+        color: #999999 !important;
+    }
+</style>
+
+<script>
+     const CompanyList = @Html.Raw(Json.Encode(ViewBag.Companyslist));
+    $(document).ready(function () {
+
+        $("#dvTPfeedback").hide();
+        //if ($(window).width() <= 767) {
+        //    $(".introjs-tooltip, .introjs-overlay, .introjs-helperLayer").css("display","none");
+        //}
+        //Add Customwidget modal open code
+        $("#customwidget_btn").on('click', function () {
+            $("#customwidget_btn").attr("data-toggle", "modal");
+            $("#customwidget_btn").attr("data-target", "#customwidget_modal");
+        });
+
+        //Add announcements modal open code
+        $("#addanoucement_btn").on('click', function () {
+            $("#addanoucement_btn").attr("data-toggle", "modal");
+            $("#addanoucement_btn").attr("data-target", "#addanoucement_modal");
+        });
+
+        //$("#filter_btn").click(function () {
+        //    $("#filtersearchdata").toggle();
+        //});
+
+        $("#Filter_search").click(function () {
+            const wrapper = $(".filter_portlet_wrapper");
+            wrapper.toggleClass("full-width");
+
+            var screenWidth = $(window).width();
+            if (screenWidth >= 300 && screenWidth <= 600) {
+                $('.filter_portlet_tbl').toggle();
+                $('.filter_portlet_wrapper .filter_boxModal').css('width', '100%');
+            }
+        });
+
+        // Close filter panel on close button click
+        $(".filterclose_btn").click(function () {
+            const wrapper = $(".filter_portlet_wrapper");
+            wrapper.addClass("full-width");
+
+            var screenWidth = $(window).width();
+            if (screenWidth >= 300 && screenWidth <= 600) {
+                $(".filter_portlet_tbl").css("display", "block");
+            }
+        });
+
+        $("#tatafilter_btn").click(function () {
+            $("#tatafilter_data").toggle();
+        });
+
+        // TataPower Dropdown Multiselect code
+        var $Companyselect = $("#tatacompanyID").multiselect({
+            selectAllValue: 'multiselect-all',
+            enableCaseInsensitiveFiltering: true,
+            includeSelectAllOption: true,
+            allSelectedText: 'All Select',
+            enableFiltering: true,
+            maxHeight: '300',
+            buttonWidth: '100%',
+            enableClickableOptGroups: true,
+            nonSelectedText: 'Select Company'
+        });
+        var $Companyselect = $("#tatabranchID").multiselect({
+            selectAllValue: 'multiselect-all',
+            enableCaseInsensitiveFiltering: true,
+            includeSelectAllOption: true,
+            allSelectedText: 'All Select',
+            enableFiltering: true,
+            maxHeight: '300',
+            buttonWidth: '100%',
+            enableClickableOptGroups: true,
+            nonSelectedText: 'Select Branch'
+        });
+        var $Companyselect = $("#tatadesignationID").multiselect({
+            selectAllValue: 'multiselect-all',
+            enableCaseInsensitiveFiltering: true,
+            includeSelectAllOption: true,
+            allSelectedText: 'All Select',
+            enableFiltering: true,
+            maxHeight: '300',
+            buttonWidth: '100%',
+            enableClickableOptGroups: true,
+            nonSelectedText: 'Select Designation'
+        });
+        var $Companyselect = $("#tatashiftID").multiselect({
+            selectAllValue: 'multiselect-all',
+            enableCaseInsensitiveFiltering: true,
+            includeSelectAllOption: true,
+            allSelectedText: 'All Select',
+            enableFiltering: true,
+            maxHeight: '300',
+            buttonWidth: '100%',
+            enableClickableOptGroups: true,
+            nonSelectedText: 'Select Shift'
+        });
+        var $Companyselect = $("#tatagenderID").multiselect({
+            selectAllValue: 'multiselect-all',
+            enableCaseInsensitiveFiltering: true,
+            includeSelectAllOption: true,
+            allSelectedText: 'All Select',
+            enableFiltering: true,
+            maxHeight: '300',
+            buttonWidth: '100%',
+            enableClickableOptGroups: true,
+            nonSelectedText: 'Select Gender'
+        });
+
+        // Announcements Dropdown Multiselect code
+        var $Companyselect = $("#CompanyID").multiselect({
+            selectAllValue: 'multiselect-all',
+            enableCaseInsensitiveFiltering: true,
+            includeSelectAllOption: true,
+            allSelectedText: 'All Select',
+            enableFiltering: true,
+            maxHeight: '300',
+            buttonWidth: '100%',
+            enableClickableOptGroups: true,
+            nonSelectedText: 'Select Company'
+        });
+        var $Companyselect = $("#BranchID").multiselect({
+            selectAllValue: 'multiselect-all',
+            enableCaseInsensitiveFiltering: true,
+            includeSelectAllOption: true,
+            allSelectedText: 'All Select',
+            enableFiltering: true,
+            maxHeight: '300',
+            buttonWidth: '100%',
+            enableClickableOptGroups: true,
+            nonSelectedText: 'Select Branch'
+        });
+        var $Companyselect = $("#DepartmentID").multiselect({
+            selectAllValue: 'multiselect-all',
+            enableCaseInsensitiveFiltering: true,
+            includeSelectAllOption: true,
+            allSelectedText: 'All Select',
+            enableFiltering: true,
+            maxHeight: '300',
+            buttonWidth: '100%',
+            enableClickableOptGroups: true,
+            nonSelectedText: 'Select Department'
+        });
+        $(document).on('click', '#closedatten', function () {
+
+            $('#dataTables_tbl_header').remove();
+        });
+
+
+    });
+</script>
+<link href="~/AssetsNew/css/introjs.css" rel="stylesheet" />
+<div class="page-bar">
+    <ul class="page-breadcrumb">
+        <li>
+            @if (isClientDBMatchFlag == "True")
+            {
+                <a href="/Admin/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+            }
+            else
+            {
+                <a href="/Dashboard/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+            }
+        </li>
+        <li>
+            <span><i class="fa-light fa-angle-right"></i> Admin Dashboard</span>
+        </li>
+    </ul>
+    <div class="filter_search page-toolbar">
+        <button id="customwidget_btn" class="btn icon_transparent_btn tooltips margin-right-5" type="button" data-placement="left" data-original-title="Custom Widget"><i class="fa-light fa-objects-column"></i></button>
+        <button id="Filter_search" class="btn icon_transparent_btn tooltips" type="button" data-placement="bottom" data-original-title="Filter"><i class="fa-light fa-filter"></i></button>
+    </div>
+</div>
+
+<div class="filter_portlet_wrapper full-width">
+
+    <!-- Datatable Block : Begin -->
+    <div class="filter_portlet_tbl">
+
+        @if (obj.CanView)
+        {
+            <!-- Body : Begin -->
+            <div class="body_section">
+                <div id="ajax_loader" class="modal_bg loadings" aria-hidden="true" style="display:none">
+                    <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading" />
+                </div>
+
+                <div class="row">
+                    <!-- Attendance Activity Monitor Block : Begin -->
+                    <div class="col-lg-12" id="Activity-1" style="display:none">
+                        <div class="card_box margin-bottom-20">
+                            <div class="card_header">
+                                <div class="d-flex align-items-center">
+                                    <img class="margin-right-8" src="~/assets/images/icons/icon_activitymonitor.svg" alt="" width="25" height="24">
+                                    <p class="card-title margin-right-10">Attendance & Activity Monitor</p>
+                                    <img class="tooltips" src="/assets/images/icons/icon_info.svg" alt="" width="12" height="12" data-placement="right" data-original-title="View today's attendance summary and device status. ">
+                                    <div class="date_box margin-left-15">
+                                        <i class="fa-light fa-calendar-days" aria-hidden="true"></i>
+                                        <span class="margin-left-5" id="Todays_date">Today</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="card_summarylist">
+                                <div class="row">
+                                    <div class="col-lg-2 col-sm-4 col-xs-12">
+                                        <div class="activity_block">
+                                            <a href="javascript:;" id="checkinbtn">
+                                                <img src="/assets/images/icons/icon_checkin.svg" alt="" width="48" height="48">
+                                                <div>
+                                                    <p>Checked in</p>
+                                                    <div class="activity_count" id="checkinCount"></div>
+                                                </div>
+                                            </a>
+                                        </div>
+                                    </div>
+                                    <div class="col-lg-2 col-sm-4 col-xs-12">
+                                        <div class="activity_block">
+                                            <a href="javascript:;" id="notcheckedinbtn">
+                                                <img src="/assets/images/icons/icon_notcheckin.svg" alt="" width="48" height="48">
+                                                <div>
+                                                    <p>Not Checked in</p>
+                                                    <div class="activity_count" id="notcheckinCount"></div>
+                                                </div>
+                                            </a>
+                                        </div>
+                                    </div>
+                                    <div class="col-lg-2 col-sm-4 col-xs-12">
+                                        <div class="activity_block">
+                                            <a href="javascript:;" id="lateclockinbtn">
+                                                <img src="/assets/images/icons/icon_lateclockin.svg" alt="" width="48" height="48">
+                                                <div>
+                                                    <p>Late Clock-in</p>
+                                                    <div class="activity_count" id="lateinCount"></div>
+                                                </div>
+                                            </a>
+                                        </div>
+                                    </div>
+                                    <div class="col-lg-2 col-sm-4 col-xs-12">
+                                        <div class="activity_block">
+                                            <a href="javascript:;" id="earlyclockoutbtn">
+                                                <img src="/assets/images/icons/icon_earlyclockin.svg" alt="" width="48" height="48">
+                                                <div>
+                                                    <p>Early Clock-out</p>
+                                                    <div class="activity_count" id="earlyOutCount"></div>
+                                                </div>
+                                            </a>
+                                        </div>
+                                    </div>
+                                    <div class="col-lg-2 col-sm-4 col-xs-12">
+                                        <div class="activity_block">
+                                            <a href="javascript:;" id="birthdaybtn">
+                                                <img src="/assets/images/icons/icon_birthday.svg" alt="" width="48" height="48">
+                                                <div>
+                                                    <p>Birthday</p>
+                                                    <div class="activity_count" id="birthdayCount"></div>
+                                                </div>
+                                            </a>
+                                        </div>
+                                    </div>
+                                    <div class="col-lg-2 col-sm-4 col-xs-12">
+                                        <div class="activity_block">
+                                            <a href="javascript:;" id="devicebtn">
+                                                <img src="/assets/images/icons/icon_device.svg" alt="" width="48" height="48">
+                                                <div>
+                                                    <p>Devices</p>
+                                                    <div class="activity_count" id="deviceCount"></div>
+                                                </div>
+                                            </a>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Attendance Activity Monitor Block : End -->
+                </div>
+
+                <div class="row" id="dashboard-sortable-row">
+                    <!-- Attendance Overview Block : Begin -->
+                    <div class="col-lg-6" id="Overview_2" style="display:none">
+                        <div class="card_box margin-bottom-20 h-380">
+                            <div class="card_header d-flex align-items-center justify-content-between">
+                                <div class="d-flex align-items-center">
+                                    <img class="margin-right-8" src="~/assets/images/icons/icon_attoverview.svg" alt="" width="24" height="20">
+                                    <p class="card-title margin-right-10">Attendance Overview</p>
+                                    <img class="tooltips" src="/assets/images/icons/icon_info.svg" alt="" width="12" height="12" data-placement="right" data-original-title="View your last 7 days attendance summary.">
+                                </div>
+                                <div class="date_box">
+                                    <b> <span>Strength : <span id="Tot_strength"></span></span></b>
+                                </div>
+                            </div>
+                            <div class="card_summarylist">
+
+                                <div class="lastday_summary" id="attendence-overview">
+                                    <div class="d-flex align-items-center justify-content-between margin-top-15">
+                                        <div class="" id="Currdate">Yesterday</div>
+                                        <div class="d-flex">
+                                            <div class="lastday_type border_right">Present : <b class="green_font" id="present_counts"></b></div>
+                                            <div class="lastday_type border_right">Absent : <b class="red_font" id="absent_counts"></b></div>
+                                            <div class="lastday_type">On Leave : <b class="orange_font" id="leave_counts"></b></div>
+                                        </div>
+                                    </div>
+
+                                    <div class="">
+                                        <figure class="highcharts-figure">
+                                            <div id="overview_chart"></div>
+                                        </figure>
+                                    </div>
+                                </div>
+
+                                <div id="attendence-empty" style="display:none">
+                                    <div class="empty_block no_record">
+                                        <img class="empty_icon" src="~/assets/images/icons/icon_attoverview.svg" height="32" width="32" alt="No Attendance Data">
+                                        <p>No attendance data for the selected period.</p>
+                                        <p class="text-muted small">Try changing the date range to view attendance records.</p>
+                                    </div>
+                                </div>
+
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Attendance Overview Block : End -->
+                    <!-- Announcements Block : Begin -->
+                    <div class="col-lg-6" id="Annoucements_3" style="display:none">
+                        <div class="card_box margin-bottom-20 h-380">
+                            <div class="card_header d-flex align-items-center justify-content-between">
+                                <div class="d-flex align-items-center">
+                                    <img class="margin-right-8" src="~/assets/images/icons/icon_announcement.svg" alt="" width="20" height="20">
+                                    <p class="card-title margin-right-10">Announcements</p>
+                                    <img class="tooltips" src="/assets/images/icons/icon_info.svg" alt="" width="12" height="12" data-placement="right" data-original-title="Latest updates and announcements.">
+                                </div>
+                                <div class="title_icon">
+                                    <a href="javascript:;" id="addanoucement_btn" class="btn card_iconbtn tooltips" data-placement="top" data-original-title="Add Announcements"><i class="fa-solid fa-plus"></i></a>
+                                </div>
+                            </div>
+                            <div class="card_summarylist">
+                                <div class="announcement-slider" id="annoucement-data">
+                                    <!-- Slider 1 -->
+                                    <div class="announcement-slide fullheight_card active">
+                                        <h3 id="annouce_title_1"></h3>
+                                        <p id="annouce_des_1" style="white-space: pre-wrap;"></p>
+                                        <div class="annouceimg_block">
+                                            <img id="announceimg_1" src="" alt="Announcement image" style="display:none" />
+                                            <div class="img_overlay">
+                                                <a id="download_img_1" href="#" download>
+                                                    <i class="fa-light fa-download annouceimg_dwicon tooltips" data-placement="left" data-original-title="Download"></i>
+                                                </a>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <!-- Slider 2 -->
+                                    <div class="announcement-slide fullheight_card">
+                                        <h3 id="annouce_title_2"></h3>
+                                        <p id="annouce_des_2" style="white-space: pre-wrap;"></p>
+                                        <div class="annouceimg_block">
+                                            <img id="announceimg_2" src="" alt="Announcement image" style="display:none" />
+                                            <div class="img_overlay">
+                                                <a id="download_img_2" href="#" download>
+                                                    <i class="fa-light fa-download annouceimg_dwicon tooltips" data-placement="left" data-original-title="Download"></i>
+                                                </a>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <!-- Slider 3 -->
+                                    <div class="announcement-slide fullheight_card">
+                                        <h3 id="annouce_title_3"></h3>
+                                        <p id="annouce_des_3" style="white-space: pre-wrap;"></p>
+                                        <div class="annouceimg_block">
+                                            <img id="announceimg_3" src="" alt="Announcement image" style="display:none" />
+                                            <div class="img_overlay">
+                                                <a id="download_img_3" href="#" download>
+                                                    <i class="fa-light fa-download annouceimg_dwicon tooltips" data-placement="left" data-original-title="Download"></i>
+                                                </a>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Dot navigation -->
+                                    <div class="dot-navigation">
+                                        <span class="dot active" id="dot_1"></span>
+                                        <span class="dot" id="dot_2"></span>
+                                        <span class="dot" id="dot_3"></span>
+                                    </div>
+                                </div>
+                                <div id="annoucement-empty" style="display:none">
+                                    <div class="empty_block no_record">
+                                        <img class="empty_icon" src="~/assets/images/icons/icon_announcement.svg" height="32" width="32" alt="No Announcements">
+                                        <p>No announcements at the moment.</p>
+                                        <p class="text-muted small">New announcements will appear here when published.</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="card_footer">
+                                <div class="seeall_block text-right padding-top-5">
+                                    <a href="/Dashboard/Announcements">See All <i class="fa-light fa-angle-right" aria-hidden="true"></i></a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Announcements Block : End -->
+                    <!-- Punch Type & Present Patterns Block : Begin -->
+                    <div class="col-lg-6" id="bothcharts">
+                        <div class="row">
+                            <!-- Punch Type : Begin -->
+                            <div class="col-lg-6 col-sm-6" id="punchtype_4" style="display:none">
+                                <div class="card_box margin-bottom-20 h-380">
+                                    <div class="card_header d-flex align-items-center justify-content-between">
+                                        <div class="d-flex align-items-center">
+                                            <img class="margin-right-8" src="~/assets/images/icons/icon_punchtype.svg" alt="" width="22" height="21">
+                                            <p class="card-title margin-right-10">Punch Type</p>
+                                            <img class="tooltips" src="/assets/images/icons/icon_info.svg" alt="" width="12" height="12" data-placement="right" data-original-title="Track attendance by type: Device, Web, or Face Punch.">
+                                        </div>
+                                        <div class="date_box">
+                                            <span id="curdate">Today</span>
+                                        </div>
+                                    </div>
+                                    <div class="card_summarylist">
+                                        <figure class="highcharts-figure" id="punchcharts-data">
+                                            <div id="Punchtyp_chart" style="height: 300px; width: 100%; display: flex; justify-content: center;"></div>
+                                        </figure>
+                                        <div id="punchchart-empty" style="display:none">
+                                            <div class="empty_block no_record">
+                                                <img class="empty_icon" src="~/assets/images/icons/icon_punchtype.svg" height="32" width="32" alt="No Punch Data">
+                                                <p>No punch type data available.</p>
+                                                <p class="text-muted small">Punch type distribution will appear once attendance is recorded.</p>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                </div>
+                            </div>
+                            <!-- Punch Type : Begin -->
+                            <!-- Present Patterns : Begin -->
+                            <div class="col-lg-6 col-sm-6" id="pp_5" style="display:none">
+                                <div class="card_box margin-bottom-20 h-380">
+                                    <div class="card_header d-flex align-items-center justify-content-between">
+                                        <div class="d-flex align-items-center">
+                                            <img class="margin-right-8" src="~/assets/images/icons/icon_presentpattern.svg" alt="" width="26" height="21">
+                                            <p class="card-title margin-right-10">Present Patterns</p>
+                                            <img class="tooltips" src="/assets/images/icons/icon_info.svg" alt="" width="12" height="12" data-placement="right" data-original-title="Track your weekly and monthly attendance presence percentage.">
+                                        </div>
+                                    </div>
+                                    <div class="card_summarylist">
+                                        <figure class="highcharts-figure" id="presentchart-data">
+                                            <div id="Presentpattern_chart" style="height: 300px; display: flex; justify-content: center;"></div>
+                                        </figure>
+                                        <div id="presentchart-empty" style="display:none">
+                                            <div class="empty_block no_record">
+                                                <img class="empty_icon" src="~/assets/images/icons/icon_presentpattern.svg" height="32" width="32" alt="No Present Pattern Data">
+                                                <p>No present pattern data available.</p>
+                                                <p class="text-muted small">Patterns will be displayed once sufficient attendance data is collected.</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Present Patterns : Begin -->
+                        </div>
+                    </div>
+                    <!-- Punch Type & Present Patterns Block : End -->
+                    <!-- Pending Requests Block : Begin -->
+                    <div class="col-lg-6" id="pendingrequest_6" style="display:none">
+                        <div class="card_box margin-bottom-20 h-380">
+                            <div class="card_header d-flex align-items-center justify-content-between">
+                                <div class="d-flex align-items-center">
+                                    <img class="margin-right-8" src="~/assets/images/icons/icon_pendingrequest.svg" alt="" width="19" height="21">
+                                    <p class="card-title margin-right-10">Pending Requests</p>
+                                    <img class="tooltips" src="/assets/images/icons/icon_info.svg" alt="" width="12" height="12" data-placement="right" data-original-title="Manage leave and attendance regularizations requests.">
+                                </div>
+                            </div>
+                            <div class="card_summarylist">
+                                <div class="p_request_box fullheight_card">
+                                    <div class="pr_detail">
+                                        <a href="/ESS/ApproveLeave#leavetab_1" id="attendanceTabLink">
+                                            <div class="d-flex align-items-center">
+                                                <img src="~/assets/images/icons/icon_p_attendance.svg" alt="" width="40" height="41">
+                                                <div class="d-flex align-items-center justify-content-between margin-left-15 w-100">
+                                                    <div>
+                                                        <p class="pr_ttl">Attendance</p>
+                                                        <p class="pr_ttlsub">Tracks the daily presence and working hours of employees in the organization.</p>
+                                                    </div>
+                                                    <div class="margin-left-15">
+                                                        <p class="pr_count" id="attendanceCount"></p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </a>
+                                    </div>
+                                    <div class="pr_detail">
+                                        <a href="/ESS/ApproveLeave#attendancetab_2" id="leaveTabLink">
+                                            <div class="d-flex align-items-center">
+                                                <img src="~/assets/images/icons/icon_p_leave.svg" alt="" width="40" height="41">
+                                                <div class="d-flex align-items-center justify-content-between margin-left-15 w-100">
+                                                    <div>
+                                                        <p class="pr_ttl">Leave</p>
+                                                        <p class="pr_ttlsub">Managing time-off requests, such as vacation, sick leave, or personal days.</p>
+                                                    </div>
+                                                    <div class="margin-left-15">
+                                                        <p class="pr_count" id="leaveCount"></p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </a>
+                                    </div>
+                                    <div class="pr_detail">
+                                        <a href="/ESS/ApproveLeave#webpunchtab_3" id="webpunchTabLink">
+                                            <div class="d-flex align-items-center">
+                                                <img src="~/assets/images/icons/icon_p_webpunch.svg" alt="" width="40" height="41">
+                                                <div class="d-flex align-items-center justify-content-between margin-left-15 w-100">
+                                                    <div>
+                                                        <p class="pr_ttl">Webpunch</p>
+                                                        <p class="pr_ttlsub">Tool for remote clock-in/out, allowing employees to log work hours from different locations.</p>
+                                                    </div>
+                                                    <div class="margin-left-15">
+                                                        <p class="pr_count" id="webpunchCount"></p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Pending Requests Block : End -->
+                    <!-- Leavetype Bifurcation Block : Begin -->
+                    <div class="col-lg-6" id="leavebifuraction_7" style="display:none">
+                        <div class="card_box margin-bottom-20 h-380">
+                            <div class="card_header d-flex align-items-center justify-content-between">
+                                <div class="d-flex align-items-center">
+                                    <img class="margin-right-8" src="~/assets/images/icons/icon_leavetype.svg" alt="" width="22" height="23">
+                                    <p class="card-title margin-right-10">Leave type Bifurcation</p>
+                                    <img class="tooltips" src="/assets/images/icons/icon_info.svg" alt="" width="12" height="12" data-placement="right" data-original-title="Breakdown of leave types used">
+                                </div>
+                                <div class="d-flex align-items-center">
+                                    <div class="date_box margin-right-10">
+                                        <span id="_curemonth"></span>
+                                    </div>
+                                    <div class="title_icon">
+                                        <div class="dropdown" id="monthdropdown">
+                                            <a href="javascript:;" class="btn card_iconbtn tooltips" data-placement="top" data-original-title="Filter" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false"><i class="fa-regular fa-filter" aria-hidden="true"></i></a>
+                                            <div class="dropdown-menu filter_dm" aria-labelledby="noti_Button" style="">
+                                                <ul class="h-175">
+                                                    <li class="active"><a href="javascript:;" onclick="selectMonth('January')">January</a></li>
+                                                    <li><a href="javascript:;" onclick="selectMonth('February')">February</a></li>
+                                                    <li><a href="javascript:;" onclick="selectMonth('March')">March</a></li>
+                                                    <li><a href="javascript:;" onclick="selectMonth('April')">April</a></li>
+                                                    <li><a href="javascript:;" onclick="selectMonth('May')">May</a></li>
+                                                    <li><a href="javascript:;" onclick="selectMonth('June')">June</a></li>
+                                                    <li><a href="javascript:;" onclick="selectMonth('July')">July</a></li>
+                                                    <li><a href="javascript:;" onclick="selectMonth('August')">August</a></li>
+                                                    <li><a href="javascript:;" onclick="selectMonth('September')">September</a></li>
+                                                    <li><a href="javascript:;" onclick="selectMonth('October')">October</a></li>
+                                                    <li><a href="javascript:;" onclick="selectMonth('November')">November</a></li>
+                                                    <li><a href="javascript:;" onclick="selectMonth('December')">December</a></li>
+                                                </ul>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="card_summarylist">
+                                <div id="chartdiv" style="height: 300px;"></div>
+                                <div id="leave-empty" style="display:none">
+                                    <div class="empty_block no_record">
+                                        <img class="empty_icon" src="~/assets/images/icons/icon_leavetype.svg" height="32" width="32" alt="No Leave Data">
+                                        <p>No leave type data available.</p>
+                                        <p class="text-muted small">Leave bifurcation will appear once leave records are available for the selected period.</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Leavetype Bifurcation Block : End -->
+                    <!-- Attendance Summary Block : Begin -->
+                    <div class="col-lg-6" id="AttendenceSummary_8" style="display:none">
+                        <div class="card_box margin-bottom-20 h-380">
+                            <div class="card_header d-flex align-items-center justify-content-between">
+                                <div class="d-flex align-items-center">
+                                    <img class="margin-right-8" src="~/assets/images/icons/icon_atte_summary.svg" alt="" width="16" height="22">
+                                    <p class="card-title margin-right-10">Attendance Summary</p>
+                                    <img class="tooltips" src="/assets/images/icons/icon_info.svg" alt="" width="12" height="12" data-placement="right" data-original-title="Track check-ins and missed check-ins by branch and department. ">
+                                </div>
+                                <div class="d-flex align-items-center">
+                                    <div class="date_box margin-right-10">
+                                        <span id="curdates">Today</span>
+                                    </div>
+                                    <div class="title_icon">
+                                        <div class="dropdown" id="Atten_Summary">
+                                            <a href="javascript:;" class="btn card_iconbtn tooltips" data-placement="top" data-original-title="Filter" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false"><i class="fa-regular fa-filter" aria-hidden="true"></i></a>
+                                            <div class="dropdown-menu filter_dm" aria-labelledby="noti_Button" style="">
+                                                <ul>
+                                                    <li class="active"><a href="javascript:;" id="branchWise">Branch</a></li>
+                                                    <li><a href="javascript:;" id="departwise">Department</a></li>
+                                                </ul>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                </div>
+                            </div>
+                            <div class="card_summarylist">
+                                <div class="attendancesummary_detail" id="summary-details">
+                                    <table id="attendancesummary_tbl" class="table" style="text-align:center;" cellspacing="0" width="80%">
+                                        <thead id="table-header">
+                                            <tr>
+                                                <th style="text-align: left; min-width: 135px;" id="Filtername">Branch</th>
+                                                <th style="text-align:center" class="green_font">Checked in</th>
+                                                <th style="text-align:center" class="red_font">Not Checked in</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+
+                                    </table>
+
+                                </div>
+                                <div id="summary-empty" style="display:none">
+                                    <div class="empty_block no_record">
+                                        <img class="empty_icon" src="~/assets/images/icons/icon_atte_summary.svg" height="32" width="32" alt="No Summary Data">
+                                        <p>No attendance summary available.</p>
+                                        <p class="text-muted small">Summary data will appear once attendance is processed for the selected period.</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="card_footer">
+                                <div class="seeall_block text-right padding-top-5">
+                                    @*<a href="javascript:;">See All <i class="fa-light fa-angle-right" aria-hidden="true"></i></a>*@
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Attendance Summary Block : End -->
+                    <!-- Overtime Block : Begin -->
+                    <div class="col-lg-6" id="OverTime_9" style="display:none">
+                        <div class="card_box margin-bottom-20 h-380">
+                            <div class="card_header d-flex align-items-center justify-content-between">
+                                <div class="d-flex align-items-center">
+                                    <img class="margin-right-8" src="~/assets/images/icons/icon_ot.svg" alt="" width="20" height="21">
+                                    <p class="card-title margin-right-10">Overtime</p>
+                                    <img class="tooltips" src="/assets/images/icons/icon_info.svg" alt="" width="12" height="12" data-placement="right" data-original-title="View overtime hours tracked weekly.">
+                                </div>
+                                <div class="d-flex align-items-center">
+                                    <div class="date_box margin-right-10">
+                                        <span>Last Week</span>
+                                    </div>
+                                    <div class="title_icon">
+                                        <!--<div class="dropdown">
+                                        <a href="javascript:;" class="tooltips" data-placement="top" data-original-title="Filter" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                                            <img src="~/assets/images/icons/icon_filter.svg" alt="" width="24" height="25">
+                                        </a>-->
+                                        @*<div class="dropdown-menu filter_dm" aria-labelledby="noti_Button" style="">
+                                                <ul>
+                                                    <li class="active"><a href="javascript:;">Hours</a></li>
+                                                    <li><a href="javascript:;">Employees</a></li>
+                                                </ul>
+                                            </div>*@
+                                        <!--</div>-->
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="card_summarylist">
+                                <figure class="highcharts-figure" id="ot_charts1">
+                                    <div id="OT_chart" style="height: 300px;"></div>
+                                </figure>
+                                <div id="overtime-empty" style="display:none">
+                                    <div class="empty_block no_record">
+                                        <img class="empty_icon" src="~/assets/images/icons/icon_ot.svg" height="32" width="32" alt="No Overtime Data">
+                                        <p>No overtime records found.</p>
+                                        <p class="text-muted small">Overtime data will be shown here once overtime hours are tracked.</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Overtime Block : End -->
+                    <!-- Upcoming Holiday Block : Begin -->
+                    <div class="col-lg-6" id="Holiday_10" style="display:none">
+                        <div class="card_box margin-bottom-20 h-380">
+                            <div class="card_header d-flex align-items-center justify-content-between">
+                                <div class="d-flex align-items-center">
+                                    <img class="margin-right-8" src="~/assets/images/icons/icon_holiday.svg" alt="" width="22" height="23">
+                                    <p class="card-title margin-right-10">Upcoming Holidays</p>
+                                    <img class="tooltips" src="/assets/images/icons/icon_info.svg" alt="" width="12" height="12" data-placement="right" data-original-title="View upcoming holidays as per the company calender.">
+                                </div>
+                            </div>
+                            <div class="card_summarylist h_box_height ">
+
+                                <div class="p_request_box fullheight_card" id="holiday-data">
+                                    <div id="Main_holiday">
+                                        <div class="holiday_detail pr_detail ">
+                                            <p class="h_month"></p>
+                                            <div class="d-flex align-items-center">
+                                                <div class="h_box">
+                                                    <div class="h_date"></div>
+                                                    <div class="h_day"></div>
+                                                </div>
+                                                <div class="margin-left-15">
+                                                    <p class="pr_ttl"></p>
+                                                    <p class="pr_ttlsub"></p>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                    </div>
+                                </div>
+                                <div id="holiday-empty" style="display:none">
+                                    <div class="empty_block no_record">
+                                        <img class="empty_icon" src="~/assets/images/icons/icon_holiday.svg" height="32" width="32" alt="No Holidays">
+                                        <p>No upcoming holidays scheduled.</p>
+                                        <p class="text-muted small">Holidays will appear here once they are added to the calendar.</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="card_footer">
+                                <div class="seeall_block text-right padding-top-5">
+                                    <a href="/MasterData/HolidayMaster">See All <i class="fa-light fa-angle-right" aria-hidden="true"></i></a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Upcoming Holiday Block : End -->
+                    <!-- Genderwise Chart Block : Begin -->
+                    <div class="col-lg-6" id="Genderwise_11" style="display:none">
+                        <div class="card_box margin-bottom-20 h-380">
+                            <div class="card_header d-flex align-items-center justify-content-between">
+                                <div class="d-flex align-items-center">
+                                    <img class="margin-right-8" src="~/assets/images/icons/icon_gender.svg" alt="" width="22" height="23">
+                                    <p class="card-title margin-right-10">Gender Wise Chart</p>
+                                    <img class="tooltips" src="/assets/images/icons/icon_info.svg" alt="" width="12" height="12" data-placement="right" data-original-title="Display gender-wise distribution by branch.">
+                                </div>
+                                <div class="title_icon">
+                                    <div class="dropdown" id="Genderwise_graph">
+                                        <a href="javascript:;" class="btn card_iconbtn tooltips" data-placement="top" data-original-title="Filter" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false"><i class="fa-regular fa-filter" aria-hidden="true"></i></a>
+                                        <div class="dropdown-menu filter_dm" aria-labelledby="noti_Button" style="">
+                                            <ul>
+                                                <li class="active"><a href="javascript:;" id="branchWisegender">Branch</a></li>
+                                                <li><a href="javascript:;" id="departwisegender">Department</a></li>
+                                            </ul>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="card_summarylist">
+                                <figure class="highcharts-figure" id="genderwise-charts1">
+                                    <div id="genderwise_chart" style="height: 300px;"></div>
+                                </figure>
+                                <div id="gender-empty" style="display:none">
+                                    <div class="empty_block no_record">
+                                        <img class="empty_icon" src="~/assets/images/icons/icon_gender.svg" height="32" width="32" alt="No Gender Data">
+                                        <p>No gender-wise data available.</p>
+                                        <p class="text-muted small">Gender distribution will appear once employee profiles are updated.</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Genderwise Chart Block : End -->
+                    <!-- Attrition Chart Block : Begin -->
+                    <div class="col-lg-6" id="Attration_12" style="display:none">
+                        <div class="card_box margin-bottom-20 h-380">
+                            <div class="card_header d-flex align-items-center justify-content-between">
+                                <div class="d-flex align-items-center">
+                                    <img class="margin-right-8" src="~/assets/images/icons/icon_attrition.svg" alt="" width="28" height="23">
+                                    <p class="card-title margin-right-10">Employee Attrition</p>
+                                    <img class="tooltips" src="/assets/images/icons/icon_info.svg" alt="" width="12" height="12" data-placement="right" data-original-title="Display employee attraction rate by branch.">
+                                </div>
+                                <div class="title_icon">
+                                    <div class="dropdown" id="clicking">
+                                        <a href="javascript:;" class="btn card_iconbtn tooltips" data-placement="top" data-original-title="Filter" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false"><i class="fa-regular fa-filter" aria-hidden="true"></i></a>
+                                        <div class="dropdown-menu filter_dm filter_leavebalance" aria-labelledby="noti_Button" style="" id="dropdown_click">
+                                            <input type="text" class="search_filter" placeholder="Search.." id="myInput">
+                                            <ul class="h-175" id="nameList"></ul>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="card_summarylist">
+                                <figure class="highcharts-figure" id="attration-charts1">
+                                    <div id="attrition_chart" style="height: 300px;"></div>
+                                </figure>
+                                <div id="attration-empty" style="display:none">
+                                    <div class="empty_block no_record">
+                                        <img class="empty_icon" src="~/assets/images/icons/icon_attrition.svg" height="32" width="32" alt="No Attrition Data">
+                                        <p>No employee attrition data available.</p>
+                                        <p class="text-muted small">Attrition trends will be displayed once sufficient data is available.</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Attrition Chart Block : End -->
+                    <!-- EMS Overview Block : Begin -->
+                    <div class="col-lg-6" style="display: none;" id="emsCountblock">
+                        <div class="card_box margin-bottom-20">
+                            <div class="card_header d-flex align-items-center justify-content-between">
+                                <div class="d-flex align-items-center">
+                                    <img class="margin-right-8" src="/assets/images/icons/icon_expoverview.svg" alt="" width="22" height="22">
+                                    <p class="card-title margin-right-10">Expense Management Overview</p>
+                                </div>
+                            </div>
+                            <div class="card_summarylist">
+                                <div class="tab_block" style="margin-top: 0;">
+                                    <ul class="nav nav-tabs nav-tabs-custom mobile_w100" role="tablist" style="margin-bottom: 8px;">
+                                        <li class="nav-item active">
+                                            <a class="nav-link" data-toggle="tab" href="#overview" role="tab" aria-selected="false">
+                                                <span class="">Overview</span>
+                                            </a>
+                                        </li>
+                                    </ul>
+                                    <div class="tab-content text-muted tab_content_box">
+                                        <div class="tab-pane active" id="overview" role="tabpanel">
+                                            <div class="row">
+                                                <div class="d-flex align-center justify-content-between">
+                                                    <div class="col-md-3 col-xs-6">
+                                                        <div class="form-group">
+                                                            <select class="form-control input-sm select2" id="emsMonth">
+                                                                <option value="0">All</option>
+                                                                <option value="1">January</option>
+                                                                <option value="2">February</option>
+                                                                <option value="3">March</option>
+                                                                <option value="4">April</option>
+                                                                <option value="5">May</option>
+                                                                <option value="6">June</option>
+                                                                <option value="7">July</option>
+                                                                <option value="8">August</option>
+                                                                <option value="9">September</option>
+                                                                <option value="10">October</option>
+                                                                <option value="11">November</option>
+                                                                <option value="12">December</option>
+                                                            </select>
+                                                        </div>
+                                                    </div>
+                                                    <div class="col-md-4 col-xs-6">
+                                                        <div class="form-group">
+                                                            <select class="form-control input-sm select2" id="emsDepartment">
+                                                            </select>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="row">
+                                                <div class="col-xs-6">
+                                                    <div class="emsoverview_block lightskyblue margin-bottom-15">
+                                                        <a href="javascript:;" id="exp_request">
+                                                            <p class="font-blue" id="exp_requestCount"></p>
+                                                            <div class="fb_subttl">Requests</div>
+                                                        </a>
+                                                    </div>
+                                                </div>
+                                                <div class="col-xs-6">
+                                                    <div class="emsoverview_block lightgreen margin-bottom-15">
+                                                        <a href="javascript:;" id="exp_approved">
+                                                            <p class="green_font" id="exp_approvedCount"></p>
+                                                            <div class="fb_subttl">Approved</div>
+                                                        </a>
+                                                    </div>
+                                                </div>
+                                                <div class="col-xs-6">
+                                                    <div class="emsoverview_block lightorange">
+                                                        <a href="javascript:;" id="exp_pending">
+                                                            <p class="orange_font" id="exp_pendingCount"></p>
+                                                            <div class="fb_subttl">Pending</div>
+                                                        </a>
+                                                    </div>
+                                                </div>
+                                                <div class="col-xs-6">
+                                                    <div class="emsoverview_block lightred">
+                                                        <a href="javascript:;" id="exp_declined">
+                                                            <p class="red_font" id="exp_declinedCount"></p>
+                                                            <div class="fb_subttl">Declined</div>
+                                                        </a>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- EMS Overview Block : End -->
+                    <!-- PMS Overview Block : Begin -->
+                    <div class="col-lg-6" id="PMS_13" style="display: none;">
+                        <div class="card_box margin-bottom-20">
+                            <div class="card_header d-flex align-items-center justify-content-between">
+                                <div class="d-flex align-items-center">
+                                    <img class="margin-right-8" src="/assets/images/icons/icon_pmsoverview.svg" alt="" width="22" height="22">
+                                    <p class="card-title margin-right-10">PMS</p>
+                                </div>
+                                <div class="d-flex align-items-center">
+                                    <div class="date_box" style="color:#777;">
+                                        <span>Total Score : <b style="color:#295097">50/100%</b></span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="card_summarylist">
+                                <div class="tab_block" style="margin-top: 0;">
+                                    <ul class="nav nav-tabs nav-tabs-custom mobile_w100" role="tablist" style="margin-bottom: 8px;">
+                                        <li class="nav-item active">
+                                            <a class="nav-link" data-toggle="tab" href="#myokr" role="tab" aria-selected="false">
+                                                <span class="">My OKRs</span>
+                                            </a>
+                                        </li>
+                                        <li class="nav-item">
+                                            <a class="nav-link" data-toggle="tab" href="#okrreview" role="tab" aria-selected="true">
+                                                <span class="">Review</span>
+                                            </a>
+                                        </li>
+                                        <li class="col-xs-3 pull-right padding-right-0 ps-xs-3">
+                                            <div class="form-group margin-bottom-0">
+                                                <select class="form-control input-sm select2" id="">
+                                                    <option value="1">All</option>
+                                                    <option value="2">January</option>
+                                                    <option value="3">February</option>
+                                                    <option value="4">March</option>
+                                                    <option value="5">April</option>
+                                                </select>
+                                            </div>
+                                        </li>
+                                    </ul>
+                                    <div class="tab-content text-muted tab_content_box">
+                                        <div class="tab-pane active" id="myokr" role="tabpanel">
+                                            <div class="row">
+                                                <div class="col-lg-12">
+                                                    <div class="pms_fullheight_card">
+                                                        <a href="javascript:;" class="pmsreview_block margin-bottom-10">
+                                                            <div class="w-100">
+                                                                <div class="obj_name">Objective Name 1</div>
+                                                                <p class="obj_subname">Reference about Lorem Ipsum, giving information</p>
+                                                                <div class="obj_progressblock margin-top-10">
+                                                                    <div class="d-flex align-items-center justify-content-between">
+                                                                        <div class="gray-700">Progress</div>
+                                                                        <div class="font-blue">35%</div>
+                                                                    </div>
+                                                                    <div class="progress custom_progressbar h_4 margin-top-5 margin-bottom-0">
+                                                                        <div class="progress-bar progress_navyblue_bar" role="progressbar" style="width: 35%" aria-valuenow="35" aria-valuemin="0" aria-valuemax="100"></div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                            <div class="d-flex align-items-center border-left">
+                                                                <div class="obj_box">
+                                                                    <div class="obj_value">25</div>
+                                                                    <div class="gray-700">Weightage</div>
+                                                                </div>
+                                                                <div class="obj_box">
+                                                                    <div class="obj_value">10</div>
+                                                                    <div class="gray-700">KR</div>
+                                                                </div>
+                                                            </div>
+                                                        </a>
+                                                        <a href="javascript:;" class="pmsreview_block margin-bottom-10">
+                                                            <div class="w-100">
+                                                                <div class="obj_name">Objective Name 2</div>
+                                                                <p class="obj_subname">Reference about Lorem Ipsum, giving information Lorem Ipsum</p>
+                                                                <div class="obj_progressblock margin-top-10">
+                                                                    <div class="d-flex align-items-center justify-content-between">
+                                                                        <div class="gray-700">Progress</div>
+                                                                        <div class="font-blue">70%</div>
+                                                                    </div>
+                                                                    <div class="progress custom_progressbar h_4 margin-top-5 margin-bottom-0">
+                                                                        <div class="progress-bar progress_navyblue_bar" role="progressbar" style="width: 70%" aria-valuenow="70" aria-valuemin="0" aria-valuemax="100"></div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                            <div class="d-flex align-items-center border-left">
+                                                                <div class="obj_box">
+                                                                    <div class="obj_value">50</div>
+                                                                    <div class="gray-700">Weightage</div>
+                                                                </div>
+                                                                <div class="obj_box">
+                                                                    <div class="obj_value">30</div>
+                                                                    <div class="gray-700">KR</div>
+                                                                </div>
+                                                            </div>
+                                                        </a>
+                                                        <a href="javascript:;" class="pmsreview_block margin-bottom-10">
+                                                            <div class="w-100">
+                                                                <div class="obj_name">Objective Name 3</div>
+                                                                <p class="obj_subname">Reference about Lorem Ipsum, information Getting</p>
+                                                                <div class="obj_progressblock margin-top-10">
+                                                                    <div class="d-flex align-items-center justify-content-between">
+                                                                        <div class="gray-700">Progress</div>
+                                                                        <div class="font-blue">20%</div>
+                                                                    </div>
+                                                                    <div class="progress custom_progressbar h_4 margin-top-5 margin-bottom-0">
+                                                                        <div class="progress-bar progress_navyblue_bar" role="progressbar" style="width: 20%" aria-valuenow="20" aria-valuemin="0" aria-valuemax="100"></div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                            <div class="d-flex align-items-center border-left">
+                                                                <div class="obj_box">
+                                                                    <div class="obj_value">20</div>
+                                                                    <div class="gray-700">Weightage</div>
+                                                                </div>
+                                                                <div class="obj_box">
+                                                                    <div class="obj_value">5</div>
+                                                                    <div class="gray-700">KR</div>
+                                                                </div>
+                                                            </div>
+                                                        </a>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="tab-pane" id="okrreview" role="tabpanel">
+                                            <div class="row">
+                                                <div class="col-lg-12">
+                                                    <div class="pms_fullheight_card">
+                                                        <a href="javascript:;" class="pmsreview_block margin-bottom-10">
+                                                            <div class="w-100">
+                                                                <div class="obj_name">Objective Name Abc</div>
+                                                                <p class="obj_subname">Reference about Lorem Ipsum, giving information</p>
+                                                                <div class="obj_progressblock margin-top-10">
+                                                                    <div class="d-flex align-items-center justify-content-between">
+                                                                        <div class="gray-700">Progress</div>
+                                                                        <div class="font-blue">80%</div>
+                                                                    </div>
+                                                                    <div class="progress custom_progressbar h_4 margin-top-5 margin-bottom-0">
+                                                                        <div class="progress-bar progress_navyblue_bar" role="progressbar" style="width: 80%" aria-valuenow="80" aria-valuemin="0" aria-valuemax="100"></div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                            <div class="d-flex align-items-center border-left">
+                                                                <div class="obj_box">
+                                                                    <div class="obj_value">25</div>
+                                                                    <div class="gray-700">Weightage</div>
+                                                                </div>
+                                                                <div class="obj_box">
+                                                                    <div class="obj_value">10</div>
+                                                                    <div class="gray-700">KR</div>
+                                                                </div>
+                                                            </div>
+                                                        </a>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- PMS Overview Block : End -->
+
+                    @if (_compcode == "TAT02D3" || _compcode == "MINC2E0")
+                    {
+                        <!-- TataPower Custom Chart Block : Begin -->
+                        <div class="col-lg-12" id="dvCustom_chart" style="display:none">
+                            <div class="card_box margin-bottom-20">
+                                <div class="card_header d-flex align-items-center justify-content-between">
+                                    <div class="d-flex align-items-center">
+                                        <img class="margin-right-8" src="~/assets/images/icons/icon_atte_summary.svg" alt="" width="16" height="22">
+                                        <p class="card-title margin-right-10">Customize Chart</p>
+                                        <img class="tooltips" src="/assets/images/icons/icon_info.svg" alt="" width="12" height="12" data-placement="right" data-original-title="Display chart data based on selected filters.">
+                                    </div>
+                                    <div class="title_icon">
+                                        <div id="tatafilter_btn">
+                                            <a href="javascript:;" class="btn card_iconbtn tooltips" data-placement="top" data-original-title="Filter"><i class="fa-regular fa-filter" aria-hidden="true"></i></a>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="card_summarylist">
+                                    <div class="row" id="tatafilter_data" style="display: none; border-bottom: 1px solid #e3e3e3;">
+                                        <div class="col-sm-3 col-xs-6">
+                                            <div class="form-group">
+                                                <label class="control-label">Company <span class="required" aria-required="true">*</span></label>
+                                                @if (ViewBag.Companyslist != null)
+                                                {
+                                                    @Html.DropDownList("tatacompanyID", new SelectList(ViewBag.Companyslist, "CompanyID", "CompanyName"), new { @class = "form-control input-sm", @multiple = "multiple" })
+                                                }
+                                                else
+                                                {
+                                                    @Html.DropDownList("CompanyID", new SelectList(new[] { "" }), new { @class = "form-control input-sm", @multiple = "multiple" })
+                                                }
+                                            </div>
+                                        </div>
+                                        <div class="col-sm-3 col-xs-6">
+                                            <div class="form-group">
+                                                <label class="control-label">Branch <span class="required" aria-required="true">*</span></label>
+                                                <select id="tatabranchID" class="mt-multiselect btn blue btn-outline" multiple="multiple" data-width="100%">
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="col-sm-3 col-xs-6">
+                                            <div class="form-group">
+                                                <label class="control-label">Designation</label>
+                                                <select id="tatadesignationID" class="mt-multiselect btn blue btn-outline" multiple="multiple" data-width="100%">
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="col-sm-3 col-xs-6">
+                                            <div class="form-group">
+                                                <label class="control-label">Shift</label>
+                                                <select id="tatashiftID" class="mt-multiselect btn blue btn-outline" multiple="multiple" data-width="100%">
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="col-sm-3 col-xs-6">
+                                            <div class="form-group">
+                                                <label class="control-label">Gender</label>
+                                                <select id="tatagenderID" class="mt-multiselect btn blue btn-outline" multiple="multiple" data-width="100%">
+                                                    <option value="0">Male</option>
+                                                    <option value="1">Female</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="col-sm-3 col-xs-6">
+                                            <div class="form-group data_picker_box">
+                                                <label class="control-label">Start Date</label>
+                                                <div class="input-group input-group-sm date date-picker" id="" data-date-format="@_isdateformat" data-date-viewmode="years">
+                                                    <span class="input-group-btn">
+                                                        <button class="btn default" type="button">
+                                                            <i class="fa-light fa-calendar-days"></i>
+                                                        </button>
+                                                    </span>
+                                                    <input type="text" class="form-control" id="DateForTata" data-date-format="@_isdateformat" placeholder="@_isdateformat.Replace("M","MMM")" autocomplete="off">
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="col-sm-3 col-xs-12 text-right-xs">
+                                            <div class="form-group data_picker_box">
+                                                <label class="control-label">&nbsp;</label>
+                                                <div>
+                                                    <button type="button" id="Clear_Operation" class="clear_btn tooltips" data-placement="top" data-original-title="Clear Filters" data-toggle="tooltip"><i class="fa-regular fa-eraser"></i></button>
+                                                    <button type="button" id="Search_Operation" class="icon_btn margin-left-5 tooltips" data-placement="top" data-original-title="Search Filters" data-toggle="tooltip"><i class="fa-solid fa-magnifying-glass"></i></button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <figure class="highcharts-figure" id="TataCustomChart" style="display:none;">
+                                        <div id="customcharts_1" style="min-height: 300px;"></div>
+                                        <div id="customcharts_2" style="min-height: 300px;"></div>
+                                    </figure>
+                                    <div id="customchart-empty">
+                                        <div class="empty_block no_record datanotfound">
+                                            <img class="empty_icon" src="~/assets/images/icons/icon_atte_summary.svg" height="32" width="32" alt="No Records Found">
+                                            <p>No records Show.</p>
+                                            <p class="text-muted small">Start by applying a filter to view relevant data.</p>
+                                        </div>
+                                    </div>
+                                    <div id="customchart-empty1" style="display:none">
+                                        <div class="empty_block no_record datanotfound">
+                                            <img class="empty_icon" src="~/assets/images/icons/icon_atte_summary.svg" height="32" width="32" alt="No Records Found">
+                                            <p>No records found.</p>
+                                            <p class="text-muted small">No matching records found for the selected filters.</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- TataPower Custom Chart Block : End -->
+
+                        <!-- Prev Rewards Block : End -->
+                        <div class="col-lg-6" id="" style="display: none">
+                            <div class="card_box margin-bottom-20 h-380">
+                                <div class="card_header">
+                                    <div class="d-flex align-items-center">
+                                        <i class="fa-regular fa-trophy-star margin-right-8" style=" font-size: 16px; color: #295097; "></i>
+                                        <p class="card-title margin-right-10">Previous Rewards</p>
+                                        <img class="tooltips" src="/assets/images/icons/icon_info.svg" alt="" width="12" height="12" data-placement="right" data-original-title="Previous Rewards">
+                                    </div>
+                                </div>
+                                <div class="card_summarylist h_box_height">
+                                    <div class="fullheight_card" id="">
+                                        <div class="pending_request_block margin-bottom-10">
+                                            <div class="tripdetail_main">
+                                                <div class="reqby">Star of the month: <span>Rajesh Kumar</span></div>
+                                                <div class="withtravel">Month: <span>January</span></div>
+                                                <div class="reqby d-flex align-items-center">
+                                                    <div class="margin-right-10">KD: <span>10</span></div>
+                                                    <div class="margin-right-10">SO: <span>15</span></div>
+                                                    <div class="margin-right-10">BA: <span>80/100</span></div>
+                                                    <div class="margin-right-10">OP: <span>80/100</span></div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="pending_request_block margin-bottom-10">
+                                            <div class="tripdetail_main">
+                                                <div class="reqby">Star of the month: <span>Rajesh Kumar</span></div>
+                                                <div class="withtravel">Month: <span>January</span></div>
+                                                <div class="reqby d-flex align-items-center">
+                                                    <div class="margin-right-10">KD: <span>10</span></div>
+                                                    <div class="margin-right-10">SO: <span>15</span></div>
+                                                    <div class="margin-right-10">BA: <span>80/100</span></div>
+                                                    <div class="margin-right-10">OP: <span>80/100</span></div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="pending_request_block margin-bottom-10">
+                                            <div class="tripdetail_main">
+                                                <div class="reqby">Star of the month: <span>Rajesh Kumar</span></div>
+                                                <div class="withtravel">Month: <span>January</span></div>
+                                                <div class="reqby d-flex align-items-center">
+                                                    <div class="margin-right-10">KD: <span>10</span></div>
+                                                    <div class="margin-right-10">SO: <span>15</span></div>
+                                                    <div class="margin-right-10">BA: <span>80/100</span></div>
+                                                    <div class="margin-right-10">OP: <span>80/100</span></div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="pending_request_block margin-bottom-10">
+                                            <div class="tripdetail_main">
+                                                <div class="reqby">Star of the month: <span>Rajesh Kumar</span></div>
+                                                <div class="withtravel">Month: <span>January</span></div>
+                                                <div class="reqby d-flex align-items-center">
+                                                    <div class="margin-right-10">KD: <span>10</span></div>
+                                                    <div class="margin-right-10">SO: <span>15</span></div>
+                                                    <div class="margin-right-10">BA: <span>80/100</span></div>
+                                                    <div class="margin-right-10">OP: <span>80/100</span></div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="card_footer">
+                                    <div class="seeall_block text-right padding-top-5">
+                                        <a href="/tp/previousRewards">See All <i class="fa-light fa-angle-right" aria-hidden="true"></i></a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Prev Rewards Block : End -->
+
+                        <!-- Feedback Block : Begin -->
+                        <div class="col-lg-6" id="dvTPfeedback" style="display:none;">
+                            <div class="card_box margin-bottom-20">
+                                <div class="card_header d-flex align-items-center justify-content-between">
+                                    <div class="d-flex align-items-center">
+                                        <img class="margin-right-8" src="/assets/images/icons/icon_feedback.svg" alt="" width="24" height="20">
+                                        <p class="card-title margin-right-10">Feedbacks</p>
+                                    </div>
+                                    <div class="title_icon d-flex align-items-center">
+                                        <a href="javascript:;" id="downloadFeedback" class="margin-right-10 tooltips" data-placement="bottom" data-original-title="Download">
+                                            <img src="../Newlayout/images/download_icon.svg" alt="Download icon">
+                                        </a>
+                                        <div class="form-group margin-bottom-0">
+                                            <select id="CompanyFill" class="form-control input-sm">
+                                                @if (_RoleId == 1)
+                                                {
+                                                    <option value="0">All Company</option>
+                                                }
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="card_summarylist">
+                                    <div class="row">
+                                        <div class="col-lg-6">
+                                            <div class="feedback_block border-right">
+                                                <p class="font-blue" id="TotalCount"></p>
+                                                <div class="fb_subttl">Total Feedbacks Raised</div>
+                                            </div>
+                                        </div>
+                                        <div class="col-lg-6">
+                                            <div class="feedback_block">
+                                                <p class="red_font" id="gretaerThen30"></p>
+                                                <div class="fb_subttl">Pending Feedbacks > <span class="red_font">30 Days</span></div>
+                                            </div>
+                                        </div>
+                                        <div class="col-lg-6">
+                                            <div class="feedback_block border-right">
+                                                <p class="green_font" id="ApprovedCount"></p>
+                                                <div class="fb_subttl">Total Feedbacks Addressed</div>
+                                            </div>
+                                        </div>
+                                        <div class="col-lg-6">
+                                            <div class="feedback_block">
+                                                <p class="orange_font" id="lessThen30"></p>
+                                                <div class="fb_subttl">Pending Feedbacks < <span class="orange_font">30 Days</span></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="card_footer">
+                                    <div class="seeall_block text-right padding-top-5">
+                                        <a href="/Dashboard/Feedbacks" id="seeAllFeedbacks">See All <i class="fa-light fa-angle-right" aria-hidden="true"></i></a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Feedback Block : End -->
+                    }
+
+                </div>
+            </div>
+            <!-- Body : End -->
+        }
+
+    </div>
+    <!-- Datatable Block : End -->
+    <!-- Filter Block : Begin -->
+    <div class="portlet filter_boxModal">
+        <div class="filterbox_header">
+            <div class="d-flex align-items-center justify-content-between">
+                <h4 class="filter-title">Filters</h4>
+                <button type="button" class="filterclose_btn"><i class="fa-light fa-xmark"></i></button>
+            </div>
+        </div>
+        <div class="filterbox_body">
+            <!-- Company Dropdown -->
+            <div class="col-lg-12">
+                <div class="form-group">
+                    <label class="control-label">Company<span class="required" aria-required="true">*</span></label>
+                    @Html.DropDownList("CompanyIDNew",
+                        new SelectList(ViewBag.Companyslist, "CompanyID", "CompanyName"),
+                        "Select Company",
+                        new { @class = "form-control select2 input-sm" })
+                </div>
+            </div>
+            <!-- Branch Dropdown -->
+            <div class="col-lg-12">
+                <div class="form-group">
+                    <label class="control-label">Branch<span class="required" aria-required="true">*</span></label>
+                    @Html.DropDownList("BranchIdNew", new SelectList(new[] { "" }), "Select Branch", new { @class = "form-control select2 input-sm" })
+                </div>
+            </div>
+        </div>
+        <div class="filterbox_footer">
+            <div class="text-right">
+                <button type="button" id="Clear_OPration" class="clear_btn tooltips" data-placement="top" data-original-title="Clear Filters" data-toggle="tooltip"><i class="fa-regular fa-eraser"></i></button>
+                <button type="button" class="btn icon_btn margin-left-5 tooltips" id="quichsearching" data-placement="top" data-original-title="Search by Filters"><i class="fa-solid fa-magnifying-glass"></i></button>
+            </div>
+        </div>
+    </div>
+    <!-- Filter Block : End -->
+
+</div>
+
+
+@if (obj.CanView)
+{
+
+
+    <!-- Add Addanoucement Modal : Begin -->
+    <div id="addanoucement_modal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog w-500">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal" id="close_model">&times;</button>
+                    <h4 class="modal-title">Announcements</h4>
+                </div>
+                <div class="modal-body">
+                    <form id="announcementForm">
+                        <div class="modal-card">
+                            <fieldset>
+                                <div class="row">
+                                    <div class="col-sm-6 col-xs-12">
+                                        <div class="form-group">
+                                            @*<select id="CompanyID" class="mt-multiselect btn blue btn-outline" multiple="multiple" data-width="100%">*@
+                                            <label class="control-label">Company<span class="required" aria-required="true"> * </span></label>
+                                            @if (ViewBag.Companyslist != null)
+                                            {
+                                                @Html.DropDownList("CompanyID", new SelectList(ViewBag.Companyslist, "CompanyID", "CompanyName"), new { @class = "form-control input-sm", @multiple = "multiple" })
+                                            }
+                                            else
+                                            {
+                                                @Html.DropDownList("CompanyID", new SelectList(new[] { "" }), new { @class = "form-control input-sm", @multiple = "multiple" })
+                                            }
+                                        </div>
+                                    </div>
+                                    <div class="col-sm-6 col-xs-12">
+                                        <div class="form-group">
+                                            <label class="control-label">Branch<span class="required" aria-required="true">*</span></label>
+                                            <select id="BranchID" class="mt-multiselect btn blue btn-outline" multiple="multiple" data-width="100%"></select>
+                                        </div>
+                                    </div>
+                                    <div class="col-sm-6 col-xs-12" style="display: none;">
+                                        <div class="form-group">
+                                            <label class="control-label">Department</label>
+                                            <select id="DepartmentID" class="mt-multiselect btn blue btn-outline" multiple="multiple" data-width="100%"></select>
+                                        </div>
+                                    </div>
+                                    <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                        <!--<div class="form-group">
+                                            <label class="control-label">Start Date<span class="required" aria-required="true">*</span></label>-->
+                                        @*<input type="date" id="startDate" placeholder="Please Enter" class="form-control" name="Start Date" />*@
+                                        <!--</div>-->
+                                        <div class="form-group data_picker_box">
+                                            <label class="control-label">Start Date <span class="required" aria-required="true"> * </span></label>
+                                            <div class="input-group input-group-sm date date-picker" id="" data-date-format="@_isdateformat" data-date-viewmode="years">
+                                                <span class="input-group-btn">
+                                                    <button class="btn default" type="button">
+                                                        <i class="fa-light fa-calendar-days"></i>
+                                                    </button>
+                                                </span>
+                                                <input type="text" class="form-control" id="startDate" data-date-format="@_isdateformat" placeholder="@_isdateformat.Replace("M","MMM")" autocomplete="off">
+                                            </div>
+                                        </div>
+
+                                    </div>
+                                    <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                        <!--<div class="form-group">
+                                            <label class="control-label">End Date<span class="required" aria-required="true">*</span></label>-->
+                                        @*<input type="date" id="endDate" placeholder="Please Enter" class="form-control" name="End Date" />*@
+                                        <!--</div>-->
+                                        <div class="form-group data_picker_box">
+                                            <label class="control-label">End Date <span class="required" aria-required="true"> * </span></label>
+                                            <div class="input-group input-group-sm date date-picker" id="" data-date-format="@_isdateformat" data-date-viewmode="years">
+                                                <span class="input-group-btn">
+                                                    <button class="btn default" type="button">
+                                                        <i class="fa-light fa-calendar-days"></i>
+                                                    </button>
+                                                </span>
+                                                <input type="text" class="form-control" id="endDate" data-date-format="@_isdateformat" placeholder="@_isdateformat.Replace("M","MMM")" autocomplete="off">
+                                            </div>
+                                        </div>
+
+                                    </div>
+                                    <div class="col-lg-12">
+                                        <div class="form-group">
+                                            <label class="control-label">Main Title<span class="required" aria-required="true">*</span></label>
+                                            <input type="text" id="title" placeholder="Please Enter Title" class="form-control" name="Main Title" maxlength="100" />
+                                            <small id="wordLimitMessages" style="color: red; display: none;">
+                                                The limit of words has been exceeded in Title.
+                                            </small>
+                                        </div>
+                                    </div>
+                                    <div class="col-lg-12">
+                                        <div class="form-group">
+                                            <label>Body Text<span class="required" aria-required="true">*</span></label>
+                                            <textarea class="form-control" rows="5" name="" id="descriptions" placeholder="Please Enter text" style="resize: vertical;" maxlength="1000"></textarea>
+                                            <small id="wordLimitMessage" style="color: red; display: none;">
+                                                The limit of words has been exceeded in Description.
+                                            </small>
+                                        </div>
+                                    </div>
+                                    <div class="col-sm-5 col-xs-12">
+                                        <div class="form-group margin-bottom-0">
+                                            <label>Announcements Photo</label>
+                                            <div class="upload-box">
+                                                <div class="fileinput fileinput-new" data-provides="fileinput">
+                                                    <div class="fileinput-new profile_img">
+                                                        <img src="~/assets/images/announcement_icon" alt="" id="empimg" />
+                                                    </div>
+                                                    <div class="profile_img fileinput-preview fileinput-exists profile_img"></div>
+                                                    <div class="upload-overlay">
+                                                        <div style="display: flex;">
+                                                            <span class="btn blueupload_btn btn-file">
+                                                                <span class="fileinput-new btn-block"><i class="fa-regular fa-arrow-up-from-bracket"></i></span>
+                                                                <span class="fileinput-exists"><i class="fa-regular fa-pen-to-square"></i></span>
+                                                                <input type="file" name="EmpPhotoFile" id="EmpPhotoFile" value="" accept=".png, .jpg, .jpeg">
+                                                                <input type="hidden" id="Photo" name="Photo">
+                                                            </span>
+                                                            <a href="javascript:;" class="btn redupload_btn fileinput-exists" id="TrashImage" data-dismiss="fileinput"><i class="fa-light fa-trash-can"></i></a>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-sm-7 col-xs-12">
+                                        <label id="AllowedFormate" class="announcement-note">*Image Size Should be less than 5 MB. </label>
+                                    </div>
+                                    <div class="col-sm-12" style="display:none">
+                                        <div class="form-group margin-bottom-0">
+                                            <div class="d-flex align-items-center">
+                                                <label class="control-label">Send notification via</label>
+                                                <div class="form-check margin-left-10">
+                                                    <input class="form-check-input" type="checkbox" checked="checked" value="false" id="emailnoti" name="emailnoti">
+                                                    <label class="form-check-label" for="emailnoti">Email</label>
+                                                </div>
+                                                <div class="form-check margin-left-10">
+                                                    <input class="form-check-input" type="checkbox" value="false" id="smsnoti" name="smsnoti">
+                                                    <label class="form-check-label" for="smsnoti">SMS</label>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </fieldset>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <div class="row">
+                        <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                            <button type="button" class="btn save_btn" id="Savedata"><i class="fa-light fa-floppy-disk"></i> Save</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Add Addanoucement Modal : End -->
+    <!-- Custom Widget Modal : Begin -->
+    <div id="customwidget_modal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog w-500">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    <h4 class="modal-title">Customize Widget</h4>
+                </div>
+                <div class="modal-body">
+                    <fieldset>
+                        <div class="row">
+                            <div class="col-lg-12">
+                                <div class="widget_block">
+                                    <ul>
+                                        <li>
+                                            <label class="margin-bottom-0">
+                                                <input type="checkbox" name="" id="chk_1">
+                                                <span>Attendance Manage</span>
+                                            </label>
+                                        </li>
+                                        <li>
+                                            <label class="margin-bottom-0">
+                                                <input type="checkbox" name="" id="chk_2">
+                                                <span>Attendance Overview</span>
+                                            </label>
+                                        </li>
+                                        <li>
+                                            <label class="margin-bottom-0">
+                                                <input type="checkbox" name="" id="chk_3">
+                                                <span>Announcements</span>
+                                            </label>
+                                        </li>
+                                        <li>
+                                            <label class="margin-bottom-0">
+                                                <input type="checkbox" name="" id="chk_4">
+                                                <span>Punch Type</span>
+                                            </label>
+                                        </li>
+                                        <li>
+                                            <label class="margin-bottom-0">
+                                                <input type="checkbox" name="" id="chk_5">
+                                                <span>Present Patterns</span>
+                                            </label>
+                                        </li>
+                                        <li>
+                                            <label class="margin-bottom-0">
+                                                <input type="checkbox" name="" id="chk_6">
+                                                <span>Pending Requests</span>
+                                            </label>
+                                        </li>
+                                        <li>
+                                            <label class="margin-bottom-0">
+                                                <input type="checkbox" name="" id="chk_7">
+                                                <span>Leave type Bifurcation</span>
+                                            </label>
+                                        </li>
+                                        <li>
+                                            <label class="margin-bottom-0">
+                                                <input type="checkbox" name="" id="chk_8">
+                                                <span>Attendance Summary</span>
+                                            </label>
+                                        </li>
+                                        <li>
+                                            <label class="margin-bottom-0">
+                                                <input type="checkbox" name="" id="chk_9">
+                                                <span>Overtime</span>
+                                            </label>
+                                        </li>
+                                        <li>
+                                            <label class="margin-bottom-0">
+                                                <input type="checkbox" name="" id="chk_10">
+                                                <span>Upcoming Holidays</span>
+                                            </label>
+                                        </li>
+                                        <li>
+                                            <label class="margin-bottom-0">
+                                                <input type="checkbox" name="" id="chk_11">
+                                                <span>Gender wise chart</span>
+                                            </label>
+                                        </li>
+                                        <li>
+                                            <label class="margin-bottom-0">
+                                                <input type="checkbox" name="" id="chk_12">
+                                                <span>Attration Chart</span>
+                                            </label>
+                                        </li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </fieldset>
+                </div>
+                <div class="modal-footer">
+                    <div class="row">
+                        <div class="col-lg-12 text-right">
+                            @*<button type="button" class="btn clear_btn" id="ResetWidget"><i class="fa-light fa-arrows-rotate"></i> Reset to Default</button>*@
+                            <button type="button" class="btn save_btn" id="widgetSave"><i class="fa-light fa-floppy-disk"></i> Save</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Custom Widget Modal : End -->
+    <!-- Check in Modal : Begin -->
+    <div id="checkinbtn_modal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog w-1080">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" id="closedatten" data-dismiss="modal">&times;</button>
+                    <h4 class="modal-title">Checked In</h4>
+                </div>
+                <div class="modal-body nomodalfooter">
+                    <fieldset>
+                        <div class="admin_tbl table-responsive" id="tableResponsive_checkIn">
+                            <div id="loader_checkin" class="table-loader" style="display:none;">
+                                <img src="~/LandingAssets/images/loading.gif" style="width: 60px; top: 40%; position: relative;" alt="loading" title="loading" />
+                            </div>
+                            <table id="checkin_table" class="table new_datatbl table-striped table-bordered table-hover table-checkable order-column">
+                                <thead>
+                                    <tr>
+                                        <th style="min-width: 100px;">Employee Code</th>
+                                        <th style="min-width: 180px;">Name</th>
+                                        <th style="min-width: 60px;">Punch ID</th>
+                                        <th style="min-width: 100px;">Department</th>
+                                        <th style="min-width: 100px;">Designation</th>
+                                        <th style="min-width: 60px;">Shift</th>
+                                        <th style="min-width: 60px;">Status</th>
+                                        <th style="min-width: 75px;">Punch Time</th>
+                                        <th style="min-width: 60px;">Date</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </fieldset>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Check in  Modal : End -->
+    <!-- NotCheck in Modal : Begin -->
+    <div id="notcheckedin_modal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog w-1080">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" id="closedatten" data-dismiss="modal">&times;</button>
+                    <h4 class="modal-title">Not Checked In</h4>
+                </div>
+                <div class="modal-body nomodalfooter">
+                    <fieldset>
+                        <div class="admin_tbl table-responsive" id="tableResponsive_notcheckedin">
+                            <div id="loader_notcheckedin" class="table-loader" style="display:none;">
+                                <img src="~/LandingAssets/images/loading.gif" style="width: 60px; top: 40%; position: relative;" alt="loading" title="loading" />
+                            </div>
+                            <table id="notcheckedin_tbl" class="table new_datatbl table-striped table-bordered table-hover table-checkable order-column">
+                                <thead>
+                                    <tr>
+                                        <th style="min-width: 100px;">Employee Code</th>
+                                        <th style="min-width: 180px;">Name</th>
+                                        <th style="min-width: 60px;">Punch ID</th>
+                                        <th style="min-width: 100px;">Department</th>
+                                        <th style="min-width: 100px;">Designation</th>
+                                        <th style="min-width: 60px;">Shift</th>
+                                        <th style="min-width: 60px;">Status</th>
+                                        <th style="min-width: 60px;">Date</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </fieldset>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- NotCheck in  Modal : End -->
+    <!-- Late Clock in Modal : Begin -->
+    <div id="lateclockin_modal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog w-1080">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" id="closedatten" data-dismiss="modal">&times;</button>
+                    <h4 class="modal-title">Late Clock In</h4>
+                </div>
+                <div class="modal-body nomodalfooter">
+                    <fieldset>
+                        <div class="admin_tbl table-responsive" id="tableResponsive_lateclockin">
+                            <div id="loader_lateclockin" class="table-loader" style="display:none;">
+                                <img src="~/LandingAssets/images/loading.gif" style="width: 60px; top: 40%; position: relative;" alt="loading" title="loading" />
+                            </div>
+                            <table id="lateclockin_tbl" class="table new_datatbl table-striped table-bordered table-hover table-checkable order-column">
+                                <thead>
+                                    <tr>
+                                        <th style="min-width: 100px;">Employee Code</th>
+                                        <th style="min-width: 180px;">Name</th>
+                                        <th style="min-width: 60px;">Punch ID</th>
+                                        <th style="min-width: 100px;">Department</th>
+                                        <th style="min-width: 100px;">Designation</th>
+                                        <th style="min-width: 55px;">Shift</th>
+                                        <th style="min-width: 90px;">Shift Start Time</th>
+                                        <th style="min-width: 90px;">Shift End Time</th>
+                                        <th style="min-width: 75px;">Punch Time</th>
+                                        <th style="min-width: 80px;">Late In Minutes</th>
+                                        <th style="min-width: 60px;">Date</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </fieldset>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Late Clock in  Modal : End -->
+    <!-- Early Clock Out Modal : Begin -->
+    <div id="earlyclockout_modal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog w-1080">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" id="closedatten" data-dismiss="modal">&times;</button>
+                    <h4 class="modal-title">Early Clock Out</h4>
+                </div>
+                <div class="modal-body nomodalfooter">
+                    <fieldset>
+                        <div class="admin_tbl table-responsive" id="tableResponsive_earlyclockout">
+                            <div id="loader_earlyclockout" class="table-loader" style="display:none;">
+                                <img src="~/LandingAssets/images/loading.gif" style="width: 60px; top: 40%; position: relative;" alt="loading" title="loading" />
+                            </div>
+                            <table id="earlyclockout_tbl" class="table new_datatbl table-striped table-bordered table-hover table-checkable order-column">
+                                <thead>
+                                    <tr>
+                                        <th style="min-width: 100px;">Employee Code</th>
+                                        <th style="min-width: 180px;">Name</th>
+                                        <th style="min-width: 60px;">Punch ID</th>
+                                        <th style="min-width: 100px;">Department</th>
+                                        <th style="min-width: 100px;">Designation</th>
+                                        <th style="min-width: 55px;">Shift</th>
+                                        <th style="min-width: 90px;">Shift Start Time</th>
+                                        <th style="min-width: 90px;">Shift End Time</th>
+                                        <th style="min-width: 74px;">Punch Time</th>
+                                        <th style="min-width: 80px;">Early out Minutes</th>
+                                        <th style="min-width: 60px;">Date</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </fieldset>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Early Clock Out Modal : End -->
+    <!-- Birthday Modal : Begin -->
+    <div id="birthday_modal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog w-1080">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" id="closedatten" data-dismiss="modal">&times;</button>
+                    <h4 class="modal-title">Birthday</h4>
+                </div>
+                <div class="modal-body nomodalfooter">
+                    <fieldset>
+                        <div class="admin_tbl table-responsive" id="tableResponsive_birthday">
+                            <div id="loader_notcheckedin" class="table-loader" style="display:none;">
+                                <img src="~/LandingAssets/images/loading.gif" style="width: 60px; top: 40%; position: relative;" alt="loading" title="loading" />
+                            </div>
+                            <table id="birthday_tbl" class="table new_datatbl table-striped table-bordered table-hover table-checkable order-column">
+                                <thead>
+                                    <tr>
+                                        <th style="min-width: 100px;">Employee Code</th>
+                                        <th style="min-width: 180px;">Name</th>
+                                        <th>Punch ID</th>
+                                        <th style="min-width: 100px;">Department</th>
+                                        <th style="min-width: 100px;">Designation</th>
+                                        <th style="min-width: 80px;">Birth date</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </fieldset>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Birthday Modal : End -->
+    <!-- Device Modal : Begin -->
+    <div id="device_modal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog w-1080">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" id="closedatten" data-dismiss="modal">&times;</button>
+                    <h4 class="modal-title">Device</h4>
+                </div>
+                <div class="modal-body nomodalfooter">
+                    <fieldset>
+                        <div class="admin_tbl table-responsive" id="tableResponsive_Device">
+                            <table id="device_tbl" class="table new_datatbl table-striped table-bordered table-hover table-checkable order-column">
+                                <thead>
+                                    <tr>
+                                        <th style="min-width: 90px;">Branch Name</th>
+                                        <th style="min-width: 100px;">Device Name</th>
+                                        <th style="min-width: 120px;">Device SrNo</th>
+                                        <th style="min-width: 80px;">Device Code</th>
+                                        <th style="min-width: 80px;">Device Port</th>
+                                        <th style="min-width: 80px;">Device Type</th>
+                                        <th style="min-width: 100px;">Last Activity</th>
+                                        <th style="min-width: 40px;">Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </fieldset>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Device Modal : End -->
+    <!-- Attendance Overview - Present Modal : Begin -->
+    <div id="present_modal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog w-1080">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    <h4 class="modal-title">Present</h4>
+                </div>
+                <div class="modal-body nomodalfooter">
+                    <div id="presentid"></div>
+                    <fieldset>
+                        <div class="admin_tbl table-responsive" id="tableResponsive_Present">
+                            <table id="present_tbl" class="table new_datatbl table-striped table-bordered table-hover table-checkable order-column">
+                                <thead>
+                                    <tr>
+                                        <th style="min-width: 100px;">Employee Code</th>
+                                        <th style="min-width: 180px;">Name</th>
+                                        <th style="min-width: 60px;">Punch ID</th>
+                                        <th style="min-width: 100px;">Department</th>
+                                        <th style="min-width: 100px;">Designation</th>
+                                        <th style="min-width: 55px;">Shift</th>
+                                        <th style="min-width: 60px;">Status</th>
+                                        <th>In Time</th>
+                                        <th>Out Time</th>
+                                        <th>Total Hours</th>
+                                        <th style="min-width: 60px;">Date</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </fieldset>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Attendance Overview - Present Modal : End -->
+    <!-- Attendance Overview - Absent Modal : Begin -->
+    <div id="absent_modal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog w-1080">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    <h4 class="modal-title">Absent</h4>
+                </div>
+                <div class="modal-body nomodalfooter">
+                    <div id="absentid"></div>
+
+                    <fieldset>
+                        <div class="admin_tbl table-responsive" id="tableResponsive_Absent">
+                            <table id="absent_tbl" class="table new_datatbl table-striped table-bordered table-hover table-checkable order-column">
+                                <thead>
+                                    <tr>
+                                        <th style="min-width: 130px;">Employee Code</th>
+                                        <th style="min-width: 200px;">Name</th>
+                                        <th style="min-width: 70px;">Punch ID</th>
+                                        <th style="min-width: 120px;">Department</th>
+                                        <th style="min-width: 120px;">Designation</th>
+                                        <th style="min-width: 60px;">Shift</th>
+                                        <th style="min-width: 60px;">Status</th>
+                                        <th style="min-width: 70px;">Date</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </fieldset>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Attendance Overview - Absent Modal : End -->
+    <!-- Attendance Overview - OnLeave Modal : Begin -->
+    <div id="onleave_modal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog w-1080">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    <h4 class="modal-title">On Leave</h4>
+                </div>
+                <div class="modal-body nomodalfooter">
+                    <div id="onleaveid"></div>
+                    <fieldset>
+                        <div class="admin_tbl table-responsive" id="tableResponsive_OnLeave">
+                            <table id="onleave_tbl" class="table new_datatbl table-striped table-bordered table-hover table-checkable order-column">
+                                <thead>
+                                    <tr>
+                                        <th style="min-width: 130px;">Employee Code</th>
+                                        <th style="min-width: 200px;">Name</th>
+                                        <th style="min-width: 70px;">Punch ID</th>
+                                        <th style="min-width: 120px;">Department</th>
+                                        <th style="min-width: 120px;">Designation</th>
+                                        <th style="min-width: 70px;">Leave Type</th>
+                                        @*<th style="min-width: 60px;">Status</th>*@
+                                        <th style="min-width: 70px;">Date</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </fieldset>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Attendance Overview - OnLeave Modal : End -->
+    <!-- Attendance Overview - Holiday Modal : Begin -->
+    <div id="holiday_modal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog w-1080">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    <h4 class="modal-title">Holiday</h4>
+                </div>
+                <div class="modal-body nomodalfooter">
+                    <div id="holidayids"></div>
+                    <fieldset>
+                        <div class="admin_tbl table-responsive" id="tableResponsive_Holiday">
+                            <table id="holiday_tbl" class="table new_datatbl table-striped table-bordered table-hover table-checkable order-column">
+                                <thead>
+                                    <tr>
+                                        <th style="min-width: 100px;">Employee Code</th>
+                                        <th style="min-width: 180px;">Name</th>
+                                        <th style="min-width: 70px;">Punch ID</th>
+                                        <th style="min-width: 120px;">Department</th>
+                                        <th style="min-width: 100px;">Designation</th>
+                                        <th style="min-width: 60px;">Shift</th>
+                                        <th style="min-width: 60px;">Status</th>
+                                        @*<th>Holiday Name</th>*@
+                                        <th style="min-width: 60px;">Date</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </fieldset>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Attendance Overview - Holiday Modal : End -->
+    <!-- Attendance Overview - MissPunch Modal : Begin -->
+    <div id="misspunch_modal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog w-1080">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    <h4 class="modal-title">Miss Punch</h4>
+                </div>
+                <div class="modal-body nomodalfooter">
+                    <div id="misspunchid"></div>
+                    <fieldset>
+                        <div class="admin_tbl table-responsive" id="tableResponsive_MissPunch">
+                            <table id="misspunch_tbl" class="table new_datatbl table-striped table-bordered table-hover table-checkable order-column">
+                                <thead>
+                                    <tr>
+                                        <th style="min-width: 100px;">Employee Code</th>
+                                        <th style="min-width: 180px;">Name</th>
+                                        <th style="min-width: 70px;">Punch ID</th>
+                                        <th style="min-width: 120px;">Department</th>
+                                        <th style="min-width: 100px;">Designation</th>
+                                        <th style="min-width: 60px;">Shift</th>
+                                        <th style="min-width: 60px;">Status</th>
+                                        <th style="min-width: 60px;">Date</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </fieldset>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Attendance Overview - MissPunch Modal : End -->
+    <!-- Attendance Overview - WeekOff Modal : Begin -->
+    <div id="weekoff_modal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog w-1080">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    <h4 class="modal-title">Week Off</h4>
+                </div>
+                <div class="modal-body nomodalfooter">
+                    <div id="weekoffid"></div>
+                    <fieldset>
+                        <div class="admin_tbl table-responsive" id="tableResponsive_WeekOffh">
+                            <table id="weekoff_tbl" class="table new_datatbl table-striped table-bordered table-hover table-checkable order-column">
+                                <thead>
+                                    <tr>
+                                        <th style="min-width: 100px;">Employee Code</th>
+                                        <th style="min-width: 180px;">Name</th>
+                                        <th style="min-width: 70px;">Punch ID</th>
+                                        <th style="min-width: 120px;">Department</th>
+                                        <th style="min-width: 100px;">Designation</th>
+                                        <th style="min-width: 60px;">Shift</th>
+                                        <th style="min-width: 60px;">Status</th>
+                                        <th style="min-width: 60px;">Date</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @*<tr>
+                                            <td>Weekoff_66</td>
+                                            <td>Jayeshgiri Hashmukhgiri Goswami</td>
+                                            <td>P123456</td>
+                                            <td>Software Cloud</td>
+                                            <td>Sr Software Developer</td>
+                                            <td>General</td>
+                                            <td class="green_font">P1</td>
+                                            <td>05-Nov</td>
+                                        </tr>*@
+
+                                </tbody>
+                            </table>
+                        </div>
+                    </fieldset>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Attendance Overview - WeekOff Modal : End -->
+    <!-- Attendance Overview - LessHour Modal : Begin -->
+    <div id="lesshour_modal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog w-1080">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    <h4 class="modal-title">Less Hours</h4>
+                </div>
+                <div class="modal-body nomodalfooter">
+                    <div id="lesshourhid"></div>
+                    <fieldset>
+                        <div class="admin_tbl table-responsive" id="tableResponsive_LessHour">
+                            <table id="less_tbl" class="table new_datatbl table-striped table-bordered table-hover table-checkable order-column">
+                                <thead>
+                                    <tr>
+                                        <th style="min-width: 100px;">Employee Code</th>
+                                        <th style="min-width: 180px;">Name</th>
+                                        <th style="min-width: 70px;">Punch ID</th>
+                                        <th style="min-width: 100px;">Department</th>
+                                        <th style="min-width: 100px;">Designation</th>
+                                        <th style="min-width: 60px;">Shift</th>
+                                        <th style="min-width: 60px;">Status</th>
+                                        <th>In Time</th>
+                                        <th>Out Time</th>
+                                        <th style="min-width: 60px;">Date</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </fieldset>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Attendance Overview - LessHour Modal : End -->
+    <!-- Attendance Overview - HalfDay Modal : Begin -->
+    <div id="HalfDay_modal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog w-1080">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    <h4 class="modal-title">HalfDays</h4>
+                </div>
+                <div class="modal-body nomodalfooter">
+                    <div id="Halfdayid"></div>
+                    <fieldset>
+                        <div class="admin_tbl table-responsive" id="tableResponsive_HalfDay">
+                            <table id="Halfday_tbl" class="table new_datatbl table-striped table-bordered table-hover table-checkable order-column">
+                                <thead>
+                                    <tr>
+                                        <th style="min-width: 100px;">Employee Code</th>
+                                        <th style="min-width: 180px;">Name</th>
+                                        <th style="min-width: 70px;">Punch ID</th>
+                                        <th style="min-width: 100px;">Department</th>
+                                        <th style="min-width: 100px;">Designation</th>
+                                        <th style="min-width: 60px;">Shift</th>
+                                        <th style="min-width: 60px;">Status</th>
+                                        <th>In Time</th>
+                                        <th>Out Time</th>
+                                        <th style="min-width: 60px;">Date</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </fieldset>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Attendance Overview - HalfDay Modal : End -->
+    <!-- Device Punch list Modal : Begin -->
+    <div id="devicepunch_modal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog w-1080">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    <h4 class="modal-title">Device Punch List</h4>
+                </div>
+                <div class="modal-body nomodalfooter">
+                    <div id="dpunch"></div>
+                    <fieldset>
+                        <div class="admin_tbl table-responsive" id="tableResponsive_Devicepunch">
+                            <table id="devicepunch_tbl" class="table new_datatbl table-striped table-bordered table-hover table-checkable order-column">
+                                <thead>
+                                    <tr>
+                                        <th style="min-width: 160px;">Employee Code</th>
+                                        <th style="min-width: 250px;">Name</th>
+                                        <th style="min-width: 80px;">Punch ID</th>
+                                        <th style="min-width: 140px;">Department</th>
+                                        <th style="min-width: 120px;">Designation</th>
+                                        <th style="min-width: 70px;">Date</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </fieldset>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Device Punch list Modal : End -->
+    <!-- Web Punch list Modal : Begin -->
+    <div id="webpunch_modal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog w-1080">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    <h4 class="modal-title">Web Punch List</h4>
+                </div>
+                <div class="modal-body nomodalfooter">
+                    <div id="wpunch"></div>
+                    <fieldset>
+                        <div class="admin_tbl table-responsive" id="tableResponsive_Web">
+                            <table id="webpunch_tbl" class="table new_datatbl table-striped table-bordered table-hover table-checkable order-column">
+                                <thead>
+                                    <tr>
+                                        <th style="min-width: 160px;">Employee Code</th>
+                                        <th style="min-width: 250px;">Name</th>
+                                        <th style="min-width: 80px;">Punch ID</th>
+                                        <th style="min-width: 140px;">Department</th>
+                                        <th style="min-width: 120px;">Designation</th>
+                                        <th style="min-width: 70px;">Date</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </fieldset>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Web Punch list Modal : End -->
+    <!-- Mobile Punch list Modal : Begin -->
+    <div id="mobilepunch_modal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog w-1080">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    <h4 class="modal-title">Mobile Punch List</h4>
+                </div>
+                <div class="modal-body nomodalfooter">
+                    <div id="mpunch"></div>
+                    <fieldset>
+                        <div class="admin_tbl table-responsive" id="tableResponsive_Mobile">
+                            <table id="mobilepunch_tbl" class="table new_datatbl table-striped table-bordered table-hover table-checkable order-column">
+                                <thead>
+                                    <tr>
+                                        <th style="min-width: 160px;">Employee Code</th>
+                                        <th style="min-width: 250px;">Name</th>
+                                        <th style="min-width: 80px;">Punch ID</th>
+                                        <th style="min-width: 140px;">Department</th>
+                                        <th style="min-width: 120px;">Designation</th>
+                                        <th style="min-width: 70px;">Date</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </fieldset>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Mobile Punch list Modal : End -->
+    <!-- Weekly Present Patterns Modal : Begin -->
+    <div id="weeklypresent_modal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog w-1080">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    <h4 class="modal-title">Weekly Present List</h4>
+                </div>
+                <div class="modal-body nomodalfooter">
+                    <fieldset>
+                        <div class="row">
+                            <div class="col-lg-12">
+                                <table id="weeklypresent_tbl" class="table table-striped table-bordered table-hover table-checkable order-column">
+                                    <thead>
+                                        <tr>
+                                            <th style="min-width: 120px;">Total strength</th>
+                                            <th style="min-width: 180px;">Total Present Employee</th>
+                                            <th>Pecentage of Present/th>
+                                            <th style="min-width: 120px;">Week start date</th>
+                                            <th style="min-width: 120px;">Week End Date</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </fieldset>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Weekly Present Patterns Modal : End -->
+    <!-- Monthly Present Patterns Modal : Begin -->
+    <div id="monthlypresent_modal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog w-1080">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    <h4 class="modal-title">Monthly Present List</h4>
+                </div>
+                <div class="modal-body nomodalfooter">
+                    <fieldset>
+                        <div class="row">
+                            <div class="col-lg-12">
+                                <table id="monthlypresent_tbl" class="table table-striped table-bordered table-hover table-checkable order-column">
+                                    <thead>
+                                        <tr>
+                                            <th style="min-width: 120px;">Total strength</th>
+                                            <th style="min-width: 180px;">Total Present Employee</th>
+                                            <th>Pecentage of Present/th>
+                                            <th style="min-width: 120px;">Month</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </fieldset>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Monthly Present Patterns Modal : End -->
+    <!-- Yearly Present Patterns Modal : Begin -->
+    <div id="yearlypresent_modal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog w-1080">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    <h4 class="modal-title">Yearly Present List</h4>
+                </div>
+                <div class="modal-body nomodalfooter">
+                    <fieldset>
+                        <div class="row">
+                            <div class="col-lg-12">
+                                <table id="yearlypresent_tbl" class="table table-striped table-bordered table-hover table-checkable order-column">
+                                    <thead>
+                                        <tr>
+                                            <th style="min-width: 120px;">Total strength</th>
+                                            <th style="min-width: 180px;">Total Present Employee</th>
+                                            <th>Pecentage of Present/th>
+                                            <th style="min-width: 120px;">Year</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </fieldset>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Yearly Present Patterns Modal : End -->
+    <!-- Leave type Bifurcation Modal : Begin -->
+    <div id="leavetype_modal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog w-1080">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    <h4 class="modal-title">Leave type Bifurcation</h4>
+                </div>
+                <div class="modal-body nomodalfooter">
+                    <div id="leavetypes"></div>
+                    <fieldset>
+                        <div class="admin_tbl table-responsive" id="tableResponsive_Leavetype">
+                            <table id="leavetype_tbl" class="table new_datatbl table-striped table-bordered table-hover table-checkable order-column">
+                                <thead>
+                                    <tr>
+                                        <th style="min-width: 100px;">Employee Code</th>
+                                        <th style="min-width: 160px;">Name</th>
+                                        <th style="min-width: 70px;">Punch ID</th>
+                                        <th style="min-width: 100px;">Department</th>
+                                        <th style="min-width: 100px;">Designation</th>
+                                        <th style="min-width: 50px;">Paid/UnPaid</th>
+                                        <th style="min-width: 50px;">HalfLeave</th>
+                                        <th style="min-width: 70px;">Leave Type</th>
+                                        <th style="min-width: 60px;">Fromdate</th>
+                                        <th style="min-width: 60px;">Todate</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </fieldset>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Leave type Bifurcation Modal : End -->
+    <!-- OverTime Hours Modal : Begin -->
+    <div id="othour_modal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog w-1080">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    <h4 class="modal-title">Overtime Hours Summary</h4>
+                </div>
+                <div class="modal-body nomodalfooter">
+                    <div id="otid"></div>
+                    <fieldset>
+                        <div class="admin_tbl table-responsive" id="tableResponsive_OverTime">
+                            <table id="othour_tbl" class="table new_datatbl table-striped table-bordered table-hover table-checkable order-column">
+                                <thead>
+                                    <tr>
+                                        <th style="min-width: 110px;">Employee Code</th>
+                                        <th style="min-width: 180px;">Name</th>
+                                        <th style="min-width: 70px;">Punch ID</th>
+                                        <th style="min-width: 100px;">Department</th>
+                                        <th style="min-width: 100px;">Designation</th>
+                                        <th style="min-width: 55px;">Shift</th>
+                                        <th style="min-width: 70px;">OT Hours</th>
+                                        <th style="min-width: 70px;">Date</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </fieldset>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- OverTime Hours Modal : End -->
+    <!-- OverTime Employee Modal : Begin -->
+    <div id="otemp_modal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog w-1080">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    <h4 class="modal-title">Overtime Employee Count Summary</h4>
+                </div>
+                <div class="modal-body nomodalfooter">
+                    <fieldset>
+                        <div class="row">
+                            <div class="col-lg-12">
+                                <table id="otemp_tbl" class="table table-striped table-bordered table-hover table-checkable order-column">
+                                    <thead>
+                                        <tr>
+                                            <th style="min-width: 100px;">Employee Code</th>
+                                            <th style="min-width: 180px;">Name</th>
+                                            <th>Punch ID</th>
+                                            <th style="min-width: 100px;">Department</th>
+                                            <th style="min-width: 100px;">Designation</th>
+                                            <th style="min-width: 55px;">Shift</th>
+                                            <th>Total OT Hours</th>
+                                            <th style="min-width: 60px;">Date</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </fieldset>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- OverTime Employee Modal : End -->
+    <!-- Gender Male List Modal : Begin -->
+    <div id="malegender_modal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog w-1080">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    <h4 class="modal-title"><span id="titlechangemale">Branch Wise Male List</span></h4>
+                </div>
+                <div class="modal-body nomodalfooter">
+                    <div id="modalContentmale"></div>
+                    <fieldset>
+                        <div class="admin_tbl table-responsive" id="tableResponsive_Male">
+                            <table id="malegender_tbl" class="table new_datatbl table-striped table-bordered table-hover table-checkable order-column">
+                                <thead>
+                                    <tr>
+                                        <th style="min-width: 100px;">Employee Code</th>
+                                        <th style="min-width: 180px;">Name</th>
+                                        <th>Punch ID</th>
+                                        <th style="min-width: 100px;">Department</th>
+                                        <th style="min-width: 100px;">Designation</th>
+                                        <th style="min-width: 55px;">Shift</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </fieldset>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Gender Male List Modal : End -->
+    <!-- Gender Female List Modal : Begin -->
+    <div id="femalegender_modal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog w-1080">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    <h4 class="modal-title"><span id="titlechnagefemale">Branch Wise Female List</span></h4>
+                </div>
+                <div class="modal-body nomodalfooter">
+                    <div id="modalContent"></div>
+                    <fieldset>
+                        <div class="admin_tbl table-responsive" id="tableResponsive_Female">
+                            <table id="femalegender_tbl" class="table new_datatbl table-striped table-bordered table-hover table-checkable order-column">
+                                <thead>
+                                    <tr>
+                                        <th style="min-width: 100px;">Employee Code</th>
+                                        <th style="min-width: 180px;">Name</th>
+                                        <th>Punch ID</th>
+                                        <th style="min-width: 100px;">Department</th>
+                                        <th style="min-width: 100px;">Designation</th>
+                                        <th style="min-width: 55px;">Shift</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </fieldset>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Gender Female List Modal : End -->
+    <!-- Male Attration list Modal : Begin -->
+    <div id="MaleAttration_modal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog w-1080">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    <h4 class="modal-title">Male Employee Attartion List</h4>
+                </div>
+                <div class="modal-body nomodalfooter">
+                    <div id="mapunch"></div>
+                    <fieldset>
+                        <div class="admin_tbl table-responsive" id="tableResponsive_MaleAttration">
+                            <table id="Attration_tbl" class="table new_datatbl table-striped table-bordered table-hover table-checkable order-column">
+                                <thead>
+                                    <tr>
+                                        <th style="min-width: 140px; ">Employee Code</th>
+                                        <th style="min-width: 180px;">Name</th>
+                                        <th style="min-width: 70px;">Punch ID</th>
+                                        <th style="min-width: 100px;">Department</th>
+                                        <th style="min-width: 100px;">Designation</th>
+                                        @* <th style="min-width: 60px;">Gender</th>*@
+                                        <th style="min-width: 80px;">BranchName</th>
+                                        <th style="min-width: 120px;">ResignationDate</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </fieldset>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Male Attartion list Modal : End -->
+    <!-- feMale Attration list Modal : Begin -->
+    <div id="FemaleAttration_modal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog w-1080">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    <h4 class="modal-title">Female Employee Attartion List</h4>
+                </div>
+                <div class="modal-body nomodalfooter">
+                    <div id="femapunch"></div>
+                    <fieldset>
+                        <div class="admin_tbl table-responsive" id="tableResponsive_FemaleAttration">
+                            <table id="FeAttration_tbl" class="table new_datatbl table-striped table-bordered table-hover table-checkable order-column">
+                                <thead>
+                                    <tr>
+                                        <th style="min-width: 140px; ">Employee Code</th>
+                                        <th style="min-width: 180px;">Name</th>
+                                        <th style="min-width: 70px;">Punch ID</th>
+                                        <th style="min-width: 100px;">Department</th>
+                                        <th style="min-width: 100px;">Designation</th>
+                                        @* <th style="min-width: 60px;">Gender</th>*@
+                                        <th style="min-width: 80px;">BranchName</th>
+                                        <th style="min-width: 120px; ">ResignationDate</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </fieldset>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!--feMale Attartion list Modal : End -->
+    <!-- Expense Modal : Begin -->
+    <div id="emsoverviewblock_modal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog w-900">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    <h4 class="modal-title" id="emsTitle"></h4>
+                </div>
+                <div class="modal-body nomodalfooter">
+                    <fieldset>
+                        <div class="admin_tbl table-responsive" id="tableResponsive_emsview">
+                            <table id="emsdataview_table" class="table new_datatbl table-striped table-bordered table-hover table-checkable order-column">
+                                <thead></thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                        <div id="ems-empty" style="display:none;">
+                            <div class="empty_block no_record datanotfound">
+                                <img src="~/assets/images/emptyscreen_3.png" height="122" width="230" alt="No Records Found">
+                                <p class="datanotfound_title">No records Found.</p>
+                            </div>
+                        </div>
+                    </fieldset>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Expense Modal : End -->
+    <!-- Below 3 Links Using in Leavetype Bifurcation Lolipop Chart  -->
+    <script src="~/Newlayout/js/lolipopjs/core.js"></script>
+    <script src="~/Newlayout/js/lolipopjs/charts.js"></script>
+    <script src="~/Newlayout/js/lolipopjs/animated.js"></script>
+    <!-- All New Chart Js Code -->
+    @*<script src="~/Newlayout/js/new_chart.js"></script>.*@
+
+    <script src="~/AssetsNew/js/introjs.js"></script>
+    <script>
+        var uniqueid = '@empid';
+        var Tourflag = '@hasTourCompletes';
+         var UserId1 = '@UserId';
+        var roleids = '@_RoleId';
+
+
+
+    @*if (roleids == 6806 || roleids == 6805) {
+        uniqueid = '@compempid';
+    }*@
+    var hasTourCompletedLocally = sessionStorage.getItem('hasTourCompleted_' + uniqueid + '_' + UserId1);
+
+        function startTour() {
+
+            Tourflag == 0;
+            introJs().setOptions({
+
+                steps: [
+                    {
+                        title: "What's New!",
+                        intro: "<div class='wel_icon text-center'><img src='/assets/images/tour/First_screen.png' style='border-radius: 6px !important;'><p class='header'>Our Commitment to a Better Experience!</P></div>We’ve redesigned the layout for faster access, easier grouping, and a smoother workflow.",
+                        position: "center",
+                    },
+                    {
+                        title: "New Navigation",
+                        element: document.querySelector(".primary-menu"),
+                        intro: "<div class='wel_icon text-center'><img src='/assets/images/tour/Menu.gif' height='211' width='430' style='border: 1px solid #b5b5b5; border-radius: 6px !important;'><p class='header'>Smarter. Faster. Seamless.</P></div>Enjoy quicker access with a redesigned menu that’s built for simplicity and speed. Navigate features with ease and work more efficiently.",
+                        position: "center",
+
+                    },
+                ],
+                exitOnOverlayClick: false,
+                exitOnEsc: false,
+                doneLabel: 'Next',
+                keyboardNavigation: false,
+
+            }).oncomplete(function () {
+                //if (roleids != 1) {
+                //    sessionStorage.setItem('introJsState', 'Holiday');
+                //    window.location.href = '/ESS/HolidayList';
+                //}
+                //else {
+                //    sessionStorage.setItem('introJsState', 'HolidayMaster');
+                //    window.location.href = '/MasterData/HolidayMaster';
+                //}
+                sessionStorage.setItem('introJsState', 'Holiday');
+                window.location.href = '/Utilities/AttendanceDetails';
+
+            }).start();
+
+
+
+        }
+          window.addEventListener('load', (event) => {
+
+            if (Tourflag !== 'False') {
+                if (hasTourCompletedLocally !== 'False') {
+
+                        startTour();
+                }
+            }
+         });
+
+
+
+
+        // ========= Dashboard Drag & Drop Card Reorder =========
+        var STORAGE_KEY = 'adminDashboardCardOrder_' + uniqueid + '_' + UserId1;
+
+        function addDragHandles() {
+            $('#dashboard-sortable-row > div').each(function () {
+                var $header = $(this).find('.card_header').first();
+                if ($header.length && !$header.find('.drag-handle').length) {
+                    var $firstChild = $header.children().first();
+                    var $handle = $('<span class="drag-handle tooltips" data-placement="top" data-original-title="Drag to reorder"><i class="fa-light fa-grip-dots-vertical"></i></span>');
+                    if ($firstChild.hasClass('d-flex')) {
+                        $firstChild.prepend($handle);
+                    } else {
+                        $header.prepend($handle);
+                    }
+                }
+            });
+        }
+
+        function getCardOrder() {
+            var order = [];
+            $('#dashboard-sortable-row > div').each(function () {
+                var id = $(this).attr('id');
+                if (id) {
+                    order.push(id);
+                }
+            });
+            return order;
+        }
+
+        function saveCardOrder() {
+            var order = getCardOrder();
+            try {
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(order));
+            } catch (e) { }
+        }
+
+        function restoreCardOrder() {
+            try {
+                var saved = localStorage.getItem(STORAGE_KEY);
+                if (!saved) return;
+                var order = JSON.parse(saved);
+                if (!Array.isArray(order) || order.length === 0) return;
+
+                var $container = $('#dashboard-sortable-row');
+                var $children = $container.children();
+                var idMap = {};
+
+                $children.each(function () {
+                    var id = $(this).attr('id');
+                    if (id) {
+                        idMap[id] = $(this);
+                    }
+                });
+
+                // Append in saved order
+                for (var i = 0; i < order.length; i++) {
+                    if (idMap[order[i]]) {
+                        $container.append(idMap[order[i]]);
+                        delete idMap[order[i]];
+                    }
+                }
+                // Append any new cards not in saved order (at the end)
+                for (var key in idMap) {
+                    $container.append(idMap[key]);
+                }
+            } catch (e) { }
+        }
+
+        // Restore card order IMMEDIATELY to prevent position flash
+        restoreCardOrder();
+
+        function initDashboardSortable() {
+            var el = document.getElementById('dashboard-sortable-row');
+            if (!el) return;
+
+            addDragHandles();
+            $('.drag-handle.tooltips').tooltip({ container: 'body', trigger: 'hover' });
+
+            Sortable.create(el, {
+                handle: '.drag-handle',
+                animation: 250,
+                ghostClass: 'sortable-ghost',
+                chosenClass: 'sortable-chosen',
+                dragClass: 'sortable-drag',
+                easing: 'cubic-bezier(0.25, 1, 0.5, 1)',
+                forceFallback: false,
+                onEnd: function () {
+                    saveCardOrder();
+                }
+            });
+        }
+
+        // Only delay Sortable init + drag handles, NOT the order restore
+        setTimeout(function () {
+            initDashboardSortable();
+        }, 1500);
+
+    </script>
+}
+else
+{
+    <span style="color:red">Unauthorized Access.</span>
+}

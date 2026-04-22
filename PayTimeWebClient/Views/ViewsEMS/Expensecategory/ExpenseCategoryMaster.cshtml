@@ -1,0 +1,502 @@
+﻿@*@model PayTimeWebClient.Models.Employees*@
+@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@using System.Configuration;
+@using EMSWebClient;
+@{
+    ViewBag.Title = "ExpenseCategoryMaster";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    string _Message = ViewBag.msg;
+    string _error = ViewBag.error;
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    int _UserId = Convert.ToInt32(HttpContext.Current.Session["UserId"]);
+    int _cmpid = Convert.ToInt32(HttpContext.Current.Session["CompanyId"]);
+
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiEMSURL = ConfigurationManager.AppSettings["WebApiEMS"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    string _accountcd = HttpContext.Current.Session["cmpcode"].ToString();
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+    string _companyid = "0";
+    string _empid = "0";
+
+    if (_RoleId != 1 && _RoleId != 6805 && _RoleId != 6806)
+    {
+        _empid = HttpContext.Current.Session["EmpId"].ToString();
+    }
+    string _branchid = "0";
+    if (_RoleId == 6805)
+    {
+        _companyid = HttpContext.Current.Session["ClientCompanyId"].ToString();
+    }
+    if (_RoleId == 6806)
+    {
+        _companyid = HttpContext.Current.Session["ClientCompanyId"].ToString();
+        _branchid = HttpContext.Current.Session["BranchId"].ToString();
+    }
+
+    string _isPlanFace = HttpContext.Current.Session["isPlanFace"].ToString();
+    string _isdateformat = HttpContext.Current.Session["IsDateFormat"].ToString();
+    string _CountryCode = HttpContext.Current.Session["CountryCode"].ToString();
+    string _AreaCode = HttpContext.Current.Session["AreaCode"].ToString();
+    string _dbName = HttpContext.Current.Session["DbName"].ToString();
+    string _isPlanId = HttpContext.Current.Session["planId"].ToString();
+
+
+    string isClientDBMatchFlag = HttpContext.Current.Session["IsClientDBMatch"] != null
+? HttpContext.Current.Session["IsClientDBMatch"].ToString()
+: "false"; // Default to "false" if the session is null
+}
+<link href="/Newlayout/css/payrollstructure.css" rel="stylesheet">
+<link href="/Newlayout/css/emsstructure.css" rel="stylesheet">
+<script src="~/Newlayout/js/sweet_alert_payroll.js"></script>
+<script src="~/Scripts/Helpers/noDataHandler.js"></script>
+
+<style type="text/css">
+    .tbl_newdatatbl > tbody > tr > td {
+        text-align: left !important;
+    }
+
+    #tblpolicyView.dataTable th:last-child .search_input, #tblpolicyView.dataTable th:last-child i {
+        display: block;
+    }
+</style>
+<script>
+    var _RoleID = '@_RoleId';
+    var _CategoryMasterData = [];
+
+    $(document).ready(function ()
+    {
+
+        GetAllCategoryDetails();
+
+        $("#txtcategoryname, #txtDescription").on("keypress", function (e) {
+            var regex = /^[a-zA-Z0-9\s]+$/;
+            var key = String.fromCharCode(!e.charCode ? e.which : e.charCode);
+            if (!regex.test(key)) {
+                e.preventDefault();
+                return false;
+            }
+        });
+
+        //Filter Validation End.
+
+        // BLOCK PASTE IF CONTAINS SPECIAL CHARACTERS
+        $("#txtcategoryname, #txtDescription").on("paste", function (e) {
+            var clipboardData = e.originalEvent.clipboardData || window.clipboardData;
+            var pastedData = clipboardData.getData('Text');
+            var regex = /^[a-zA-Z0-9\s]+$/;
+
+            if (!regex.test(pastedData))
+            {
+                e.preventDefault();
+                //alert("Only alphanumeric characters are allowed. Special characters are not allowed.");
+            }
+        });
+
+        // Add Approval flow modal open and close
+        $("#AddcategorymasterBtn").on('click', function ()
+        {
+            $("#AddcategorymasterBtn").attr("data-toggle", "modal");
+            $("#AddcategorymasterBtn").attr("data-target", "#AddcategorymasterBtn_modal");
+        });
+
+        $("#btnCancel").on('click', function ()
+        {
+            frmClear();
+        });
+        $("#btnClose").on('click', function ()
+        {
+            frmClear();
+        });
+
+        $("#btnSavecategory").click(function ()
+        {
+            checkSession();
+            var delay = 1000;
+
+            if ($("#txtcategoryname").val().trim() == "") {
+                $("#txtcategoryname").addClass('field_error');
+                $("#txtcategoryname").focus();
+                event.preventDefault();
+                return false;
+            }
+            else
+            {
+                $("#txtcategoryname").removeClass('field_error');
+            }
+            if ($("#txtDescription").val().trim() == "" || $("#Description").val() == 0)
+            {
+                $("#txtDescription").addClass('field_error');
+                $("#txtDescription").focus();
+                event.preventDefault();
+                return false;
+            }
+            else
+            {
+                $("#txtDescription").removeClass('field_error');
+            }
+
+            var objflow =
+            {
+                CateGoryID: $("#txtcategoryid").val(),
+                CategoryName: $("#txtcategoryname").val(),
+                Des: $("#txtDescription").val(),
+                RoleId: _RoleID
+            }
+
+             $.ajax({
+                    type: "POST",
+                    headers: { 'Authorization': '@_tokan' },
+                    url: '@_webapiEMSURL' + 'ExpensePreparationMaster/ExpenseCategoryMasterRequest',
+                    data: JSON.stringify(objflow),
+                    contentType: "application/json; charset=utf-8",
+                    dataType: "json",
+                    beforeSend: function ()
+                    {
+                        $("#ajax_loaderapproval").show();
+                    },
+                    success: function (response)
+                    {
+                        if (response.success == true && response.responseCode == 201)
+                        {
+                            toastr.remove();
+                            toastr.success("CategoryMaster " + response.message);
+                        }
+                        else if (response.success == true && response.responseCode == 206)
+                        {
+                            toastr.remove();
+                            toastr.success("CategoryMaster " + response.message);
+                        }
+                        else if (response.success == false && response.responseCode == 210)
+                        {
+                            toastr.remove();
+                            toastr.error(response.message);
+                        }
+                        else if (response.success == false && response.responseCode == 205)
+                        {
+                            toastr.remove();
+                            toastr.error(response.message);
+                        }
+                        else
+                        {
+                            toastr.remove();
+                            toastr.error(response.validationErrors);
+                        }
+                        setTimeout(function () {
+                            window.location.reload(true);
+                        }, delay);
+                    },
+                    complete: function () {
+                        $("#ajax_loaderapproval").hide();
+                    }
+             });
+         });
+        $("#tblCategoryGetall").on('click', '.editclass', function ()
+        {
+            checkSession();
+            var categoryID = $(this).closest('a').data('categoryid');
+            var selectedData = _CategoryMasterData.find(x => x.CategoryId === categoryID);
+            if (!selectedData) {
+                alert("Data not found!");
+                return;
+            }
+            $("#txtcategoryid").val(categoryID);
+            $('#txtcategoryname').val(selectedData.CategoryName);
+            $('#txtDescription').val(selectedData.Description);
+
+            $(".editclass").attr("data-toggle", "modal");
+            $(".editclass").attr("data-target", "#AddcategorymasterBtn_modal");
+        });
+    });
+
+    function frmClear()
+    {
+        $("#txtcategoryname").val('');
+        $("#txtDescription").val('');
+        $("#txtcategoryid").val(0);
+    }
+    function checkSession()
+    {
+        $.ajax({
+            type: "GET",
+            async: false,
+            url: "/ESS/checkSession",
+            contentType: "application/json; charset=utf-8",
+            success: function (data) {
+                if (data.isRedirect) {
+                    window.location.href = data.redirectUrl;
+                }
+            },
+            error: function (data) {
+                window.location.href = data;
+            }
+        });
+    }
+    function GetAllCategoryDetails()
+    {
+        checkSession();
+        $.ajax({
+            type: "POST",
+            headers: { 'Authorization':'@_tokan'},
+            url: '@_webapiEMSURL' + 'CommanMaster/GetAllExpenseCategoryTypeList',
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            timeout: 30000,
+            beforeSend: function () {
+                $("#ajax_loaderbranch").show();
+            },
+            success: function (response)
+            {
+                if (response != null)
+                {
+                    const sift = response;
+                    handleGridVisibility("tblempty", "NotificationGrid-empty", sift,
+                    {
+                        imageUrl: "emptyscreen_1.png",
+                        subText: "No entries found. Please add a record to get started."
+                    });
+                }
+
+                if (response != null && response.length > 0)
+                {
+                    if ($.fn.DataTable.isDataTable('#tblCategoryGetall')) {
+                        $('#tblCategoryGetall').DataTable().destroy();
+                    }
+                    var tablestrenght = "";
+                    _CategoryMasterData = response;
+                    $("#tblCategoryGetall").empty();
+
+                    for (var i = 0; i < response.length; i++)
+                    {
+                        let item = response[i];
+
+                        var isChecked = item.IsActive === 1 ? "Active" : "Inactive";
+
+                        tablestrenght += "<tr>";
+                        tablestrenght += "<td>" + item.CategoryName + "</td>";
+                        tablestrenght += "<td>" + item.Description + "</td>";
+                        tablestrenght += "<td>" + isChecked + "</td>";
+                        tablestrenght += "<td>";
+                        tablestrenght += "<a class='editclass btn btn-xs seagreen_btnnew tooltips' data-toggle='tooltip' title='Edit' data-categoryid='" + item.CategoryId + "'>";
+                        tablestrenght += "<i class='fa-regular fa-pen-to-square'></i></a>";
+                        tablestrenght += "</td>";
+                        tablestrenght += "</tr>";
+                    }
+                    $('#tblCategoryGetall').html(tablestrenght);
+
+                    $('#tblCategoryGetall').DataTable({
+                        destroy: true,
+                        dom: _domCommon,
+                        language: _languageCommon,
+                        ordering: true,
+                        order: [],
+                        columnDefs: [
+                            {
+                                targets: [3],
+                                orderable: false
+                            }
+                        ],
+                        columns: [
+                            { title: "Category Name" },
+                            { title: "Description" },
+                            { title: "Status" },
+                            { title: "Action" }
+                        ]
+                    });
+                    $(".loading").hide();
+                    $('#tblCategoryGetall').on('draw.dt', function () {
+                        $('.tooltips').tooltip();
+                    });
+                    $('.tooltips').tooltip();
+                    setTimeout(function () {
+                        $("#" + "tblCategoryGetall" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+                        $('.tooltips').tooltip();
+                    }, 100);
+                    injectExportButtonsForDataTables(false, function ()
+                    {
+                    });
+                }
+            },
+            error: function (jqXHR, ajaxOptions, thrownError)
+            {
+                $('.loading').hide();
+                if (jqXHR.status == 500) { //InternalServerError = 500,
+                    toastr.error("InternalServerError");
+                } else if (jqXHR.status == 400) { //BadRequest = 400,
+                    toastr.error("BadRequest");
+                } else if (jqXHR.status == 401) {
+                    window.location.href = "/PayTime/LoginPage";
+                }
+            },
+        });
+    }
+
+</script>
+
+<div class="page-bar">
+    @if (_RoleId == 1 || _RoleId == 6805 || _RoleId == 6806)
+    {
+        <ul class="page-breadcrumb" style="float: none">
+            <li>
+                @if (isClientDBMatchFlag == "True")
+                {
+                    <a href="/Admin/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+                }
+                else
+                {
+                    <a href="/Dashboard/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+                }
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> Category Master</span>
+            </li>
+        </ul>
+    }
+    else
+    {
+        <ul class="page-breadcrumb">
+            <li>
+                @if (isClientDBMatchFlag == "true")
+                {
+                    <a href="/Admin/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+                }
+                else
+                {
+                    <a href="/Dashboard/EmployeeDashboard"><i class="fa-regular fa-house"></i></a>
+                }
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> Category Master</span>
+            </li>
+        </ul>
+    }
+    <div class="emptotalcount">
+        <div class="page-toolbar page-toolbar_payroll">
+            @if (obj.CanAdd)
+            {
+                <div class="emp_btn_block">
+                    <div class="text-right">
+                        <a href="javascript:;" class="btn icon_transparent_btn tooltips" data-placement="left" data-original-title="Add Category Master" id="AddcategorymasterBtn"><i class="fa-solid fa-plus"></i></a>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+
+@if (obj.CanView)
+{
+    <div id='ajax_loaderapproval' class="modal_bg loading" aria-hidden="true">
+        <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading" />
+    </div>
+
+    <div class="row">
+        <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+            <div class="portlet">
+                <div class="portlet-body">
+                    <div id="tblempty">
+                        <div class="table-responsive" id="tableResponsive">
+                            <table class="new_datatbl table table-striped table-bordered table-hover table-checkable order-column" id="tblCategoryGetall">
+                            </table>
+                        </div>
+                    </div>
+                    <div id="NotificationGrid-empty">
+                        <div class="datanotfound">
+                            <img src="" height="148" width="280" alt="Nodata Found Icon">
+                            <p class="datanotfound_title"></p> <!-- titleText -->
+                            <p class=""></p><!-- subText -->
+                        </div>
+                    </div>
+                    <div id="AddcategorymasterBtn_modal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+                        <div class="modal-dialog" style="width:500px;">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <button type="button" class="close" data-dismiss="modal" id="btnClose">×</button>
+                                    <h4 class="modal-title">Category Master</h4>
+                                </div>
+                                <div class="modal-body">
+                                    <div class="modal-card">
+                                        <fieldset>
+                                            <div class="head_box">
+                                                <div class="row">
+                                                    <div class="af_modal_box">
+                                                        <div class="col-xs-6">
+
+                                                            <div class="form-group">
+                                                                <label>Category Name<span class="required" aria-required="true">*</span></label>
+                                                                <input type="text" class="form-control input-sm" name="" id="txtcategoryname" placeholder="Enter Category Name" maxlength="100">
+                                                            </div>
+                                                        </div>
+                                                        <div class="col-xs-6">
+                                                            <div class="form-group">
+                                                                <label>Description<span class="required" aria-required="true">*</span></label>
+                                                                <input type="text" class="form-control input-sm" name="" id="txtDescription" placeholder="Enter Description" maxlength="150">
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </fieldset>
+                                    </div>
+                                </div>
+                                <div class="modal-footer">
+                                    <div class="row">
+                                        <div class="col-lg-12 text-right">
+                                            <input type="hidden" id="txtcategoryid" value="0" />
+                                            <input type="button" class="btn clear_btn" data-dismiss="modal" value="Cancel" id="btnCancel" />
+                                            <button class="btn save_btn" type="button" id="btnSavecategory"><i class="fa-light fa-floppy-disk"></i> Save</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+}
+else
+{
+    <script>
+        Swal.fire({
+            title:
+                "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_info.svg' alt=''> Unauthorized Access",
+            html:
+                "<div class='swal_subtitle'>" +
+                "<b>Access denied. You don’t have the required permissions to view this page.</b>" +
+                "<p>Please contact your administrator if you believe this is a mistake.</p>" +
+                "</div>",
+            showCloseButton: true,
+            showCancelButton: false,
+            focusConfirm: false,
+            cancelButtonText: 'Close',
+            confirmButtonText: 'Go to Dashboard',
+            allowOutsideClick: false,
+            allowEscapeKey: false,
+            customClass: {
+                popup: 'swal_info',                     // <<-- Add class directly to popup
+                confirmButton: 'swal-confirm-button-class',
+                cancelButton: 'swal-cancel-button-class'
+            }
+        }).then(function (result) {
+            if (result.isConfirmed) {
+                window.location.href = "/MinopProduct/EMSDashboard";
+            }
+        });
+    </script>
+}
+<!-- Add Approval flow Modal : Begin -->

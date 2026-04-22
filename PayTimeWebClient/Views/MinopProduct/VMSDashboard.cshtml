@@ -1,0 +1,1514 @@
+@using System.Configuration;
+@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@using System.Data;
+@{
+    ViewBag.Title = "VMS Dashboard";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    int _UserId = Convert.ToInt32(HttpContext.Current.Session["UserId"]);
+    int _cmpid = Convert.ToInt32(HttpContext.Current.Session["CompanyId"]);
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    string _UserImg = HttpContext.Current.Session["photo"].ToString();
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+    string _companyid = "0";
+    string _empid = "0";
+    string _empName = "0";
+    int DepartmentId = Convert.ToInt32(HttpContext.Current.Session["DepartmentId"]);
+    if (_RoleId != 1 && _RoleId != 6805 && _RoleId != 6806)
+    {
+        _empid = HttpContext.Current.Session["EmpId"].ToString();
+        _empName = HttpContext.Current.Session["EmpName"].ToString();
+    }
+    string _branchid = "0";
+    if (_RoleId == 6805)
+    {
+        _companyid = HttpContext.Current.Session["ClientCompanyId"].ToString();
+    }
+    if (_RoleId == 6806)
+    {
+        _companyid = HttpContext.Current.Session["ClientCompanyId"].ToString();
+        _branchid = HttpContext.Current.Session["BranchId"].ToString();
+    }
+    string _isdateformat = HttpContext.Current.Session["IsDateFormat"].ToString();
+    string _CountryCode = HttpContext.Current.Session["CountryCode"].ToString();
+    string _AreaCode = HttpContext.Current.Session["AreaCode"].ToString();
+    string _dbName = HttpContext.Current.Session["DbName"].ToString();
+    string _isPlanId = HttpContext.Current.Session["planId"].ToString();
+    string isClientDBMatchFlag = HttpContext.Current.Session["IsClientDBMatch"] != null
+        ? HttpContext.Current.Session["IsClientDBMatch"].ToString()
+        : "false";
+}
+
+<!-- Market-Level Dashboard Styles -->
+<style>
+    :root {
+        --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        --success-gradient: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+        --warning-gradient: linear-gradient(135deg, #F2994A 0%, #F2C94C 100%);
+        --danger-gradient: linear-gradient(135deg, #eb3349 0%, #f45c43 100%);
+        --info-gradient: linear-gradient(135deg, #2193b0 0%, #6dd5ed 100%);
+        --purple-gradient: linear-gradient(135deg, #8E2DE2 0%, #4A00E0 100%);
+        --card-shadow: 0 10px 40px rgba(0,0,0,0.1);
+        --card-hover-shadow: 0 20px 60px rgba(0,0,0,0.15);
+        --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    /* Loading Skeleton Animation */
+    .skeleton {
+        background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+        background-size: 200% 100%;
+        animation: skeleton-loading 1.5s infinite;
+        border-radius: 4px;
+    }
+    @@keyframes skeleton-loading {
+        0% { background-position: 200% 0; }
+        100% { background-position: -200% 0; }
+    }
+    .skeleton-text { height: 14px; margin-bottom: 8px; }
+    .skeleton-title { height: 24px; width: 60%; margin-bottom: 12px; }
+    .skeleton-avatar { width: 48px; height: 48px; border-radius: 50%; }
+    .skeleton-card { height: 100px; border-radius: 12px; }
+
+    /* Gradient Stat Cards */
+    .stat-card {
+        position: relative;
+        border-radius: 16px;
+        padding: 20px;
+        color: #fff;
+        overflow: hidden;
+        transition: var(--transition-smooth);
+        cursor: pointer;
+        min-height: 140px;
+    }
+    .stat-card:hover {
+        transform: translateY(-8px);
+        box-shadow: var(--card-hover-shadow);
+    }
+    .stat-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        right: 0;
+        width: 130px;
+        height: 130px;
+        background: rgba(255,255,255,0.1);
+        border-radius: 50%;
+        transform: translate(30%, -30%);
+    }
+    .stat-card::after {
+        content: '';
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        width: 80px;
+        height: 80px;
+        background: rgba(255,255,255,0.08);
+        border-radius: 50%;
+        transform: translate(-30%, 30%);
+    }
+    .stat-card.gradient-primary { background: var(--primary-gradient); }
+    .stat-card.gradient-success { background: var(--success-gradient); }
+    .stat-card.gradient-warning { background: var(--warning-gradient); }
+    .stat-card.gradient-danger { background: var(--danger-gradient); }
+    .stat-card.gradient-info { background: var(--info-gradient); }
+    .stat-card.gradient-purple { background: var(--purple-gradient); }
+
+    .stat-card .stat-icon {
+        width: 50px;
+        height: 50px;
+        background: rgba(255,255,255,0.2);
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 24px;
+        margin-bottom: 15px;
+        backdrop-filter: blur(10px);
+    }
+    .stat-card .stat-value {
+        font-size: 32px;
+        font-weight: 700;
+        line-height: 1;
+        margin-bottom: 5px;
+        position: relative;
+        z-index: 1;
+    }
+    .stat-card .stat-label {
+        font-size: 13px;
+        opacity: 0.9;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .stat-card .stat-trend {
+        position: absolute;
+        top: 15px;
+        right: 15px;
+        font-size: 12px;
+        padding: 4px 10px;
+        border-radius: 20px;
+        background: rgba(255,255,255,0.2);
+        backdrop-filter: blur(10px);
+    }
+    .stat-card .stat-trend.up { color: #4ade80; }
+    .stat-card .stat-trend.down { color: #f87171; }
+
+    /* Sparkline in cards */
+    .stat-sparkline {
+        position: absolute;
+        bottom: 10px;
+        right: 15px;
+        width: 80px;
+        height: 30px;
+        opacity: 0.6;
+    }
+
+    /* Progress Ring */
+    .progress-ring {
+        position: relative;
+        width: 60px;
+        height: 60px;
+    }
+    .progress-ring svg {
+        transform: rotate(-90deg);
+    }
+    .progress-ring circle {
+        fill: none;
+        stroke-width: 6;
+        stroke-linecap: round;
+    }
+    .progress-ring .bg { stroke: rgba(255,255,255,0.2); }
+    .progress-ring .progress {
+        stroke: #fff;
+        stroke-dasharray: 157;
+        stroke-dashoffset: 157;
+        transition: stroke-dashoffset 1s ease-out;
+    }
+    .progress-ring .percentage {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        font-size: 14px;
+        font-weight: 700;
+    }
+
+    /* Enhanced Card Box */
+    .card_box_enhanced {
+        background: #fff;
+        border-radius: 16px;
+        box-shadow: var(--card-shadow);
+        transition: var(--transition-smooth);
+        overflow: hidden;
+        border: none;
+    }
+    .card_box_enhanced:hover {
+        box-shadow: var(--card-hover-shadow);
+    }
+    .card_header_enhanced {
+        padding: 20px 24px;
+        border-bottom: 1px solid #f1f5f9;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+    .card_header_enhanced .card-title {
+        font-size: 16px;
+        font-weight: 600;
+        color: #1e293b;
+        margin: 0;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    .card_header_enhanced .card-title i {
+        width: 32px;
+        height: 32px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #fff;
+        font-size: 14px;
+    }
+    .card_body_enhanced {
+        padding: 20px 24px;
+    }
+
+    /* Live Badge */
+    .live-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 12px;
+        background: #dcfce7;
+        color: #16a34a;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 600;
+    }
+    .live-badge::before {
+        content: '';
+        width: 8px;
+        height: 8px;
+        background: #16a34a;
+        border-radius: 50%;
+        animation: pulse-live 2s infinite;
+    }
+    @@keyframes pulse-live {
+        0%, 100% { opacity: 1; transform: scale(1); }
+        50% { opacity: 0.5; transform: scale(1.2); }
+    }
+
+    /* Date Range Picker Styles */
+    .date-range-picker {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 16px;
+        background: #f8fafc;
+        border-radius: 10px;
+        border: 1px solid #e2e8f0;
+        cursor: pointer;
+        transition: var(--transition-smooth);
+    }
+    .date-range-picker:hover {
+        border-color: #667eea;
+        background: #fff;
+    }
+    .date-range-picker i { color: #667eea; }
+    .date-range-picker span { font-size: 13px; color: #64748b; }
+
+    /* Export Button */
+    .export-btn {
+        padding: 8px 16px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: #fff;
+        border: none;
+        border-radius: 8px;
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: var(--transition-smooth);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .export-btn:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+    }
+
+    /* Visitor List Enhanced */
+    .visitor-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 16px;
+        border-radius: 12px;
+        background: #f8fafc;
+        margin-bottom: 12px;
+        transition: var(--transition-smooth);
+        border-left: 4px solid transparent;
+    }
+    .visitor-item:hover {
+        background: #fff;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+        transform: translateX(5px);
+    }
+    .visitor-item.status-checkedin { border-left-color: #22c55e; }
+    .visitor-item.status-pending { border-left-color: #f59e0b; }
+    .visitor-item.status-checkedout { border-left-color: #3b82f6; }
+    .visitor-item.status-rejected { border-left-color: #ef4444; }
+
+    .visitor-avatar {
+        width: 48px;
+        height: 48px;
+        border-radius: 12px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #fff;
+        font-weight: 600;
+        font-size: 18px;
+        margin-right: 15px;
+    }
+    .visitor-info h6 {
+        font-size: 14px;
+        font-weight: 600;
+        color: #1e293b;
+        margin: 0 0 4px 0;
+    }
+    .visitor-info p {
+        font-size: 12px;
+        color: #64748b;
+        margin: 0;
+    }
+    .visitor-status {
+        padding: 6px 12px;
+        border-radius: 20px;
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .visitor-status.checked-in { background: #dcfce7; color: #16a34a; }
+    .visitor-status.pending { background: #fef3c7; color: #d97706; }
+    .visitor-status.checked-out { background: #dbeafe; color: #2563eb; }
+    .visitor-status.rejected { background: #fee2e2; color: #dc2626; }
+
+    /* Quick Action Cards */
+    .quick-action-card {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 24px 16px;
+        background: #fff;
+        border-radius: 16px;
+        border: 2px solid #f1f5f9;
+        transition: var(--transition-smooth);
+        cursor: pointer;
+        text-decoration: none;
+        color: #1e293b;
+    }
+    .quick-action-card:hover {
+        border-color: #667eea;
+        transform: translateY(-5px);
+        box-shadow: 0 10px 30px rgba(102, 126, 234, 0.15);
+    }
+    .quick-action-card:hover .action-icon {
+        transform: scale(1.1);
+    }
+    .quick-action-card .action-icon {
+        width: 56px;
+        height: 56px;
+        border-radius: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 24px;
+        margin-bottom: 12px;
+        transition: var(--transition-smooth);
+    }
+    .quick-action-card .action-icon.icon-primary { background: rgba(102, 126, 234, 0.1); color: #667eea; }
+    .quick-action-card .action-icon.icon-success { background: rgba(34, 197, 94, 0.1); color: #22c55e; }
+    .quick-action-card .action-icon.icon-danger { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
+    .quick-action-card .action-icon.icon-warning { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
+    .quick-action-card .action-icon.icon-purple { background: rgba(139, 92, 246, 0.1); color: #8b5cf6; }
+    .quick-action-card .action-icon.icon-info { background: rgba(6, 182, 212, 0.1); color: #06b6d4; }
+    .quick-action-card .action-label {
+        font-size: 13px;
+        font-weight: 600;
+        text-align: center;
+    }
+
+    /* Notification Badge */
+    .notification-badge {
+        position: absolute;
+        top: -5px;
+        right: -5px;
+        min-width: 20px;
+        height: 20px;
+        background: #ef4444;
+        color: #fff;
+        border-radius: 10px;
+        font-size: 11px;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0 6px;
+        animation: bounce-in 0.5s ease;
+    }
+    @@keyframes bounce-in {
+        0% { transform: scale(0); }
+        50% { transform: scale(1.2); }
+        100% { transform: scale(1); }
+    }
+
+    /* Counter Animation */
+    .counter-animate {
+        transition: all 0.3s ease-out;
+    }
+
+    /* Refresh Indicator */
+    .refresh-indicator {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 12px;
+        color: #64748b;
+    }
+    .refresh-indicator i {
+        animation: spin 2s linear infinite;
+        animation-play-state: paused;
+    }
+    .refresh-indicator.refreshing i {
+        animation-play-state: running;
+    }
+    @@keyframes spin {
+        100% { transform: rotate(360deg); }
+    }
+
+    /* Chart Container Enhanced */
+    .chart-container {
+        position: relative;
+        padding: 10px;
+    }
+    .chart-legend {
+        display: flex;
+        justify-content: center;
+        gap: 20px;
+        margin-top: 15px;
+    }
+    .chart-legend-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 12px;
+        color: #64748b;
+    }
+    .chart-legend-item span {
+        width: 12px;
+        height: 12px;
+        border-radius: 3px;
+    }
+
+    /* Empty State Enhanced */
+    .empty-state {
+        text-align: center;
+        padding: 40px 20px;
+    }
+    .empty-state img {
+        max-width: 150px;
+        margin-bottom: 20px;
+        opacity: 0.8;
+    }
+    .empty-state h5 {
+        font-size: 16px;
+        font-weight: 600;
+        color: #1e293b;
+        margin-bottom: 8px;
+    }
+    .empty-state p {
+        font-size: 13px;
+        color: #64748b;
+        margin: 0;
+    }
+
+    /* Approval Card */
+    .approval-card {
+        background: #fff;
+        border-radius: 12px;
+        padding: 16px;
+        margin-bottom: 12px;
+        border: 1px solid #e2e8f0;
+        transition: var(--transition-smooth);
+    }
+    .approval-card:hover {
+        box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+        border-color: #667eea;
+    }
+    .approval-actions {
+        display: flex;
+        gap: 8px;
+        margin-top: 12px;
+    }
+    .approval-actions .btn-approve {
+        flex: 1;
+        padding: 10px;
+        background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+        color: #fff;
+        border: none;
+        border-radius: 8px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: var(--transition-smooth);
+    }
+    .approval-actions .btn-approve:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 15px rgba(34, 197, 94, 0.4);
+    }
+    .approval-actions .btn-reject {
+        flex: 1;
+        padding: 10px;
+        background: #fff;
+        color: #ef4444;
+        border: 2px solid #ef4444;
+        border-radius: 8px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: var(--transition-smooth);
+    }
+    .approval-actions .btn-reject:hover {
+        background: #ef4444;
+        color: #fff;
+    }
+
+    /* Filter Pills */
+    .filter-pills {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+    }
+    .filter-pill {
+        padding: 8px 16px;
+        background: #f1f5f9;
+        border: none;
+        border-radius: 20px;
+        font-size: 13px;
+        color: #64748b;
+        cursor: pointer;
+        transition: var(--transition-smooth);
+    }
+    .filter-pill:hover, .filter-pill.active {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: #fff;
+    }
+
+    /* Live Clock */
+    .live-clock {
+        font-size: 14px;
+        font-weight: 600;
+        color: #1e293b;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .live-clock i { color: #667eea; }
+
+    /* Scrollbar Styling */
+    .custom-scroll::-webkit-scrollbar {
+        width: 6px;
+    }
+    .custom-scroll::-webkit-scrollbar-track {
+        background: #f1f5f9;
+        border-radius: 3px;
+    }
+    .custom-scroll::-webkit-scrollbar-thumb {
+        background: #cbd5e1;
+        border-radius: 3px;
+    }
+    .custom-scroll::-webkit-scrollbar-thumb:hover {
+        background: #94a3b8;
+    }
+
+    /* Responsive */
+    @@media (max-width: 768px) {
+        .stat-card { min-height: 120px; padding: 15px; }
+        .stat-card .stat-value { font-size: 24px; }
+        .quick-action-card { padding: 16px 12px; }
+    }
+</style>
+
+<script>
+    $(document).ready(function () {
+        var _UID = '@_UserId';
+        var _ComID = '@_companyid';
+        var _BranchID = '@_branchid';
+        var _DepID = '@DepartmentId';
+        var _empIdnew = '@_empid';
+        var _RoleIDnew = '@_RoleId';
+        var _Token = '@_tokan';
+        var autoRefreshInterval;
+        var isRefreshing = false;
+
+        // Initialize dashboard
+        initDashboard();
+
+        function initDashboard() {
+            showLoadingSkeletons();
+            loadAllData();
+            startLiveClock();
+            startAutoRefresh();
+            initDateRangePicker();
+        }
+
+        function showLoadingSkeletons() {
+            // Show skeleton loaders
+            $(".stat-card .stat-value").html('<div class="skeleton skeleton-title"></div>');
+        }
+
+        function loadAllData() {
+            setRefreshingState(true);
+            Promise.all([
+                loadVisitorMonitor(),
+                loadVisitorOverview(),
+                loadVisitorTypeDistribution(),
+                loadRecentVisitors(),
+                loadPendingApprovals()
+            ]).then(function() {
+                setRefreshingState(false);
+            }).catch(function() {
+                setRefreshingState(false);
+            });
+        }
+
+        function setRefreshingState(state) {
+            isRefreshing = state;
+            if (state) {
+                $(".refresh-indicator").addClass("refreshing");
+            } else {
+                $(".refresh-indicator").removeClass("refreshing");
+                updateLastRefreshTime();
+            }
+        }
+
+        function updateLastRefreshTime() {
+            var now = new Date();
+            var time = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+            $("#lastRefreshTime").text(time);
+        }
+
+        // Live Clock
+        function startLiveClock() {
+            updateClock();
+            setInterval(updateClock, 1000);
+        }
+
+        function updateClock() {
+            var now = new Date();
+            var time = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            var date = now.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+            $("#liveClock").html('<i class="fa-regular fa-clock"></i> ' + date + ' | ' + time);
+        }
+
+        // Auto Refresh (every 30 seconds)
+        function startAutoRefresh() {
+            autoRefreshInterval = setInterval(function() {
+                if (!isRefreshing) {
+                    loadAllData();
+                }
+            }, 30000);
+        }
+
+        // Date Range Picker
+        function initDateRangePicker() {
+            // Initialize date range picker (using basic implementation)
+            $(".filter-pill").on("click", function() {
+                $(".filter-pill").removeClass("active");
+                $(this).addClass("active");
+                loadVisitorMonitor();
+            });
+        }
+
+        // Animated Counter
+        function animateCounter(element, targetValue) {
+            var $el = $(element);
+            var startValue = parseInt($el.text().replace(/,/g, '')) || 0;
+            var duration = 1000;
+            var startTime = null;
+
+            function animate(currentTime) {
+                if (!startTime) startTime = currentTime;
+                var progress = Math.min((currentTime - startTime) / duration, 1);
+                var easeProgress = 1 - Math.pow(1 - progress, 3); // Ease out cubic
+                var currentValue = Math.floor(startValue + (targetValue - startValue) * easeProgress);
+                $el.text(currentValue.toLocaleString());
+
+                if (progress < 1) {
+                    requestAnimationFrame(animate);
+                }
+            }
+            requestAnimationFrame(animate);
+        }
+
+        // Progress Ring Animation
+        function updateProgressRing(element, percentage) {
+            var circumference = 157; // 2 * PI * 25 (radius)
+            var offset = circumference - (percentage / 100) * circumference;
+            $(element).find('.progress').css('stroke-dashoffset', offset);
+            $(element).find('.percentage').text(percentage + '%');
+        }
+
+        // Load Visitor Monitor
+        function loadVisitorMonitor() {
+            return new Promise(function(resolve, reject) {
+                var filterType = parseInt($(".filter-pill.active").data("filter") || 1);
+                var request = {
+                    empId: parseInt(_empIdnew),
+                    roleId: parseInt(_RoleIDnew),
+                    companyId: _ComID,
+                    branchId: _BranchID,
+                    departmentId: _DepID,
+                    filterType: filterType
+                };
+                $.ajax({
+                    url: '@_webapiurl' + 'VMS/GetVisitorCountMonitor',
+                    type: "POST",
+                    contentType: "application/json",
+                    headers: { "Authorization": "Bearer " + _Token },
+                    data: JSON.stringify(request),
+                    success: function (res) {
+                        // Animate counters
+                        animateCounter("#TotalVisitorCount", res.totalVisitors || 0);
+                        animateCounter("#TodayVisitorCount", res.todayVisitors || 0);
+                        animateCounter("#CurrentlyOnSiteCount", res.currentlyOnSite || 0);
+                        animateCounter("#PreRegisteredCount", res.preRegistered || 0);
+                        animateCounter("#CheckedOutCount", res.checkedOut || 0);
+                        animateCounter("#PendingApprovalCount", res.pendingApproval || 0);
+
+                        // Update notification badge
+                        if (res.pendingApproval > 0) {
+                            $("#pendingBadge").text(res.pendingApproval).show();
+                        } else {
+                            $("#pendingBadge").hide();
+                        }
+
+                        // Update progress rings
+                        var checkInRate = res.totalVisitors > 0 ? Math.round((res.currentlyOnSite / res.totalVisitors) * 100) : 0;
+                        updateProgressRing("#checkInProgress", checkInRate);
+
+                        // Render sparklines
+                        renderSparklines(res.trendData || [5, 8, 12, 7, 15, 10, 18]);
+
+                        resolve();
+                    },
+                    error: function (xhr) {
+                        console.error("Visitor Monitor API Error", xhr.status, xhr.responseText);
+                        reject();
+                    }
+                });
+            });
+        }
+
+        // Render Sparklines
+        function renderSparklines(data) {
+            if (typeof Highcharts !== 'undefined') {
+                $('.sparkline-chart').each(function(index) {
+                    Highcharts.chart(this, {
+                        chart: {
+                            type: 'area',
+                            backgroundColor: 'transparent',
+                            margin: [0, 0, 0, 0],
+                            height: 30,
+                            width: 80
+                        },
+                        title: { text: '' },
+                        credits: { enabled: false },
+                        xAxis: { visible: false },
+                        yAxis: { visible: false },
+                        legend: { enabled: false },
+                        tooltip: { enabled: false },
+                        plotOptions: {
+                            area: {
+                                fillColor: 'rgba(255,255,255,0.3)',
+                                lineColor: 'rgba(255,255,255,0.8)',
+                                lineWidth: 2,
+                                marker: { enabled: false }
+                            }
+                        },
+                        series: [{ data: data }]
+                    });
+                });
+            }
+        }
+
+        // Load Visitor Overview Chart
+        function loadVisitorOverview() {
+            return new Promise(function(resolve, reject) {
+                var request = {
+                    empId: parseInt(_empIdnew),
+                    roleId: parseInt(_RoleIDnew),
+                    companyId: _ComID,
+                    branchId: _BranchID,
+                    departmentId: _DepID
+                };
+                $.ajax({
+                    url: '@_webapiurl' + 'VMS/GetVisitorOverview',
+                    type: "POST",
+                    contentType: "application/json",
+                    headers: { "Authorization": "Bearer " + _Token },
+                    data: JSON.stringify(request),
+                    success: function (res) {
+                        if (res && res.visitorItems && res.visitorItems.length > 0) {
+                            $("#Visitor_Overview").show();
+                            $("#Visitor_Empty").hide();
+                            prepareVisitorOverview(res.visitorItems);
+                        } else {
+                            $("#Visitor_Overview").hide();
+                            $("#Visitor_Empty").show();
+                        }
+                        resolve();
+                    },
+                    error: function () {
+                        $("#Visitor_Overview").hide();
+                        $("#Visitor_Empty").show();
+                        reject();
+                    }
+                });
+            });
+        }
+
+        function prepareVisitorOverview(data) {
+            var groupedData = {};
+            data.forEach(function (item) {
+                var d = new Date(item.visitDate);
+                var day = d.getDate().toString().padStart(2, '0');
+                var month = d.toLocaleString('en-US', { month: 'short' });
+                var key = day + '-' + month;
+                if (!groupedData[key]) {
+                    groupedData[key] = { checkIn: 0, checkOut: 0 };
+                }
+                groupedData[key].checkIn += Number(item.checkInCount || item.visitorCount || 0);
+                groupedData[key].checkOut += Number(item.checkOutCount || 0);
+            });
+            var categories = Object.keys(groupedData);
+            var checkInData = categories.map(k => groupedData[k].checkIn);
+            var checkOutData = categories.map(k => groupedData[k].checkOut);
+            drawVisitorChart(categories, checkInData, checkOutData);
+        }
+
+        function drawVisitorChart(categories, checkInData, checkOutData) {
+            Highcharts.chart('VisitorOverviewChart', {
+                chart: {
+                    type: 'areaspline',
+                    height: 300,
+                    style: { fontFamily: 'inherit' }
+                },
+                title: { text: '' },
+                legend: {
+                    align: 'center',
+                    verticalAlign: 'bottom',
+                    itemStyle: { fontSize: '12px', fontWeight: '500', color: '#64748b' }
+                },
+                xAxis: {
+                    categories: categories,
+                    labels: { style: { color: '#64748b', fontSize: '11px' } },
+                    lineColor: '#e2e8f0',
+                    tickColor: '#e2e8f0'
+                },
+                yAxis: {
+                    min: 0,
+                    title: { text: '' },
+                    labels: { style: { color: '#64748b', fontSize: '11px' } },
+                    gridLineColor: '#f1f5f9'
+                },
+                tooltip: {
+                    shared: true,
+                    useHTML: true,
+                    backgroundColor: '#fff',
+                    borderColor: '#e2e8f0',
+                    borderRadius: 12,
+                    shadow: { color: 'rgba(0,0,0,0.1)', offsetX: 0, offsetY: 4, width: 20 },
+                    style: { fontSize: '12px' },
+                    headerFormat: '<div style="font-weight:600;margin-bottom:8px;">{point.key}</div>',
+                    pointFormat: '<div style="display:flex;align-items:center;gap:8px;margin:4px 0;"><span style="width:8px;height:8px;border-radius:50%;background:{series.color};"></span>{series.name}: <b>{point.y}</b></div>'
+                },
+                plotOptions: {
+                    areaspline: {
+                        fillOpacity: 0.15,
+                        lineWidth: 3,
+                        marker: {
+                            enabled: false,
+                            symbol: 'circle',
+                            radius: 4,
+                            states: { hover: { enabled: true } }
+                        }
+                    }
+                },
+                series: [{
+                    name: 'Check-In',
+                    data: checkInData,
+                    color: '#22c55e',
+                    fillColor: {
+                        linearGradient: { x1: 0, y1: 0, x2: 0, y2: 1 },
+                        stops: [[0, 'rgba(34, 197, 94, 0.3)'], [1, 'rgba(34, 197, 94, 0)']]
+                    }
+                }, {
+                    name: 'Check-Out',
+                    data: checkOutData,
+                    color: '#3b82f6',
+                    fillColor: {
+                        linearGradient: { x1: 0, y1: 0, x2: 0, y2: 1 },
+                        stops: [[0, 'rgba(59, 130, 246, 0.3)'], [1, 'rgba(59, 130, 246, 0)']]
+                    }
+                }],
+                credits: { enabled: false }
+            });
+        }
+
+        // Load Visitor Type Distribution (Donut Chart)
+        function loadVisitorTypeDistribution() {
+            return new Promise(function(resolve) {
+                // Sample data - replace with API call
+                var data = [
+                    { name: 'Business', y: 45, color: '#667eea' },
+                    { name: 'Interview', y: 25, color: '#22c55e' },
+                    { name: 'Delivery', y: 15, color: '#f59e0b' },
+                    { name: 'Personal', y: 10, color: '#8b5cf6' },
+                    { name: 'Other', y: 5, color: '#64748b' }
+                ];
+                drawDonutChart(data);
+                resolve();
+            });
+        }
+
+        function drawDonutChart(data) {
+            Highcharts.chart('VisitorTypeChart', {
+                chart: {
+                    type: 'pie',
+                    height: 280,
+                    style: { fontFamily: 'inherit' }
+                },
+                title: { text: '' },
+                tooltip: {
+                    pointFormat: '<b>{point.percentage:.1f}%</b>',
+                    backgroundColor: '#fff',
+                    borderColor: '#e2e8f0',
+                    borderRadius: 8
+                },
+                plotOptions: {
+                    pie: {
+                        innerSize: '65%',
+                        dataLabels: { enabled: false },
+                        showInLegend: true,
+                        borderWidth: 0,
+                        states: {
+                            hover: { brightness: 0.1 }
+                        }
+                    }
+                },
+                legend: {
+                    align: 'center',
+                    verticalAlign: 'bottom',
+                    layout: 'horizontal',
+                    itemStyle: { fontSize: '11px', fontWeight: '500', color: '#64748b' }
+                },
+                series: [{ data: data }],
+                credits: { enabled: false }
+            });
+        }
+
+        // Load Recent Visitors
+        function loadRecentVisitors() {
+            return new Promise(function(resolve, reject) {
+                var request = {
+                    empId: parseInt(_empIdnew),
+                    roleId: parseInt(_RoleIDnew),
+                    companyId: _ComID,
+                    branchId: _BranchID,
+                    month: parseInt($("#vmsMonth").val() || 0)
+                };
+                $.ajax({
+                    url: '@_webapiurl' + 'VMS/GetRecentVisitors',
+                    type: "POST",
+                    contentType: "application/json",
+                    headers: { "Authorization": "Bearer " + _Token },
+                    data: JSON.stringify(request),
+                    success: function (res) {
+                        $("#RecentVisitors_Empty").hide();
+                        $("#RecentVisitors_List").hide();
+                        if (!res || !res.visitors || res.visitors.length === 0) {
+                            $("#RecentVisitors_Empty").show();
+                            resolve();
+                            return;
+                        }
+                        $("#RecentVisitors_List").show();
+                        bindRecentVisitors(res.visitors);
+                        resolve();
+                    },
+                    error: function () {
+                        $("#RecentVisitors_Empty").show();
+                        reject();
+                    }
+                });
+            });
+        }
+
+        function bindRecentVisitors(items) {
+            var html = '';
+            $.each(items, function (i, item) {
+                var initials = getInitials(item.visitorName);
+                var statusClass = getStatusClass(item.status);
+                var statusText = item.status || 'Unknown';
+                html += `
+                <div class="visitor-item ${statusClass}">
+                    <div class="d-flex align-items-center">
+                        <div class="visitor-avatar">${initials}</div>
+                        <div class="visitor-info">
+                            <h6>${item.visitorName}</h6>
+                            <p><i class="fa-regular fa-user"></i> Host: ${item.hostName || '-'} &nbsp;|&nbsp; <i class="fa-regular fa-clock"></i> ${formatTime(item.visitDate)}</p>
+                        </div>
+                    </div>
+                    <span class="visitor-status ${statusClass.replace('status-', '')}">${statusText}</span>
+                </div>`;
+            });
+            $("#recentVisitorsContainer").html(html);
+        }
+
+        function getInitials(name) {
+            if (!name) return '?';
+            var parts = name.split(' ');
+            return (parts[0][0] + (parts[1] ? parts[1][0] : '')).toUpperCase();
+        }
+
+        function getStatusClass(status) {
+            switch (status) {
+                case 'Checked In': return 'status-checkedin';
+                case 'Pending':
+                case 'Pre-Registered': return 'status-pending';
+                case 'Checked Out': return 'status-checkedout';
+                case 'Rejected':
+                case 'Cancelled': return 'status-rejected';
+                default: return '';
+            }
+        }
+
+        function formatTime(dateStr) {
+            if (!dateStr) return '';
+            var date = new Date(dateStr);
+            return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+        }
+
+        // Load Pending Approvals
+        function loadPendingApprovals() {
+            return new Promise(function(resolve, reject) {
+                var request = {
+                    empId: parseInt(_empIdnew),
+                    roleId: parseInt(_RoleIDnew),
+                    companyId: _ComID,
+                    branchId: _BranchID,
+                    departmentId: 0,
+                    month: 0
+                };
+                $.ajax({
+                    url: '@_webapiurl' + 'VMS/GetPendingApprovals',
+                    type: "POST",
+                    contentType: "application/json",
+                    headers: { "Authorization": "Bearer " + _Token },
+                    data: JSON.stringify(request),
+                    success: function (res) {
+                        $("#PendingApprovals_Empty").hide();
+                        $("#PendingApprovals_List").hide();
+                        if (!res || !res.pendingItems || res.pendingItems.length === 0) {
+                            $("#PendingApprovals_Empty").show();
+                            resolve();
+                            return;
+                        }
+                        $("#PendingApprovals_List").show();
+                        renderPendingApprovals(res.pendingItems);
+                        resolve();
+                    },
+                    error: function () {
+                        $("#PendingApprovals_Empty").show();
+                        reject();
+                    }
+                });
+            });
+        }
+
+        function renderPendingApprovals(items) {
+            var html = '';
+            $.each(items, function (i, item) {
+                var initials = getInitials(item.visitorName);
+                html += `
+                <div class="approval-card">
+                    <div class="d-flex align-items-center">
+                        <div class="visitor-avatar">${initials}</div>
+                        <div class="visitor-info">
+                            <h6>${item.visitorName}</h6>
+                            <p><i class="fa-regular fa-flag"></i> ${item.purpose || 'General Visit'}</p>
+                            <p><i class="fa-regular fa-user"></i> Host: ${item.hostName || '-'}</p>
+                        </div>
+                    </div>
+                    <div class="approval-actions">
+                        <button class="btn-approve" onclick="updateVisitorApproval(${item.visitorId}, 'Approve')">
+                            <i class="fa-solid fa-check"></i> Approve
+                        </button>
+                        <button class="btn-reject" onclick="updateVisitorApproval(${item.visitorId}, 'Reject')">
+                            <i class="fa-solid fa-xmark"></i> Reject
+                        </button>
+                    </div>
+                </div>`;
+            });
+            $("#pendingApprovalsContainer").html(html);
+        }
+
+        window.updateVisitorApproval = function (visitorId, action) {
+            var request = {
+                VisitorId: visitorId,
+                UserId: parseInt(_empIdnew),
+                Action: action
+            };
+            $.ajax({
+                url: '@_webapiurl' + 'VMS/UpdateVisitorApproval',
+                type: "POST",
+                contentType: "application/json",
+                headers: { "Authorization": "Bearer " + _Token },
+                data: JSON.stringify(request),
+                success: function (res) {
+                    toastr.success(res.message || 'Visitor ' + action + 'd successfully');
+                    loadPendingApprovals();
+                    loadVisitorMonitor();
+                },
+                error: function () {
+                    toastr.error("Failed to update visitor request.");
+                }
+            });
+        };
+
+        // Export to Excel
+        window.exportToExcel = function() {
+            toastr.info("Preparing export...");
+            // Implement export logic
+            setTimeout(function() {
+                toastr.success("Export completed!");
+            }, 1500);
+        };
+
+        // Manual Refresh
+        window.manualRefresh = function() {
+            if (!isRefreshing) {
+                loadAllData();
+            }
+        };
+
+        // Filter change handlers
+        $("#vmsMonth").change(function () {
+            loadRecentVisitors();
+        });
+
+        // Widget customization
+        $("#widgetSave").on("click", function () {
+            $(".widget-checkbox").each(function () {
+                var widgetKey = $(this).data("widget");
+                var $widget = $("[data-widget='" + widgetKey + "']").not("#customwidget_modal *");
+                if ($(this).is(":checked")) {
+                    $widget.slideDown(300);
+                } else {
+                    $widget.slideUp(300);
+                }
+            });
+            $("#customwidget_modal").modal("hide");
+            toastr.success("Dashboard customized successfully!");
+        });
+    });
+</script>
+
+<div class="page-bar">
+    <ul class="page-breadcrumb">
+        <li>
+            <a href="/MinopProduct/VMSDashboard"><i class="fa-regular fa-house"></i></a>
+        </li>
+        <li>
+            <span><i class="fa fa-angle-right"></i> Visitor Management Dashboard</span>
+        </li>
+    </ul>
+    <div class="d-flex align-items-center gap-15 pull-right">
+        <div class="live-clock" id="liveClock"></div>
+        <div class="refresh-indicator">
+            <i class="fa-solid fa-sync-alt"></i>
+            <span>Last update: <span id="lastRefreshTime">--:--</span></span>
+        </div>
+        <button class="btn icon_transparent_btn tooltips" onclick="manualRefresh()" data-placement="bottom" data-original-title="Refresh">
+            <i class="fa-light fa-arrows-rotate"></i>
+        </button>
+        <button class="export-btn" onclick="exportToExcel()">
+            <i class="fa-solid fa-download"></i> Export
+        </button>
+        <button class="btn icon_transparent_btn tooltips" data-toggle="modal" data-target="#customwidget_modal" data-placement="left" data-original-title="Customize">
+            <i class="fa-light fa-objects-column"></i>
+        </button>
+    </div>
+</div>
+
+<div class="body_section">
+    <!-- Filter Pills -->
+    <div class="row margin-bottom-20">
+        <div class="col-lg-12">
+            <div class="filter-pills">
+                <button class="filter-pill active" data-filter="1">Today</button>
+                <button class="filter-pill" data-filter="2">This Week</button>
+                <button class="filter-pill" data-filter="3">This Month</button>
+                <button class="filter-pill" data-filter="4">This Quarter</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Stats Cards Row -->
+    <div class="row" data-widget="visitorMonitor">
+        <div class="col-lg-2 col-md-4 col-sm-6 margin-bottom-20">
+            <div class="stat-card gradient-primary">
+                <div class="stat-icon"><i class="fa-solid fa-users"></i></div>
+                <div class="stat-value counter-animate" id="TotalVisitorCount">0</div>
+                <div class="stat-label">Total Visitors</div>
+                <div class="stat-trend up"><i class="fa-solid fa-arrow-up"></i> 12%</div>
+                <div class="sparkline-chart stat-sparkline"></div>
+            </div>
+        </div>
+        <div class="col-lg-2 col-md-4 col-sm-6 margin-bottom-20">
+            <div class="stat-card gradient-success">
+                <div class="stat-icon"><i class="fa-solid fa-calendar-day"></i></div>
+                <div class="stat-value counter-animate" id="TodayVisitorCount">0</div>
+                <div class="stat-label">Today's Visitors</div>
+                <div class="stat-trend up"><i class="fa-solid fa-arrow-up"></i> 8%</div>
+            </div>
+        </div>
+        <div class="col-lg-2 col-md-4 col-sm-6 margin-bottom-20">
+            <div class="stat-card gradient-info">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <div class="stat-icon"><i class="fa-solid fa-building-user"></i></div>
+                        <div class="stat-value counter-animate" id="CurrentlyOnSiteCount">0</div>
+                        <div class="stat-label">Currently On-Site</div>
+                    </div>
+                    <div class="progress-ring" id="checkInProgress">
+                        <svg width="60" height="60">
+                            <circle class="bg" cx="30" cy="30" r="25"></circle>
+                            <circle class="progress" cx="30" cy="30" r="25"></circle>
+                        </svg>
+                        <span class="percentage">0%</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-2 col-md-4 col-sm-6 margin-bottom-20">
+            <div class="stat-card gradient-warning">
+                <div class="stat-icon"><i class="fa-solid fa-calendar-check"></i></div>
+                <div class="stat-value counter-animate" id="PreRegisteredCount">0</div>
+                <div class="stat-label">Pre-Registered</div>
+            </div>
+        </div>
+        <div class="col-lg-2 col-md-4 col-sm-6 margin-bottom-20">
+            <div class="stat-card gradient-purple">
+                <div class="stat-icon"><i class="fa-solid fa-right-from-bracket"></i></div>
+                <div class="stat-value counter-animate" id="CheckedOutCount">0</div>
+                <div class="stat-label">Checked Out</div>
+            </div>
+        </div>
+        <div class="col-lg-2 col-md-4 col-sm-6 margin-bottom-20">
+            <div class="stat-card gradient-danger" style="position:relative;">
+                <div class="stat-icon"><i class="fa-solid fa-clock"></i></div>
+                <div class="stat-value counter-animate" id="PendingApprovalCount">0</div>
+                <div class="stat-label">Pending Approval</div>
+                <span class="notification-badge" id="pendingBadge" style="display:none;">0</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Charts Row -->
+    <div class="row">
+        <div class="col-lg-8 margin-bottom-20" data-widget="visitorOverview">
+            <div class="card_box_enhanced">
+                <div class="card_header_enhanced">
+                    <h5 class="card-title">
+                        <i class="fa-solid fa-chart-line"></i>
+                        Visitor Trend Analysis
+                    </h5>
+                    <span class="live-badge">LIVE</span>
+                </div>
+                <div class="card_body_enhanced">
+                    <div id="Visitor_Overview">
+                        <div class="chart-container">
+                            <div id="VisitorOverviewChart"></div>
+                        </div>
+                    </div>
+                    <div id="Visitor_Empty" style="display:none">
+                        <div class="empty-state">
+                            <img src="~/assets/images/emptyscreen_3.png" alt="No Data">
+                            <h5>No Visitor Data</h5>
+                            <p>Start registering visitors to see trend analysis</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-4 margin-bottom-20" data-widget="visitorType">
+            <div class="card_box_enhanced">
+                <div class="card_header_enhanced">
+                    <h5 class="card-title">
+                        <i class="fa-solid fa-chart-pie"></i>
+                        Visitor Distribution
+                    </h5>
+                </div>
+                <div class="card_body_enhanced">
+                    <div id="VisitorTypeChart"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Lists Row -->
+    <div class="row">
+        <div class="col-lg-6 margin-bottom-20" data-widget="recentVisitors">
+            <div class="card_box_enhanced">
+                <div class="card_header_enhanced">
+                    <h5 class="card-title">
+                        <i class="fa-solid fa-users"></i>
+                        Recent Visitors
+                    </h5>
+                    <select class="form-control input-sm" id="vmsMonth" style="width:120px;">
+                        <option value="0">All Time</option>
+                        <option value="1">January</option>
+                        <option value="2">February</option>
+                        <option value="3">March</option>
+                        <option value="4">April</option>
+                        <option value="5">May</option>
+                        <option value="6">June</option>
+                        <option value="7">July</option>
+                        <option value="8">August</option>
+                        <option value="9">September</option>
+                        <option value="10">October</option>
+                        <option value="11">November</option>
+                        <option value="12">December</option>
+                    </select>
+                </div>
+                <div class="card_body_enhanced custom-scroll" style="max-height:380px;overflow-y:auto;">
+                    <div id="RecentVisitors_List">
+                        <div id="recentVisitorsContainer"></div>
+                    </div>
+                    <div id="RecentVisitors_Empty" style="display:none">
+                        <div class="empty-state">
+                            <img src="~/assets/images/emptyscreen_3.png" alt="No Data">
+                            <h5>No Recent Visitors</h5>
+                            <p>Visitor activity will appear here</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6 margin-bottom-20" data-widget="pendingApprovals">
+            <div class="card_box_enhanced">
+                <div class="card_header_enhanced">
+                    <h5 class="card-title">
+                        <i class="fa-solid fa-clock"></i>
+                        Pending Approvals
+                        <span class="notification-badge" id="headerPendingBadge" style="display:none;position:relative;top:-2px;">0</span>
+                    </h5>
+                </div>
+                <div class="card_body_enhanced custom-scroll" style="max-height:380px;overflow-y:auto;">
+                    <div id="PendingApprovals_List">
+                        <div id="pendingApprovalsContainer"></div>
+                    </div>
+                    <div id="PendingApprovals_Empty" style="display:none">
+                        <div class="empty-state">
+                            <img src="~/assets/images/emptyscreen_3.png" alt="No Data">
+                            <h5>All Caught Up!</h5>
+                            <p>No pending approvals at the moment</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Actions Row -->
+    <div class="row" data-widget="quickActions">
+        <div class="col-lg-12 margin-bottom-20">
+            <div class="card_box_enhanced">
+                <div class="card_header_enhanced">
+                    <h5 class="card-title">
+                        <i class="fa-solid fa-bolt"></i>
+                        Quick Actions
+                    </h5>
+                </div>
+                <div class="card_body_enhanced">
+                    <div class="row">
+                        <div class="col-lg-2 col-md-4 col-sm-6 col-xs-6 margin-bottom-15">
+                            <a href="/VMS/NewVisitor" class="quick-action-card">
+                                <div class="action-icon icon-primary"><i class="fa-solid fa-user-plus"></i></div>
+                                <span class="action-label">New Visitor</span>
+                            </a>
+                        </div>
+                        <div class="col-lg-2 col-md-4 col-sm-6 col-xs-6 margin-bottom-15">
+                            <a href="/VMS/CheckIn" class="quick-action-card">
+                                <div class="action-icon icon-success"><i class="fa-solid fa-arrow-right-to-bracket"></i></div>
+                                <span class="action-label">Check-In</span>
+                            </a>
+                        </div>
+                        <div class="col-lg-2 col-md-4 col-sm-6 col-xs-6 margin-bottom-15">
+                            <a href="/VMS/CheckOut" class="quick-action-card">
+                                <div class="action-icon icon-danger"><i class="fa-solid fa-arrow-right-from-bracket"></i></div>
+                                <span class="action-label">Check-Out</span>
+                            </a>
+                        </div>
+                        <div class="col-lg-2 col-md-4 col-sm-6 col-xs-6 margin-bottom-15">
+                            <a href="/VMS/PreRegister" class="quick-action-card">
+                                <div class="action-icon icon-warning"><i class="fa-solid fa-calendar-plus"></i></div>
+                                <span class="action-label">Pre-Register</span>
+                            </a>
+                        </div>
+                        <div class="col-lg-2 col-md-4 col-sm-6 col-xs-6 margin-bottom-15">
+                            <a href="/VMS/PrintBadge" class="quick-action-card">
+                                <div class="action-icon icon-purple"><i class="fa-solid fa-id-badge"></i></div>
+                                <span class="action-label">Print Badge</span>
+                            </a>
+                        </div>
+                        <div class="col-lg-2 col-md-4 col-sm-6 col-xs-6 margin-bottom-15">
+                            <a href="/VMS/Reports" class="quick-action-card">
+                                <div class="action-icon icon-info"><i class="fa-solid fa-chart-bar"></i></div>
+                                <span class="action-label">Reports</span>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Custom Widget Modal -->
+<div id="customwidget_modal" class="modal fade" role="dialog" data-backdrop="static">
+    <div class="modal-dialog" style="width:450px;">
+        <div class="modal-content" style="border-radius:16px;border:none;">
+            <div class="modal-header" style="border-bottom:1px solid #f1f5f9;padding:20px 24px;">
+                <button type="button" class="close" data-dismiss="modal" style="opacity:0.5;">&times;</button>
+                <h4 class="modal-title" style="font-weight:600;font-size:18px;">Customize Dashboard</h4>
+            </div>
+            <div class="modal-body" style="padding:24px;">
+                <p style="color:#64748b;font-size:13px;margin-bottom:20px;">Choose which widgets to display on your dashboard</p>
+                <div class="widget-list">
+                    <label class="d-flex align-items-center justify-content-between" style="padding:12px 0;border-bottom:1px solid #f1f5f9;cursor:pointer;">
+                        <span style="font-weight:500;">Visitor Monitor</span>
+                        <input type="checkbox" class="widget-checkbox" data-widget="visitorMonitor" checked style="width:18px;height:18px;">
+                    </label>
+                    <label class="d-flex align-items-center justify-content-between" style="padding:12px 0;border-bottom:1px solid #f1f5f9;cursor:pointer;">
+                        <span style="font-weight:500;">Visitor Trend Chart</span>
+                        <input type="checkbox" class="widget-checkbox" data-widget="visitorOverview" checked style="width:18px;height:18px;">
+                    </label>
+                    <label class="d-flex align-items-center justify-content-between" style="padding:12px 0;border-bottom:1px solid #f1f5f9;cursor:pointer;">
+                        <span style="font-weight:500;">Visitor Distribution</span>
+                        <input type="checkbox" class="widget-checkbox" data-widget="visitorType" checked style="width:18px;height:18px;">
+                    </label>
+                    <label class="d-flex align-items-center justify-content-between" style="padding:12px 0;border-bottom:1px solid #f1f5f9;cursor:pointer;">
+                        <span style="font-weight:500;">Recent Visitors</span>
+                        <input type="checkbox" class="widget-checkbox" data-widget="recentVisitors" checked style="width:18px;height:18px;">
+                    </label>
+                    <label class="d-flex align-items-center justify-content-between" style="padding:12px 0;border-bottom:1px solid #f1f5f9;cursor:pointer;">
+                        <span style="font-weight:500;">Pending Approvals</span>
+                        <input type="checkbox" class="widget-checkbox" data-widget="pendingApprovals" checked style="width:18px;height:18px;">
+                    </label>
+                    <label class="d-flex align-items-center justify-content-between" style="padding:12px 0;cursor:pointer;">
+                        <span style="font-weight:500;">Quick Actions</span>
+                        <input type="checkbox" class="widget-checkbox" data-widget="quickActions" checked style="width:18px;height:18px;">
+                    </label>
+                </div>
+            </div>
+            <div class="modal-footer" style="border-top:1px solid #f1f5f9;padding:16px 24px;">
+                <button type="button" class="btn btn-default" data-dismiss="modal" style="border-radius:8px;">Cancel</button>
+                <button type="button" class="btn" id="widgetSave" style="background:linear-gradient(135deg, #667eea 0%, #764ba2 100%);color:#fff;border:none;border-radius:8px;padding:10px 24px;">
+                    Save Changes
+                </button>
+            </div>
+        </div>
+    </div>
+</div>

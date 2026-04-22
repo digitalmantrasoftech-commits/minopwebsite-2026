@@ -1,0 +1,991 @@
+﻿@using System.Configuration;
+@{
+    ViewBag.Title = "Voluntarydiscontinuation";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    string _isdateformat = HttpContext.Current.Session["IsDateFormat"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    int empid = Convert.ToInt32(HttpContext.Current.Session["EmpId"]);
+}
+
+<link href="/Newlayout/css/payrollstructure.css" rel="stylesheet">
+
+<style type="text/css">
+    .swal2-container {
+        z-index: 11111;
+    }
+
+    .fixed-column {
+        width: 90px !important;
+        min-width: 90px !important;
+        right: 0px;
+        position: sticky !important;
+        background-color: #fff !important;
+        box-shadow: -1px 0px 3px 0px rgba(0, 0, 0, 0.20);
+    }
+</style>
+
+<script>
+     var token = '@_tokan';
+     var webapiurl = '@_webapiurl';
+     var empid = '@empid'
+    $(document).ready(function () {        
+        LoadVoluntarydiscontinuationData(empid);
+
+        // Table Traine Request Block : Begin ===============================================
+        // Create search inputs in footer
+        //$("#tblTraineReq tfoot th").each(function () {
+        //    var title = $(this).text();
+        //    $(this).html('<input type="text" class="search_input" placeholder="Search" /><i class="clm-search" id=""></i>');
+        //});
+
+        // DataTable initialisation
+        //var table = $("#tblVoluntarydiscontinuationReq").DataTable({
+        //    dom: _domCommon,
+        //    language: _languageCommon,
+        //    ordering: true,
+        //    columnDefs: [
+        //        { orderable: false, targets: [6] } // disable ordering on 9th and 10th columns
+        //    ],
+        //});
+        //setTimeout(function () {
+        //    $("#" + "tblVoluntarydiscontinuationReq" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+        //    $('.tooltips').tooltip();
+        //}, 100);
+
+        // Apply the column Search
+        $("#tblTraineReq thead").on("keyup", "input", function () {
+            table.column($(this).parent().index())
+                .search(this.value)
+                .draw();
+        });
+        // Table Traine Request Block : End ===============================================
+
+
+        // Filter Click Open Modal Code =========================
+        $("#Discontinu_btn").on('click', function () {            
+            $("#Discontinu_btn").attr("data-toggle", "modal");
+            $("#Discontinu_btn").attr("data-target", "#Discontinu_btn_modal");
+        });        
+
+        $("#Discontinu_Track").on('click', function () {            
+            $.ajax({
+                type: "GET",
+                url: webapiurl + "TPOnboarding/VoluntaryDiscontinuationRequestTrack?Empid=" + empid,
+                headers: {
+                    "Authorization": token
+                },
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                success: function (response) {                    
+                    var data = response && response.length > 0 ? response[0] : null;
+                    $(".status-circle").removeClass("check-circle close-circle").addClass("pending-circle");
+                    $(".r_subtitle").text("");
+                    if (data) {
+                        $("#submitCircle").addClass("check-circle");
+                        $("#submittedDate").text(data.CreateDate || "");
+                        $("#submittedReason").text(data.Description || "");
+                        $("#employeeRequestedLWD").text(data.EmployeeRequestedLWD ? data.EmployeeRequestedLWD.split('T')[0] : (data.lastday ? data.lastday.split('T')[0] : ""));
+
+                        var status = parseInt(data.status);
+
+                        if (status === 0) {
+                            $("#managerStatusText").text("Manager Approval (Pending)");
+                        }
+                        else if (status === 1) {
+                            $("#managerCircle").addClass("close-circle");
+                            $("#managerStatusText").text("Rejected by Manager");
+                            $("#managerRemarks").text(data.manager_remark || "No remarks");
+                            $("#managerAcceptedDate").text(data.Managerapprovedate || "");
+                        }
+                        else if (status >= 2) {
+                            $("#managerCircle").addClass("check-circle");
+                            $("#managerStatusText").text("Manager Approved");
+                            $("#lastWorkingDay").text(data.Lastworkingday ? data.Lastworkingday.split('T')[0] : "");
+                            $("#managerAcceptedDate").text(data.Managerapprovedate || "");
+                            $("#managerRemarks").text(data.manager_remark || "");
+
+                            if (status === 2) {
+                                $("#bhrStatusText").text("BHR Approval (Pending)");
+                            }
+                            else if (status === 3) {
+                                $("#bhrCircle").addClass("close-circle");
+                                $("#bhrStatusText").text("Rejected by BHR");
+                                $("#bhrLabel").text("Rejected on");
+                                $("#bhrRemarks").text(data.hr_remark || data.rejectreason || "");
+                                $("#bhrDate").text(data.BHRapprovedate || "");
+                            }
+                            else if (status === 4) {
+                                $("#bhrCircle").addClass("check-circle");
+                                $("#bhrStatusText").text("BHR Approved");
+                                $("#bhrLabel").text("Approved on");
+                                $("#bhrDate").text(data.BHRapprovedate || "");
+                                $("#bhrRemarks").text(data.hr_remark || "");
+                            }
+                        }
+                    } else {                        
+                        console.log("No request found for this employee.");
+                        $("#managerStatusText").text("Manager Approval");
+                        $("#bhrStatusText").text("BHR Approval");                        
+                    }
+                },
+                error: function (err) {
+                    toastr.error("Error in Get the Tracking data.")
+                }
+            });
+
+            $("#Discontinu_Track").attr("data-toggle", "modal");
+            $("#Discontinu_Track").attr("data-target", "#Discontinu_Track_modal");
+        });
+
+        $(document).on("click", "#SubmitBtn", function (e) {            
+            e.preventDefault();
+
+            toastr.remove();
+
+            var role = $("#roleofemp").val();
+            var description = $("#discountinuationreason").val().trim();
+            var businessUnit = $("#bunit").val();
+            var gw = $("#GW").val();
+            var workstation = $("#workstation").val();
+            var lastWorkingDay = $("#Lastday").val();
+
+            if (role === "" || role === null) {
+                toastr.error("Please select a Reason for discontinuation.");
+                $("#roleofemp").focus();
+                return false;
+            }
+            if (description === "" || description === null) {
+                toastr.error("Please Enter Description.");
+                $("#discountinuationreason").focus();
+                return false;
+            }
+            if (businessUnit === "" || businessUnit === null) {
+                toastr.error("Please select a Business unit.");
+                $("#bunit").focus();
+                return false;
+            }
+            if (gw === "" || gw === "0") {
+                toastr.error("Please select a GW.");
+                $("#GW").focus();
+                return false;
+            }
+            if (workstation === "" || workstation === null) {
+                toastr.error("Please select a Workstation.");
+                $("#workstation").focus();
+                return false;
+            }
+            if (lastWorkingDay === "") {
+                toastr.error("Please select the Last working day.");
+                $("#Lastday").focus();
+                return false;
+            }
+
+            Swal.fire({
+                html: '<div class="swal_subtitle"><b>Are you sure you want to proceed?</b><div class="margin-top-10"><label class="margin-right-10"><input value="False" name="Yes" id="YESA" type="radio" checked=""> Yes <span></span> </label><label class=""><input value="True" name="Yes" id="NOA" type="radio"> No <span></span> </label></div></div>',
+                title: "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_info.svg' alt=''>111 Voluntary Discontinuation of training",
+                closeOnConfirm: true,
+                showCloseButton: true,
+                showCancelButton: true,
+                focusConfirm: false,
+                cancelButtonText: 'No',
+                confirmButtonText: 'Yes',
+                allowOutsideClick: false,
+                allowEscapeKey: false,
+                customClass: {
+                    confirmButton: 'swal-confirm-button-class',
+                    cancelButton: 'swal-cancel-button-class'
+                }
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    if ($('#YESA').is(':checked')) {
+
+                        var formData = {
+                            EmpId: empid,
+                            Role: role,
+                            Description: description,
+                            Bunit: businessUnit,
+                            GW: gw,
+                            Workstation: workstation,
+                            Lastday: lastWorkingDay,                            
+                        };
+
+                        $.ajax({
+                            url: webapiurl + "TPOnboarding/VoluntaryDiscontinuationRequest",
+                            type: 'POST',
+                            contentType: "application/json; charset=utf-8",
+                            headers: {
+                                "Authorization": token
+                            },
+                            dataType: "json",
+                            data: JSON.stringify(formData),
+                            beforeSend: function () {
+                                $("#ajax_loader").show();
+                            },
+                            success: function (res) {
+                                if (res.status) {
+                                    toastr.success("Discontinuation request saved successfully!");
+                                    $("#Discontinu_btn_modal").modal('hide');
+                                    $("#roleofemp, #workstation, #bunit, #discountinuationreason").val("").trigger('change');
+                                    $("#GW").val("0").trigger('change');
+                                    $("#Lastday").val("");
+                                    SendEmailToReportingManager();
+                                } else {
+                                    toastr.error(res.Message || "Failed to save discontinuation request.");
+                                }
+                            },
+                            error: function (err) {
+                                toastr.error("Something went wrong while saving.");
+                            },
+                            complete: function () {
+                                $("#ajax_loader").hide();
+                            }
+                        });
+
+                    } else {
+                        //toastr.warning("You selected 'No' in the options. Action cancelled.");
+                    }
+                }
+            })
+
+            // add custom class to swal for styling
+            setTimeout(function () {
+                $('img[src="/assets/images/icons/swal_icon/icon_info.svg"]')
+                    .closest('.swal2-popup')
+                    .addClass('swal_info');
+            }, 50);
+        });
+
+        $("#clearForm").click(function () {
+            $("#roleofemp, #workstation, #bunit, #discountinuationreason").val("").trigger('change');
+            $("#GW").val("0").trigger('change');            
+            $("#Lastday").val("");                                   
+        })
+
+        $(document).on("click", ".RejectBtn", function (e) {
+            e.preventDefault();
+            var table = $('#tblVoluntarydiscontinuationReq').DataTable();
+            var rowData = table.row($(this).closest('tr')).data();
+            var Empid = rowData.Empid;
+            var EmpEmail = rowData.useremail || "";
+            Swal.fire({
+                html: '<div class="swal_subtitle"><b>Are you sure you want to reject this request?</b><div class="margin-top-20"><div class="form-group margin-bottom-0"> <label class="control-label">Please enter reason <span class="required" aria-required="true">*</span></label> <input type="text" id="rejectreason" placeholder="Enter Reason" class="form-control" name="" /> </div></div></div>',
+                title: "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_error.svg' alt=''>Discontinuation request",
+                closeOnConfirm: true,
+                showCloseButton: true,
+                showCancelButton: true,
+                focusConfirm: false,
+                cancelButtonText: 'Cancel',
+                confirmButtonText: 'Reject Request',
+                allowOutsideClick: false,
+                allowEscapeKey: false,
+                customClass: {
+                    confirmButton: 'swal-confirm-button-class',
+                    cancelButton: 'swal-cancel-button-class'
+                },
+                preConfirm: () => {
+                    const reason = Swal.getPopup().querySelector('#rejectreason').value.trim();
+                    if (!reason) {
+                        Swal.showValidationMessage(`Please Enter Reason`);
+                        return false;
+                    }
+                    return { reason: reason };
+                }
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    var reason = $("#rejectreason").val();
+                    var rejectdata = {
+                        Empid: Empid,
+                        Rejectreason: reason,
+                        Flag:0,
+                        Email: EmpEmail
+                    }
+                    $.ajax({
+                        url: webapiurl + "TPOnboarding/RejectDiscontinuationRequest",
+                        type: 'POST',
+                        data: JSON.stringify(rejectdata),
+                        contentType: "application/json; charset=utf-8",
+                        dataType: "json",
+                        headers: {
+                            'Authorization': token
+                        },
+                        beforeSend: function () {
+                            $("#ajax_loader").show();
+                        },
+                        success: function (res) {
+                            console.log(res)
+                            if (res) {
+                                toastr.success("Discontinuation Request Reject Successfully.")
+                                LoadVoluntarydiscontinuationData(empid);
+                            }
+                        },
+                        error: function () {
+                            //Swal.fire('Error!', 'Something went wrong on the server.', 'error');
+                        },
+                        complete: function () {
+                            $("#ajax_loader").hide();
+                        }
+                    });
+                }
+            });
+
+            // add custom class to swal for styling
+            setTimeout(function () {
+                $('img[src="/assets/images/icons/swal_icon/icon_error.svg"]')
+                    .closest('.swal2-popup')
+                    .addClass('swal_error');
+            }, 50);
+        });
+
+        $("#tblVoluntarydiscontinuationReq").on('click', '.ApproveBtn', function () {
+            var table = $('#tblVoluntarydiscontinuationReq').DataTable();
+            var rowData = table.row($(this).closest('tr')).data();             
+            $("#empid").val(rowData.Empid);
+            $("#empemail").val(rowData.useremail || "");
+            $("#empname").text(rowData.EmpName);
+            $("#reasontype").text(rowData.reason);            
+            $("#Branchmodal").text(rowData.BranchName);
+            $("#discription").text(rowData.Description);
+            $("#gwmodal").text(rowData.DepartmentName);
+            $("#workstationmodal").text(rowData.workstationname);
+            $("#lastworkingdaymodal").text(rowData.Lastworkingday);            
+            $("#lastdaybyreporting").val("");
+            $("#remark").val("");
+
+            $(".ApproveBtn").attr("data-toggle", "modal");
+            $(".ApproveBtn").attr("data-target", "#ApproveBtn_modal");
+        });
+
+        $("#submitrequest").click(function () {
+            toastr.remove();
+            var Empid = $("#empid").val();
+            var lastday = $("#lastdaybyreporting").val();
+            var remark = $("#remark").val();
+            if (!lastday || lastday == "") {
+                toastr.error("Please Select Last Working Date");
+                return false;
+            }
+            if (!remark || remark == "") {
+                toastr.error("Please Add Remark.");
+                return false;
+            }
+            //var calculatedDate = new Date();
+            //switch (lastday) {
+            //    case "1":
+            //        calculatedDate.setDate(calculatedDate.getDate() + 15);
+            //        break;
+            //    case "2":
+            //        calculatedDate.setMonth(calculatedDate.getMonth() + 1);
+            //        break;
+            //    case "3":
+            //        calculatedDate.setMonth(calculatedDate.getMonth() + 2);
+            //        break;
+            //    default:
+            //        console.log("No duration selected");
+            //        return;
+            //}
+            //var formattedDate = calculatedDate.toISOString().split('T')[0];
+            var EmpEmail = $("#empemail").val();
+            var reuestdata = {
+                Empid:Empid,
+                Lastday: lastday,
+                remark: remark,
+                Flag:0,
+                Email: EmpEmail
+            }
+            $.ajax({
+                url: webapiuri + "/TPOnboarding/ApproveVoluntarydiscontinuation",
+                method: "POST",
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                headers: { 'Authorization': token },
+                data: JSON.stringify(reuestdata),
+                beforeSend: function () {
+                    $("#ajax_loader").show();
+                },
+                success: function (data) {
+                    if (data.status) {
+                        toastr.success("Voluntary Discontinuation Request Approve Successfully.")
+                        $("#ApproveBtn_modal").modal('hide');
+                        $("#lastdaybyreporting").val("");
+                        $("#remark").val("");
+                        LoadVoluntarydiscontinuationData(empid);
+                    }
+                },
+                error: function (err) {
+                    console.error("Error occur in save requst", err);
+                },
+                complete: function () {
+                    $("#ajax_loader").hide();
+                }
+            });
+        });
+        $("#cancelrequest").click(function () {
+            $("#ApproveBtn_modal").modal('hide');
+            $("#lastdaybyreporting").val("");
+            $("#remark").val("");
+        })
+    });
+    function GetCompanyandBranchofEmployee(empid) {
+        $.ajax({
+            url: webapiuri + "/TPOnboarding/GetCompanyandBranch?Empid="+empid,
+            method: "GET",
+            contentType: "application/json; charset=utf-8",
+            headers: { 'Authorization': token },
+            success: function (response) {                
+                $("#bunit").html('<option value="">Please Select</option>');
+                $("#workstation").html('<option value="">Please Select</option>');
+                $("#GW").html('<option value="">Please Select</option>');
+
+                $.each(response, function (index, item) {
+                    $("#bunit").append(`<option value="${item.CompanyId}">${item.CompanyName}</option>`);
+                    $("#workstation").append(`<option value="${item.BranchId}">${item.BranchName}</option>`);
+                    $("#GW").append(`<option value="${item.DepartmentId}">${item.DepartmentName}</option>`);
+                });
+
+                var currentData = response[0];
+                var autoSelectCompany = currentData.CompanyId;
+                var autoSelectBranch = currentData.BranchId;
+                var autoSelectDepartment = currentData.DepartmentId;
+
+                $("#bunit").val(autoSelectCompany).trigger('change');
+                $("#workstation").val(autoSelectBranch).trigger('change');
+                $("#GW").val(autoSelectDepartment).trigger('change');
+            },
+            error: function (err) {
+                console.error("Error loading Data", err);
+            }
+        });
+    }    
+    function LoadVoluntarydiscontinuationData(empid) {
+        $.ajax({
+            url: webapiurl + "TPOnboarding/GetVoluntarydiscontinuationData?EmpId=" + empid,
+            type: 'POST',
+            headers: {
+                'Authorization': token
+            },            
+            dataType: 'json',
+            beforeSend: function () {
+                $("#ajax_loader").show();
+            },
+            success: function (res) {                
+                if (!res || res.length === 0) {
+                    $("#NotificationGrid-empty").show();
+                    $("#tableResponsive").hide();
+                    $("#dataTables_tbl_header").hide();
+                }
+                else {
+                    $("#NotificationGrid-empty").hide();
+                    LoadDataTable(res);
+                }                
+            },
+            error: function () {
+                toastr.error('Failed to load Voluntary discontinuation Data');
+            },
+            complete: function () {
+                $("#ajax_loader").hide();
+            }
+        });
+    }
+    function LoadDataTable(data) {
+        $("#dataTables_tbl_header").remove();
+        var table = $("#tblVoluntarydiscontinuationReq").DataTable({
+            destroy: true,
+            dom: _domCommon,
+            language: _languageCommon,
+            data: data,
+            order: [],
+            columns: [
+                { title: "Empid", data: "Empid", visible: false },
+                { title: "Name", data: "EmpName" },
+                { title: "Email", data: "useremail" },
+                { title: "Reason for discontinuation", data: "reason" },
+                { title: "Last Working Day", data: "Lastworkingday" },  
+                { title: "Description", data: "Description" },  
+                { title: "Remarks", data: "remark" },
+                {
+                    title: "Status", data: "status",
+                    render: function (data) {
+                        if (data == 0) return '<div>Pending</div>';
+                        if (data == 1) return '<div class="red_font">Rejected by you</div>';
+                        if (data == 2) return '<div class="orange_font">HR Approval Pending</div>';
+                        if (data == 3) return '<div class="red_font">Rejected by HR</div>';
+                        if (data == 4) return '<div class="green_font">Approved</div>';
+                        return data;
+                    }
+                },  
+                {
+                    title: "Action", data: null,
+                    render: function (data, type, row) {
+                        var isPending = (row.status == 0);
+                        var disabledAttr = isPending ? '' : 'disabled style="pointer-events: none; opacity: 0.6;"';
+                        return `                        
+                         <a id="" class="btn blue_btnnew tooltips ApproveBtn" data-placement="left" data-original-title="Approve" ${disabledAttr}><i class="fa-solid fa-check"></i></a>
+                         <a id="" class="btn blue_btnnew tooltips RejectBtn" data-placement="left" data-original-title="Reject" ${disabledAttr}><i class="fa-solid fa-xmark"></i></a>
+                         `;
+                    }
+                },  
+            ],   
+            initComplete: function () {
+                const visibleTable = $('table:visible').attr('id');
+                $("#buttons").append(`
+                      <div id="export-button" class="export-button tooltips" data-placement="bottom" data-original-title="Download" data-table-id="${visibleTable}">
+                          <img src="../Newlayout/images/download_icon.svg" alt="Download icon">
+                      </div>
+                `);
+            },
+            drawCallback: function () {
+                $('.tooltips').tooltip();
+            },
+        });
+        setTimeout(function () {
+            $("#" + "tblVoluntarydiscontinuationReq" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+            $('.tooltips').tooltip();
+        }, 100);
+    }
+    function SendEmailToReportingManager() {
+        $.ajax({
+            url: webapiurl + "TPOnboarding/SendEmailToManagerOfDiscountinuation",
+            type: 'POST',
+            headers: {
+                'Authorization': token
+            },
+            dataType: 'json',
+            beforeSend: function () {
+                $("#ajax_loader").show();
+            },
+            success: function (res) {
+                console.log("Email send successfully to manager.");
+            },
+            error: function () {
+                console.log('Failed to send Manager Email.');
+            },
+            complete: function () {
+                $("#ajax_loader").hide();
+            }
+        });
+    }
+</script>
+
+<!-- Page Bar : Begin -->
+<div class="page-bar">
+    <ul class="page-breadcrumb">
+        <li>
+            <a href="/Admin/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+        </li>
+        <li>
+            <span><i class="fa-light fa-angle-right"></i> Onboarding process</span>
+        </li>
+    </ul>
+    <div class="page-toolbar" style="display:none">
+        <a href="javascript:;" class="btn icon_transparent_btn tooltips" id="Discontinu_btn" data-placement="left" data-original-title="Discontinuation"><i class="fa-light fa-circle-minus"></i></a>
+        <a href="javascript:;" class="btn icon_transparent_btn tooltips" id="Discontinu_Track" data-placement="left" data-original-title="Discontinuation"><i class="fa-light fa-circle-location-arrow"></i></a>
+    </div>
+</div>
+<!-- Page Bar : End -->
+<!-- Ajax Loader : Begin -->
+<div id='ajax_loader' class="modal_bg loading" aria-hidden="true" style="display:none">
+    <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading" />
+</div>
+<!-- Ajax Loader : End -->
+<!-- Body Block : Begin -->
+<div class="row">
+    <div class="col-lg-12">
+        <div class="portlet">
+            <div class="portlet-body">
+                <div class="table-responsive" id="tableResponsive">
+                    <table id="tblVoluntarydiscontinuationReq" class="new_datatbl table table-striped table-bordered table-hover order-column serch_datatable">
+                        <thead>
+                            @*<tr>
+                                <th style="min-width: 140px;">Name</th>
+                                <th style="min-width: 140px;">Role</th>
+                                <th>Last Working Day</th>
+                                <th style="min-width: 300px;">Reason</th>
+                                <th style="min-width: 200px;">Remarks</th>
+                                <th style="min-width: 120px;">Status</th>
+                                <th class="fixed-column">Action</th>
+                            </tr>*@
+                        </thead>
+                        <tbody>
+                            @*<tr>
+                                <td class="emp_box empbox_pending">
+                                    <img alt="" class="img-circle tooltips" data-placement="right" src="" style="height: 30px; width: 30px; object-fit: cover; margin-right: 8px; border: 1px solid #8ab1f7; display: none">
+                                    <span class="tooltips" style="display: inline-block; min-width: 30px; height: 30px; line-height: 30px; text-align: center; background-color: #ecf3ff; color: #295097; border-radius: 50% !important; border: 1px solid #8ab1f7; margin-right: 8px;">J</span>
+                                    <span>
+                                        <p class="emp_name">Jayeshgiri Hashmukhgiri Goswami</p>
+                                        <p title="">JayeshgiriGoswami@gmail.com</p>
+                                    </span>
+                                </td>
+                                <td>Software Enginner</td>
+                                <td>01-12-2025</td>
+                                <td>I have decided to resign to pursue a new opportunity that aligns better with my career goals.</td>
+                                <td>Arppoved Your Resignation Process.</td>
+                                <td><div>Pending</div></td>
+                                <td class="fixed-column">
+                                    <a id="" class="btn blue_btnnew tooltips ApproveBtn" data-placement="left" data-original-title="Approve"><i class="fa-solid fa-check"></i></a>
+                                    <a id="" class="btn blue_btnnew tooltips RejectBtn" data-placement="left" data-original-title="Reject"><i class="fa-solid fa-xmark"></i></a>
+                                </td>
+                            </tr>*@
+                            @*<tr>
+                                <td class="emp_box empbox_pending">
+                                    <img alt="" class="img-circle tooltips" data-placement="right" src="" style="height: 30px; width: 30px; object-fit: cover; margin-right: 8px; border: 1px solid #8ab1f7; display: none">
+                                    <span class="tooltips" style="display: inline-block; min-width: 30px; height: 30px; line-height: 30px; text-align: center; background-color: #ecf3ff; color: #295097; border-radius: 50% !important; border: 1px solid #8ab1f7; margin-right: 8px;">J</span>
+                                    <span>
+                                        <p class="emp_name">Jayeshgiri Hashmukhgiri Goswami</p>
+                                        <p title="">JayeshgiriGoswami@gmail.com</p>
+                                    </span>
+                                </td>
+                                <td>Software Enginner</td>
+                                <td>01-12-2025</td>
+                                <td>I have decided to resign to pursue a new opportunity that aligns better with my career goals.</td>
+                                <td>Arppoved Your Resignation Process.</td>
+                                <td><div class="red_font">Rejected by HR</div></td>
+                                <td class="fixed-column">
+                                    <a id="" class="btn blue_btnnew tooltips ApproveBtn" data-placement="left" data-original-title="Approve" disabled><i class="fa-solid fa-check"></i></a>
+                                    <a id="" class="btn blue_btnnew tooltips RejectBtn" data-placement="left" data-original-title="Reject" disabled><i class="fa-solid fa-xmark"></i></a>
+                                </td>
+                            </tr>*@
+                            @*<tr>
+                                <td class="emp_box empbox_pending">
+                                    <img alt="" class="img-circle tooltips" data-placement="right" src="" style="height: 30px; width: 30px; object-fit: cover; margin-right: 8px; border: 1px solid #8ab1f7; display: none">
+                                    <span class="tooltips" style="display: inline-block; min-width: 30px; height: 30px; line-height: 30px; text-align: center; background-color: #ecf3ff; color: #295097; border-radius: 50% !important; border: 1px solid #8ab1f7; margin-right: 8px;">J</span>
+                                    <span>
+                                        <p class="emp_name">Jayeshgiri Hashmukhgiri Goswami</p>
+                                        <p title="">JayeshgiriGoswami@gmail.com</p>
+                                    </span>
+                                </td>
+                                <td>Software Enginner</td>
+                                <td>01-12-2025</td>
+                                <td>I have decided to resign to pursue a new opportunity that aligns better with my career goals.</td>
+                                <td>Arppoved Your Resignation Process.</td>
+                                <td><div class="green_font">Approved</div></td>
+                                <td class="fixed-column">
+                                    <a id="" class="btn blue_btnnew tooltips ApproveBtn" data-placement="left" data-original-title="Approve" disabled><i class="fa-solid fa-check"></i></a>
+                                    <a id="" class="btn blue_btnnew tooltips RejectBtn" data-placement="left" data-original-title="Reject" disabled><i class="fa-solid fa-xmark"></i></a>
+                                </td>
+                            </tr>*@
+                            @*<tr>
+                                <td class="emp_box empbox_pending">
+                                    <img alt="" class="img-circle tooltips" data-placement="right" src="" style="height: 30px; width: 30px; object-fit: cover; margin-right: 8px; border: 1px solid #8ab1f7; display: none">
+                                    <span class="tooltips" style="display: inline-block; min-width: 30px; height: 30px; line-height: 30px; text-align: center; background-color: #ecf3ff; color: #295097; border-radius: 50% !important; border: 1px solid #8ab1f7; margin-right: 8px;">J</span>
+                                    <span>
+                                        <p class="emp_name">Jayeshgiri Hashmukhgiri Goswami</p>
+                                        <p title="">JayeshgiriGoswami@gmail.com</p>
+                                    </span>
+                                </td>
+                                <td>Software Enginner</td>
+                                <td>01-12-2025</td>
+                                <td>I have decided to resign to pursue a new opportunity that aligns better with my career goals.</td>
+                                <td>Arppoved Your Resignation Process.</td>
+                                <td><div class="red_font">Rejected by you</div></td>
+                                <td class="fixed-column">
+                                    <a id="" class="btn blue_btnnew tooltips ApproveBtn" data-placement="left" data-original-title="Approve" disabled><i class="fa-solid fa-check"></i></a>
+                                    <a id="" class="btn blue_btnnew tooltips RejectBtn" data-placement="left" data-original-title="Reject" disabled><i class="fa-solid fa-xmark"></i></a>
+                                </td>
+                            </tr>*@
+                            @*<tr>
+                                <td class="emp_box empbox_pending">
+                                    <img alt="" class="img-circle tooltips" data-placement="right" src="" style="height: 30px; width: 30px; object-fit: cover; margin-right: 8px; border: 1px solid #8ab1f7; display: none">
+                                    <span class="tooltips" style="display: inline-block; min-width: 30px; height: 30px; line-height: 30px; text-align: center; background-color: #ecf3ff; color: #295097; border-radius: 50% !important; border: 1px solid #8ab1f7; margin-right: 8px;">J</span>
+                                    <span>
+                                        <p class="emp_name">Jayeshgiri Hashmukhgiri Goswami</p>
+                                        <p title="">JayeshgiriGoswami@gmail.com</p>
+                                    </span>
+                                </td>
+                                <td>Software Enginner</td>
+                                <td>01-12-2025</td>
+                                <td>I have decided to resign to pursue a new opportunity that aligns better with my career goals.</td>
+                                <td>Arppoved Your Resignation Process.</td>
+                                <td><div class="orange_font">HR Approval Pending</div></td>
+                                <td class="fixed-column">
+                                    <a id="" class="btn blue_btnnew tooltips ApproveBtn" data-placement="left" data-original-title="Approve" disabled><i class="fa-solid fa-check"></i></a>
+                                    <a id="" class="btn blue_btnnew tooltips RejectBtn" data-placement="left" data-original-title="Reject" disabled><i class="fa-solid fa-xmark"></i></a>
+                                </td>
+                            </tr>*@
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- NoDataFound Block : End -->
+                <div id="NotificationGrid-empty" style="display: none;">
+                    <div class="datanotfound">
+                        <img src="~/assets/images/emptyscreen_1.png" height="148" width="280" alt="Nodata Found Icon">
+                        <p class="datanotfound_title">No data found</p> <!-- titleText -->
+                        <p class="">No entries found. Please add a record to get started.</p><!-- subText -->
+                    </div>
+                </div>
+                <!-- NoDataFound Block : End -->
+
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Body Block : End -->
+<!-- Discontinuation Modal : Begin -->
+<!--<div id="Discontinu_btn_modal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+    <div class="modal-dialog w-500">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal">&times;</button>
+                <h4 class="modal-title">Voluntary Discontinuation of training</h4>
+            </div>
+            <div class="modal-body">
+                <div class="modal-card">
+                    <div class="row">
+                        <div class="col-md-12">
+                            <div class="form-group">
+                                <label class="control-label">Reason for discontinuation <span class="required" aria-required="true">*</span></label>
+                                <select class="form-control input-sm select2" id="roleofemp">
+                                    <option value="">Please Select</option>
+                                    <option value="Company Trainee">Company Trainee</option>
+                                    <option value="Company Apprentice">Company Apprentice</option>
+                                    <option value="Apprentice-NATS">Apprentice-NATS</option>
+                                    <option value="Apprentice-NAPS">Apprentice-NAPS</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-12">
+                            <div class="form-group">
+                                <label>Description <span class="required" aria-required="true">*</span></label>
+                                <textarea class="form-control" rows="5" name="" id="discountinuationreason" placeholder="Please elaborate the reason" style="resize: vertical;"></textarea>
+                            </div>
+                        </div>
+                        <div class="col-md-12">
+                            <div class="form-group">
+                                <label class="control-label">Business unit <span class="required" aria-required="true">*</span></label>
+                                <select class="form-control input-sm select2" id="bunit">
+                                    <option value="">Please Select</option>-->
+                                    @*<option value="2">Cell</option>
+                                    <option value="3">Module</option>*@
+                                <!--</select>
+                            </div>
+                        </div>
+                        <div class="col-md-12">
+                            <div class="form-group">
+                                <label class="control-label">GW <span class="required" aria-required="true">*</span></label>
+                                <select class="form-control input-sm select2" id="GW">
+                                    <option value="0">Please Select</option>                                  
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-12">
+                            <div class="form-group">
+                                <label class="control-label">Workstation <span class="required" aria-required="true">*</span></label>
+                                <select class="form-control input-sm select2" id="workstation">
+                                    <option value="">Please Select</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-12">
+                            <div class="form-group data_picker_box">
+                                <label class="control-label">Last working day <span class="required" aria-required="true">*</span></label>
+                                <div class="input-group input-group-sm date date-picker" id="" data-date="@DateTime.Now" data-date-format="@_isdateformat" data-date-viewmode="years">
+                                    <span class="input-group-btn">
+                                        <button class="btn default" type="button">
+                                            <i class="fa-light fa-calendar-days"></i>
+                                        </button>
+                                    </span>
+                                    <input type="text" class="form-control" id="Lastday" value="" onkeydown="return false" data-date-format="@_isdateformat" placeholder="@_isdateformat.Replace(" M","MMM")" autocomplete="off">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <div class="row">
+                    <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                        <button type="button" class="btn clear_btn" id="clearForm"><i class="fa-regular fa-xmark"></i> Clear</button>
+                        <button type="button" class="btn save_btn" id="SubmitBtn"><i class="fa-regular fa-check"></i> Submit</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>-->
+<!-- Discontinuation Modal : End -->
+<!-- Manager Approval Modal : Begin -->
+<div id="ApproveBtn_modal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+    <div class="modal-dialog w-500">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal">&times;</button>
+                <h4 class="modal-title">Voluntary Discontinuation Request</h4>
+            </div>
+            <div class="modal-body">
+                <div class="modal-card">
+                    <div class="row empresign_card">
+                        <div class="col-lg-6 col-md-6" style="display:none">
+                            <div class="r_title">Employeeid</div>
+                            <div class="r_subtitle" id="empid"></div>
+                            <input type="hidden" id="empemail" />
+                        </div>
+                        <div class="col-lg-6 col-md-6">
+                            <div class="r_title">Employee Name</div>
+                            <div class="r_subtitle" id="empname"></div>
+                        </div>
+                        <div class="col-lg-6 col-md-6">
+                            <div class="r_title">Reason type</div>
+                            <div class="r_subtitle" id="reasontype"></div>
+                        </div>
+                        <div class="col-lg-12">
+                            <div class="r_title">Description</div>
+                            <div class="r_subtitle" id="discription"></div>
+                        </div>                       
+                        <div class="col-lg-4 col-md-4">
+                            <div class="r_title">Branch</div>
+                            <div class="r_subtitle" id="Branchmodal"></div>
+                        </div>
+                        <div class="col-lg-4 col-md-4">
+                            <div class="r_title">GW</div>
+                            <div class="r_subtitle" id="gwmodal"></div>
+                        </div>
+                        <div class="col-lg-4 col-md-4">
+                            <div class="r_title">Workstation</div>
+                            <div class="r_subtitle" id="workstationmodal"></div>
+                        </div>
+                        <div class="col-lg-4 col-md-4">
+                            <div class="r_title">Last working day</div>
+                            <div class="r_subtitle" id="lastworkingdaymodal"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-12">
+                        <div class="form-group">
+                            @*<label class="control-label">Set last working day <span class="required" aria-required="true">*</span></label>
+                            <select class="form-control input-sm select2" id="lastdaybyreporting">
+                                <option value="">Please Select</option>
+                                <option value="1">15 Days from now</option>
+                                <option value="2">1 Months from now</option>
+                                <option value="3">2 Months from now</option>
+                            </select>*@
+                            <div class="form-group data_picker_box">
+                                <label class="control-label">Set Last working day <span class="required" aria-required="true">*</span></label>
+                                <div class="input-group input-group-sm date date-picker" id="" data-date="@DateTime.Now" data-date-format="@_isdateformat" data-date-viewmode="years">
+                                    <span class="input-group-btn">
+                                        <button class="btn default" type="button">
+                                            <i class="fa-light fa-calendar-days"></i>
+                                        </button>
+                                    </span>
+                                    <input type="text" class="form-control" id="lastdaybyreporting" value="" onkeydown="return false" data-date-format="@_isdateformat" placeholder="@_isdateformat.Replace(" M","MMM")" autocomplete="off">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-12">
+                        <div class="form-group">
+                            <label>Remarks <span class="required" aria-required="true">*</span></label>
+                            <textarea class="form-control" rows="5" name="" id="remark" placeholder="Please Enter Remarks" style="resize: vertical;"></textarea>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <div class="row">
+                    <div class="col-lg-12 text-right">
+                        <button type="button" class="btn clear_btn" id="cancelrequest"><i class="fa-regular fa-xmark"></i> Cancel</button>
+                        <button type="button" class="btn save_btn" id="submitrequest"><i class="fa-regular fa-check"></i> Submit</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Manager Approval Modal : End -->
+<!-- Discontinuation Modal : Begin -->
+<div id="Discontinu_Track_modal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+    <div class="modal-dialog w-500">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal">&times;</button>
+                <h4 class="modal-title">Voluntary Discontinuation Track</h4>
+            </div>
+            <div class="modal-body nomodalfooter">
+                <div class="modal-card">
+                    <div class="discontinuation">
+                        <div class="discontinuation-step">
+                            <div class="discontinuation-step-header">
+                                <div class="discontinuation-step-content">
+                                    <div id="submitCircle" class="status-circle pending-circle"></div>
+                                    <div>
+                                        <div class="discontinuation-step-text">Request Submitted</div>
+                                        <div class="row empresign_card empdiscontinuation_block margin-top-10">
+                                            <div class="col-lg-12">
+                                                <div class="r_title">Submitted on</div>
+                                                <div id="submittedDate" class="r_subtitle"></div>
+                                            </div>
+                                            <div class="col-lg-12">
+                                                <div class="r_title">Reason</div>
+                                                <div id="submittedReason" class="r_subtitle"></div>
+                                            </div>
+                                            <div class="col-lg-12">
+                                                <div class="r_title">Your Requested Last Working Day</div>
+                                                <div id="employeeRequestedLWD" class="r_subtitle"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="discontinuation-step" id="stepManager">
+                            <div class="discontinuation-step-header">
+                                <div class="discontinuation-step-content">
+                                    <div id="managerCircle" class="status-circle pending-circle"></div>
+                                    <div>
+                                        <div class="discontinuation-step-text" id="managerStatusText">Manager Approval</div>
+                                        <div class="row empresign_card empdiscontinuation_block margin-top-10">
+                                            <div class="col-md-6">
+                                                <div class="r_title">Confirmed Last Working Day</div>
+                                                <div id="lastWorkingDay" class="r_subtitle"></div>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <div class="r_title">Accepted on</div>
+                                                <div id="managerAcceptedDate" class="r_subtitle"></div>
+                                            </div>
+                                            <div class="col-lg-12">
+                                                <div class="r_title">Remarks</div>
+                                                <div id="managerRemarks" class="r_subtitle"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="discontinuation-step" id="stepBHR">
+                            <div class="discontinuation-step-header">
+                                <div class="discontinuation-step-content">
+                                    <div id="bhrCircle" class="status-circle pending-circle"></div>
+                                    <div>
+                                        <div class="discontinuation-step-text" id="bhrStatusText">BHR Approval</div>
+                                        <div class="row empresign_card empdiscontinuation_block margin-top-10">
+                                            <div class="col-lg-12">
+                                                <div class="r_title" id="bhrLabel">Date</div>
+                                                <div id="bhrDate" class="r_subtitle"></div>
+                                            </div>
+                                            <div class="col-lg-12">
+                                                <div class="r_title">Remarks</div>
+                                                <div id="bhrRemarks" class="r_subtitle"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="discontinuation-step">
+                            <div class="discontinuation-step-header">
+                                <div class="discontinuation-step-content">
+                                    <div class="status-circle pending-circle"></div>
+                                    <span class="discontinuation-step-text">Exit Documents Released</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>            
+        </div>
+    </div>
+</div>
+<!-- Discontinuation Modal : End -->

@@ -1,0 +1,2388 @@
+﻿@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@using System.Configuration;
+@using System.Data
+@using System
+@model DataTable
+@{
+    ViewBag.Title = "PayrollApproval";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiurlpayroll = ConfigurationManager.AppSettings["webapipaytimePayroll"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+    string _lockAttendanceDay = HttpContext.Current.Session["lockAttendanceDay"].ToString();
+    string _CheckCustomClientDBName = ConfigurationManager.AppSettings["CheckCustomClientDBName"].ToString();
+    string _dbName = HttpContext.Current.Session["DbName"].ToString();
+    int _CheckFastrackdb = 0;
+    if (_CheckCustomClientDBName.Contains(_dbName))
+    {
+        _CheckFastrackdb = 1;
+    }
+}
+<script src="~/Scripts/Helpers/noDataHandler.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+@*<script src="~/Newlayout/js/sweet_alert_payroll.js"></script>*@
+<link href="/Newlayout/css/payrollstructure.css" rel="stylesheet">
+<style type="text/css">
+    #emp_close:hover {
+        cursor: pointer;
+    }
+
+    .fixed-column {
+        width: 100px !important;
+        min-width: 85px !important;
+        right: 0px;
+        position: sticky !important;
+        background-color: #fff !important;
+        box-shadow: -2px 2px 4px 0px rgba(0, 0, 0, 0.20);
+    }
+
+    .green_font {
+        color: green;
+    }
+
+    .red_font {
+        color: red;
+    }
+
+    .emp_close, .emp_box :hover {
+        cursor: pointer;
+    }
+</style>
+
+<script>
+    var CompIdlst = "";
+    var DeptIdlst = "";
+    var Shiftlst = "";
+    var DesgIdlst = "";
+    var BranchIdlst = "";
+    var EmpIdlst = "";
+    var Attendancelst = "";
+    var Isflag = 0;
+    var _RptType = "";
+    var hrattendancetable = "";
+    var Total_Employee_Attendance = 0;
+    var g_Present_day = 0;
+    var checked_count = 0;
+    var obj;
+    var company_id = "";
+    var branch_id = "";
+    var department_id = "";
+    var status = 0;
+    // var status_val = 4;
+    var _gridstatus = "0";
+    var month = 0;
+    var year = 0;
+    var Attendancetype = "";
+    var employeeList = [];
+    var payroll_finalize_id = "";
+    var table = "";
+    var filterflag = 0;
+
+    $(document).ready(function () {
+
+
+         if(filterflag == 0) {
+            GetAllApproval(status);
+
+             $('body').on('change', '#Search_dropdown', function () {
+
+                _gridstatus = $(this).val();
+                month = 0;
+                year =0;
+                GetAllApproval(_gridstatus, month, year);
+                $('#approvaltable tbody tr').hide(); // Hide all table rows
+                // Show only the rows with the selected value in the first column
+                $('#approvaltable tbody tr td:first-child').each(function () {
+                if ($(this).text() === _gridstatus) {
+                $(this).closest('tr').show();
+                }
+            });
+        });
+       }
+
+         year = new Date().getFullYear();
+         month = new Date().getMonth();
+
+         const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sept', 'Oct', 'Nov', 'Dec'];
+
+        $("#fil_col_div").hide();
+        $("#Payroll_Approval_Summary").show();
+       // GetAllApproval(status);
+        $("#approval_id").show();
+        $("#approval_grid").show();
+        $("#back_btn").hide();
+        $("#payout_approval_btn").hide();
+        $("#payout_reject_btn").hide();
+        $(".emptotalcount").hide();
+
+
+        //When click on Employee details then open the breakup details
+        $("#Generate_TDS_table tbody").on('click', '.emp_box', function () {
+
+            //var _payroll_finalize_id = payroll_finalize_id;
+            var _payroll_finalize_id = table.row($(this).parent('td').parent('tr')).data()["payroll_finalize_id"];
+            var net_salary = table.row($(this).parent('td').parent('tr')).data()["Net Salary"];
+
+            if (net_salary != "null") {
+                $(".emp_box").attr("data-toggle", "modal");
+                $(".emp_box").attr("data-target", "#emp_totalpayout_modal");
+                checkSession();
+                $.ajax({
+                    type: "GET",
+                    headers: { 'Authorization': '@_tokan' },
+                    url: '@_webapiurlpayroll' + 'HrPayrollFinalize/GetEmployeePayrollDetailsByPayrollfinalizeId?PayrollfinalizeId=' + _payroll_finalize_id,
+                    contentType: "application/json; charset=utf-8",
+                    dataType: "json",
+                    beforeSend: function () {
+                        $("#ajax_loader").show();
+                    },
+                    success: function (response) {
+                        var nameParts = response.emp_detail.split('|')[0].trim().replace(/\s+/g, ' ').trim().split(" ");
+                        var initials = nameParts[0].charAt(0).toUpperCase();
+                        if (nameParts.length > 1) {
+                            initials += nameParts[1].charAt(0).toUpperCase();
+                        }
+                        const colors = ["#e74c3c", "#8e44ad", "#3498db", "#16a085", "#f39c12", "#d35400", "#2c3e50"];
+                        //const randomColor = colors[Math.floor(Math.random() * colors.length)];
+                        const randomColor = "#295097";
+                        if (response.ResponseCode == 200 && response.Message == "Success") {
+                            $('.dayswise_box').html(`<img alt="" class="user_img img-circle" src="/UploadEmpPhoto/${response.emp_detail.split('|')[1].trim()}"
+                            onerror = "this.style.display='none'; this.nextElementSibling.style.display='inline-block';" />
+                            <span style="display: none; min-width: 28px; height: 28px;font-size: 14px; line-height: 28px; text-align: center; background-color: #ecf3ff; color:  ${randomColor}; border-radius: 50% !important; border: 1px solid #8ab1f7; margin-right: 8px;">
+                            ${initials}</span>${response.emp_detail.split('|')[0].trim()}</div >`)
+
+                            //$('.dayswise_box').html('<img src="/UploadEmpPhoto/' + response.emp_detail.split('|')[1].trim() + '" alt="" class="user_img"> <span> ' + response.emp_detail.split('|')[0] + '</span>')
+                            $(".emp_p_str").html(response.structure_name);
+                            $(".emp_Salary_Month").html(response.salary_month);
+                            $(".emp_Salary_Days").html(response.salary_days);
+                            //$(".emp_Net_Salary").html(response.net_salary);
+                            $(".emp_Net_Salary").html(response.final_payout);
+                            //$(".emp_total_payment").html("Total Payout (₹) : " + response.total_payout);
+                            //$(".emp_total_payment").html("Total Payout (₹) : " + response.final_payout);
+                            $("#Take_home_salary_per_month").html(response.final_payout + " /-");
+                            $("#Gross_monthly_salary").html(response.gross_salary + " /-");
+                            var E_table = ""
+                            var D_table = ""
+                            var R_table = ""
+                            $("#Reimbursement_table tbody").empty();
+                            $("#Earning_table tbody").empty();
+                            $("#Deduction_table tbody").empty();
+
+                            if (response.earning.length > 0) {
+                                for (var i = 0; i < response.earning.length; i++) {
+                                    E_table = E_table + '<tr><td><div class="d-flex justify-content-between"><div class="emp_pay_box"><div class="emp_pay_title">' + response.earning[i].head_name_in_salary_slip + '</div><div class="emp_pay_subtitle">' + response.earning[i].description + '</div></div><div class="emp_pay_total"><div class="emp_pay_title">' + response.earning[i].head_amount + '</div></div></div></td></tr>';
+                                }
+                                $("#Earning_table tbody").append(E_table);
+                            }
+                            if (response.deduction.length > 0) {
+                                for (var i = 0; i < response.deduction.length; i++) {
+                                    D_table = D_table + '<tr><td><div class="d-flex justify-content-between"><div class="emp_pay_box"><div class="emp_pay_title">' + response.deduction[i].head_name_in_salary_slip + '</div><div class="emp_pay_subtitle">' + response.deduction[i].description + '</div></div><div class="emp_pay_total"><div class="emp_pay_title">' + response.deduction[i].head_amount + '</div></div></div></td></tr>';
+                                }
+                                $("#Deduction_table tbody").append(D_table);
+                            }
+                            if (response.reimbursment.length > 0) {
+                                for (var i = 0; i < response.reimbursment.length; i++) {
+                                    R_table = R_table + '<tr><td><div class="d-flex justify-content-between"><div class="emp_pay_box"><div class="emp_pay_title">' + response.reimbursment[i].head_name_in_salary_slip + '</div><div class="emp_pay_subtitle">' + response.reimbursment[i].description + '</div></div><div class="emp_pay_total"><div class="emp_pay_title">' + response.reimbursment[i].head_amount + '</div></div></div></td></tr>';
+                                }
+                                $("#Reimbursement_table tbody").append(R_table);
+                            }
+                        }
+                    },
+                    complete: function () {
+                        $("#ajax_loader").hide();
+                    }
+                });
+            }
+        });
+
+        //When approval page show then only filter button is show
+        $("#filter_id").show();
+        $("#back_id").hide();
+
+        if(filterflag == 1) {
+        $('body').on('change', '#Search_dropdown', function () {
+            _gridstatus = $(this).val();
+            GetAllApproval(_gridstatus);
+            $('#approvaltable tbody tr').hide(); // Hide all table rows
+            // Show only the rows with the selected value in the first column
+            $('#approvaltable tbody tr td:first-child').each(function () {
+                if ($(this).text() === _gridstatus) {
+                    $(this).closest('tr').show();
+                }
+            });
+        });
+        }
+
+        //Attendace Type Dropdown of multiselect
+        $(document.body).on('change', '#Attendance_type', function () {
+            $("#spvalidation").hide();
+            var deptid = $('#Attendance_type option:selected');
+            var AttendanceArray = [];
+            $(deptid).each(function (index, deptid) {
+                AttendanceArray.push("'" + $(this).val() + "'");
+            });
+            if (AttendanceArray.length === 0) {
+                $("#txt6").val(0);
+            } else {
+                $("#txt6").val(AttendanceArray.join(','));
+                $("#spValidation").hide();
+            }
+            var AttendanceDept = $("#txt6").val();
+            Attendancelst = AttendanceDept;
+        });
+
+        // Download the employee specific information payout
+        $('#download_excel').on('click', function () {
+            downloadExcel();
+        });
+
+
+        getmonth();
+        fillCompany();
+        FillShift();
+        var $Companyselect = $("#CompanyID").multiselect({
+            selectAllValue: 'multiselect-all',
+            enableCaseInsensitiveFiltering: true,
+            includeSelectAllOption: true,
+            allSelectedText: 'All Select',
+            enableFiltering: true,
+            maxHeight: '300',
+            buttonWidth: '100%',
+            enableClickableOptGroups: true,
+            nonSelectedText: 'Select Company'
+
+        });
+        var $Branchselect = $("#BranchIds").multiselect({
+            selectAllValue: 'multiselect-all',
+            enableCaseInsensitiveFiltering: true,
+            includeSelectAllOption: true,
+            allSelectedText: 'All Select',
+            enableFiltering: true,
+            maxHeight: '300',
+            buttonWidth: '100%',
+            enableClickableOptGroups: true,
+            nonSelectedText: 'Select Branch'
+        });
+        var $Employee = $("#EmpIds").multiselect({
+            selectAllValue: 'multiselect-all',
+            enableCaseInsensitiveFiltering: true,
+            includeSelectAllOption: true,
+            allSelectedText: 'All Select',
+            enableFiltering: true,
+            maxHeight: '300',
+            buttonWidth: '100%',
+            enableClickableOptGroups: true,
+            nonSelectedText: 'Select Employee'
+        });
+        var $Departmentselect = $("#DeptIds").multiselect({
+            selectAllValue: 'multiselect-all',
+            enableCaseInsensitiveFiltering: true,
+            includeSelectAllOption: true,
+            allSelectedText: 'All Select',
+            enableFiltering: true,
+            maxHeight: '300',
+            buttonWidth: '100%',
+            enableClickableOptGroups: true,
+            nonSelectedText: 'Select Department',
+        });
+        var $DesignationId = $("#DesignationId").multiselect({
+            selectAllValue: 'multiselect-all',
+            enableCaseInsensitiveFiltering: true,
+            includeSelectAllOption: true,
+            allSelectedText: 'All Select',
+            enableFiltering: true,
+            maxHeight: '300',
+            buttonWidth: '100%',
+            enableClickableOptGroups: true,
+            nonSelectedText: 'Select Designation',
+        });
+        var $Attendance_type = $("#Attendance_type").multiselect({
+            selectAllValue: 'multiselect-all',
+            enableCaseInsensitiveFiltering: true,
+            includeSelectAllOption: true,
+            allSelectedText: 'All Select',
+            enableFiltering: true,
+            maxHeight: '300',
+            buttonWidth: '100%',
+            enableClickableOptGroups: true,
+            nonSelectedText: 'Select Wage Type',
+
+        });
+        var $Shift_type = $("#Shift_type").multiselect({
+            selectAllValue: 'multiselect-all',
+            enableCaseInsensitiveFiltering: true,
+            includeSelectAllOption: true,
+            allSelectedText: 'All Select',
+            enableFiltering: true,
+            maxHeight: '300',
+            buttonWidth: '100%',
+            enableClickableOptGroups: true,
+            nonSelectedText: 'Select Shift',
+        });
+
+        $("#clear_operation").click(function () {
+            toastr.remove();
+            //$("#Payroll_Approval_Summary").hide();
+           // $("#approval_grid").hide();
+            $("#MonthIds").attr("disabled", false);
+            $("#CompanyID").val('0');
+            $("#BranchIds").val('0');
+            $("#DeptIds").val('0');
+            $("#DeptIds").empty();
+            $("#DesignationId").val('0');
+            //$("#DesignationId").empty();
+            $("#Attendance_type").val('0');
+            //$("#Attendance_type").empty();
+            $('#BranchIds').empty();
+            $("#Shift_type").val('0');
+            //$("#Shift_type").empty();
+            $Companyselect.multiselect('rebuild');
+            $Branchselect.multiselect('rebuild');
+            $Departmentselect.multiselect('rebuild');
+            $DesignationId.multiselect('rebuild');
+            $Attendance_type.multiselect('rebuild');
+            $Shift_type.multiselect('rebuild');
+            $("#Status_filter").val(0);
+            // $("#prv_Date").hide();
+        });
+        $('#CompanyID').change(function () {
+            $("#tbldepartment1 tbody").remove();
+            var s = $('#CompanyID').val();
+            $('#CompanyName').val($("#CompanyID option:selected").text());
+            if (s != null) {
+                fillBranchbycompnyid(s, "");
+            } else {
+                $('#BranchIds').empty();
+                $Branchselect.multiselect('rebuild');
+            }
+            $("#DeptIds").empty();
+            $Departmentselect.multiselect('rebuild');
+            var branid = $('#CompanyID option:selected');
+            var CompanyArray = [];
+            $(branid).each(function (index, branid) {
+                CompanyArray.push([$(this).val()]);
+            });
+            if (CompanyArray == "") {
+                $("#txt5").val(0);
+            }
+            else {
+                $("#txt5").val(CompanyArray);
+            }
+            var Arrbranch = $("#txt5").val();
+            CompIdlst = Arrbranch;
+            $("#DesignationId").val('0');
+            $DesignationId.multiselect('rebuild');
+        });
+        $('#BranchIds').change(function () {
+            $("#spvalidation").hide();
+            var s = $('#BranchIds').val();
+            $('#BranchName').val($('#BranchIds :selected').text());
+            fillDeptTable(s, "");
+            $("#DesignationId").val('0');
+            $DesignationId.multiselect('rebuild');
+        });
+
+        $("#Filter_search").click(function () {
+            const wrapper = $(".filter_portlet_wrapper");
+            wrapper.toggleClass("full-width");
+
+            var screenWidth = $(window).width();
+            if (screenWidth >= 300 && screenWidth <= 600) {
+                $('.filter_portlet_tbl').toggle();
+                $('.filter_portlet_wrapper .filter_boxModal').css('width', '100%');
+            }
+        });
+
+        // Close filter panel on close button click
+        $(".filterclose_btn").click(function () {
+            const wrapper = $(".filter_portlet_wrapper");
+            wrapper.addClass("full-width");
+
+            var screenWidth = $(window).width();
+            if (screenWidth >= 300 && screenWidth <= 600) {
+                $(".filter_portlet_tbl").css("display", "block");
+            }
+        });
+
+        //When click on Apply button
+        $("#btnSubmit").click(function (event) {
+
+            filterflag = 1;
+            validate();
+            $("#fil_col_div").hide();
+            $("#approval_id").show();
+            $("#approvalpayout_id").hide();
+            $("#Payroll_Approval_Summary").show();
+            $("#approval_grid").show();
+            status = $("#Status_filter").val();
+            month = $("#MonthIds").val().split('-')[1];
+            year = $("#MonthIds").val().split('-')[0];
+            GetAllApproval(status);
+            _gridstatus = $("#Status_filter").val();
+        });
+
+        //repayroll
+        $('#approvaltable').on('click', '.repayroll', function () {
+
+            var row = $(this).closest('tr');
+            company_id = row.find('.clscompanyid').text();
+            branch_id = row.find('.clsbranchid').text();
+            department_id = row.find('.clsdepartmentid').text();
+            Attendancetype = row.find('.calculationtype').text();
+            ShiftID = row.find('.sh').text();
+            monthYear = row.find('.monthYearFs').text().trim();   //07-01-2025 Added by Damini
+            // Split the monthYear string into month and year
+            let [monthName, yearName] = monthYear.split('-');
+            month = new Date(`${monthName} 1, 2020`).getMonth() + 1;
+            year = parseInt(yearName, 10);
+            var status = 3;
+
+
+            $.ajax({
+                type: "POST",
+                headers: { 'Authorization': '@_tokan' },
+                url: '@_webapiurlpayroll' + 'Approval/Rollbackpayrollfromapprovaltosalaryprocess?month=' + month + "&year=" + year + "&status=" + status + "&Dpartmentid=" + department_id + "&CompanyID=" + company_id + "&BranchID=" + branch_id + "&Attendancetype=" + Attendancetype + "&ShiftID=" + Shiftlst,
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                beforeSend: function () {
+                    $("#ajax_loader").show();
+                },
+                success: function (response) {
+
+                    if (response.success == true && response.responseCode == 200) {
+                        toastr.remove();
+                        toastr.success(response.message);
+                        GetApprovalDashBoardDetailsSummary(company_id, branch_id, department_id, Attendancetype, '0', Shiftlst);
+                        GetAllApproval('0');
+                    } else {
+                        toastr.remove();
+                        toastr.error(response.message);
+                    }
+                },
+                complete: function () {
+                    $("#ajax_loader").hide();
+                }
+            });
+        });
+
+
+        //When click on action button then see the approve payout page
+        $('#approvaltable').on('click', '.eye_btn', function () {
+            const wrapper = $(".filter_portlet_wrapper");
+            wrapper.addClass("full-width");
+            $("#approval_id").hide();
+            $("#approvalpayout_id").show();
+            $("#filter_id").hide();
+            $("#back_id").show();
+            $("#fil_col_div").hide();
+            $("#Payroll_Approval_Summary").hide();
+           // $("#approval_grid").hide();
+
+            //Get the value of particular row
+            var row = $(this).closest('tr');
+            company_id = row.find('.clscompanyid').text();
+            branch_id = row.find('.clsbranchid').text();
+            department_id = row.find('.clsdepartmentid').text();
+            Attendancetype = row.find('.calculationtype').text();
+            monthYear  = row.find('.monthYearFs').text().trim();
+
+            // Split the monthYear string into month and year
+            let [monthName, yearName] = monthYear.split('-');
+            month = new Date(`${monthName} 1, 2020`).getMonth() + 1;
+            year = parseInt(yearName, 10);
+
+            var status = row.find('.status').text().trim();
+            if (status == 'Pending') {
+                status = "1";
+                $("#back_btn").show();
+                $("#payout_approval_btn").show();
+                $("#payout_reject_btn").show();
+                GetApprovalDashBoardDetailsSummary(company_id, branch_id, department_id, Attendancetype, status, Shiftlst, month, year);
+                $("#back_btn").click(function () {
+                    status = "0";
+                    $("#approval_id").show();
+                    $("#approvalpayout_id").hide();
+                    $("#Payroll_Approval_Summary").show();
+                    $("#approval_grid").show();
+                    $("#back_id").hide();
+                    $("#filter_id").show();
+                    if(filterflag == 0) {
+                        month = 0;
+                        year = 0;
+                        GetAllApproval(status, month, year);
+                    }
+                    GetAllApproval(status);
+                    GetApprovalDashBoardDetailsSummary(company_id, branch_id, department_id, Attendancetype, status, Shiftlst);
+                });
+            }
+            else if (status == 'Approved') {
+                status = "2";
+                $("#back_btn").show();
+                $("#payout_approval_btn").hide();
+                $("#payout_reject_btn").hide();
+                GetApprovalDashBoardDetailsSummary(company_id, branch_id, department_id, Attendancetype, status, Shiftlst, month, year);
+                //tableget(status);
+                $("#back_btn").click(function () {
+                    status = "0";
+                    $("#approval_id").show();
+                    $("#approvalpayout_id").hide();
+                    $("#Payroll_Approval_Summary").show();
+                    $("#approval_grid").show();
+                    $("#back_id").hide();
+                    $("#filter_id").show();
+                     if(filterflag == 0) {
+                        month = 0;
+                        year = 0;
+                        GetAllApproval(status, month, year);
+                    }
+                    GetAllApproval(status);
+                    GetApprovalDashBoardDetailsSummary(company_id, branch_id, department_id, Attendancetype, status, Shiftlst, month, year);
+                });
+            }
+            else if (status == 'Rejected') {
+                status = "3";
+                $("#back_btn").show();
+                $("#payout_approval_btn").hide();
+                $("#payout_reject_btn").hide();
+                GetApprovalDashBoardDetailsSummary(company_id, branch_id, department_id, Attendancetype, status, Shiftlst, month, year);
+                //tableget(status);
+                $("#back_btn").click(function () {
+                    status = "0";
+                    $("#approval_id").show();
+                    $("#approvalpayout_id").hide();
+                    $("#Payroll_Approval_Summary").show();
+                   // $("#approval_grid").hide();
+                    $("#back_id").hide();
+                    $("#filter_id").show();
+                     if(filterflag == 0) {
+                        month = 0;
+                        year = 0;
+                        GetAllApproval(status, month, year);
+                    }
+                    GetAllApproval(status, month, year);
+                    GetApprovalDashBoardDetailsSummary(company_id, branch_id, department_id, Attendancetype, status, Shiftlst, month, year);
+                });
+            }
+
+
+            //When click on back button then show approval page
+            $("#back_btn").click(function () {
+                status = "0";
+                $("#approval_id").show();
+                $("#approvalpayout_id").hide();
+                $("#Payroll_Approval_Summary").show();
+                $("#approval_grid").show();
+                $("#back_id").hide();
+                $("#filter_id").show();
+                GetAllApproval(status);
+                GetApprovalDashBoardDetailsSummary(company_id, branch_id, department_id, Attendancetype, status, Shiftlst, month, year);
+            });
+
+            //When click on approve payout
+            $("#payout_approval_btn").on('click', function () {
+
+                Swal.fire({
+                    html: '<div class="swal_subtitle  margin-bottom-15"><b>Would you like to approve the payroll for the salary?</b></div><div class="swal_thirdtitle  margin-bottom-10">You cannot edit the approved payroll. Please validate all information before approving.</div>',
+                    title: "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_question.svg' alt=''>Question",
+                    closeOnConfirm: true,
+                    showCloseButton: true,
+                    showCancelButton: true,
+                    focusConfirm: false,
+                    confirmButtonText: 'Yes',
+                    cancelButtonText: 'No',
+                    allowOutsideClick: false,
+                    allowEscapeKey: false,
+                    customClass: {
+                        confirmButton: 'swal-confirm-button-class',
+                        cancelButton: 'swal-cancel-button-class'
+                    },
+                }).then(function (isConfirm) {
+
+                    if (isConfirm.isConfirmed == true) {
+
+                        var employeeIds = [];
+                        $('.employee_id').each(function () {
+                            employeeIds.push($(this).val());
+                        });
+
+                        //var remarks = $("#remark_id").val();
+                        var concatenatedString = employeeIds.join(', ');
+                        if (concatenatedString != "") {
+                            var obj = {
+                                //"month": $("#MonthIds").val().split('-')[1],
+                                //"year": $("#MonthIds").val().split('-')[0],
+                                "month": month,
+                                "year": year,
+                                "isapproved": true,
+                                "emp_id": concatenatedString,
+                                "remarks": ''
+                            }
+                            checkSession();
+                            $.ajax({
+                                type: "POST",
+                                headers: { 'Authorization': '@_tokan' },
+                                url: '@_webapiurlpayroll' + 'Approval/ApprovalorRejectedFinalizedPayroll',
+                                data: JSON.stringify(obj),
+                                contentType: "application/json; charset=utf-8",
+                                dataType: "json",
+                                beforeSend: function () {
+                                    $("#ajax_loader").show();
+                                },
+                                success: function (response) {
+
+                                    if (response.success == true && response.responseCode == 206) {
+                                        toastr.remove();
+                                        toastr.success(response.message);
+                                        $("#back_btn").show();
+                                        $("#payout_approval_btn").hide();
+                                        $("#payout_reject_btn").hide();
+                                        status = "0";
+                                        GetApprovalDashBoardDetailsSummary(company_id, branch_id, department_id, Attendancetype, status, Shiftlst, month, year);
+                                        tableget(status);
+                                    } else if (response.success == false) {
+                                        toastr.remove();
+                                        toastr.error(response.message);
+                                    } else {
+                                        toastr.remove();
+                                        toastr.error(response.message);
+                                    }
+                                },
+                                complete: function () {
+                                    $("#ajax_loader").hide();
+                                }
+                            });
+                        }
+
+                    } else {
+
+                    }
+                });
+                $('img[src="/assets/images/icons/swal_icon/icon_question.svg"]').parent().parent().parent().addClass('swal_question');
+            });
+
+
+
+            //When click on reject payout
+            $("#payout_reject_btn").on('click', function () {
+
+                Swal.fire({
+                    html: '<div class="swal_subtitle margin-bottom-15"><b>Would you Reject the payroll for the salary?</b></div><div class="swal_thirdtitle margin-bottom-10">Please validate all information before reject.</div><div class="swal_thirdtitle"><input type="text" class="form-control input-sm"  id = "remark_id" placeholder="Write a remark" maxlength="200"></div>',
+                    title: "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_question.svg' alt=''>Question",
+                    closeOnConfirm: true,
+                    showCloseButton: true,
+                    showCancelButton: true,
+                    focusConfirm: false,
+                    confirmButtonText: 'Yes',
+                    cancelButtonText: 'No',
+                    allowOutsideClick: false,
+                    allowEscapeKey: false,
+                    customClass: {
+                        confirmButton: 'swal-confirm-button-class',
+                        cancelButton: 'swal-cancel-button-class'
+                    },
+                    preConfirm: function () {
+                        var remark = $('#remark_id').val().trim();
+                        if (remark === '') {
+                            $("#remark_id").addClass('field_error');
+                            // Display the validation message below the input
+                            if ($('#remark_error').length === 0) {
+                                $('#remark_id').after('<div id="remark_error" style="color: red; margin-top: 5px; text-align :left; font-size :11px ">Remark is required.</div>');
+                            }
+                            //Swal.showValidationMessage('<span style="color: red;">Remark is required.</span>');
+                            return false; // Prevents the modal from closing
+                        }
+                        return remark;
+                    }
+                }).then(function (isConfirm) {
+
+                    if (isConfirm.isConfirmed == true) {
+
+                        var remarks = $("#remark_id").val();
+
+                        var employeeIds = [];
+                        $('.employee_id').each(function () {
+                            employeeIds.push($(this).val());
+                        });
+                        var concatenatedString = employeeIds.join(', ');
+
+                            if (concatenatedString != "") {
+                                var obj = {
+                                    //"month": $("#MonthIds").val().split('-')[1],
+                                    //"year": $("#MonthIds").val().split('-')[0],
+                                    "month": month,
+                                    "year": year,
+                                    "isapproved": false,
+                                    "emp_id": concatenatedString,
+                                    "remarks": remarks
+                                }
+                                checkSession();
+                                $.ajax({
+                                    type: "POST",
+                                    headers: { 'Authorization': '@_tokan' },
+                                    url: '@_webapiurlpayroll' + 'Approval/ApprovalorRejectedFinalizedPayroll',
+                                    data: JSON.stringify(obj),
+                                    contentType: "application/json; charset=utf-8",
+                                    dataType: "json",
+                                    beforeSend: function () {
+                                        $("#ajax_loader").show();
+                                    },
+                                    success: function (response) {
+                                        if (response.success == true && response.responseCode == 206) {
+                                            toastr.remove();
+                                            toastr.success(response.message);
+                                            $("#back_btn").show();
+                                            $("#payout_approval_btn").hide();
+                                            $("#payout_reject_btn").hide();
+                                            status = "0";
+                                            // GetApprovalDashBoardDetailsSummary(company_id, branch_id, department_id, Attendancetype, status);
+                                            tableget(status);
+
+                                        } else if (response.success == false) {
+                                            toastr.remove();
+                                            toastr.error(response.message);
+                                        } else {
+                                            toastr.remove();
+                                            toastr.error(response.message);
+                                        }
+                                    },
+                                    complete: function () {
+                                        $("#ajax_loader").hide();
+                                    }
+                                });
+                            }
+                            else {
+                                // Handle case when no employee is selected
+                                toastr.error("Please select at least one employee.");
+                            }
+                    }
+                    else {
+
+                    }
+                });
+                $('img[src="/assets/images/icons/swal_icon/icon_question.svg"]').parent().parent().parent().addClass('swal_question');
+            });
+
+            // Disable copy and paste in the input box
+            $(document).on('paste', '#remark_id', function (event) {
+                event.preventDefault(); // Prevent paste action
+            });
+
+            $(document).on('copy cut', '#remark_id', function (event) {
+                event.preventDefault(); // Prevent copy and cut actions
+            });
+        });
+
+        function GetAllApproval(status) {
+
+            //var approvaltable = $('#approvaltable').DataTable();
+            //approvaltable.destroy();
+
+            if (Isflag == 0) {
+                var approvaltable = $('#approvaltable').DataTable();
+                approvaltable.destroy();
+                var obj = {
+                    //"month": $("#MonthIds").val().split('-')[1],
+                    //"year": $("#MonthIds").val().split('-')[0],
+                    "month": month,
+                    "year": year,
+                    "status": status,
+                    "Dpartmentid": DeptIdlst,
+                    "Designationid": DesgIdlst,
+                    "CompanyID": CompIdlst,
+                    "BranchID": BranchIdlst,
+                    @*"Attendancetype": ('@_CheckFastrackdb' == 1) ? $("#Attendance_type").val() : "",*@
+                    "Attendancetype": ('@_CheckFastrackdb' == 1) ? Attendancelst : "",
+                    "ShiftID": Shiftlst
+                }
+                checkSession();
+                $.ajax({
+                    type: "POST",
+                    headers: { 'Authorization': '@_tokan' },
+                    url: '@_webapiurlpayroll' + 'Approval/GetAllApproval',
+                    data: JSON.stringify(obj),
+                    contentType: "application/json; charset=utf-8",
+                    dataType: "json",
+                    beforeSend: function () {
+                        $("#ajax_loaderaddon").show();
+                    },
+                    success: function (response) {
+                        //$("#fil_col_div").toggle();
+                        toastr.remove();
+                        $("#approvaltable tbody").empty();
+                        $("#approvaltable thead tr:eq(1)").remove();
+                        var table = "";
+                        $("#pg_btn").hide();
+                        if (response.Success == true && response.ResponseCode == 200) {
+                            if (response.approvalList.length > 0) {
+                                var n = 0;
+                                for (var i = 0; i < response.approvalList.length; i++) {
+                                    var tbl = "<tr>";
+                                    tbl += "<td style='display:none' class='pid'>" + response.approvalList[i].payroll_approval_id + "</td>";
+                                    tbl += "<td hidden class='srno'>" + (i + 1) + "</td>";
+                                    tbl += "<td class='company'><span hidden class='clscompanyid'>" + response.approvalList[i].CompanyID + "</span>" + (response.approvalList[i].company !== null ? response.approvalList[i].company : "") + "</td>";
+                                    tbl += "<td class='branch'><span hidden class='clsbranchid'>" + response.approvalList[i].BranchId + "</span>" + (response.approvalList[i].branch !== null ? response.approvalList[i].branch : "") + "</td>";
+                                    tbl += "<td class='department'><span hidden class='clsdepartmentid'>" + response.approvalList[i].DepartmentId + "</span>" + (response.approvalList[i].department !== null ? response.approvalList[i].department : "") + "</td>";
+                                    //tbl += "<td class='noemployees'>" + response.approvalList[i].month + "</td>";
+                                    //tbl += "<td class='noemployees'>" + response.approvalList[i].year + "</td>";
+                                    //Month and year
+                                    tbl += "<td  class='monthYearFs'>" + months[(response.approvalList[i].month - 1)] + "-" + response.approvalList[i].year + "</td>";
+                                    tbl += "<td class='noemployees'>" + response.approvalList[i].noemployees + "</td>";
+                                    tbl += "<td class='netsalary purple_font'> &#8377; " + response.approvalList[i].netsalary + "</td>";
+                                    tbl += "<td class='totalfinalpayout green_font'> &#8377; " + response.approvalList[i].totalfinalpayout + "</td>";
+                                    var status = response.approvalList[i].status;
+
+                                    let selectedOption = '';
+                                    if (_gridstatus == "0") {
+                                        selectedOption = _gridstatus;
+                                        if (status == "Approved") {
+                                            statusColor = 'green';
+                                        } else if (status == "Rejected") {
+                                            statusColor = 'red';
+                                        } else {
+                                            statusColor = 'black';
+                                        }
+                                    } else if (status == "Pending") {
+                                        selectedOption = "1";
+                                        statusColor = 'black';
+                                    } else if (status == "Approved") {
+                                        selectedOption = "2";
+                                        statusColor = 'green';
+                                    } else if (status == "Rejected") {
+                                        selectedOption = "3";
+                                        statusColor = 'red';
+                                    } else {
+                                        selectedOption = "0";
+                                    }
+                                    tbl += "<td class='status' style='color: " + statusColor + ";'>" + status + "</td>";
+                                    tbl += "<td class='remarks'>" + (response.approvalList[i].remarks !== null ? response.approvalList[i].remarks : "") + "</td>";
+                                    var calculationtype = response.approvalList[i].calculation_type.split(',');
+                                    var calculation_type = "";
+                                    for (var j = 0; j < calculationtype.length; j++) {
+                                        calculation_type += "'" + calculationtype[j] + "'";
+                                        if (j < calculationtype.length - 1) {
+                                            calculation_type += ","; // Add comma only if it's not the last element
+                                        }
+                                    }
+
+                                    tbl += "<td style ='display:none' class='calculationtype'>" + calculation_type + "</td>"
+
+                                    if (status == "Rejected") {
+                                        tbl = tbl + "<td class='aprroval_action blue_font fixed-column'>" + '<a class="eyeclass btn blue_btnnew tooltips eye_btn" data-placement="left" title="View" > <span id="sp3" hidden="">1002</span> <i class="fa-regular fa-eye"> </i>  </a> <span> </span><a style="display:none" class="Activeclass btn btn-xs blue_btnnew tooltips" data-placement="left" title="Active"><i class="fa-solid fa-check"></i></a> <a class="repayroll btn blue_btnnew tooltips" data-placement="bottom" title="Payroll return to salary panding " > <span id="sp3" hidden="">1002</span> <i class="fa-light fa-arrows-retweet" aria-hidden="true"></i>  </a> <span> </span><a style="display:none" class="Activeclass btn btn-xs blue_btnnew tooltips" data-placement="left" title="Active"><i class="fa-solid fa-check"></i></a>';
+                                        tbl = tbl + "</td>";
+                                    } else {
+                                        tbl = tbl + "<td class='aprroval_action blue_font fixed-column'>" + '<a class="eyeclass btn blue_btnnew tooltips eye_btn" data-placement="left" title="View" > <span id="sp3" hidden="">1002</span> <i class="fa-regular fa-eye"> </i>  </a> <span> </span><a style="display:none" class="Activeclass btn btn-xs blue_btnnew tooltips" data-placement="left" title="Active"><i class="fa-solid fa-check"></i></a>';
+                                        tbl = tbl + "</td>";
+                                    }
+
+                                    tbl = tbl + "</tr>";
+                                    table += tbl;
+                                    n++;
+                                }
+                                $("#approvaltable tbody").append(table);
+                                $('#approvaltable').destroy;
+                                //$('#approvaltable').DataTable().destroy();
+
+                            } else {
+                                $("#tblempty").hide();
+                                $("#NotificationGrid-empty").show();
+                            }
+
+                            // Role Rights---
+                            var canexport = '@obj.CanExport';
+                            if ('@obj.CanExport' == 'True') {
+                                var _exe = {
+                                    extend: 'excel',
+                                    exportOptions: {
+                                        columns: [2, 3, 4, 5, 6, 7, 8, 10, 11, 12]
+                                    }
+                                };
+                            }
+                            else {
+                            }
+
+                            $("#dataTables_tbl_header").remove();
+                            approvaltable = $("#approvaltable").DataTable({
+                                //dom: "<'row div_head_1'<'col-sm-12 margin-bottom-5'<'attendance_selected_emp'>>>" +
+                                //     "<'row div_head_2'<'col-lg-9 col-sm-7 col-xs-12 mb_margin_bottom_15'<'selected_emp_main'<'tbl_text'><'tbl_text_close'>>><'col-lg-3 col-sm-5 col-xs-12 recordbtn_end'<'record_btn_main'l,><'dt-buttons'Bf>>>" +
+                                //     "<'row'<'col-sm-12 margin-bottom-10'<'customforms_table'tr'>>>" +
+                                //     "<'row'<'col-md-5 col-sm-5'i><'col-md-7 col-sm-7'p>>",
+                                dom: _domColumn,
+                                language: _languageColumn,
+                                destroy: true,
+                                processing: true,
+                                paging: true,
+                                order: [[2, 'asc']],
+                                buttons: [
+                                    //_exe
+                                ],
+
+                                initComplete: function (settings, json) {
+
+                                    // Clear any existing footer before appending a new one
+                                    $("#approvaltable thead tr:eq(1)").remove();
+
+                                    var footer = '<tr> <th hidden> <input type="checkbox" id="Sr No"> </th> <th hidden>payroll_approval_id</th> <th>Company</th> <th>Branch</th><th>Department</th> <th></th> <th>No. Employees</th> <th>Net Salary</th> <th>Total Final Payout</th> <th>Status</th> <th hidden>Calculation Type</th> <th>Remarks</th> <th class="fixed-column">Action</th></tr>';
+                                    $("#approvaltable thead").append(footer);
+                                    const visibleTable = $('table:visible').attr('id');
+                                    $("#buttons").append(`
+                                         <div id="export-button" class="export-button tooltips" data-placement="bottom" data-original-title="Download" data-table-id="${visibleTable}">
+                                             <img src="../Newlayout/images/download_icon.svg" alt="Download icon">
+                                         </div>
+                                     `);
+                                },
+                                "columnDefs": [
+                                        { "orderable": false, "targets": 0 }, // Disabling sorting for the first column
+                                         { "orderable": false, "targets": 12 }
+                                ],
+                                "lengthMenu": [
+                                       [10, 25, 50, 100], // Options for number of entries per page
+                                       [10, 25, 50, 100], // Label for the "All" option
+                                ]
+                            });
+                            setTimeout(function () {
+                                $("#" + "approvaltable" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsiveapproval"));
+                                $('.tooltips').tooltip();
+                            }, 100);
+                            $("#approvaltable thead tr:eq(1) th").each(function (index) {
+                                var title = $(this).text();
+                                if (index == 1 || index == 2 || index == 3 || index == 4) {
+                                    $(this).html('<input type="text" class="search_input" placeholder="Search" /><i class="clm-search" id=""></i>');
+                                } else {
+                                    $(this).html('');
+                                }
+                            });
+
+                            $("#approvaltable thead").on("keyup", "input", function () {
+                                var columnIndex = $(this).parent().index();
+                                if ($(this).closest('tr').index() === 1 && columnIndex === 0) {
+                                    return;
+                                }
+                                approvaltable.column(columnIndex).search(this.value).draw();
+                            });
+
+                            $('div.tbl_text_close').html('<div class="reset_filter_btn" id="emp_close" style="display:none">Reset</div>');
+                            $(".div_head_1").hide();
+
+                            $("#approvaltable thead tr:eq(1) th:eq(9)").html('');
+
+                            if (_gridstatus == "0") {
+                                $("#approvaltable thead tr:eq(1) th:eq(9)").html('<select class="form-control input-sm adrp" id="Search_dropdown"><option value="0" selected>All</option><option value="1" >Pending </option><option class="green_font"; value="2" >Approved</option><option class="red_font" value="3" >Rejected </option></select>');
+                            } else if (_gridstatus == "1") {
+                                $("#approvaltable thead tr:eq(1) th:eq(9)").html('<select class="form-control input-sm adrp" id="Search_dropdown"><option value="0" >All</option><option value="1" selected >Pending </option><option class="green_font"; value="2" >Approved</option><option class="red_font" value="3" >Rejected </option></select>');
+                            } else if (_gridstatus == "2") {
+                                $("#approvaltable thead tr:eq(1) th:eq(9)").html('<select class="form-control input-sm adrp" id="Search_dropdown"><option value="0" >All</option><option value="1">Pending </option><option class="green_font"; value="2" selected>Approved</option><option class="red_font" value="3" >Rejected </option></select>');
+                            } else if (_gridstatus == "3") {
+                                $("#approvaltable thead tr:eq(1) th:eq(9)").html('<select class="form-control input-sm adrp" id="Search_dropdown"><option value="0" >All</option><option value="1">Pending </option><option class="green_font"; value="2">Approved</option><option class="red_font" value="3" selected>Rejected </option></select>');
+                            } else if (status == "Pending") {
+                                $("#approvaltable thead tr:eq(1) th:eq(9)").html('<select class="form-control input-sm adrp" id="Search_dropdown"><option value="0">All </option><option value="1" selected>Pending </option><option class="green_font" value="2" >Approved</option><option class="red_font" value="3">Rejected </option></select>');
+                            } else if (status == "Approved") {
+                                $("#approvaltable thead tr:eq(1) th:eq(9)").html('<select class="form-control input-sm adrp" id="Search_dropdown"><option value="0">All</option><option value="1" >Pending </option><option class="green_font" value="2" selected>Approved</option><option class="red_font" value="3">Rejected </option></select>');
+                            } else if (status == "Rejected") {
+                                $("#approvaltable thead tr:eq(1) th:eq(9)").html('<select class="form-control input-sm adrp" id="Search_dropdown"><option value="0">All</option><option value="1" >Pending </option><option class="green_font" value="2" >Approved</option><option class="red_font" value="3" selected> Rejected </option></select>');
+                            } else {
+                                $("#approvaltable thead tr:eq(1) th:eq(9)").html('<select class="form-control input-sm adrp" id="Search_dropdown"><option value="0" selected>All</option><option value="1" >Pending </option><option class="green_font" value="2" >Approved</option><option class="red_font" value="3">Rejected </option></select>');
+                            }
+                        }
+                    },
+                    complete: function () {
+                        $("#ajax_loaderaddon").hide();
+                    }
+                });
+
+
+                checkSession();
+                $.ajax({
+                    type: "POST",
+                    headers: { 'Authorization': '@_tokan' },
+                    url: '@_webapiurlpayroll' + 'Approval/ApprovalSummaryReportCount',
+                    data: JSON.stringify(obj),
+                    contentType: "application/json; charset=utf-8",
+                    dataType: "json",
+                    beforeSend: function () {
+                        $("#ajax_loader").show();
+                    },
+                    success: function (response) {
+                        if (response != null && response.length > 0) {
+                            //$("#_TFPNo").html(response[0].nototalfinalpayout);
+                            $("#_TFPNo").html(response[0].noofrequest);
+                            $("#_Cmpny").html(response[0].company);
+                            $("#_Brnch").html(response[0].branch);
+                            $("#_Dpt").html(response[0].department);
+                            $("#_Emp").html(response[0].employees);
+                            $("#_NS").html(response[0].netsalary);
+                            $("#_TFP").html(response[0].totalfinalpayout);
+                            $("#_ESIC").html(response[0].esic);
+                            $("#_PF").html(response[0].pf);
+                        }
+                    },
+                    complete: function () {
+                        $("#ajax_loader").hide();
+                    }
+                });
+            }
+        }
+
+        function GetApprovalDashBoardDetailsSummary(company_id, branch_id, department_id, Attendancetype, status, Shiftlst, month, year) {
+
+            var obj = {
+                //"month": $("#MonthIds").val().split('-')[1],
+                //"year": $("#MonthIds").val().split('-')[0],
+                "month": month,
+                "year": year,
+                "status": status,
+                "Dpartmentid": department_id,
+                "CompanyID": company_id,
+                "BranchID": branch_id,
+                "Attendancetype": Attendancetype,
+                "ShiftID": Shiftlst
+            }
+            checkSession();
+            $.ajax({
+                type: "POST",
+                headers: { 'Authorization': '@_tokan' },
+                url: '@_webapiurlpayroll' + 'Approval/GetApprovalDashBoardDetailsSummary',
+                data: JSON.stringify(obj),
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                beforeSend: function () {
+                    $("#ajax_loader").show();
+                },
+                success: function (response) {
+                    clear();
+                    if (response.basicInfo != null) {
+                        $(".Regular_Payroll_Cycle").html(response.basicInfo.payrollCycle);
+                        $(".Pay_Date").html(response.basicInfo.payDate.split('T')[0]);
+                        $("._Office").html(response.basicInfo.branchName);
+                        $(".Total_Employee").html(response.basicInfo.totalEmployee);
+                    }
+
+                    if (response.payoutSummary != null) {
+                        $(".Total_Final_Payout").html(response.payoutSummary.totalFinalPayOut);
+                        $(".Net_Salary").html(response.payoutSummary.totalNetSalary);
+                        if (response.payoutSummary.dynamicColumnsTotallst.length > 0) {
+                            for (var i = 0; i < response.payoutSummary.dynamicColumnsTotallst.length; i++) {
+                                var str = '<div class="col-lg-3 col-xs-6"><div class="approval_info_block text-center"><div class="approval_salary_title">' + response.payoutSummary.dynamicColumnsTotallst[i].columnTitle + '</div><div class="approval_salary_value">&#8377; <b class="_Arrears">' + response.payoutSummary.dynamicColumnsTotallst[i].columnValue + '</b></div></div></div>';
+                                $(".Payout_Summary_class").append(str);
+                            }
+                        }
+                    }
+                    if (response.deductionSummary != null) {
+
+                        $(".ESIC").html(response.deductionSummary.totalESICDeducted);
+                        $(".Provident_Fund").html(response.deductionSummary.totalPFDeducted);
+                        $(".Professional_tax").html(response.deductionSummary.totalPTDeducted);
+                        $(".Other_Deductions").html(response.deductionSummary.totalOtherDeduction);
+                        // $(".totalESICDeducted").html(response.deductionSummary.totalESICDeducted);
+                    }
+                    if (response.Success == true && response.employeeList.length > 0) {
+
+                        employeeList = response.employeeList;
+                        _response = response.employeeList;
+                        tableget(status);
+                    } else {
+                        //$(".payroll_details_table").hide();
+                        $("#table_div_1").hide();
+                        $(".no_recoed").show();
+                        //$("#fil_col_div").show();
+                    }
+                },
+                complete: function () {
+                    $("#ajax_loader").hide();
+                }
+            });
+        }
+
+        // Function to download the employee list data as Excel
+        function downloadExcel() {
+            if (employeeList.length === 0) {
+                alert("No data available to download.");
+                return;
+            }
+
+            var ws_data = [];
+
+            // Define table headers based on the structure of employeeList
+            ws_data.push(["Employee Code", "Employee Name", "Assigned Shift", "No. Pay Day", "Total Payout", "Deduction", "Mandatory Deductions", "Net Salary"]);
+
+            // Loop through the employeeList and push data to ws_data
+            employeeList.forEach(function (employee) {
+
+                // Assuming "Employee Details" is in the format "Name|Image|Email"
+                let details = employee["Employee Details"].split('|');
+                let employeeName = details[0]; // Extract the employee name
+                let employeeEmail = details[2]; // Extract the employee email
+
+                ws_data.push([
+                    employee["Employee Code"],
+                    employeeName + ' || ' + employeeEmail,
+                    employee["Assigned Shift"],
+                    employee["No Pay Days"],
+                    employee["Total Payout"],
+                    employee["Deduction"],
+                    employee["Mandatory Deductions"],
+                    employee["Net Salary"]
+
+                ]);
+            });
+
+            // Create a new workbook
+            var wb = XLSX.utils.book_new();
+
+            // Convert the ws_data array to a worksheet
+            var ws = XLSX.utils.aoa_to_sheet(ws_data);
+
+            // Append the worksheet to the workbook
+            XLSX.utils.book_append_sheet(wb, ws, "EmployeeList");
+
+            // Download the Excel file
+            XLSX.writeFile(wb, 'EmployeeList.xlsx');
+        }
+
+
+        function tableget(status) {
+
+            $("#table_div_1").show();
+            var columns = [];
+            var t = "";
+            var _columnsname = "";
+            var _num = "";
+            var _hdrcnt = 0;
+            var P = 4;
+            var _Cnttd = 0;
+            var _chkarrylst = [];
+
+            if (_response != null && _response.length > 0) {
+                $("#fil_col_div").hide();
+                _chkarrylst = 0;
+                columnNames = Object.keys(_response[0]);
+                var _CheckcolumnNames = Object.keys(_response[0]);
+                for (var i in columnNames) {
+                    columns.push({
+                        data: columnNames[i],
+                        title: columnNames[i]
+                    });
+                }
+
+                payroll_finalize_id = _response[0].payroll_finalize_id;
+
+                // Check if DataTable is already initialized and destroy it
+                if ($.fn.DataTable.isDataTable('#Generate_TDS_table')) {
+                    $('#Generate_TDS_table').DataTable().destroy();
+                }
+
+                $("#Generate_TDS_table tbody").empty();
+                $("#Generate_TDS_table thead tr:eq(1)").remove();
+                $(".payroll_details_table").show();
+                var columnNames = Object.keys(_response[0]);
+                var footer = "";
+
+                // Generate table footer
+                columnNames.forEach(function (key) {
+                    if (key == "payroll_finalize_id" || key == "calculation_type" || key == "Employee ID") {
+
+                    } else if (key == "Employee Code") {
+                        var _footer = '<th style="min-width:120px">' + key + '</th>';
+                    }
+                    else if (key == "All") {
+                        var _footer = '<th>' + key + '</th>';
+                    }
+                    else {
+                        var _footer = '<th style="min-width: 100px">' + key + '</th>';
+                    }
+                    footer += _footer;
+                });
+
+                var tbody = $('#Generate_TDS_table tbody');
+                _response.forEach(function (rowData) {
+                    var tr = $('<tr></tr>');
+                    columnNames.forEach(function (key) {
+                        tr.append('<td>' + rowData[key] + '</td>');
+                    });
+                    tbody.append(tr);
+                });
+                // Role Rights---
+                var canexport = '@obj.CanExport';
+                if ('@obj.CanExport' == 'True') {
+                    var _exe = {
+                        extend: 'excel',
+                        exportOptions: {
+                            columns: [1, 2, 3, 5, 6, 7, 8, 9]
+                        }
+                    };
+                }
+                else {
+                }
+
+
+                // DataTable initialisation
+                var CheckFastrackdb = @_CheckFastrackdb;
+                const StatusValue = null;
+                 sessionStorage.setItem("StatusValue", StatusValue);
+                 sessionStorage.setItem("CheckFastrackdb", CheckFastrackdb);
+                $("#dataTables_tbl_header").remove();
+                 table = $("#Generate_TDS_table").DataTable({
+                    //dom: "<'row div_head_1'<'col-sm-12 margin-bottom-5'<'attendance_selected_emp'>>>" +
+                    //             "<'row div_head_2'<'col-lg-9 col-sm-7 col-xs-12 mb_margin_bottom_15'<'selected_emp_main'<'tbl_text'><'tbl_text_close'>>><'col-lg-3 col-sm-5 col-xs-12 recordbtn_end'<'record_btn_main'l,><'dt-buttons'Bf>>>" +
+                    //             "<'row'<'col-sm-12 margin-bottom-10'<'customforms_table'tr'>>>" +
+                    //             "<'row'<'col-md-5 col-sm-5'i><'col-md-7 col-sm-7'p>>",
+                     dom: _domColumn,
+                     language: _languageColumn,
+                    paging: true,
+                    autoWidth: true,
+                    ordering: true,
+                    order: [],
+                     //order: [[1, 'asc']],
+                    "columns": columns,
+                    "bdestroy": true,
+                    buttons: [
+                        //"excelHtml5",
+                        //{
+                        //    "className": "buttons-columns btnColumnvisibility",
+                        //},
+                        //_exe
+                    ],
+                    initComplete: function (settings, json) {
+
+                        //var footer = $("#Generate_TDS_table tfoot tr");
+                        $("#Generate_TDS_table thead").append("<tr>" + footer + "</tr>");
+                        const visibleTable = $('table:visible').attr('id');
+                        $("#buttons").append(`
+                         <div id="export-button" class="export-button tooltips" data-placement="bottom" data-original-title="Download" data-table-id="${visibleTable}">
+                            <img src="../Newlayout/images/download_icon.svg" alt="Download icon">
+                          </div>
+                        `);
+                    },
+                     "columnDefs": [
+                         { target:1, visible:false },
+                         {
+                             "targets": 1,
+                             "orderable": false,
+                            "visible": false,
+                            //searchable:false,
+                             "render": function (data, type, row) {
+                                 return row["Employee ID"] + "<input type ='hidden' value='" + row["Employee ID"] + "' class='employee_id' / >";
+                             }
+                         },
+                        {
+                            "targets": 0,
+                            "createdCell": function (td) {
+                                $(td).css({ "min-width": "120px" });
+                            },
+                            "orderable": true,
+                            "render": function (data, type, row) {
+                                return row["Employee Code"] + "<input  hidden value='" + row["Employee Code"] + "' class='employee_code' / ><input type ='hidden' value='" + row["Employee ID"] + "' class='employee_id' / >";
+                            }
+                        },
+                        {
+                            "targets": [2],
+                            "render": function (data, type, row) {
+                                var nameParts = row["Employee Details"].split('|')[0].replace(/\s+/g, ' ').trim().split(" ");
+                                var initials = nameParts[0].charAt(0).toUpperCase();
+                                if (nameParts.length > 1) {
+                                    initials += nameParts[1].charAt(0).toUpperCase();
+                                }
+                                const colors = ["#e74c3c", "#8e44ad", "#3498db", "#16a085", "#f39c12", "#d35400", "#2c3e50"];
+                                //const randomColor = colors[Math.floor(Math.random() * colors.length)];
+                                const randomColor = "#295097";
+                                if (row["Employee Details"] == "" || row["Employee Details"] == null || row["Employee Details"] == 'null') {
+                                    return '';
+                                } else {
+                                    return `<div class="emp_box tootltip" id="emp_totalpayout" title=${row["Employee Details"].split('|')[2].trim()}>
+                                            <img alt="" class="user_img" src="/UploadEmpPhoto/${row["Employee Details"].split('|')[1].trim()}"
+                                            onerror="this.style.display='none'; this.nextElementSibling.style.display='inline-block';"/>
+                                            <span style="display: none; min-width: 30px; height: 30px; line-height: 30px; text-align: center; background-color: #ecf3ff; color:  ${randomColor}; border-radius: 50% !important; border: 1px solid #8ab1f7; margin-right: 8px;">
+                                            ${initials}</span><span><p>${row["Employee Details"].split('|')[0].trim()}</p ><p class="e_details" style="width:auto">${row["Employee Details"].split('|')[2].trim()}</p></span></div>`;
+                                    //return '<div class="emp_box" id="emp_totalpayout" ><img src="/UploadEmpPhoto/' + row["Employee Details"].split('|')[1].trim() + '" alt="User icon" class="user_img"><span><p class="e_details" style="width :auto">' + row["Employee Details"].split('|')[0] + '</p><p>' + row["Employee Details"].split('|')[2] + '</p></span></div>'
+                                    //return '<div class="emp_box tootltip" id="emp_totalpayout" title="' + row["Employee Details"].split('|')[2].trim() + '" ><img src="/UploadEmpPhoto/' + row["Employee Details"].split('|')[1].trim() + '" alt="" class="user_img"><span><p>' + row["Employee Details"].split('|')[0].trim() + ' </p><p class="e_details" style="width :auto">' + row["Employee Details"].split('|')[2].trim() + '</p></span></div>'
+                                }
+                            }
+                        },
+                        {
+                            "targets": [3],
+                            "render": function (data, type, row) {
+                                return '<div class="" >' + row["Assigned Shift"] + '</div>'
+
+                            }
+                        },
+                        {
+                            "targets": [4],
+                            "render": function (data, type, row) {
+                                return '<div class="p_days"><span class="blue_font">' + row["No Pay Days"].split('/')[0] + '</span> / ' + row["No Pay Days"].split('/')[1] + '</div>'
+
+                            }
+                        },
+                         {
+                             "targets": [5],
+                             "render": function (data, type, row) {
+                                 //return '<div class="p_days"><span class="blue_font">' + row["Net Salary"].split('/')[0] + '</span> / ' + row["Net Salary"].split('/')[1] + '</div>'
+                                 //return '<div class="total_payment green_font " > &#8377; ' + row["Net Salary"] + '</div>'
+                                 return '<div class="total_payment green_font " > &#8377; ' + row["Total Payout"] + '</div>'
+
+                             }
+                         },
+                          {
+                              "targets": [8],
+                              "render": function (data, type, row) {
+                                  //return '<div class="p_days"><span class="blue_font">' + row["Net Salary"].split('/')[0] + '</span> / ' + row["Net Salary"].split('/')[1] + '</div>'
+                                  return '<div class="total_payment purple_font " > &#8377; ' + row["Net Salary"] + '</div>'
+                              }
+                          },
+                        {
+                            "targets": [columnNames.length - 2],
+                            "visible": false,
+                            "render": function (data, type, row) {
+                                return '<div class="total_payment green_font " > &#8377; ' + row["calculation_type"] + '</div>'
+                            }
+                        },
+                         {
+                             "targets": [columnNames.length - 1],
+                             "visible": false,
+                             "render": function (data, type, row) {
+                                 return '<div class="" >' + row["payroll_finalize_id"] + '</div>'
+                             }
+                         },
+                         {
+                             "targets": [4],
+                             //"visible": false,
+                         }
+                    ],
+                    "lengthMenu": [
+                                   [10, 25, 50, 100, 2000],
+                                    ['10', '25', '50', '100', 'All']
+                    ]
+                 });
+                setTimeout(function () {
+                    $("#" + "Generate_TDS_table" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsiveGenerateTDS"));
+                    $('.tooltips').tooltip();
+                }, 100);
+                $('.attendance_selected_emp').html('<div class="selected_list">Selected Employee: <span class="select_employee_count">03</span></div><div class="selected_list_btn"></div>');
+                var secondHeaderRow = $("#Generate_TDS_table").find("thead tr:eq(1)");
+                if (secondHeaderRow.length) {
+                    $("#Generate_TDS_table thead tr:eq(1) th").each(function (index) {
+
+                        var title = $(this).text();
+                        if (index == 0 || index == 1 || index == 2) {
+                            $(this).html('<input type="text" class="search_input"  placeholder="Search" /><i class="clm-search" id=""></i>');
+                        } else {
+                            $(this).html('');
+                        }
+                    });
+
+                    $("#Generate_TDS_table thead").on("keyup", "input", function () {
+                        var columnIndex = $(this).parent().index();
+                        if (columnIndex == 1 || columnIndex == 2) {
+                            columnIndex = columnIndex + 1;
+                        }
+                        table.column(columnIndex).search(this.value).draw();
+                    });
+                }
+                //$("#Generate_TDS_table thead tr:eq(1) th:eq(0)").html('<input type="text" class="search_input"  placeholder="Search" /><i class="clm-search" id=""></i>');
+                $(".div_head_1").hide();
+            } else {
+                //$(".payroll_details_table").hide();
+                //$("#fil_col_div").show();
+            }
+            $('.empcount_title').html("");
+        }
+
+        function clear() {
+            $(".Regular_Payroll_Cycle").html("");
+            $(".Pay_Date").html("");
+            $("._Office").html("");
+            $(".Total_Employee").html("");
+            $(".Total_Final_Payout").html("");
+            $(".Net_Salary").html("");
+            $(".Payout_Summary_class").empty();
+            $(".ESIC").html("");
+            $(".Provident_Fund").html("");
+            $(".Professional_tax").html("");
+            $(".Other_Deductions").html("");
+            // $(".totalESICDeducted").html("");
+        }
+
+        function validate() {
+
+            if ($("#CompanyID").val() == "0" || $("#CompanyID").val() == null) {
+                toastr.remove();
+                toastr.error("Please select company.");
+                $("#CompanyID").addClass('field_error');
+                event.preventDefault();
+                Isflag = 1;
+                return false;
+            } else {
+                $("#CompanyID").removeClass('field_error');
+                Isflag = 0
+            }
+            if ($("#BranchIds").val() == "0" || $("#BranchIds").val() == null) {
+                toastr.remove();
+                toastr.error("Please select branch.");
+                $("#BranchIds").addClass('field_error');
+                event.preventDefault();
+                Isflag = 1;
+                return false;
+            } else {
+                $("#BranchIds").removeClass('field_error');
+                Isflag = 0
+            }
+            if ($("#MonthIds").val() == "" || $("#MonthIds").val() == null) {
+                toastr.remove();
+                toastr.error("Please select month.");
+                $("#Month").addClass('field_error');
+                event.preventDefault();
+                Isflag = 1;
+                return false;
+            } else {
+                $("#Month").removeClass('field_error');
+                Isflag = 0
+            }
+        }
+
+
+        function getmonth() {
+            checkSession();
+            $.ajax({
+                type: "GET",
+                url: '@_webapiurl' + '/Master/GetMonth',
+                headers: { 'Authorization': '@_tokan' },
+                contentType: "application/json; charset=utf-8",
+                datatype: "json",
+                async: "false",
+                success: function (response) {
+                    if (response != null) {
+                        for (var i = 0; i < response.length; i++) {
+                            $('#MonthIds').append('<option value="' + response[i].Value + '">' + response[i].Text + '</option>');
+                        }
+                    }
+                }
+            });
+        }
+        function fillBranchbycompnyid(companyid, selectedBranch) {
+            $('#BranchIds').empty();
+            $("#ajax_loaderaddon").show();
+
+            $.ajax(
+             {
+                 type: "GET",
+                 headers: { 'Authorization': '@_tokan' },
+                 url: '@_webapiurl' + "Master/BranchGetAll",
+                 contentType: "application/json; charset=utf-8",
+                 dataType: "json",
+                 success: function (data) {
+                     var markup = '';
+                     var companyIdsToFind = companyid; // Change '1,2,3' to the actual comma-separated CompanyIDs you want to find
+
+                     if (companyid != null) {
+
+                         var filteredData = data.filter(function (item) {
+                             return companyid.includes(item.CompanyID.toString());
+                         });
+
+                         filteredData.sort(function (a, b) {
+                             return a.branchname.localeCompare(b.branchname);
+                         });
+                         for (var x = 0; x < filteredData.length; x++) {
+                             if (selectedBranch.length != 0) {
+                                 var re = new RegExp("(^|,)" + filteredData[x].BranchId + "($|,)");
+                                 if (re.test(selectedBranch) == true) {
+                                     markup += '<option selected="selected" value="' + filteredData[x].BranchId + '" >' + filteredData[x].branchname + '</option>';
+                                 }
+                                 else {
+                                     markup += "<option value=" + filteredData[x].BranchId + ">" + filteredData[x].branchname + "</option>";
+                                 }
+                             }
+                             else {
+                                 markup += "<option value=" + filteredData[x].BranchId + ">" + filteredData[x].branchname + "</option>";
+                             }
+                         }
+                         $('#BranchIds').append(markup);
+                         $Branchselect.multiselect('rebuild');
+                         $(document.body).on('change', '#BranchIds', function () {
+                             $("#spvalidation").hide();
+                             var branid = $('#BranchIds option:selected');
+                             var BranchArray = [];
+                             $(branid).each(function (index, branid) {
+                                 BranchArray.push([$(this).val()]);
+                             });
+                             if (BranchArray == "") {
+                                 $("#txt2").val(0);
+                             }
+                             else {
+                                 $("#txt2").val(BranchArray);
+                                 $("#spValidation").hide();
+                             }
+                             var Arrbranch = $("#txt2").val();
+                             BranchIdlst = Arrbranch;
+                             $("#BranchId").val(BranchIdlst);
+                             getEmp();
+                         });
+                     } else {
+                         $Branchselect.multiselect('rebuild');
+                     }
+                 },
+                 error: function (xhr, ajaxOptions, thrownError) {
+
+                     if (xhr.status == 404) { //NotFound = 404
+                         toastr.error(thrownError);
+                     } else if (xhr.status == 500) { //InternalServerError = 500,
+                         toastr.error("InternalServerError");
+                     } else if (xhr.status == 400) { //BadRequest = 400,
+                         toastr.error("BadRequest");
+                     } else if (xhr.status == 419) {
+                         window.location.href = "/PayTime/LoginPage";
+                     } else {
+                         toastr.error(thrownError);
+                     }
+                 }
+             });
+        }
+
+        function FillShift() {
+            $.ajax(
+           {
+               type: "GET",
+               url: '@_webapiurl' + "Master/ShiftMasterGetAll",
+               headers: { 'Authorization': '@_tokan' },
+               contentType: "application/json; charset=utf-8",
+               dataType: "json",
+               success: function (data) {
+                   $("#Shift_type").empty();
+                   var markup = '';
+                   data.sort(function (a, b) {
+                       return a.ShiftName.localeCompare(b.ShiftName);
+                   });
+                   for (var x = 0; x < data.length; x++) {
+                       markup += "<option value=" + data[x].ShiftId + ">" + data[x].ShiftName + "</option>";
+                   }
+                   $("#Shift_type").append(markup);
+                   $Shift_type.multiselect('rebuild');
+
+                   $(document.body).on('change', '#Shift_type', function () {
+                       $("#spvalidation").hide();
+                       var deptid = $('#Shift_type option:selected');
+                       var ShiftArray = [];
+                       $(deptid).each(function (index, deptid) {
+                           ShiftArray.push([$(this).val()]);
+                       });
+                       if (ShiftArray == "") {
+                           $("#txt6").val(0);
+                       }
+                       else {
+                           $("#txt6").val(ShiftArray);
+                           $("#spValidation").hide();
+                       }
+                       var ShiftDept = $("#txt6").val();
+                       Shiftlst = ShiftDept;
+                   });
+               },
+               error: function (xhr, ajaxOptions, thrownError) {
+
+                   if (xhr.status == 404) { //NotFound = 404
+                       toastr.error(thrownError);
+                   } else if (xhr.status == 500) { //InternalServerError = 500,
+                       toastr.error("InternalServerError");
+                   } else if (xhr.status == 400) { //BadRequest = 400,
+                       toastr.error("BadRequest");
+                   } else if (xhr.status == 419) {
+                       window.location.href = "/PayTime/LoginPage";
+                   } else {
+                       toastr.error(thrownError);
+                   }
+               }
+
+           });
+        }
+
+        function fillCompany() {
+            $.ajax(
+            {
+                type: "GET",
+                url: '@_webapiurl' + "Master/CompanyGetAll",
+                headers: { 'Authorization': '@_tokan' },
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                success: function (data) {
+                    $("#CompanyID").empty();
+                    var markup = '';
+                    data.sort(function (a, b) {
+                        return a.CompanyName.localeCompare(b.CompanyName);
+                    });
+                    for (var x = 0; x < data.length; x++) {
+                        markup += "<option value=" + data[x].CompanyID + ">" + data[x].CompanyName + "</option>";
+                    }
+                    $("#CompanyID").append(markup);
+                    $Companyselect.multiselect('rebuild');
+                },
+                error: function (xhr, ajaxOptions, thrownError) {
+
+                    if (xhr.status == 404) { //NotFound = 404
+                        toastr.error(thrownError);
+                    } else if (xhr.status == 500) { //InternalServerError = 500,
+                        toastr.error("InternalServerError");
+                    } else if (xhr.status == 400) { //BadRequest = 400,
+                        toastr.error("BadRequest");
+                    } else if (xhr.status == 419) {
+                        window.location.href = "/PayTime/LoginPage";
+                    } else {
+                        toastr.error(thrownError);
+                    }
+                }
+            });
+        }
+        function fillDeptTable(BranchId, selectedDept) {
+            $("#DeptIds").empty();
+            checkSession();
+            $.ajax({
+                type: "POST",
+                //url: "/MasterData/GetDeptbyBranchstr?BranchId=" + BranchId,  //Old URL
+                url: "/MasterData/GetDeptbyBranchstrnew?BranchId=" + BranchId, //New URL
+                contentType: "application/json; charset=utf-8",
+                datatype: "json",
+                async: "false",
+                success: function (response) {
+                    if (response != null) {
+                        for (var i = 0; i < response.length; i++) {
+                            if (selectedDept.length != 0 && selectedDept != null) {
+                                var re = new RegExp("(^|,)" + response[i].Value + "($|,)");
+                                if (re.test(selectedDept) == true) {
+                                    $('#DeptIds').append('<option value=" ' + response[i].Value + '" selected>' + response[i].Text + '</option>');
+                                }
+                                else {
+                                    $('#DeptIds').append('<option value=" ' + response[i].Value + ' ">' + response[i].Text + '</option>');
+                                }
+                            }
+                            else {
+                                $('#DeptIds').append('<option value=" ' + response[i].Value + ' ">' + response[i].Text + '</option>');
+                            }
+                        }
+                        $Departmentselect.multiselect('rebuild');
+                        $(document.body).on('change', '#DeptIds', function () {
+                            $("#spvalidation").hide();
+                            var deptid = $('#DeptIds option:selected');
+                            var DeptArray = [];
+                            $(deptid).each(function (index, deptid) {
+                                DeptArray.push([$(this).val()]);
+                            });
+                            if (DeptArray == "") {
+                                $("#txt3").val(0);
+                            }
+                            else {
+                                $("#txt3").val(DeptArray);
+                                $("#spValidation").hide();
+                            }
+                            var ArrDept = $("#txt3").val();
+                            DeptIdlst = ArrDept;
+                            $("#DepId").val(DeptIdlst);
+                            $("#DesignationId").val('0');
+                            $DesignationId.multiselect('rebuild');
+                        });
+                        //DesignationId
+                        $(document.body).on('change', '#DesignationId', function () {
+                            $("#spvalidation").hide();
+                            var desgid = $('#DesignationId option:selected');
+                            var DesgArray = [];
+                            $(desgid).each(function (index, deptid) {
+                                DesgArray.push([$(this).val()]);
+                            });
+                            if (DesgArray == "") {
+                                $("#txt4").val("");
+                            }
+                            else {
+                                $("#txt4").val(DesgArray);
+                                $("#spValidation").hide();
+                            }
+                            var Arrdesg = $("#txt4").val();
+                            DesgIdlst = Arrdesg;
+                        });
+
+                    }
+                    $(".loading").hide();
+                },
+                beforeSend: function () {
+                    $(".loading").show();
+                },
+                error: function () {
+                    $(".loading").hide();
+                }
+            });
+        }
+        function getEmp() {
+            $('#EmpIds').empty();
+            var cID = $("#CompanyID").val();
+            var bID = $("#BranchIds").val();
+            checkSession();
+            $.ajax({
+                type: "GET",
+                // url: '@_webapiurl' + 'Master/GetEmployeeByComBranch?ComapnyId=' + cID + '&Branchid=' + bID,
+                url: '@_webapiurlpayroll' + 'HrPayrollFinalize/GetEmployeeByComBranchPayStructure?ComapnyId=' + cID + '&Branchid=' + bID,
+                headers: { 'Authorization': '@_tokan' },
+                contentType: "application/json; charset=utf-8",
+                datatype: "json",
+                async: "false",
+                success: function (response) {
+                    $('#EmpIds').empty();
+                    var res = JSON.parse(response);
+                    if (res != null && res.length > 0) {
+                        res.sort(function (a, b) {
+                            return a.EmpName.localeCompare(b.EmpName);
+                        });
+                        for (var i = 0; i < res.length; i++) {
+                            $('#EmpIds').append('<option value=" ' + res[i].EmpId + ' ">' + res[i].EmpName + " (" + res[i].EmpCode + ") " + '</option>');
+                        }
+                        $Employee.multiselect('rebuild');
+                        $(document.body).on('change', '#EmpIds', function () {
+                            $("#tbldepartment1").destroy;
+                            $("#spvalidation").hide();
+                            var Empid = $('#EmpIds option:selected');
+                            var Emparray = [];
+                            $(Empid).each(function (index, deptid) {
+                                Emparray.push([$(this).val()]);
+                            });
+                            if (Emparray == "") {
+                                $("#txt4").val(0);
+                            }
+                            else {
+                                $("#txt4").val(Emparray);
+                                $("#spValidation").hide();
+                            }
+                            var ArrEmp = $("#txt4").val();
+                            EmpIdlst = ArrEmp;
+                        });
+                    }
+                }
+            });
+        }
+    });
+    function checkSession() {
+        $.ajax({
+            type: "GET",
+            async: false,
+            url: "/ESS/checkSession",
+            contentType: "application/json; charset=utf-8",
+            success: function (data) {
+                if (data.isRedirect) {
+                    window.location.href = data.redirectUrl;
+                }
+            },
+            error: function (data) {
+                window.location.href = data;
+            }
+        });
+    }
+</script>
+
+<div class="page-bar">
+    <ul class="page-breadcrumb" style="float: none">
+        <li>
+            <a href="@(_CheckFastrackdb == 1 ? "/Admin/AdminDashboard" : "/Dashboard/AdminDashboard")"><i class="fa-regular fa-house"></i></a>
+        </li>
+        <li>
+            <span><i class="fa-light fa-angle-right"></i> Approval</span>
+        </li>
+    </ul>
+
+    <div class="emptotalcount" id="filter_id">
+        <div class="empcount_title"></div>
+        <div class="page-toolbar page-toolbar_payroll">
+            <div class="emp_btn_block">
+                <div class="text-right">
+                    @if (obj.CanEdit)
+                    {
+                        <a href="javascript:;" class="btn icon_transparent_btn tooltips margin-left-10" id="Filter_search" data-placement="bottom" data-original-title="Filter"><i class="fa-light fa-filter" aria-hidden="true"></i></a>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="emptotalcount" id="back_id">
+        <div class="empcount_title">Approval Salary Payout Request : <span style="color:#444;">Pending</span></div>
+        <div class="page-toolbar page-toolbar_payroll">
+            <div class="emp_btn_block">
+                <div class="text-right">
+                    @if (obj.CanEdit)
+                    {
+                        <a href="javascript:;" class="btn icon_transparent_btn tooltips" id="back_btn" data-placement="left" data-original-title="Back"><i class="fa-regular fa-arrow-left" aria-hidden="true"></i></a>
+                        <a href="javascript:;" class="btn icon_transparent_btn tooltips" id="payout_approval_btn" data-placement="left" data-original-title="Approve Payout"><i class="fa-solid fa-check"></i></a>
+                        <a href="javascript:;" class="btn icon_transparent_btn clear_btn tooltips" id="payout_reject_btn" data-placement="left" data-original-title="Reject Payout"><i class="fa-solid fa-xmark"></i></a>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="filter_portlet_wrapper payrollfilter_height full-width">
+    <!-- Datatable Block : Begin -->
+    <div class="filter_portlet_tbl">
+        <div id="approval_id" style="display:none">
+            <!-- Payroll Approval Summary : Begin -->
+            <div class="portlet margin-bottom-10" style="padding: 5px 15px;display:none" id="Payroll_Approval_Summary">
+                <div class="list-content summary_list">
+                    <div class="accordian-header" id="list_six" style="border-top:0;">
+                        <div>
+                            <a class="caption-subject font-dark bold" href="#listsix" data-toggle="collapse" aria-expanded="false" aria-controls="listsix"><span class="assign_emp_ctn">Payroll Approval Summary</span><i class="fa-solid fa-chevron-down arrow_down"></i></a>
+                        </div>
+                    </div>
+                    <div class="collapse in" id="listsix" aria-expanded="true">
+                        <div class="portlet-body form">
+                            <div class="row">
+                                <div class="col-lg-6 border_right">
+                                    <div class="row">
+                                        <div class="col-lg-6">
+                                            <div class="final_summary_list">
+                                                @*<div class="">Total Final Payout</div>*@
+                                                <div class="">No. of Request</div>
+                                                <p id="_TFPNo">0</p>
+                                            </div>
+                                        </div>
+                                        <div class="col-lg-6">
+                                            <div class="final_summary_list green_font">
+                                                <div class="">Company</div>
+                                                <p id="_Cmpny">0</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-lg-12">
+                                            <div class="border_btm margin-top-5 margin-bottom-5"></div>
+                                        </div>
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-lg-6">
+                                            <div class="final_summary_list red_font">
+                                                <div class="">Branch</div>
+                                                <p id="_Brnch">0</p>
+                                            </div>
+                                        </div>
+                                        <div class="col-lg-6">
+                                            <div class="final_summary_list orange_font">
+                                                <div class="">Department</div>
+                                                <p id="_Dpt">0</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-lg-6">
+                                    <div class="row">
+                                        <div class="col-lg-4">
+                                            <div class="final_summary_list">
+                                                <div class="">Employees</div>
+                                                <p id="_Emp">0</p>
+                                            </div>
+                                        </div>
+                                        <div class="col-lg-4">
+                                            <div class="final_summary_list green_font">
+                                                <div class="">Net Salary</div>
+                                                <p id="_NS">0</p>
+                                            </div>
+                                        </div>
+                                        <div class="col-lg-4">
+                                            <div class="final_summary_list blue_font">
+                                                <div class="">Total Final Payout</div>
+                                                <p id="_TFP">0</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-lg-12">
+                                            <div class="border_btm margin-top-5 margin-bottom-5"></div>
+                                        </div>
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-lg-6">
+                                            <div class="final_summary_list red_font">
+                                                <div class="">PF</div>
+                                                <p id="_PF">0</p>
+                                            </div>
+                                        </div>
+                                        <div class="col-lg-6">
+                                            <div class="final_summary_list orange_font">
+                                                <div class="">ESIC</div>
+                                                <p id="_ESIC">0</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Payroll Approval Summary : End -->
+            <!-- Payroll Detail Table : Begin -->
+            <div class="portlet" id="approval_grid" style="display:none">
+                <div class="portlet-body">
+                    <div id="ajax_loader" class="modal_bg loading" aria-hidden="true" style="display:none">
+                        <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading" />
+                    </div>
+                    <div class="row">
+                        <div class="col-lg-12">
+                            <div class="payroll_details_table">
+                                <div id="tblempty">
+                                    <div class="table-responsive" id="tableResponsiveapproval">
+                                        <!-- Datatable : Begin -->
+                                        <table id="approvaltable" class="table new_datatbl table-striped table-bordered tbl_middle table-hover tbl_newdatatbl serch_datatable table-checkable order-column">
+                                            <thead>
+                                                <tr>
+                                                    <th style="display:none;">Sr No</th>
+                                                    <th hidden>payroll_approval_id</th>
+                                                    <th style="min-width: 100px">Company</th>
+                                                    <th style="min-width: 120px">Branch</th>
+                                                    <th style="min-width: 100px">Department</th>
+                                                    <th style="min-width: 100px">Month-Year</th>
+                                                    @*<th style="min-width: 100px">Year</th>*@
+                                                    <th style="min-width: 60px">No. Employees</th>
+                                                    <th style="min-width: 80px">Net Salary</th>
+                                                    <th style="min-width: 80px">Total Final Payout</th>
+                                                    <th style="min-width: 80px">Status</th>
+                                                    <th style="min-width: 100px">Remarks</th>
+                                                    <th hidden>Calculation Type</th>
+                                                    <th class="fixed-column" style="min-width: 80px">Action</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody></tbody>
+                                            <tfoot>
+
+                                            </tfoot>
+                                        </table>
+                                        <!-- Datatable : End -->
+                                    </div>
+                                </div>
+                                <div id="NotificationGrid-empty" style="display: none">
+                                    <div class="datanotfound">
+                                        <img src="/assets/images/emptyscreen_3.png" width="280" height="148" alt="Nodata Found Icon">
+                                        <p class="datanotfound_title">No data found</p> <!-- titleText -->
+                                        <p class="">No matching records found for the selected filters.</p><!-- subText -->
+                                    </div>
+                                </div>
+                            </div>
+                            </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Payroll Detail Table : End -->
+        </div>
+    </div>
+    <!-- Datatable Block : End -->
+    <!-- Filter Block : Begin -->
+    <div class="portlet filter_boxModal">
+        <div class="filterbox_header">
+            <div class="d-flex align-items-center justify-content-between">
+                <h4 class="filter-title">Filters</h4>
+                <button type="button" class="filterclose_btn"><i class="fa-light fa-xmark"></i></button>
+            </div>
+        </div>
+        <div class="filterbox_body">
+            @if (_CheckFastrackdb == 1)
+            {
+                <div class="col-lg-12">
+                    <div class="form-group ">
+                        <label class="control-label">Company<span class="required" aria-required="true"> * </span></label>
+                        <input type="text" id="txt5" value="0" hidden />
+                        <select id="CompanyID" class="mt-multiselect btn blue btn-outline" multiple="multiple" data-width="100%"></select>
+                    </div>
+                </div>
+                <div class="col-lg-12">
+                    <div class="form-group ">
+                        <label class="control-label">Branch <span class="required" aria-required="true"> * </span></label>
+                        <input type="text" id="txt2" value="0" hidden />
+                        <select id="BranchIds" class="mt-multiselect btn blue btn-outline" multiple="multiple" data-width="100%"></select>
+                    </div>
+                </div>
+                <div class="col-lg-12">
+                    <div class="form-group">
+                        <label class="control-label">Month <span class="required" aria-required="true"> * </span></label>
+                        <input type="text" id="txt1" value="0" hidden />
+                        <select id="MonthIds" class="form-control input-sm"></select>
+                    </div>
+                </div>
+                <div class="col-lg-12">
+                    <div class="form-group">
+                        <label class="control-label">Department </label>
+                        <input type="text" id="txt3" value="0" hidden />
+                        <select id="DeptIds" class="mt-multiselect btn-sm btn blue btn-outline " aria-haspopup="true" aria-expanded="false" multiple="multiple" data-width="100%"></select>
+                    </div>
+                </div>
+                <div class="col-lg-12">
+                    <div class="form-group">
+                        <label>Designation </label>
+                        <select class="mt-multiselect btn-sm btn blue btn-outline " aria-haspopup="true" aria-expanded="false" multiple="multiple" data-width="100%" id="DesignationId" name="DesignationId">
+                            @foreach (var item in ViewBag.DesignationList as IEnumerable<SelectListItem>)
+                            {
+                                <option value="@item.Value">@item.Text</option>
+                            }
+                        </select>
+                        <span class="help-block error_help_block" hidden id="spDesignationId"></span>
+                        <input type="text" id="txt4" value="0" hidden />
+                    </div>
+                </div>
+                @*<div class="col-lg-12">
+                        <div class="form-group">
+                            <label class="control-label">Attendance Type</label>
+                            <select id="Attendance_type" class="form-control input-sm">
+                                <option value="monthly">Month</option>
+                                <option value="daily">Day</option>
+                            </select>
+                        </div>
+                    </div>*@
+                <div class="col-lg-12">
+                    <div class="form-group">
+                        <label class="control-label">Wage Type</label>
+                        <input type="text" id="txt6" value="0" hidden />
+                        <select id="Attendance_type" class="mt-multiselect btn-sm btn blue btn-outline" aria-haspopup="true" aria-expanded="false" multiple="multiple" data-width="100%">
+                            <option value="monthly">Month</option>
+                            <option value="daily">Day</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="col-lg-12">
+                    <div class="form-group">
+                        <label class="control-label">Shift</label>
+                        <input type="text" id="txt6" value="0" hidden />
+                        <select id="Shift_type" class="mt-multiselect btn-sm btn blue btn-outline" aria-haspopup="true" aria-expanded="false" multiple="multiple" data-width="100%"></select>
+                    </div>
+                </div>
+                <div class="col-lg-12">
+                    <div class="form-group">
+                        <label class="control-label">Status</label>
+                        <select id="Status_filter" class="form-control input-sm">
+                            @*<option value="-1">Select Status</option>*@
+                            <option value="0">All</option>
+                            <option value="1">Pending</option>
+                            <option value="2">Approved</option>
+                            <option value="3">Rejected</option>
+                        </select>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div class="col-lg-12">
+                    <div class="form-group ">
+                        <label class="control-label">Company<span class="required" aria-required="true"> * </span></label>
+                        <input type="text" id="txt5" value="0" hidden />
+                        <select id="CompanyID" class="mt-multiselect btn blue btn-outline" multiple="multiple" data-width="100%"></select>
+                    </div>
+                </div>
+                <div class="col-lg-12">
+                    <div class="form-group ">
+                        <label class="control-label">Branch <span class="required" aria-required="true"> * </span></label>
+                        <input type="text" id="txt2" value="0" hidden />
+                        <select id="BranchIds" class="mt-multiselect btn blue btn-outline" multiple="multiple" data-width="100%"></select>
+                    </div>
+                </div>
+                <div class="col-lg-12">
+                    <div class="form-group">
+                        <label class="control-label">Month <span class="required" aria-required="true"> * </span></label>
+                        <input type="text" id="txt1" value="0" hidden />
+                        <select id="MonthIds" class="form-control input-sm"></select>
+                    </div>
+                </div>
+                <div class="col-lg-12">
+                    <div class="form-group">
+                        <label class="control-label">Department </label>
+                        <input type="text" id="txt3" value="0" hidden />
+                        <select id="DeptIds" class="mt-multiselect btn-sm btn blue btn-outline " aria-haspopup="true" aria-expanded="false" multiple="multiple" data-width="100%"></select>
+                    </div>
+                </div>
+                <div class="col-lg-12">
+                    <div class="form-group">
+                        <label>Designation </label>
+                        <select class="mt-multiselect btn-sm btn blue btn-outline " aria-haspopup="true" aria-expanded="false" multiple="multiple" data-width="100%" id="DesignationId" name="DesignationId">
+                            @*@foreach (var item in ViewBag.DesignationList as IEnumerable<SelectListItem>)
+                                {
+                                    <option value="@item.Value">@item.Text</option>
+                                }*@
+                        </select>
+                        <span class="help-block error_help_block" hidden id="spDesignationId"></span>
+                        <input type="text" id="txt4" value="0" hidden />
+                    </div>
+                </div>
+                <div class="col-lg-12">
+                    <div class="form-group">
+                        <label class="control-label">Status</label>
+                        <select id="Status_filter" class="form-control input-sm">
+                            @*<option value="-1">Select Status</option>*@
+                            <option value="0">All</option>
+                            <option value="1">Pending</option>
+                            <option value="2">Approved</option>
+                            <option value="2">Rejected</option>
+                        </select>
+                    </div>
+                </div>
+            }
+        </div>
+        <div class="filterbox_footer">
+            <div class="text-right">
+                <button type="submit" id="clear_operation" class="btn clear_btn tooltips" data-placement="top" data-original-title="Clear"><i class="fa-regular fa-eraser"></i></button>
+                <button type="submit" id="btnSubmit" class="btn icon_btn margin-left-5 tooltips" data-placement="top" data-original-title="Search Filters"><i class="fa-solid fa-magnifying-glass"></i></button>
+            </div>
+        </div>
+    </div>
+    <!-- Filter Block : End -->
+</div>
+
+<!-- Table View Button Click Show Block : Begin -->
+<div id="approvalpayout_id" style="display:none">
+    <div class="row">
+        <div class="col-xs-12">
+            <h4 class="approval_salarytitle">
+                Payout Summary
+                <a href="#" class="dw_btn" id="download_excel"><i class="fa-regular fa-file-excel" aria-hidden="true"></i> Download Excel</a>
+            </h4>
+        </div>
+        <div class="col-xs-12">
+            <div class="approval_salaryinfo">
+                <div class="approval_ttl">Basic Information</div>
+                <div class="row">
+                    <div class="col-lg-3 col-xs-6">
+                        <div class="approval_info_block text-center">
+                            <div class="approval_salary_title">Regular Payroll Cycle</div>
+                            <div class="approval_salary_value"><b class="Regular_Payroll_Cycle"></b></div>
+                        </div>
+                    </div>
+                    <div class="col-lg-3 col-xs-6">
+                        <div class="approval_info_block text-center">
+                            <div class="approval_salary_title">Pay Date</div>
+                            <div class="approval_salary_value"><b class="Pay_Date"></b></div>
+                        </div>
+                    </div>
+                    <div class="col-lg-3 col-xs-6">
+                        <div class="approval_info_block text-center">
+                            <div class="approval_salary_title">Office</div>
+                            <div class="approval_salary_value"><b class="_Office"></b></div>
+                        </div>
+                    </div>
+                    <div class="col-lg-3 col-xs-6">
+                        <div class="approval_info_block text-center">
+                            <div class="approval_salary_title">Total Employee</div>
+                            <div class="approval_salary_value"><b class="Total_Employee"></b></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="approval_salaryinfo">
+                <div class="approval_ttl">Payout Summary</div>
+                <div class="row">
+                    <div class="col-lg-3 col-xs-6">
+                        <div class="approval_info_block text-center">
+                            <div class="approval_salary_title">Total Final Payout</div>
+                            <div class="approval_salary_value">₹ <b class="Total_Final_Payout"></b></div>
+                        </div>
+                    </div>
+                    <div class="col-lg-3 col-xs-6">
+                        <div class="approval_info_block text-center">
+                            <div class="approval_salary_title">Net Salary</div>
+                            <div class="approval_salary_value">₹ <b class="Net_Salary"></b></div>
+                        </div>
+                    </div>
+                    <div class="Payout_Summary_class"></div>
+                    @*<div class="col-lg-3 col-xs-6">
+                            <div class="approval_info_block text-center">
+                                <div class="approval_salary_title">Arrears</div>
+                                <div class="approval_salary_value">₹ <b class="Arrears"></b></div>
+                            </div>
+                        </div>
+                        <div class="col-lg-3 col-xs-6">
+                            <div class="approval_info_block text-center">
+                                <div class="approval_salary_title">Incentive</div>
+                                <div class="approval_salary_value">₹ <b class="Incentive"></b></div>
+                            </div>
+                        </div>*@
+                </div>
+            </div>
+
+            <div class="approval_salaryinfo bg_peach">
+                <div class="approval_ttl">Deduction Summary</div>
+                <div class="row">
+                    <div class="col-lg-3 col-xs-6">
+                        <div class="approval_info_block text-center">
+                            <div class="approval_salary_title">ESIC</div>
+                            <div class="approval_salary_value">₹ <b class="ESIC"></b></div>
+                        </div>
+                    </div>
+                    <div class="col-lg-3 col-xs-6">
+                        <div class="approval_info_block text-center">
+                            <div class="approval_salary_title">Provident Fund</div>
+                            <div class="approval_salary_value">₹ <b class="Provident_Fund"></b></div>
+                        </div>
+                    </div>
+                    <div class="col-lg-3 col-xs-6">
+                        <div class="approval_info_block text-center">
+                            <div class="approval_salary_title">Professional tax</div>
+                            <div class="approval_salary_value">₹ <b class="Professional_tax"></b></div>
+                        </div>
+                    </div>
+                    <div class="col-lg-3 col-xs-6">
+                        <div class="approval_info_block text-center">
+                            <div class="approval_salary_title">Other Deductions</div>
+                            <div class="approval_salary_value">₹ <b class="Other_Deductions"></b></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Accordian Employee Specific Info Payout : Begin -->
+    <div class="tab-pane" role="tabpanel" id="step1" style="padding-top: 0;">
+        <div class="list-content">
+            <div class="margin-bottom-10">
+                <div class="accordian-header approval_ac_header">
+                    <div>
+                        <a href="#approval_listone" data-toggle="collapse" aria-expanded="true" aria-controls="approval_listone">Employee Specific Information Payout<i class="fa-solid fa-chevron-down arrow_down"></i></a>
+                    </div>
+                </div>
+                <div class="collapse in" id="approval_listone" aria-expanded="true" style="">
+
+                    <div class="portlet" id="table_div_1" style="display:none">
+                        <div class="portlet-body">
+                            <div class="row">
+                                <div class="payroll_details_table">
+                                    <!-- Datatable : Begin -->
+                                    <div class="col-lg-12">
+                                        <div class="table-responsive" id="tableResponsiveGenerateTDS">
+                                            <table id="Generate_TDS_table" class="table new_datatbl table-striped table-bordered table-hover tbl_newdatatbl serch_datatable table-checkable order-column">
+                                                <thead></thead>
+                                                <tbody></tbody>
+                                                <tfoot>
+                                                    <tr></tr>
+                                                </tfoot>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Accordian Employee Specific Info Payout : End -->
+</div>
+<!-- Table View Button Click Show Block : End -->
+<!-- Employee Total Payout Modal : Begin -->
+<div id="emp_totalpayout_modal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal">×</button>
+                <h4 class="modal-title dayswise_box"></h4>
+            </div>
+            <div class="modal-body">
+                <div class="row margin-bottom-10">
+                    <div class="col-sm-6">
+                        <div class="emp_salary_sturcture">
+                            <h3 class="emp_s_type">Payroll Structure type</h3>
+                            <p class="emp_t_type emp_p_str"></p>
+                        </div>
+                    </div>
+                    <div class="col-sm-6">
+                        <div class="d-flex align-items-center justify-content-between">
+                            <div class="emp_salary_sturcture">
+                                <h3 class="emp_s_type">Salary Month and Year</h3>
+                                <p class="emp_t_type emp_Salary_Month"></p>
+                            </div>
+                            <div class="emp_salary_sturcture">
+                                <h3 class="emp_s_type">Salary Days</h3>
+                                <p class="emp_t_type emp_Salary_Days"></p>
+                            </div>
+                            <div class="emp_salary_sturcture">
+                                <h3 class="emp_s_type">Net Salary</h3>
+                                <p class="emp_t_type emp_Net_Salary"></p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-xs-12">
+                        <div class="dataTables_wrapper">
+                            <div class="customforms_table">
+                                <div class="payroll_g_tables">
+                                    <table id="Earning_table" class="emp_salary_sturcture_modal table table-bordered table_box_border table-hover serch_datatable table-checkable order-column">
+                                        <thead>
+                                            <tr>
+                                                <th style="min-width: 200px; background-color: #dddddd;">
+                                                    <div class="d-flex justify-content-between">
+                                                        <div>Earning</div>
+                                                        <div>Amount (₹)</div>
+                                                    </div>
+                                                </th>
+                                            </tr>
+                                        </thead>
+                                        <tbody></tbody>
+                                    </table>
+                                    <table id="Deduction_table" class="emp_salary_sturcture_modal table table-bordered table_box_border table-hover serch_datatable table-checkable order-column">
+                                        <thead>
+                                            <tr>
+                                                <th style="min-width: 200px; background-color: #FFE2E2;">
+                                                    <div class="d-flex justify-content-between">
+                                                        <div>Deduction</div>
+                                                        <div>Amount (₹)</div>
+                                                    </div>
+                                                </th>
+                                            </tr>
+                                        </thead>
+                                        <tbody></tbody>
+                                    </table>
+                                    <table id="Reimbursement_table" class="emp_salary_sturcture_modal table table-bordered table_box_border table-hover serch_datatable table-checkable order-column">
+                                        <thead>
+                                            <tr>
+                                                <th style="min-width: 200px; background-color: #EEE6F8;">
+                                                    <div class="d-flex justify-content-between">
+                                                        <div>Reimbursement</div>
+                                                        <div>Amount (₹)</div>
+                                                    </div>
+                                                </th>
+                                            </tr>
+                                        </thead>
+                                        <tbody></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-xs-12 text-right margin-top-10">
+                        <div class="d-flex align-items-center justify-content-between">
+                            <div class="d-flex">
+                                <div class="paygrade_amount paygross_amount">Gross monthly salary : &nbsp;</div>
+                                <div class="paygrade_amount paygrade_amount_symbol" id="Gross_monthly_salary"></div>
+                            </div>
+                            <div class="d-flex">
+                                <div class="paygrade_amount">Take home salary per month : &nbsp;</div>
+                                <div class="paygrade_amount paygrade_amount_symbol" id="Take_home_salary_per_month">Total Payout : 0/-</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <div class="row">
+                    <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                        <input type="button" class="btn cancel_filter_btn_emp" data-dismiss="modal" value="Close" />
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Employee Total Payout Modal : End -->

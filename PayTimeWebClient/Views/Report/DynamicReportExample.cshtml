@@ -1,0 +1,845 @@
+﻿@using System.Data;
+@using PayTimeWebClient.Helper;
+@using System.Configuration;
+@using PayTimeWebClient.Models;
+@model DataTable
+@*@model PayTimeWebClient.Models.reqDailyInOutReport*@
+
+@{
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+
+    //ViewBag.Title = "Dynamic Report Example";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    ReportDataRestClient objreport = new ReportDataRestClient();
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenurole = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenurole.Where(m => string.Equals(m.ActionUrl, actionurl, StringComparison.OrdinalIgnoreCase)).ToList();
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+    string IsSchool = HttpContext.Current.Session["IsSchool"].ToString();
+    string _isdateformat = HttpContext.Current.Session["IsDateFormat"].ToString();
+}
+<script src="~/AssetsNew/js/CommonValidation.js"></script>
+<script>
+    $(document).ready(function () {
+        var Reportflage = '@ViewBag.Reportflage';
+        var isDateFormat = '@_isdateformat';
+        bindcoltablewithdata('@ViewBag.ReportID');
+        $("#lblReportName").text('@ViewBag.Title')
+        $('#customcaption').text('@ViewBag.Title');
+        $('#Reportflage').text(Reportflage);
+        //if ($('#Reportflage').text() == 1) {
+        //$("#btnback").val("Go to Dynamic reports")
+        //}
+        //else {
+        //    $("#btnback").val("Go to DashBoard")
+        //}
+        $("#btnback").click(function () {
+
+            //if ($('#Reportflage').text() == 1) {
+            window.location.href = "/Report/DynamicReportTemplate";
+            //}
+            //else {
+            //    window.location.href = "/Report/DynamicReportDashboard";
+            //}
+        }
+        );
+
+        var newdate = new Date();
+
+        $("#txtContains_Attn_Dt").datepicker({
+            defaultDate: newdate,
+            autoclose: true,
+            format: "@_isdateformat"
+        });
+
+        $("#txtalias_Attn_Dt").datepicker({
+            defaultDate: newdate,
+            autoclose: true,
+            format: "@_isdateformat"
+        });
+        $("#txtContains_Attn_Dt").change(function () {
+            if ("@_isdateformat" == "dd-mm-yyyy") {
+                var from = $("#txtContains_Attn_Dt").val().split("-");
+                var fromDate = from[2] + "-" + from[1] + "-" + from[0];
+                var date1 = new Date(fromDate);
+                var newdate = new Date(fromDate);
+                var date2 = newdate;
+                date2.setDate(newdate.getDate() + 30);
+            }
+            else if ("@_isdateformat" == "mm-dd-yyyy") {
+                var from = moment($('#txtContains_Attn_Dt').val(), 'MM-DD-YYYY');
+                var date1 = new Date(from);
+                var newdate = new Date(from);
+                var date2 = newdate;
+                date2.setDate(newdate.getDate() + 30);
+            }
+            else if ("@_isdateformat" == "yyyy-mm-dd") {
+                var from = $("#txtContains_Attn_Dt").val().split("-");
+                var fromDate = from[0] + "-" + from[1] + "-" + from[2];
+                var date1 = new Date(fromDate);
+                var newdate = new Date(fromDate);
+                var date2 = newdate;
+                date2.setDate(newdate.getDate() + 30);
+            }
+            else if ("@_isdateformat" == "yyyy-M-dd") {
+                var from = moment($('#txtContains_Attn_Dt').val(), 'YYYY-MMM-DD');
+                var date1 = new Date(from);
+                var newdate = new Date(from);
+                var date2 = newdate;
+                date2.setDate(newdate.getDate() + 30);
+            }
+            else if ("@_isdateformat" == "M-dd-yyyy") {
+                var from = moment($('#txtContains_Attn_Dt').val(), 'MMM-DD-YYYY');
+                var date1 = new Date(from);
+                var newdate = new Date(from);
+                var date2 = newdate;
+                date2.setDate(newdate.getDate() + 30);
+            }
+            else if ("@_isdateformat" == "dd-M-yyyy") {
+                var from = moment($('#txtContains_Attn_Dt').val(), 'DD-MMM-YYYY');
+                var date1 = new Date(from);
+                var newdate = new Date(from);
+                var date2 = newdate;
+                date2.setDate(newdate.getDate() + 30);
+            }
+            //var fromDate = $("#txtContains_Attn_Dt").val();
+            //var date1 = new Date(fromDate);
+            //var newdate = new Date(fromDate);
+            //var date2 = newdate;
+            //date2.setDate(newdate.getDate() + 30);
+            $('#txtalias_Attn_Dt').val('');
+            $('#txtalias_Attn_Dt').datepicker("remove");
+            $("#txtalias_Attn_Dt").datepicker({
+                startDate: date1,
+                endDate: date2,
+                autoclose: true,
+                format: "@_isdateformat",
+            });
+        });
+
+
+        var flgscl = '@IsSchool';
+        if (flgscl == "1") {
+            $('.repo_right p').css({ "font-size": "13px", "padding-top": "0" });
+        }
+
+        $('.dropdown').click(function (e) {
+            $("#spvalidation").html('');
+            var _searchcriteria = "";
+            var _spvalidationvalid = "";
+
+            $("#tblcol .chkselectcol").each(function () {
+                if ($(this).is(':checked') == true) {
+                    var ctl = $(this).val();
+                    var _alias = $('#txtalias_' + ctl + '').val();
+                    if (_alias == "") {
+                        $("#spvalidation").html("Please enter " + ctl + ".").show();
+                        _spvalidationvalid = $("#spvalidation").html();
+                        //$("body").addClass("page-quick-sidebar-open");
+                        return false;
+                    }
+                    if (_searchcriteria == "") {
+                        _searchcriteria = "`" + ctl + "`='" + _alias + "'";
+                    }
+                    else {
+                        _searchcriteria += "and `" + ctl + "`='" + _alias + "'";
+                    }
+                }
+            });
+            if (_searchcriteria != "") {
+                _searchcriteria = "'" + _searchcriteria + "'";
+            }
+            $("#SearchCriteria").val(_searchcriteria)
+
+            //$("body").toggleClass("page-quick-sidebar-open");
+            //$('#frmrpt').submit();
+
+        });
+
+        $("#Sidebarfilter").on('click', function () {
+            $("#Sidebarfilter").attr("data-toggle", "modal");
+            $("#Sidebarfilter").attr("data-target", "#Sidebarfilter_modal");
+        });
+
+    });
+    function Rowenable(ctl) {
+        if ($('#chkselect_t' + ctl).prop('checked') == true) {
+            $('#txtalias_' + ctl + '').css('display', "block");
+            $('#txtContains_' + ctl + '').css('display', "block");
+            $('#spISFilo').css('display', "block");
+            $("#chk_ISFilo").prop('checked', false);
+        }
+        else {
+            $('#txtalias_' + ctl + '').css('display', "none");
+            $('#txtalias_' + ctl + '').val('');
+            $('#txtContains_' + ctl + '').css('display', "none");
+            $('#txtContains_' + ctl + '').val('IS');
+            $("#chk_ISFilo").prop('checked', false);
+            $('#spISFilo').css('display', "none");
+            if (ctl == "Attn_Dt") {
+                $("#txtalias_Attn_Dt").val('');
+                $("#txtContains_Attn_Dt").val('');
+            }
+        }
+    }
+    function cleardata() {
+        bindcoltablewithdata($("#ReportID").val());
+    };
+    $("#tblcol .chkselectcol").each(function () {
+
+        if ($(this).is(':checked') == true) {
+            var ctl = $(this).val();
+            var _alias = $('#txtalias_' + ctl + '').val();
+            var _Contains = $('#txtContains_' + ctl + '').val();
+
+            //if (_alias == "") {
+            //    $("#spvalidation").html("Please enter " + ctl + ".").show();
+            //    _spvalidationvalid = $("#spvalidation").html();
+            //}
+
+
+            if (_searchcriteria == "") {
+                if (_Contains == "IS") {
+                    _searchcriteria = "`" + ctl + "`='" + _alias + "'";
+                }
+                else if (_Contains == "ISNot") {
+                    _searchcriteria = "`" + ctl + "`!='" + _alias + "'";
+                }
+                else if (_Contains == "StartWith") {
+                    _searchcriteria = "`" + ctl + "`like '%" + _alias + "'";
+                }
+                else if (_Contains == "EndsWith") {
+                    _searchcriteria = "`" + ctl + "`like '" + _alias + "%'";
+                }
+                else if (_Contains == "Like") {
+                    _searchcriteria = "`" + ctl + "`like '%" + _alias + "%'";
+                }
+                else if (_Contains == "IsEmpty") {
+                    _searchcriteria = "`" + ctl + "`=''";
+                }
+                else if (_Contains == "IsNotEmpty") {
+                    _searchcriteria = "`" + ctl + "`!=''";
+                }
+                else {
+                    _searchcriteria = "`" + ctl + "`='" + _alias + "'";
+                }
+
+            }
+            else {
+                //_searchcriteria += "and `" + ctl + "`='" + _alias + "'";
+
+                if (_Contains == "IS") {
+                    _searchcriteria += "and `" + ctl + "`='" + _alias + "'";
+                }
+                else if (_Contains == "ISNot") {
+                    _searchcriteria += "and `" + ctl + "`!='" + _alias + "'";
+                }
+                else if (_Contains == "StartWith") {
+                    _searchcriteria += "and `" + ctl + "`like '%" + _alias + "'";
+                }
+                else if (_Contains == "EndsWith") {
+                    _searchcriteria += "and `" + ctl + "`like '" + _alias + "%'";
+                }
+                else if (_Contains == "Like") {
+                    _searchcriteria += "and `" + ctl + "`like '%" + _alias + "%'";
+                }
+                else if (_Contains == "IsEmpty") {
+                    _searchcriteria += "and `" + ctl + "`=''";
+                }
+                else if (_Contains == "IsNotEmpty") {
+                    _searchcriteria += "and `" + ctl + "`!=''";
+                }
+                else {
+                    _searchcriteria += "and `" + ctl + "`='" + _alias + "'";
+                }
+            }
+        }
+    });
+    function ShowReport() {
+        $(".loading").show();
+        $("#spvalidation").html('');
+        var _searchcriteria = "";
+        var _spvalidationvalid = "";
+        $("#tblcol .chkselectcol").each(function () {
+            if ($(this).is(':checked') == true) {
+                var ctl = $(this).val();
+                var _alias = $('#txtalias_' + ctl + '').val();
+                var _Contains = $('#txtContains_' + ctl + '').val();
+                if (ctl == "Attn_Dt") {
+                    if ("@_isdateformat" == "dd-mm-yyyy") {
+                        var alias = $('#txtalias_' + ctl + '').val().split("-");
+                        var _alias = alias[2] + "-" + alias[1] + "-" + alias[0];
+                        var contain = $('#txtContains_' + ctl + '').val().split("-");
+                        var _Contains = contain[2] + "-" + contain[1] + "-" + contain[0];
+                    }
+                    else if ("@_isdateformat" == "mm-dd-yyyy") {
+                        var alias = $('#txtalias_' + ctl + '').val().split("-");
+                        var _alias = alias[2] + "-" + alias[0] + "-" + alias[1];
+                        var contain = $('#txtContains_' + ctl + '').val().split("-");
+                        var _Contains = contain[2] + "-" + contain[0] + "-" + contain[1];
+                    }
+                    else if ("@_isdateformat" == "yyyy-mm-dd") {
+                        var alias = $('#txtalias_' + ctl + '').val().split("-");
+                        var _alias = alias[0] + "-" + alias[1] + "-" + alias[2];
+                        var contain = $('#txtContains_' + ctl + '').val().split("-");
+                        var _Contains = contain[0] + "-" + contain[1] + "-" + contain[2];
+                    }
+                    else if ("@_isdateformat" == "dd-M-yyyy") {
+                        var alias = $('#txtalias_' + ctl + '').val().split("-");
+                        var getMonth = alias[1];
+                        var _alias = alias[2] + "-" + (GetMonthNumber(getMonth) > 1 ? GetMonthNumber(getMonth) : "0" + GetMonthNumber(getMonth)) + "-" + alias[0];
+                        var contain = $('#txtContains_' + ctl + '').val().split("-");
+                        var getMonth = contain[1];
+                        var _Contains = contain[2] + "-" + (GetMonthNumber(getMonth) > 1 ? GetMonthNumber(getMonth) : "0" + GetMonthNumber(getMonth)) + "-" + contain[0];
+                    }
+                    else if ("@_isdateformat" == "M-dd-yyyy") {
+                        var alias = $('#txtalias_' + ctl + '').val().split("-");
+                        var getMonth = alias[0];
+                        var _alias = alias[2] + "-" + (GetMonthNumber(getMonth) > 1 ? GetMonthNumber(getMonth) : "0" + GetMonthNumber(getMonth)) + "-" + alias[1];
+                        var contain = $('#txtContains_' + ctl + '').val().split("-");
+                        var getMonth = contain[0];
+                        var _Contains = contain[2] + "-" + (GetMonthNumber(getMonth) > 1 ? GetMonthNumber(getMonth) : "0" + GetMonthNumber(getMonth)) + "-" + contain[1];
+                    }
+                    else if ("@_isdateformat" == "yyyy-M-dd") {
+                        var alias = $('#txtalias_' + ctl + '').val().split("-");
+                        var getMonth = alias[1];
+                        var _alias = alias[0] + "-" + (GetMonthNumber(getMonth) > 1 ? GetMonthNumber(getMonth) : "0" + GetMonthNumber(getMonth)) + "-" + alias[2];
+                        var contain = $('#txtContains_' + ctl + '').val().split("-");
+                        var getMonth = contain[1];
+                        var _Contains = contain[0] + "-" + (GetMonthNumber(getMonth) > 1 ? GetMonthNumber(getMonth) : "0" + GetMonthNumber(getMonth)) + "-" + contain[2];
+                    }
+                }
+                if (ctl == "Attn_Dt") {
+                    if ($('#txtContains_' + ctl + '').val() == "") {
+                        $(".loading").hide();
+                        $("#spvalidation").html("Please enter From Attendance Date.").show();
+                        _spvalidationvalid = $("#spvalidation").html();
+                        $(".loading").hide();
+                        return false;
+                    }
+
+
+                    if ($('#txtalias_' + ctl + '').val() == "") {
+                        $(".loading").hide();
+                        $("#spvalidation").html("Please enter TO Attendance Date.").show();
+                        _spvalidationvalid = $("#spvalidation").html();
+                        $(".loading").hide();
+                        return false;
+                    }
+
+
+                    if (_searchcriteria == "") {
+                        _searchcriteria = "`" + ctl + "`between '" + _Contains + "' and '" + _alias + "'";
+                    }
+                    else {
+                        _searchcriteria += " and `" + ctl + "`between '" + _Contains + "' and '" + _alias + "'";
+                    }
+                }
+                if (ctl != "Attn_Dt") {
+                    if (_searchcriteria == "") {
+                        //_searchcriteria = "`" + ctl + "`='" + _alias + "'";
+
+                        if (_Contains == "IS") {
+
+                            if (ctl == 'CompanyId') {
+                                _searchcriteria = " tblbranchmaster.CompanyId " + " in (select CompanyId from tblcompanymaster Where CompanyName ='" + _alias + "')";
+                            }
+                            else if (ctl == 'BranchId') {
+                                _searchcriteria = " tblEmployeemaster.BranchId " + " in (select BranchId from tblbranchmaster Where BranchName ='" + _alias + "')";
+                            }
+                            else if (ctl == 'CategoryId') {
+                                _searchcriteria = " tblEmployeemaster.CategoryId " + " in (select CategoryId from tblcategorymaster Where CategoryName ='" + _alias + "')";
+                            }
+                            else if (ctl == 'DepartmentId') {
+                                _searchcriteria = " tblEmployeemaster.DepartmentId " + " in (select DepartmentId from tbldepartmentmaster Where DepartmentName ='" + _alias + "')";
+                            }
+                            else if (ctl == 'DesignationId') {
+                                _searchcriteria = " tblEmployeemaster.DesignationId " + " in (select DesignationId from tbldesignationmaster Where DesignationName ='" + _alias + "')";
+                            }
+                            else {
+                                _searchcriteria = "`" + ctl + "`='" + _alias + "'";
+                            }
+                        }
+
+                        else if (_Contains == "ISNot") {
+                            if (ctl == 'CompanyId') {
+                                _searchcriteria = " tblbranchmaster.CompanyId " + " in (select CompanyId from tblcompanymaster Where CompanyName !='" + _alias + "')";
+                            }
+                            else if (ctl == 'BranchId') {
+                                _searchcriteria = " tblEmployeemaster.BranchId " + " in (select BranchId from tblbranchmaster Where BranchName !='" + _alias + "')";
+                            }
+                            else if (ctl == 'CategoryId') {
+                                _searchcriteria = " tblEmployeemaster.CategoryId " + " in (select CategoryId from tblcategorymaster Where CategoryName !='" + _alias + "')";
+                            }
+                            else if (ctl == 'DepartmentId') {
+                                _searchcriteria = " tblEmployeemaster.DepartmentId " + " in (select DepartmentId from tbldepartmentmaster Where DepartmentName !='" + _alias + "')";
+                            }
+                            else if (ctl == 'DesignationId') {
+                                _searchcriteria = " tblEmployeemaster.DesignationId " + " in (select DesignationId from tbldesignationmaster Where DesignationName !='" + _alias + "')";
+                            }
+                            else {
+                                _searchcriteria = "`" + ctl + "`!='" + _alias + "'";
+                            }
+                        }
+                        else if (_Contains == "StartWith") {
+                            if (ctl == 'CompanyId') {
+                                _searchcriteria = " tblbranchmaster.CompanyId " + " in (select CompanyId from tblcompanymaster Where CompanyName like '" + _alias + "%')";
+                            }
+                            else if (ctl == 'BranchId') {
+                                _searchcriteria = " tblEmployeemaster.BranchId " + " in (select BranchId from tblbranchmaster Where BranchName like '" + _alias + "%')";
+                            }
+                            else if (ctl == 'CategoryId') {
+                                _searchcriteria = " tblEmployeemaster.CategoryId " + " in (select CategoryId from tblcategorymaster Where CategoryName like '" + _alias + "%')";
+                            }
+                            else if (ctl == 'DepartmentId') {
+                                _searchcriteria = " tblEmployeemaster.DepartmentId " + " in (select DepartmentId from tbldepartmentmaster Where DepartmentName like '" + _alias + "%')";
+                            }
+                            else if (ctl == 'DesignationId') {
+                                _searchcriteria = " tblEmployeemaster.DesignationId " + " in (select DesignationId from tbldesignationmaster Where DesignationName like '" + _alias + "%')";
+                            }
+                            else {
+                                _searchcriteria += "`" + ctl + "` like '" + _alias + "%'";
+                            }
+
+                        }
+                        else if (_Contains == "EndsWith") {
+                            if (ctl == 'CompanyId') {
+                                _searchcriteria = " tblbranchmaster.CompanyId " + " in (select CompanyId from tblcompanymaster Where CompanyName like '%" + _alias + "')";
+                            }
+                            else if (ctl == 'BranchId') {
+                                _searchcriteria = " tblEmployeemaster.BranchId " + " in (select BranchId from tblbranchmaster Where BranchName like '%" + _alias + "')";
+                            }
+                            else if (ctl == 'CategoryId') {
+                                _searchcriteria = " tblEmployeemaster.CategoryId " + " in (select CategoryId from tblcategorymaster Where CategoryName like '%" + _alias + "')";
+                            }
+                            else if (ctl == 'DepartmentId') {
+                                _searchcriteria = " tblEmployeemaster.DepartmentId " + " in (select DepartmentId from tbldepartmentmaster Where DepartmentName like '%" + _alias + "')";
+                            }
+                            else if (ctl == 'DesignationId') {
+                                _searchcriteria = " tblEmployeemaster.DesignationId " + " in (select DesignationId from tbldesignationmaster Where DesignationName like '%" + _alias + "')";
+                            }
+                            else {
+                                _searchcriteria += "`" + ctl + "` like '%" + _alias + "'";
+                            }
+                        }
+                        else if (_Contains == "Like") {
+                            if (ctl == 'CompanyId') {
+                                _searchcriteria = " tblbranchmaster.CompanyId " + " in (select CompanyId from tblcompanymaster Where CompanyName like '%" + _alias + "%')";
+                            }
+                            else if (ctl == 'BranchId') {
+                                _searchcriteria = " tblEmployeemaster.BranchId " + " in (select BranchId from tblbranchmaster Where BranchName like '%" + _alias + "%')";
+                            }
+                            else if (ctl == 'CategoryId') {
+                                _searchcriteria = " tblEmployeemaster.CategoryId " + " in (select CategoryId from tblcategorymaster Where CategoryName like '%" + _alias + "%')";
+                            }
+                            else if (ctl == 'DepartmentId') {
+                                _searchcriteria = " tblEmployeemaster.DepartmentId " + " in (select DepartmentId from tbldepartmentmaster Where DepartmentName like '%" + _alias + "%')";
+                            }
+                            else if (ctl == 'DesignationId') {
+                                _searchcriteria = " tblEmployeemaster.DesignationId " + " in (select DesignationId from tbldesignationmaster Where DesignationName like '%" + _alias + "%')";
+                            }
+                            else {
+                                _searchcriteria = "`" + ctl + "` like '%" + _alias + "%'";
+                            }
+                        }
+                        else if (_Contains == "IsEmpty") {
+                            if (ctl == 'CompanyId') {
+                                _searchcriteria = " tblbranchmaster.CompanyId " + " in (select CompanyId from tblcompanymaster Where CompanyName = '')";
+                            }
+                            else if (ctl == 'BranchId') {
+                                _searchcriteria = " tblEmployeemaster.BranchId " + " in (select BranchId from tblbranchmaster Where BranchName = '')";
+                            }
+                            else if (ctl == 'CategoryId') {
+                                _searchcriteria = " tblEmployeemaster.CategoryId " + " in (select CategoryId from tblcategorymaster Where CategoryName = '')";
+                            }
+                            else if (ctl == 'DepartmentId') {
+                                _searchcriteria = " tblEmployeemaster.DepartmentId " + " in (select DepartmentId from tbldepartmentmaster Where DepartmentName = '')";
+                            }
+                            else if (ctl == 'DesignationId') {
+                                _searchcriteria = " tblEmployeemaster.DesignationId " + " in (select DesignationId from tbldesignationmaster Where DesignationName = '')";
+                            }
+                            else {
+                                _searchcriteria = "`" + ctl + "`=''";
+                            }
+                        }
+                        else if (_Contains == "IsNotEmpty") {
+                            if (ctl == 'CompanyId') {
+                                _searchcriteria = " tblbranchmaster.CompanyId " + " in (select CompanyId from tblcompanymaster Where CompanyName != '')";
+                            }
+                            else if (ctl == 'BranchId') {
+                                _searchcriteria = " tblEmployeemaster.BranchId " + " in (select BranchId from tblbranchmaster Where BranchName != '')";
+                            }
+                            else if (ctl == 'CategoryId') {
+                                _searchcriteria = " tblEmployeemaster.CategoryId " + " in (select CategoryId from tblcategorymaster Where CategoryName != '')";
+                            }
+                            else if (ctl == 'DepartmentId') {
+                                _searchcriteria = " tblEmployeemaster.DepartmentId " + " in (select DepartmentId from tbldepartmentmaster Where DepartmentName != '')";
+                            }
+                            else if (ctl == 'DesignationId') {
+                                _searchcriteria = " tblEmployeemaster.DesignationId " + " in (select DesignationId from tbldesignationmaster Where DesignationName != '')";
+                            }
+                            else {
+                                _searchcriteria = "`" + ctl + "`!=''";
+                            }
+                        }
+                        else {
+                            _searchcriteria = "`" + ctl + "`='" + _alias + "'";
+                        }
+
+                    }
+                    else {
+                        //_searchcriteria += "and `" + ctl + "`='" + _alias + "'";
+
+                        if (_Contains == "IS") {
+
+                            if (ctl == 'CompanyId') {
+                                _searchcriteria += "and `" + " tblbranchmaster.CompanyId " + " in (select CompanyId from tblcompanymaster Where CompanyName ='" + _alias + "')";
+                            }
+                            else if (ctl == 'BranchId') {
+                                _searchcriteria += "and `" + " tblEmployeemaster.BranchId " + " in (select BranchId from tblbranchmaster Where BranchName ='" + _alias + "')";
+                            }
+                            else if (ctl == 'CategoryId') {
+                                _searchcriteria += "and `" + " tblEmployeemaster.CategoryId " + " in (select CategoryId from tblcategorymaster Where CategoryName ='" + _alias + "')";
+                            }
+                            else if (ctl == 'DepartmentId') {
+                                _searchcriteria += "and `" + " tblEmployeemaster.DepartmentId " + " in (select DepartmentId from tbldepartmentmaster Where DepartmentName ='" + _alias + "')";
+                            }
+                            else if (ctl == 'DesignationId') {
+                                _searchcriteria += "and `" + " tblEmployeemaster.DesignationId " + " in (select DesignationId from tbldesignationmaster Where DesignationName ='" + _alias + "')";
+                            }
+                            else {
+                                _searchcriteria += "and `" + ctl + "`='" + _alias + "'";
+                            }
+
+
+                        }
+                        else if (_Contains == "ISNot") {
+                            if (ctl == 'CompanyId') {
+                                _searchcriteria += "and `" + " tblbranchmaster.CompanyId " + " in (select CompanyId from tblcompanymaster Where CompanyName  != '" + _alias + "')";
+                            }
+                            else if (ctl == 'BranchId') {
+                                _searchcriteria += "and `" + " tblEmployeemaster.BranchId " + " in (select BranchId from tblbranchmaster Where BranchName  != '" + _alias + "')";
+                            }
+                            else if (ctl == 'CategoryId') {
+                                _searchcriteria += "and `" + " tblEmployeemaster.CategoryId " + " in (select CategoryId from tblcategorymaster Where CategoryName  != '" + _alias + "')";
+                            }
+                            else if (ctl == 'DepartmentId') {
+                                _searchcriteria += "and `" + " tblEmployeemaster.DepartmentId " + " in (select DepartmentId from tbldepartmentmaster Where DepartmentName != '" + _alias + "')";
+                            }
+                            else if (ctl == 'DesignationId') {
+                                _searchcriteria += "and `" + " tblEmployeemaster.DesignationId " + " in (select DesignationId from tbldesignationmaster Where DesignationName != '" + _alias + "')";
+                            }
+                            else {
+                                _searchcriteria += "and `" + ctl + "` != '" + _alias + "'";
+                            }
+                        }
+                        else if (_Contains == "StartWith") {
+                            if (ctl = 'CompanyId') {
+                                _searchcriteria += "and `" + " tblbranchmaster.CompanyId " + " in (select CompanyId from tblcompanymaster Where CompanyName  like '%" + _alias + "')";
+                            }
+                            else if (ctl == 'BranchId') {
+                                _searchcriteria += "and `" + " tblEmployeemaster.BranchId " + " in (select BranchId from tblbranchmaster Where BranchName  like '%" + _alias + "')";
+                            }
+                            else if (ctl == 'CategoryId') {
+                                _searchcriteria += "and `" + " tblEmployeemaster.CategoryId " + " in (select CategoryId from tblcategorymaster Where CategoryName  like '%" + _alias + "')";
+                            }
+                            else if (ctl == 'DepartmentId') {
+                                _searchcriteria += "and `" + " tblEmployeemaster.DepartmentId " + " in (select DepartmentId from tbldepartmentmaster Where DepartmentName  like '%" + _alias + "')";
+                            }
+                            else if (ctl == 'DesignationId') {
+                                _searchcriteria += "and `" + " tbldesignationmaster.DesignationId " + " in (select DesignationId from tbldesignationmaster Where DesignationName  like '%" + _alias + "')";
+                            }
+                            else {
+                                _searchcriteria += "and `" + ctl + "` like '" + _alias + "%'";
+                            }
+
+                        }
+                        else if (_Contains == "EndsWith") {
+                            if (ctl == 'CompanyId') {
+                                _searchcriteria += "and `" + " tblbranchmaster.CompanyId " + " in (select CompanyId from tblcompanymaster Where CompanyName  like '%" + _alias + "')";
+                            }
+                            else if (ctl == 'BranchId') {
+                                _searchcriteria += "and `" + " tblEmployeemaster.BranchId " + " in (select BranchId from tblbranchmaster Where BranchName  like '%" + _alias + "')";
+                            }
+                            else if (ctl == 'CategoryId') {
+                                _searchcriteria += "and `" + " tblEmployeemaster.CategoryId " + " in (select CategoryId from tblcategorymaster Where CategoryName  like '%" + _alias + "')";
+                            }
+                            else if (ctl == 'DepartmentId') {
+                                _searchcriteria += "and `" + " tblEmployeemaster.DepartmentId " + " in (select DepartmentId from tbldepartmentmaster Where DepartmentName  like '%" + _alias + "')";
+                            }
+                            else if (ctl == 'DesignationId') {
+                                _searchcriteria += "and `" + " tblEmployeemaster.DesignationId " + " in (select DesignationId from tbldesignationmaster Where DesignationName  like '%" + _alias + "')";
+                            }
+                            else {
+                                _searchcriteria += "and `" + ctl + "` like '%" + _alias + "'";
+                            }
+                        }
+                        else if (_Contains == "Like") {
+                            if (ctl == 'CompanyId') {
+                                _searchcriteria += "and `" + " tblbranchmaster.CompanyId " + " in (select CompanyId from tblcompanymaster Where CompanyName  like '%" + _alias + "%')";
+                            }
+                            else if (ctl == 'BranchId') {
+                                _searchcriteria += "and `" + " tblEmployeemaster.BranchId " + " in (select BranchId from tblbranchmaster Where BranchName  like '%" + _alias + "%')";
+                            }
+                            else if (ctl == 'CategoryId') {
+                                _searchcriteria += "and `" + " tblEmployeemaster.CategoryId " + " in (select CategoryId from tblcategorymaster Where CategoryName like '%" + _alias + "%')";
+                            }
+                            else if (ctl == 'DepartmentId') {
+                                _searchcriteria += "and `" + " tblEmployeemaster.DepartmentId " + " in (select DepartmentId from tbldepartmentmaster Where DepartmentName like '%" + _alias + "%')";
+                            }
+                            else if (ctl == 'DesignationId') {
+                                _searchcriteria += "and `" + " tblEmployeemaster.DesignationId " + " in (select DesignationId from tbldesignationmaster Where DesignationName like '%" + _alias + "%')";
+                            }
+                            else {
+                                _searchcriteria += "and `" + ctl + "` like '%" + _alias + "%'";
+                            }
+                        }
+                        else if (_Contains == "IsEmpty") {
+                            if (ctl == 'CompanyId') {
+                                _searchcriteria += "and `" + " tblbranchmaster.CompanyId " + " in (select CompanyId from tblcompanymaster Where CompanyName  = '')";
+                            }
+                            else if (ctl == 'BranchId') {
+                                _searchcriteria += "and `" + " tblEmployeemaster.BranchId " + " in (select BranchId from tblbranchmaster Where BranchName  = '')";
+                            }
+                            else if (ctl == 'CategoryId') {
+                                _searchcriteria += "and `" + " tblEmployeemaster.CategoryId " + " in (select CategoryId from tblcategorymaster Where CategoryName = '')";
+                            }
+                            else if (ctl == 'DepartmentId') {
+                                _searchcriteria += "and `" + " tblEmployeemaster.DepartmentId " + " in (select DepartmentId from tbldepartmentmaster Where DepartmentName = '')";
+                            }
+                            else if (ctl == 'DesignationId') {
+                                _searchcriteria += "and `" + " tblEmployeemaster.DesignationId " + " in (select DesignationId from tbldesignationmaster Where DesignationName = '')";
+                            }
+                            else {
+                                _searchcriteria += "and `" + ctl + "` = ''";
+                            }
+                        }
+                        else if (_Contains == "IsNotEmpty") {
+                            if (ctl == 'CompanyId') {
+                                _searchcriteria += "and `" + " tblbranchmaster.CompanyId " + " in (select CompanyId from tblcompanymaster Where CompanyName != '')";
+                            }
+                            else if (ctl == 'BranchId') {
+                                _searchcriteria += "and `" + " tblEmployeemaster.BranchId " + " in (select BranchId from tblbranchmaster Where BranchName  != '')";
+                            }
+                            else if (ctl == 'CategoryId') {
+                                _searchcriteria += "and `" + " tblEmployeemaster.CategoryId " + " in (select CategoryId from tblcategorymaster Where CategoryName != '')";
+                            }
+                            else if (ctl == 'DepartmentId') {
+                                _searchcriteria += "and `" + " tblEmployeemaster.DepartmentId " + " in (select DepartmentId from tbldepartmentmaster Where DepartmentName != '')";
+                            }
+                            else if (ctl == 'DesignationId') {
+                                _searchcriteria += "and `" + " tblEmployeemaster.DesignationId " + " in (select DesignationId from tbldesignationmaster Where DesignationName != '')";
+                            }
+                            else {
+                                _searchcriteria += "and `" + ctl + "` != ''";
+                            }
+                        }
+                        else {
+                            _searchcriteria += "and `" + ctl + "` = '" + _alias + "'";
+                        }
+                    }
+                }
+            }
+        });
+        if (_searchcriteria != "") {
+            _searchcriteria = "'" + _searchcriteria + "'";
+        }
+
+        $("#SearchCriteria").val(_searchcriteria)
+        $("#ReportHead").val($("#customcaption").text());
+        var _Reportflage = $('#Reportflage').text();
+
+        if ($("#chk_ISFilo").is(':checked') == true) {
+
+            $("#Reportflage").val(1);
+        }
+        else {
+            $("#Reportflage").val(0);
+        }
+
+        if (_spvalidationvalid == "") {
+            $('#frmrpt').submit();
+            $("body").toggleClass("page-quick-sidebar-open");
+            var objcls = {
+                "Reportflage": _Reportflage,
+                "ReportId": $("#ReportID").val(),
+                "SearchCriteria": $("#SearchCriteria").val(),
+                "ReportHead": $("#ReportHead").text()
+            }
+        }
+        else {
+            //$(".loading").hide();
+            return false;
+        }
+
+        //$(".loading").hide();
+        return true;
+
+    };
+    function bindcoltablewithdata(ID) {
+        $("#ReportID").val(ID)
+        $("#SearchCriteria").val('');
+        $("#ReportHead").text('');
+        var token = '@_tokan'
+        var _url = '@_webapiurl' + 'Report/GetselectColumnslist';
+        $.ajax({
+            type: 'GET',
+            headers: { 'Authorization': '@_tokan' },
+            url: _url,
+            data: { 'ReportsID': "" + ID + "" },
+            contentType: "application/json",
+            dataType: 'json',
+            async: false,
+            cache: false,
+            timeout: 30000,
+            beforeSend: function () {
+                $("#ajax_loader").show();
+            },
+            success: function (data) {
+                document.getElementById('tblcolbody').innerHTML = '';
+                var tr;
+                var coldt = data;
+                tr = "<tr class='header_report_filter'>";
+                tr += "<td style='width:10px;'>Select</td>";
+                tr += "<td id='lbl_select'>Fields</td>";
+                tr += "<td colspan='2'></td>";
+                tr += "<td><input type='text' id='txtalias_'  class='form-control input-sm input-small input-inline' name='txtAlias_' maxlength='50' value='' style='display:none;'></td>";
+                tr += '</tr>';
+                $('#tblcolbody').append(tr);
+                for (var i = 0; i < coldt.length; i++) {
+                    $("#lblReportName").text("Reports Name :- " + coldt[i].ReportName)
+                    if (coldt[i].ReportfieldName == "InTime" || coldt[i].ReportfieldName == "OutTime" || coldt[i].ReportfieldName == "TotHour" || coldt[i].ReportfieldName == "FinalStatus" || coldt[i].ReportfieldName == "OTHr") {
+                    }
+                    else {
+                        tr = "<tr>";
+                        if (coldt[i].ReportfieldName == "Attn_Dt") {
+                            //tr += ("<td style='width:10px;'> <input type='checkbox' onchange=Rowenable('" + coldt[i].ReportfieldName + "');  id='chkselect_t" + coldt[i].ReportfieldName + "' class='chkselectcol' name='chkselect_" + coldt[i].ReportfieldName + "' value='" + coldt[i].ReportfieldName + "'> </br></br><input type='checkbox'  id='chk_ISFilo' class='chkselectcol' name='chk_ISFilo' value='ISFilo'></td>");
+                            //tr += ("<td id='lbl_" + coldt[i].ReportfieldName + "'>" + coldt[i].Reportfieldalias + "</br></br>Report as First IN Last Out</td>");
+                            tr += ("<td style='width:10px; vertical-align: top;'> <input type='checkbox' onchange=Rowenable('" + coldt[i].ReportfieldName + "');  id='chkselect_t" + coldt[i].ReportfieldName + "' class='chkselectcol' name='chkselect_" + coldt[i].ReportfieldName + "' value='" + coldt[i].ReportfieldName + "'></td>");
+                            tr += ("<td id='lbl_" + coldt[i].ReportfieldName + "' style='vertical-align: top;'>" + coldt[i].Reportfieldalias + "</td>");
+                        }
+                        else {
+                            tr += ("<td style='width:10px;'> <input type='checkbox' onchange=Rowenable('" + coldt[i].ReportfieldName + "');  id='chkselect_t" + coldt[i].ReportfieldName + "' class='chkselectcol' name='chkselect_" + coldt[i].ReportfieldName + "' value='" + coldt[i].ReportfieldName + "'></td>");
+                            tr += ("<td id='lbl_" + coldt[i].ReportfieldName + "'>" + coldt[i].Reportfieldalias + "</td>");
+                        }
+
+                        tr += ("<td><span style='display:none;'>" + coldt[i].ReporttablesId + "</span></td>");
+                        if (coldt[i].ReportfieldName == "Attn_Dt") {
+                            tr += ("<td style='vertical-align: top;'><input type='text' id='txtContains_" + coldt[i].ReportfieldName + "' placeholder='Enter from date' class='form-control input-sm input-small input-inline datepicker' name=txtContains_" + coldt[i].ReportfieldName + "  maxlength='50'  readonly ='readonly' value='' style='display:none;'><span style='display:none;' id='spISFilo'><br/><input type='checkbox'  id='chk_ISFilo' class='chkselectcol1' name='chk_ISFilo' value='IsFilo'>&nbsp;Report as First IN Last Out &nbsp;<a class='tooltips_info' data-placement='right' title='Tick option for get data in FILO format.'><i class='fa-regular fa-circle-info' style='color: #2196f3;'></i></a></span></td>");
+                        }
+                        else {
+                            tr += ("<td><select class='form-control input-sm input-small input-inline' name='txtContains_" + coldt[i].ReportfieldName + "' id='txtContains_" + coldt[i].ReportfieldName + "'style='display:none;'> <option value='IS'>IS</option>  <option value='ISNot'>IS Not</option>  <option value='StartWith'>Start With</option> <option value='EndsWith'>Ends With</option> <option value='Like'>Like</option> <option value='IsEmpty'>Is Empty</option> <option value='IsNotEmpty'>Is Not Empty</option> </select></td>");
+                        }
+                        if (coldt[i].ReportfieldName == "Attn_Dt") {
+                            //tr += ("<td style='vertical-align: top;'><input type='text' id='txtalias_" + coldt[i].ReportfieldName + "'  placeholder='Enter to date'  class='form-control input-sm input-small input-inline datepicker' name=txtAlias_" + coldt[i].ReportfieldName + " maxlength='50' value='' style='display:none;' readonly='readonly'></td>");
+                            tr += ("<td style='vertical-align: top;'><input type='text' id='txtalias_" + coldt[i].ReportfieldName + "'  placeholder='Enter to date'  class='form-control input-sm input-small input-inline datepicker' name=txtAlias_" + coldt[i].ReportfieldName + " maxlength='50' value='' style='display:none;' readonly='readonly'></td>");
+                        }
+                        else {
+                            tr += ("<td><input type='text' id='txtalias_" + coldt[i].ReportfieldName + "'  class='form-control input-sm input-small input-inline' name=txtAlias_" + coldt[i].ReportfieldName + " maxlength='50' value='' style='display:none;'></td>");
+                        }
+                        tr += "</tr>";
+                        $('#tblcolbody').append(tr);
+                    }
+                }
+                $("#ajax_loader").hide();
+            },
+            error: function () {
+                $("#ajax_loader").hide();
+            }
+        });
+    }
+
+    //$("#Sidebarfilter > a").click(function () {
+    //    $("body").addClass("page-quick-sidebar-open");
+    //});
+    //$(".page-quick-sidebar-toggler").click(function () {
+    //    $("body").removeClass("page-quick-sidebar-open");
+    //});
+
+</script>
+<div class="page-bar">
+    <ul class="page-breadcrumb">
+        <li>
+            <a href="/Dashboard/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+        </li>
+        <li>
+            <span><i class="fa-light fa-angle-right"></i> Report Filter</span>
+        </li>
+    </ul>
+    <div>
+        <div class="report_title">
+            <p id="customcaption"></p>
+            <span id="reportflage" style="display:none;"></span>
+        </div>
+        <div class="page-toolbar">
+            <div class="text-right">
+                <a href="javascript:;" id="btnback" class="btn icon_transparent_btn margin-right-5 tooltips" data-placement="left" data-original-title="Custom reports list">
+                    <i class="fa-light fa-circle-arrow-left"></i>
+                </a>
+                <a href="javascript:;" class="btn icon_transparent_btn dropdown dropdown-quick-sidebar-toggler tooltips" id="Sidebarfilter" data-placement="left" data-original-title="Filter">
+                    <i class="fa-light fa-filter"></i>
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+@Html.Partial("_CustomReportPartial")
+<form action="DynamicReportExample" method="post" id="frmrpt" name="frmrpt">
+    <div class="modal_bg loading" aria-hidden="true" hidden>
+        <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading" />
+    </div>
+    <div id="Sidebarfilter_modal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog w-500">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal" id="close_model">&times;</button>
+                    <h4 class="modal-title">Filter</h4>
+                </div>
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                            <h3 class="title_filer_custom margin-top-0" id="lblReportName"></h3>
+                            <span class="help-block" hidden id="spvalidation"></span>
+                        </div>
+                        <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                            <div class="table-responsive">
+                                <table id="tblcol" class="table table-striped table-hover table-checkable order-column">
+                                    <tbody id="tblcolbody"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <div class="row">
+                        <div class="col-lg-12 text-right">
+                            <div class="form-actions">
+                                <input id="ReportID" type="hidden" name="ReportID">
+                                <input id="SearchCriteria" type="hidden" name="SearchCriteria">
+                                <input id="ReportHead" type="hidden" name="ReportHead">
+                                <input id="Reportflage" type="hidden" name="Reportflage">
+                                <button type="button" onclick="cleardata()" id="btnclear" class="btn clear_btn">Clear</button>
+                                <button type="button" onclick="ShowReport();" class="btn save_btn">OK</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</form>
+<style type="text/css">
+    @@import url("../assets/css/CustomDesign/DynamicReportDashboard.css");
+</style>
+
+<script src="~/app_assets/js/jquery-1.12.4.min.js"></script>

@@ -1,0 +1,560 @@
+﻿@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@using System.Configuration;
+@{
+    ViewBag.Title = "Payroll Cycle";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    string _Message = ViewBag.msg;
+    string _error = ViewBag.error;
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    string _webapiurlpayroll = ConfigurationManager.AppSettings["webapipaytimePayroll"].ToString();
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+    string _isdateformat = HttpContext.Current.Session["IsDateFormat"].ToString();
+    string _dbName = HttpContext.Current.Session["DbName"].ToString();
+    string _CheckCustomClientDBName = ConfigurationManager.AppSettings["CheckCustomClientDBName"].ToString();
+    int _CheckFastrackdb = 0;
+    if (_CheckCustomClientDBName.Contains(_dbName))
+    {
+        _CheckFastrackdb = 1;
+    }
+}
+<script src="~/Scripts/timeme.js"></script>
+<script src="~/Scripts/Helpers/noDataHandler.js"></script>
+@*<link href="/Newlayout/css/payrollstructure.css" rel="stylesheet">*@
+<script src="~/AssetsNew/js/CommonValidation.js"></script>
+<style type="text/css">
+    .green_font {
+        color: green;
+    }
+
+    .red_font {
+        color: red;
+    }
+</style>
+
+<script type="text/javascript">
+
+    Lastdate = "";
+    $(document).ready(function () {
+        $("#payrollCycleDatediv").hide();
+        $("#Enddate").prop("disabled", true);
+        $("#Startdate").on('input', function () {
+            // Get the value from the input field, which should be a day number
+            const dayNum = parseInt($(this).val(), 10);
+            $("#Startdate").val(dayNum);
+
+            // Ensure the value is a valid number before proceeding
+            if (!isNaN(dayNum) && dayNum < 32) {
+                var endDay = getDayNextMonth(dayNum)
+                $("#Enddate").val(endDay);
+                toastr.remove();
+            }
+            else {
+                $("#Enddate").val('');
+                $("#Startdate").val('');
+                toastr.remove();
+                toastr.error("Please enter valid start day.");
+            }
+        });
+
+        //// Clear the Enddate field
+        //$("#Enddate").val("");
+
+        //// Get the selected Startdate value
+        //var startDateStr = $("#Startdate").val();
+
+        //// Parse the selected date to a Date object
+        //var startDate = new Date(startDateStr);
+
+        //// Calculate the Enddate as exactly one month after Startdate
+        //var endDate = new Date(startDate);
+        //endDate.setMonth(startDate.getMonth() + 1);
+        //endDate.setDate(startDate.getDate() - 1);
+
+        //// Format the Enddate to yyyy-mm-dd
+        //var formattedEndDate = endDate.toISOString().slice(0, 10);
+
+        //// Set the formatted Enddate value
+        //$("#Enddate").val(formattedEndDate);
+
+        //// Remove old datepicker instance
+        //$('#Enddate').datepicker("remove");
+
+        //// Initialize the datepicker for Enddate with the desired format and settings
+        //$("#Enddate").datepicker({
+        //    startDate: startDate,
+        //    autoclose: true,
+        //    format: "yyyy-mm-dd", // Format updated to include day, month, and year
+        //    viewMode: "days",     // Allow selection of days
+        //    minViewMode: "days",  // Set the minimum view to days
+        //    endDate: endDate
+        //}).on('changeDate', function (ev) {
+        //    $("#Enddate").removeClass('field_error');
+        //}).data('datepicker');
+        //$("#Enddate").prop("disabled", true);
+
+
+
+        $("#btnSubmit").click(function () {
+            var startDate = $("#Startdate").val();
+            var endDate = $("#Enddate").val();
+
+            if (startDate == null || startDate == "") {
+                $("#Startdate").addClass('field_error').focus();
+                toastr.remove();
+                toastr.error("Please Select start date.");
+                return false;
+            }
+            else {
+                var obj = {
+                    startDate: startDate,
+                    endDate: endDate
+                }
+                $("#Startdate").removeClass('field_error');
+
+                $.ajax({
+                    type: "POST",
+                    headers: { 'Authorization': '@_tokan' },
+                    url: '@_webapiurlpayroll' + 'PayrollSetting/InsertPayrollCycleMessage',
+                    data: JSON.stringify(obj),
+                    contentType: "application/json; charset=utf-8",
+                    dataType: "json",
+                    beforeSend: function () {
+                        $("#ajax_loader").show();
+                    },
+                    success: function (response) {
+                        if (response == true) {
+
+                            swal({
+                                title: "Confirmation!",
+                                text: "Are you sure you want to add another payroll cycle for current transaction year this may leads to inconsistent payroll?",
+                                cancelButtonText: "Back",
+                                showCancelButton: true,
+                                confirmButtonText: "Yes",
+                                closeOnConfirm: true,
+                            },
+                            function (isConfirm) {
+
+                                if (isConfirm) {
+                                    $.ajax({
+                                        type: "POST",
+                                        headers: { 'Authorization': '@_tokan' },
+                                        url: '@_webapiurlpayroll' + 'PayrollSetting/InsertPayrollCycle',
+                                        data: JSON.stringify(obj),
+                                        contentType: "application/json; charset=utf-8",
+                                        dataType: "json",
+                                        beforeSend: function () {
+                                            $("#ajax_loader").show();
+                                        },
+                                        success: function (response) {
+                                            $("#payrollCycleDatediv").hide();
+                                            if (response.success == true) {
+                                                toastr.remove();
+                                                toastr.success(response.message);
+                                                clear_data();
+                                                GetPayrollCycleDate();
+                                            }
+                                            else if (response.success == false) {
+                                                toastr.remove();
+                                                toastr.error(response.message);
+                                                clear_data();
+                                                GetPayrollCycleDate();
+                                            }
+                                            else {
+                                                toastr.remove();
+                                                toastr.error(response.message);
+                                                clear_data();
+                                                GetPayrollCycleDate();
+                                            }
+                                        },
+                                        complete: function () {
+                                            $("#ajax_loader").hide();
+                                        }
+                                    });
+                                }
+                            });
+
+                            //if Confilict then add message for inconsistance payroll date error
+                        }
+                        else {
+                            $.ajax({
+                                type: "POST",
+                                headers: { 'Authorization': '@_tokan' },
+                                url: '@_webapiurlpayroll' + 'PayrollSetting/InsertPayrollCycle',
+                                data: JSON.stringify(obj),
+                                contentType: "application/json; charset=utf-8",
+                                dataType: "json",
+                                beforeSend: function () {
+                                    $("#ajax_loader").show();
+                                },
+                                success: function (response) {
+                                    $("#payrollCycleDatediv").hide();
+                                    if (response.success == true) {
+                                        toastr.remove();
+                                        toastr.success(response.message);
+                                        clear_data();
+                                        GetPayrollCycleDate();
+                                        $("#AddTransactionDate_modal").modal('toggle');
+                                        var screenWidth = $(window).width();
+                                        if (screenWidth >= 300 && screenWidth <= 600) {
+                                            $(".filter_portlet_tbl").show();
+                                        }
+                                    }
+                                    else if (response.success == false) {
+                                        toastr.remove();
+                                        toastr.error(response.message);
+                                        clear_data();
+                                        GetPayrollCycleDate();
+                                    }
+                                    else {
+                                        toastr.remove();
+                                        toastr.error(response.message);
+                                        clear_data();
+                                        GetPayrollCycleDate();
+                                    }
+                                },
+                                complete: function () {
+                                    $("#ajax_loader").hide();
+                                }
+                            });
+                        }
+                    },
+                    complete: function () {
+                        $("#ajax_loader").hide();
+                        //$("#AddTransactionDate_modal").modal('toggle');
+                        //setTimeout(function () {
+                        //    window.location.reload(true);
+                        //}, 100);
+                    }
+                });
+            }
+        });
+
+
+        function GetPayrollCycleDate() {
+            // Destroy the DataTable instance if it exists before re-initializing
+            if ($.fn.DataTable.isDataTable('#payrollCycleDetails')) {
+                $('#payrollCycleDetails').DataTable().destroy();
+            }
+            //dataTable
+            var payrollCycledetailsTable = $('#payrollCycleDetails').DataTable();
+            payrollCycledetailsTable.destroy();
+            $.ajax({
+                type: "GET",
+                headers: { 'Authorization': '@_tokan' },
+                url: '@_webapiurlpayroll' + 'PayrollSetting/GetPayrollCycleDate',
+                //data: JSON.stringify(obj),
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                beforeSend: function () {
+                    $("#ajax_loader").show();
+                },
+                success: function (response) {
+                    if (response != null) {
+                        const payrollC = response;
+                        handleGridVisibility("tblempty", "NotificationGrid-empty", payrollC, {
+                            imageUrl: "emptyscreen_1.png",
+                            subText: "No entries found. Please add a record to get started."
+                        });
+                    }
+                    var table = "";
+                    if (response != null && response.length > 0) {
+                        for (var i = 0; i < response.length; i++) {
+                            var tbl = "<tr>";
+
+                            tbl = tbl + "<td hidden class=''>" + (i + 1) + "</td>";
+                            tbl = tbl + "</td>";
+                            tbl = tbl + "<td class='' hidden>" + (response[i].payroll_transactionid) + "</td>";
+                            tbl = tbl + "</td>";
+
+                            tbl = tbl + "<td class=''>" + (response[i].start_date) + "</td>";
+                            tbl = tbl + "</td>";
+
+                            tbl = tbl + "<td class=''>" + (response[i].end_date) + "</td>";
+                            tbl = tbl + "</td>";
+                            tbl = tbl + "<td class=''><span class='" + (response[i].isActive ? 'green_font' : 'red_font') + "'>" + (response[i].isActive ? 'Active' : 'InActive') + "</span></td>";
+                            tbl = tbl + "</td>";
+
+                            //let dateString = response[i].created_date;
+                            //let date = dateString.split('T')[0];
+
+                            var CreatedDate = response[i].created_date;
+                            var parsedDate = new Date(CreatedDate);
+                            var dateformat = "@_isdateformat";
+                            if (!isNaN(parsedDate)) {
+                                var date = formatDate(parsedDate, dateformat);
+                            } else {
+                                var date = parseDateSafe(CreatedDate);
+                            }
+
+                            tbl = tbl + "<td class=''>" + (date) + "</td>";
+                            tbl = tbl + "</td>";
+
+                            tbl = tbl + "</tr>";
+                            table += tbl;
+                        }
+                    }
+
+                    //Table Appen in Table Body
+                    if (table != "") {
+                        $("#payrollCycleDetails tbody").empty();
+                        $("#payrollCycleDetails tbody").append(table);
+                    } else {
+                        $("#payrollCycleDetails tbody").empty();
+                    }
+                    $("#dataTables_tbl_header").remove();
+                    // DataTable initialisation
+                    payrollCycledetailsTable = $("#payrollCycleDetails").DataTable({
+                        "destroy": true,
+                        //dom: 'lBfrtip',
+                        dom: _domCommon,
+                        language: _languageCommon,
+                        processing: true,
+                        paging: true,
+                        ordering: true,
+                        buttons: [
+                            //{
+                            //    extend: 'excelHtml5',
+                            //    exportOptions: {
+                            //        columns: [1, 2, 3, 4, 5, 6]
+                            //    }
+                            //}
+                        ],
+                        initComplete: function (settings, json) {
+                            var footer = $("#payrollCycleDetails tfoot tr");
+                            $("#payrollCycleDetails thead").append(footer);
+                            const visibleTable = $('table:visible').attr('id');
+                            $("#buttons").append(`
+                                <div id="export-button" class="export-button tooltips" data-placement="bottom" data-original-title="Download" data-table-id="${visibleTable}">
+                                    <img src="../Newlayout/images/download_icon.svg" alt="Download icon">
+                                </div>
+                            `);
+                        },
+                        //"columnDefs": [
+                        //           { "orderable": false, "targets": 11 } // Disabling sorting for the third column
+                        //],
+                        //lengthMenu: [
+                        //    [10, 25, 50, 100],
+                        //    [10, 25, 50, 100],
+                        //]
+                    });
+                    setTimeout(function () {
+                        $("#" + "payrollCycleDetails" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+                        $('.tooltips').tooltip();
+                    }, 100);
+                },
+                error: function (xhr, status, error) {
+                    console.error(xhr.responseText);
+                },
+                complete: function () {
+                    $("#ajax_loader").hide();
+                }
+
+            });
+            setTimeout(function () {
+                $(".dataTables_wrapper > .dataTables_info").before('<div class="customforms_table"></div>');
+                $("#payrollCycleDetails").appendTo(".customforms_table");
+            }, 0);
+        }
+        GetPayrollCycleDate();
+
+        $("#clear_btn").click(function () {
+            clear_data();
+        });
+
+        // Add btn Click Open Modal Code =========================
+        $("#AddTransactionDate").on('click', function () {
+            $("#AddTransactionDate").attr("data-toggle", "modal");
+            $("#AddTransactionDate").attr("data-target", "#AddTransactionDate_modal");
+        });
+    });
+
+
+    function formatDate(date, format) {
+        if (isNaN(date)) return '';
+        const monthNames = [
+            "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+            "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+        ];
+        const map = {
+            yyyy: date.getFullYear(),
+            yy: String(date.getFullYear()).slice(-2),
+            M: monthNames[date.getMonth()],
+            mm: String(date.getMonth() + 1).padStart(2, '0'),
+            dd: String(date.getDate()).padStart(2, '0')
+        };
+        return format.replace(/yyyy|M|mm|dd|yy/g, matched => map[matched]);
+    }
+
+    function clear_data() {
+        $("#Startdate").val("");
+        $("#Enddate").val("");
+    }
+
+    function getDayNextMonth(dayNum) {
+        const today = new Date();
+        const startDate = new Date(today.getFullYear(), today.getMonth(), dayNum);
+        var endDate = new Date(startDate);
+
+        endDate.setMonth(startDate.getMonth() + 1);
+
+        endDate.setDate(startDate.getDate());
+
+        // Format the Enddate to yyyy-mm-dd
+        var formattedEndDate = endDate.toISOString().slice(0, 10);
+        var endDate = formattedEndDate.split("-")[2];
+        return endDate;
+    }
+
+    //$("#Startdate").datepicker({
+    //    startDate: Lastdate,
+    //    autoclose: true,
+    //    format: "yyyy-mm-dd", // Update the format to include the day
+    //    viewMode: "days",     // Set the view mode to days
+    //    minViewMode: "days"   // Allow selecting day, month, and year
+    //});
+
+    //$("#Enddate").datepicker({
+    //    startDate: Lastdate,
+    //    autoclose: true,
+    //    format: "yyyy-mm-dd", // Update the format to include the day
+    //    viewMode: "days",     // Set the view mode to days
+    //    minViewMode: "days"   // Allow selecting day, month, and year
+    //});
+
+</script>
+
+<div class="page-bar">
+    @if (_RoleId == 1 || _RoleId == 6805 || _RoleId == 6806)
+    {
+        <ul class="page-breadcrumb">
+            <li>
+                <a href="@(_CheckFastrackdb == 1 ? "/Admin/AdminDashboard" : "/Dashboard/AdminDashboard")"><i class="fa-regular fa-house"></i></a>
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> Payroll Cycle</span>
+            </li>
+        </ul>
+    }
+    else
+    {
+        <ul class="page-breadcrumb">
+            <li>
+                <a href="/Dashboard/EmployeeDashboard"><i class="fa-regular fa-house"></i></a>
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> Payroll Cycle</span>
+            </li>
+        </ul>
+    }
+    @if (obj.CanAdd)
+    {
+        <div class="page-toolbar">
+            <a href="javascript:void(0)" id="AddTransactionDate" class="btn icon_transparent_btn tooltips" data-placement="left" data-original-title="Add Transaction Date"><i class="fa-solid fa-plus"></i></a>
+        </div>
+    }
+</div>
+
+@if (obj.CanView)
+{
+    <div id='ajax_loader' class="modal_bg loading" aria-hidden="true">
+        <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading" />
+    </div>
+
+    <div class="row">
+        <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+            <div class="portlet">
+                <div class="portlet-body">
+                    <div id="tblempty">
+                        <div class="table-responsive" id="tableResponsive">
+                            <table class="new_datatbl table table-striped table-bordered table-hover table-checkable order-column" id="payrollCycleDetails">
+                                <thead>
+                                    <tr>
+                                        <th style="display:none;">Sr. No</th>
+                                        <th hidden>ID</th>
+                                        <th>From Date</th>
+                                        <th>To date</th>
+                                        <th>Status</th>
+                                        <th>Created date</th>
+                                        @*<th>Action</th>*@
+                                    </tr>
+                                </thead>
+                            </table>
+                        </div>
+                    </div>
+                    <div id="NotificationGrid-empty" style="display: none">
+                        <div class="datanotfound">
+                            <img src="" height="148" width="280" alt="Nodata Found Icon">
+                            <p class="datanotfound_title"></p> <!-- titleText -->
+                            <p class=""></p><!-- subText -->
+                        </div>
+                    </div>
+                </div>
+                <div><strong><i class="fa-light fa-triangle-exclamation" aria-hidden="true"></i> Note: </strong>Adding an additional payroll cycle date for the current transaction year may result in a discrepancy in the payroll process. The payroll system will not automatically adjust for this change, so manual corrections will be required.</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="AddTransactionDate_modal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog w-500">
+            <!-- Modal content-->
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    <h4 class="modal-title">Add Transaction Date</h4>
+                </div>
+                <div class="modal-body">
+                    <div class="modal-card">
+                        <div class="row">
+                            <div class="col-lg-12">
+                                <div class="form-group">
+                                    <label class="control-label">
+                                        From Date <span class="required" aria-required="true"> * </span>
+                                    </label>
+                                    <input type="text" placeholder="Select From Date" class="form-control input-sm" id="Startdate" name="Startdate" autocomplete="off">
+                                </div>
+                            </div>
+                            <div class="col-lg-12">
+                                <div class="form-group">
+                                    <label class="control-label">
+                                        To Date <span class="required" aria-required="true"> * </span>
+                                    </label>
+                                    <input type="text" placeholder="Select To Date" class="form-control input-sm" id="Enddate" name="Enddate" autocomplete="off">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <div class="row">
+                        <div class="col-lg-12 text-right">
+                            <button type="button" class="btn clear_btn" id="clear_btn"><i class="fa-regular fa-eraser"></i> Clear</button>
+                            <button type="button" class="btn save_btn" id="btnSubmit"><i class="fa-solid fa-check"></i> Submit</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+}
+else
+{
+    <span style="color:red">Unauthorized Access.</span>
+}
+<script>
+    $('.overlay').fadeIn('fast').delay(5000).fadeOut('slow');
+    //------------------Table Resposive-------------------
+</script>

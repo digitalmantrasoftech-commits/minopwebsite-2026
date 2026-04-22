@@ -1,0 +1,1158 @@
+﻿@model PayTimeWebClient.Models.Webpunch
+@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@using System.Configuration;
+@{
+    ViewBag.Title = "WebPunchApprove";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+
+    string _Message = ViewBag.msg;
+    string _error = ViewBag.error;
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    string _webapiurlMS = ConfigurationManager.AppSettings["webapipaytimeMS"].ToString();
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+    //string _isdateformat = HttpContext.Current.Session["IsDateFormat"].ToString();
+    string _isdateformat = ViewBag.Getsystemsettingdateformatupdated[0].ISDateFormat;
+    string _dbName = HttpContext.Current.Session["DbName"].ToString();
+    string _lockAttendanceDay = HttpContext.Current.Session["lockAttendanceDay"].ToString();
+    string _PlanId = HttpContext.Current.Session["planId"].ToString();
+    int _hierchywis = Convert.ToInt32(HttpContext.Current.Session["Ishierchy"]);
+    //int _lockAttendance_Day = Convert.ToInt32(HttpContext.Current.Session["lockAttendanceDay"]);
+    int _cmpid = 0;
+    int _branchid = 0;
+    if (_RoleId == 6805 || _RoleId == 6806)
+    {
+        //int _compid = Convert.ToInt32(Session["ClientCompanyId"].ToString());
+        _cmpid = Convert.ToInt32(Session["ClientCompanyId"].ToString());
+        _branchid = Convert.ToInt32(Session["BranchId"].ToString());
+    }
+     string isClientDBMatchFlag = HttpContext.Current.Session["IsClientDBMatch"] != null
+      ? HttpContext.Current.Session["IsClientDBMatch"].ToString()
+      : "false"; // Default to "false" if the session is null
+
+}
+<script src="~/Scripts/timeme.js"></script>
+<script src="~/AssetsNew/js/CommonValidation.js"></script>
+@if (obj.CanView)
+{
+    <script>
+        var count = 0;
+        var form = "Approve WebPunch";
+        var operation = "";
+        var t = "";
+        var emprole = '@_RoleId';
+        $(document).ready(function () {
+            var days = 15;
+            var todaydate = new Date();
+            if (!isNaN(todaydate.getTime())) {
+                todaydate.setDate(todaydate.getDate());
+                $("#FilterToDate").val(todaydate.toInputFormat());
+            }
+            if (!isNaN(todaydate.getTime())) {
+                todaydate.setDate(todaydate.getDate() - days);
+                $("#FilterFromDate").val(todaydate.toInputFormat());
+            }
+            //$('#FilterToDate').prop('disabled', true);
+            //$("#frmtodate").prop('disabled', true);
+            /*timeMeInitialize function is  a javascript library which displays a timer to display how long you are actively viewing the current webpage.*/
+            timeMeInitialize();
+            $("#allnoteid").hide();
+            var isDateFormat = '@_isdateformat';
+            if ("@_Message" != "") {
+                toastr.remove();
+                toastr.success("@_Message");
+            }
+            if ('@_error' != "") {
+                toastr.remove();
+                toastr.success("@_error");
+            }
+            var id =  @Convert.ToInt32(Session["EmpId"])
+            $(".alert").hide();
+            $("#selectall").on("change", function (e) {
+                if ($(this).is(":checked")) {
+                    $("#tblWebpunchApproval .ClsChkEmp").each(function () {
+                        $(this).prop('checked', true);
+                    });
+                } else {
+                    $("#tblWebpunchApproval .ClsChkEmp").each(function () {
+                        $(this).prop('checked', false);
+                    });
+                }
+            });
+            $("#selectstatus").on("change", function () {
+                $("#allnoteid").hide();
+                //$("#tblWebpunchApproval tbody").empty();
+                var selectstatus = $("#selectstatus").val();
+                if (selectstatus == 3) {
+                    var days = 31;
+                    var todaydate = new Date();
+                    if (!isNaN(todaydate.getTime())) {
+                        todaydate.setDate(todaydate.getDate());
+                        $("#FilterToDate").val(todaydate.toInputFormat());
+                    }
+                    if (!isNaN(todaydate.getTime())) {
+                        todaydate.setDate(todaydate.getDate() - days);
+                        $("#FilterFromDate").val(todaydate.toInputFormat());
+                    }
+
+                } else {
+                    var days = 15;
+                    var todaydate = new Date();
+                    if (!isNaN(todaydate.getTime())) {
+                        todaydate.setDate(todaydate.getDate());
+                        $("#FilterToDate").val(todaydate.toInputFormat());
+                    }
+                    if (!isNaN(todaydate.getTime())) {
+                        todaydate.setDate(todaydate.getDate() - days);
+                        $("#FilterFromDate").val(todaydate.toInputFormat());
+                    }
+                }
+            });
+            $("#tblWebpunchApproval").on('click',
+                '.mapeer',
+                function () {
+                    var WebpunchId = t.row($(this).parent('td').parent('tr')).data()["WebpunchId"];
+                    var Weblocation = t.row($(this).parent('td').parent('tr')).data()["LocAddress"];
+                    showPosition(Weblocation.replace('(', '').replace(')', ''));
+
+                    $(".mapeer").attr("data-toggle", "modal");
+                    $(".mapeer").attr("data-target", "#frmloaction");
+
+                });
+            $("#btnactive").click(function () {
+                checkSession();
+                allEmp = [];
+                $("#tblWebpunchApproval .ClsChkEmp").each(function (key, value) {
+                    if ($(this).is(':checked') == true) {
+                        allEmp.push(t.row($(this).parent('td').parent('tr')).data()["WebpunchId"]);
+                    }
+                });
+                if (allEmp.length == 0) {
+                    event.preventDefault();
+                    toastr.remove();
+                    toastr.error("Please select web punch.");
+                    return false;
+
+                }
+                var obj = {
+                    WebpunchIds: allEmp.toString(),
+                    IsApprove: 1
+                };
+                $.ajax({
+                    //url: '@_webapiurl' + 'Master/WebPunchApprovelist',
+                    url: '@_webapiurlMS' + 'Master/WebPunchApprovelist',
+
+                    type: 'POST',
+                    data: JSON.stringify(obj),
+                    headers: { 'Authorization': '@_tokan' },
+                    contentType: "application/json; charset=utf-8",
+                    beforeSend: function () {
+                        $('#ajax_loaderDevice').show();
+                    },
+                    complete: function () {
+                        $('#ajax_loaderDevice').hide();
+                    },
+                    success: function (data) {
+                        $(".loading").hide();
+                        $("#selectall").prop('checked', false);
+                        if (data.MegSts = "Ok") {
+                            toastr.remove();
+                            toastr.success("Webpunch approved successfully.");
+                            t.draw();
+                        }
+                        else {
+                            $("<div class='alert alert-danger overlay'><label>Error in approving web punch.</label></div>").insertBefore(".portlet-body").fadeOut(3000);
+                        }
+                    },
+                    beforeSend: function () {
+                        $(".loading").show();
+                    },
+                    statusCode: {
+                        404: function (content) { alert('cannot find resource'); },
+                        500: function (content) { alert('internal server error'); }
+                    },
+                    error: function (jqXHR, ajaxOptions, thrownError) {
+                        if (jqXHR.status == 500) { //InternalServerError = 500,
+                            toastr.error("InternalServerError");
+                        } else if (jqXHR.status == 400) { //BadRequest = 400,
+                            toastr.error("BadRequest");
+                        } else if (jqXHR.status == 401) {
+                            window.location.href = "/PayTime/LoginPage";
+                        } else if (jqXHR.status == 0 && thrownError == "") {
+                            window.location.href = "/PayTime/LoginPage";
+                        }
+                    }
+                });
+            });
+
+            $("#btnDeactive").click(function () {
+                checkSession();
+                allEmp = [];
+                $("#tblWebpunchApproval .ClsChkEmp").each(function (key, value) {
+                    if ($(this).is(':checked') == true) {
+                        allEmp.push(t.row($(this).parent('td').parent('tr')).data()["WebpunchId"]);
+                    }
+                });
+                if (allEmp.length == 0) {
+                    event.preventDefault();
+                    toastr.remove();
+                    toastr.error("Please select web punch.");
+                    return false;
+
+                }
+                var obj = {
+                    WebpunchIds: allEmp.toString(),
+                    IsApprove: 2
+                };
+                $.ajax({
+                    //url: '@_webapiurl' + 'Master/WebPunchApprovelist',
+                    url: '@_webapiurlMS' + 'Master/WebPunchApprovelist',
+                    type: 'POST',
+                    data: JSON.stringify(obj),
+                    headers: { 'Authorization': '@_tokan' },
+                    contentType: "application/json; charset=utf-8",
+                    success: function (data) {
+                        $(".loading").hide();
+                        if (data.MegSts = "Ok") {
+                            $("#selectall").prop('checked', false);
+                            toastr.remove();
+                            toastr.success("Webpunch rejected successfully.");
+                            t.draw();
+                        }
+                        else {
+                            toastr.remove();
+                            toastr.error("Error in approving webpunch.");
+                        }
+                    },
+                    beforeSend: function () {
+                        $(".loading").show();
+                    },
+                    statusCode: {
+                        404: function (content) { alert('cannot find resource'); },
+                        500: function (content) { alert('internal server error'); }
+                    },
+                    error: function (jqXHR, ajaxOptions, thrownError) {
+                        if (jqXHR.status == 500) { //InternalServerError = 500,
+                            toastr.error("InternalServerError");
+                        } else if (jqXHR.status == 400) { //BadRequest = 400,
+                            toastr.error("BadRequest");
+                        } else if (jqXHR.status == 401) {
+                            window.location.href = "/PayTime/LoginPage";
+                        }
+                    }
+                });
+            });
+
+
+            $("#SearchFilter").click(function () {
+                $("#prv_Date").hide();
+
+                var Is_Flag = 0;
+                if ($("#FilterFromDate").val() == "") {
+                    toastr.remove();
+                    toastr.error("Please select fromdate.");
+                    return false;
+                    Is_Flag = 1;
+                } else {
+                }
+
+                if ($("#FilterToDate").val() == "") {
+                    toastr.remove();
+                    toastr.error("Please select todate.");
+                    return false;
+                    Is_Flag = 1;
+
+                } else {
+                }
+
+                if (Is_Flag == 0) {
+                    var selectstatus = $("#selectstatus").val();
+
+                    if (selectstatus == 0) {
+                        var FilterFromDate = $("#FilterFromDate").val();
+                        var FilterToDate = $("#FilterToDate").val();
+
+                        var _RoleId = '@Convert.ToInt32(Session["RoleId"])';
+                        var _EmpId = '@Convert.ToInt32(Session["EmpId"])';
+                        var _cmpid = 0;
+                        var _branchid = 0;
+                        if (_RoleId == 6805 || _RoleId == 6806) {
+                            _cmpid = '@_cmpid'
+                            _branchid = '@_branchid'
+                        }
+                        var obj = {
+                            FilterFromDate: FilterFromDate,
+                            FilterToDate: FilterToDate,
+                            roleid: _RoleId,
+                            empid: _EmpId,
+                            cmpid: _cmpid,
+                            branchid: _branchid,
+                            planid: '@_PlanId',
+                            _lockAttendanceDay: '@_lockAttendanceDay'
+                        }
+
+
+                        $.ajax({
+                            type: 'POST',
+                            //url: "/Ess/AttendanceFilter?FilterFromDate=" + FilterFromDate + "&FilterToDate=" + FilterToDate + "&_IsStatus=" + selectstatus,
+                            url: '@_webapiurl' + '/Master/WebpunchApproveGetAllprvData',
+                            //url: '@_webapiurlMS' + '/Master/WebpunchApproveGetAllprvData',
+                            contentType: "application/json; charset=utf-8",
+                            data: JSON.stringify(obj),
+                            headers: { 'Authorization': '@_tokan' },
+                            dataType: "json",
+                            async: "false",
+                            success: function (data) {
+                                var cnt = data[0]["cnt"];
+                                if (cnt > 0) {
+
+                                    @*if ('@_lockAttendanceDay' != "" && '@_PlanId' == '6') {
+                                    search_Filter();
+                                } else {*@
+                                    $("#tblWebpunchApproval_wrapper").hide();
+                                    var LastDate = data[0]["Mindt"];
+                                    var _LastDate = LastDate.split('T');
+                                    $("#prv_Date").show();
+                                    $("#prv_Date").empty();
+                                    $("#noteid").hide();
+                                    $("#prv_Date").append("Your previous webpunch is pending on date: " + _LastDate[0]);
+                                    if (FilterFromDate === _LastDate[0]) {
+                                        $("#prv_Date").hide()
+                                        $("#noteid").hide();
+                                        search_Filter();
+                                    }
+                                }
+                                else {
+                                    $("#noteid").hide();
+                                    search_Filter();
+                                }
+                            },
+                            error: function (jqXHR, ajaxOptions, thrownError) {
+                                if (jqXHR.status == 500) { //InternalServerError = 500,
+                                    toastr.error("InternalServerError");
+                                } else if (jqXHR.status == 400) { //BadRequest = 400,
+                                    toastr.error("BadRequest");
+                                } else if (jqXHR.status == 401) {
+                                    window.location.href = "/PayTime/LoginPage";
+                                }
+                            }
+
+                        });
+                    } else {
+                        search_Filter();
+                    }
+                }
+            });
+            $("#tblWebpunchApproval").on('click',
+                '.approve',
+                function () {
+                    checkSession();
+                    var Webpunch = t.row($(this).parent('td').parent('tr')).data()["WebpunchId"];
+                    var obj = {
+                        WebpunchId: Webpunch,
+                        IsApprove: 1
+                    };
+                    $.ajax({
+                        //url: '@_webapiurl' + 'Master/WebPunchApprove',
+                        url: '@_webapiurlMS' + 'Master/WebPunchApprove',
+                        type: 'POST',
+                        data: JSON.stringify(obj),
+                        headers: { 'Authorization': '@_tokan' },
+                        beforeSend: function () {
+                            $(".loading").show();
+                        },
+                        contentType: "application/json; charset=utf-8",
+                        success: function (data) {
+                            $(".loading").hide();
+                            if (data.MegSts = "Ok") {
+                                t.draw();
+                                toastr.remove();
+                                toastr.success("Webpunch approved successfully.");
+                            }
+                            else {
+                                toastr.remove();
+                                toastr.error("Error in approving web punch.");
+                            }
+                        },
+                        statusCode: {
+                            404: function (content) { alert('cannot find resource'); },
+                            500: function (content) { alert('internal server error'); }
+                        },
+                        error: function (jqXHR, ajaxOptions, thrownError) {
+                            if (jqXHR.status == 500) { //InternalServerError = 500,
+                                toastr.error("InternalServerError");
+                            } else if (jqXHR.status == 400) { //BadRequest = 400,
+                                toastr.error("BadRequest");
+                            } else if (jqXHR.status == 401) {
+                                window.location.href = "/PayTime/LoginPage";
+                            }
+                        }
+                    });
+                });
+            $("#tblWebpunchApproval").on('click', '.reject', function () {
+                checkSession();
+                var Webpunch = t.row($(this).parent('td').parent('tr')).data()["WebpunchId"];
+                var obj = {
+                    WebpunchId: Webpunch,
+                    IsApprove: 2
+                };
+                $.ajax({
+                    //url: '@_webapiurl' + 'Master/WebPunchApprove',
+                    url: '@_webapiurlMS' + 'Master/WebPunchApprove',
+                    type: 'POST',
+                    data: JSON.stringify(obj),
+                    headers: { 'Authorization': '@_tokan' },
+                    contentType: "application/json; charset=utf-8",
+                    beforeSend: function () {
+                        $(".loading").show();
+                    },
+                    success: function (data) {
+                        $(".loading").hide();
+                        if (data.MegSts = "Ok") {
+                            t.draw();
+                            toastr.remove();
+                            toastr.success("Webpunch rejected successfully.");
+
+                        }
+                        else {
+                            toastr.remove();
+                            toastr.error("Error in approving web punch.");
+                            //$("<div class='alert alert-danger overlay'><label>Error in approving web punch.</label></div>").insertBefore(".portlet-body").fadeOut(3000);
+                        }
+                    },
+                    statusCode: {
+                        404: function (content) { alert('cannot find resource'); },
+                        500: function (content) { alert('internal server error'); }
+                    },
+                    error: function (jqXHR, ajaxOptions, thrownError) {
+                        if (jqXHR.status == 500) { //InternalServerError = 500,
+                            toastr.error("InternalServerError");
+                        } else if (jqXHR.status == 400) { //BadRequest = 400,
+                            toastr.error("BadRequest");
+                        } else if (jqXHR.status == 401) {
+                            window.location.href = "/PayTime/LoginPage";
+                        }
+                    }
+                });
+            });
+            $("#tblWebpunchApproval").on('click', '.disapprove', function () {
+                $('#btndisableapprove').attr("disabled", "disabled");
+                $('#btndisableapprove').unbind("click");
+            });
+            $("#tblWebpunchApproval").on('click', '.disreject', function () {
+                $('#btndisableapprove').attr("disabled", "disabled");
+                $('#btndisableapprove').unbind("click");
+            });
+            var FilterFromDate = $("#FilterFromDate").val();
+            var FilterToDate = $("#FilterToDate").val();
+            var selectstatus = $("#selectstatus").val();
+            var _RoleId = '@Convert.ToInt32(Session["RoleId"])';
+            var _EmpId = '@Convert.ToInt32(Session["EmpId"])';
+            var _cmpid = 0;
+            var _branchid = 0;
+            if (_RoleId == 6805 || _RoleId == 6806) {
+                _cmpid = '@_cmpid'
+                _branchid = '@_branchid'
+            }
+            var obj = {
+                FilterFromDate: FilterFromDate,
+                FilterToDate: FilterToDate,
+                roleid: _RoleId,
+                empid: _EmpId,
+                cmpid: _cmpid,
+                branchid: _branchid,
+                planid: '@_PlanId',
+                _lockAttendanceDay: '@_lockAttendanceDay'
+            }
+            $.ajax({
+                type: 'POST',
+                //url: "/Ess/AttendanceFilter?FilterFromDate=" + FilterFromDate + "&FilterToDate=" + FilterToDate + "&_IsStatus=" + selectstatus,
+                url: '@_webapiurl' + '/Master/WebpunchApproveGetAllprvData',
+                //url: '@_webapiurlMS' + '/Master/WebpunchApproveGetAllprvData',
+                contentType: "application/json; charset=utf-8",
+                data: JSON.stringify(obj),
+                headers: { 'Authorization': '@_tokan' },
+                dataType: "json",
+                async: "false",
+                success: function (data) {
+                    var cnt = data[0]["cnt"];
+                    if (cnt > 0) {
+                        @*if ('@_lockAttendanceDay' != "" && '@_PlanId' == '6') {
+                        search_Filter();
+                    } else {*@
+                        $("#tblWebpunchApproval_wrapper").hide();
+                        var LastDate = data[0]["Mindt"];
+                        var _LastDate = LastDate.split('T');
+                        $("#prv_Date").show();
+                        $("#prv_Date").empty();
+                        $("#noteid").hide();
+                        $("#prv_Date").append("Your previous webpunch is pending on date: " + _LastDate[0]);
+
+                        //}
+                    } else {
+                        $("#noteid").hide();
+                        search_Filter();
+                    }
+                }
+            });
+
+            window.onload = function () {
+                timeSpentOnPage();
+            }
+            $(window).on("beforeunload", function () {
+                if (operation == "" || operation == null || operation == '') {
+                    operation = "View Webpunch Approve";
+                }
+                var url = '@_webapiurl' + '/DashBoard/AddAnalyticsUser';
+                var timeSpent = timeSpentOnPage();
+                analyticsDataUsage(url, '@_dbName', form, '@_tokan', count, operation, timeSpent)
+            })
+        });
+
+        function checkSession() {
+            $.ajax({
+                type: "GET",
+                async: false,
+                url: "/ESS/checkSession",
+                contentType: "application/json; charset=utf-8",
+                success: function (data) {
+                    if (data.isRedirect) {
+                        window.location.href = data.redirectUrl;
+                    }
+                },
+                error: function (data) {
+                    window.location.href = data;
+                }
+            });
+        }
+
+
+        function search_Filter() {
+            checkSession();
+            var FilterFromDate = $("#FilterFromDate").val();
+            var FilterToDate = $("#FilterToDate").val();
+            var selectstatus = $("#selectstatus").val();
+            if ($("#selectstatus").val() == "3") {
+                $("#allnoteid").show();
+            }
+            else {
+                $("#allnoteid").hide();
+            }
+            $('#tblWebpunchApproval').destroy;
+            $("#dataTables_tbl_header").remove();
+            $("#noteid").hide();
+
+            t = $('#tblWebpunchApproval').DataTable({
+                // processing: true,
+                serverSide: true,
+                "ajax": ({
+                    "url": "/Ess/webpunchAjaxFilter?FilterFromDate=" + FilterFromDate + "&FilterToDate=" + FilterToDate + "&selectstatus=" + selectstatus + "&Isheararchy=" + '@_hierchywis',
+                    "method": "POST",
+                    "type": "json",
+                    beforeSend: function () {
+                        $('#ajax_loaderDevice').show();
+                    },
+                    complete: function (data) {
+                        $('#ajax_loaderDevice').hide();
+                    },
+                    "error": function (xhr, textStatus, errorThrown) {
+                        if (jqXHR.status == 500) { //InternalServerError = 500,
+                            toastr.error("InternalServerError");
+                        } else if (jqXHR.status == 400) { //BadRequest = 400,
+                            toastr.error("BadRequest");
+                        } else if (jqXHR.status == 401) {
+                            window.location.href = "/PayTime/LoginPage";
+                        } else if (jqXHR.status == 0 && thrownError == "") {
+                            window.location.href = "/PayTime/LoginPage";
+                        }
+                    },
+                }),
+                "language": {
+                    "search": "Search",
+                    "searchplaceholder": "Search..."
+                },
+                order:
+                [
+                    [1, 'desc']
+                ],
+                searching: true,
+                searchDelay: 500,
+                "bDestroy": true,
+                //dom: 'lBfrtip',
+                dom: _domCommon,
+                language: _languageCommon,
+                buttons: [
+                    {
+                        //extend: 'excelHtml5',
+                        //exportOptions: {
+                        //    columns: [3, 4, 5, 6, 7, 8,9]
+                        //}
+                    }
+                ],
+                "columns": [
+                    { "data": "" },
+                    { "data": "WebpunchId" },
+                    { "data": "Empid" },
+                    { "data": "EmpName" },
+                    {
+                        "data": "Attn_Dt",
+                        "render": function (data) {
+                            var date = eval(("new " + data).replace(/\//g, "")),
+                            month = date.getMonth() + 1;
+                            if (month < 10) {
+                                month = '0' + month;
+                            }
+                            var day = date.getDate();
+                            if ("@_isdateformat" == "dd-mm-yyyy") {
+                                return (day > 9 ? day : "0" + day) + "-" + month + "-" + date.getFullYear();
+                            }
+                            else if ("@_isdateformat" == "yyyy-mm-dd") {
+                                return date.getFullYear() + "-" + month + "-" + (day > 9 ? day : "0" + day);
+                            }
+                            else if ("@_isdateformat" == "mm-dd-yyyy") {
+                                //return date.getFullYear() + "-" + month + "-" + (day > 9 ? day : "0" + day);
+                                return month + "-" + (day > 9 ? day : "0" + day) + "-" + date.getFullYear();
+                            }
+                            else if ("@_isdateformat" == "yyyy-M-dd") {
+                                var date = eval(("new " + data).replace(/\//g, ""));
+                                var locale = "en-us";
+                                var month = date.toLocaleString(locale, { month: "short" });
+                                var day = date.getDate();
+                                return date.getFullYear() + "-" + month + "-" + (day > 9 ? day : "0" + day);
+                            }
+                            else if ("@_isdateformat" == "M-dd-yyyy") {
+                                var date = eval(("new " + data).replace(/\//g, ""));
+                                var locale = "en-us";
+                                var month = date.toLocaleString(locale, { month: "short" });
+                                var day = date.getDate();
+                                return month + "-" + (day > 9 ? day : "0" + day) + "-" + date.getFullYear();
+                            }
+                            else if ("@_isdateformat" == "dd-M-yyyy") {
+                                var date = eval(("new " + data).replace(/\//g, ""));
+                                var locale = "en-us";
+                                var month = date.toLocaleString(locale, { month: "short" });
+                                var day = date.getDate();
+                                return (day > 9 ? day : "0" + day) + "-" + month + "-" + date.getFullYear();
+                            }
+                        }
+                    },
+                    {
+                        "data": "In_Out_Time",
+                        "render": function (data) {
+                            var dt = eval(("new " + data).replace(/\//g, ""));
+                            return (dt.getHours() < 10 ? '0' : '') + dt.getHours() + ":" + (dt.getMinutes() < 10 ? '0' : '') + dt.getMinutes() + ":" + (dt.getSeconds() < 10 ? '0' : '') + dt.getSeconds();
+                        }
+                    },
+                    { "data": "Mode" },
+                    {
+                        "data": "Reason",
+                    },
+                    { "data": "LocAddress" },
+                    { "data": "IsApprove" },
+                    { "data": "Empcode" },
+                    { "data": "ApprovalDate" },
+                    { "data": "ReportingName" },
+                ],
+                "columnDefs": [
+                    {
+                        "targets": [1, 2, 7],
+                        "visible": false
+                    },
+                    {
+                        'targets': 0,
+                        'bSortable': false,
+                        "render": function (data, type, full, meta) {
+                            var selectstatus = $("#selectstatus").val();
+                            if (('@_PlanId' == '6' || '@_PlanId' == '5' || '@_PlanId' == '3') && '@_lockAttendanceDay' != "" && selectstatus == 0) {
+                                var data = full.Attn_Dt;
+                                date = eval(("new " + data).replace(/\//g, "")),
+                                month = date.getMonth() + 1;
+                                if (month < 10) {
+                                    month = '0' + month;
+                                }
+                                var day = date.getDate(),
+                                year = date.getFullYear(),
+                                firstValue = year + "-" + month + "-" + day;
+                                firstValue = firstValue.split('-');
+                                var s_date = new Date();
+                                var secondValue = (s_date.getFullYear() + "-" + (s_date.getMonth() + 1) + "-" + '@_lockAttendanceDay').split('-');
+                                var firstDate = new Date();
+                                firstDate.setFullYear(firstValue[0], (firstValue[1] - 1), firstValue[2]);
+                                var secondDate = new Date();
+                                secondDate.setFullYear(secondValue[0], (secondValue[1] - 1), 1);
+                                var secondDate_pev_month = new Date();
+                                secondDate_pev_month.setFullYear(secondValue[0], (secondValue[1] - 2), 1);
+                                var Current_date = new Date();
+                                var Lock_date_day = new Date();
+                                Lock_date_day.setFullYear(secondValue[0], (secondValue[1] - 1), '@_lockAttendanceDay');
+                                if (full.IsApprove == '0' && selectstatus != 3 && firstDate < secondDate) {
+                                    if (firstDate >= secondDate_pev_month && Current_date <= Lock_date_day) {
+                                        data = "<td id=''><input type='checkbox'  class='ClsChkEmp' id='" + full.IsApprove + "'/>";
+                                    } else {
+                                        $("#noteid").show();
+                                        data = '';
+                                    }
+                                }
+                                else {
+                                    data = "<td id=''><input type='checkbox'  class='ClsChkEmp' id='" + full.IsApprove + "'/>";
+                                }
+                            } else {
+                                if (full.IsApprove == '0' && selectstatus != 3) {
+                                    $("#noteid").hide();
+                                    data = "<td id=''><input type='checkbox'  class='ClsChkEmp' id='" + full.IsApprove + "'/>";
+                                }
+                                else {
+                                    $("#noteid").hide();
+                                    data = '';
+                                }
+                            }
+
+                            return data;
+                        }
+                    },
+                    {
+                        "targets": 9,
+                        "data": null,
+                        "render": function (data, type, full, meta) {
+                            if (data == '0') {
+                                data = "<td>Pending</td>";
+                            }
+                            else if (data == '1') {
+                                data = "<td>Approved</td>";
+                            }
+                            else {
+                                data = "<td>Rejected</td>";
+                            }
+                            return data;
+                        }
+                    },
+                    //{
+                    //    "targets": 10,
+                    //    "data": "Empcode",
+                    //},
+                   {
+                       "targets": 11,
+                       "data": "ApprovalDate"
+                   },
+                        {
+                            "targets": 12,
+                            "data": null,
+                            "render": function (data, type, full, meta) {
+                                if (emprole == "1" || emprole == "6805" || emprole == "6806" || emprole > 1) {
+                                    data = full.ReportingName;
+                                }
+                                else {
+                                    data = "";
+                                }
+                                return data;
+                            }
+                        },
+                    {
+                        "targets": 13,
+                        "data": null,
+                        "render": function (data, type, full, meta) {
+
+                            var selectstatus = $("#selectstatus").val();
+                            if (('@_PlanId' == '6' || '@_PlanId' == '5' || '@_PlanId' == '3') && '@_lockAttendanceDay' != "" && selectstatus == 0) {
+                                var data = full.Attn_Dt;
+                                date = eval(("new " + data).replace(/\//g, "")),
+                                month = date.getMonth() + 1;
+                                if (month < 10) {
+                                    month = '0' + month;
+                                }
+                                var day = date.getDate(),
+                                 year = date.getFullYear(),
+                                 firstValue = year + "-" + month + "-" + day;
+                                firstValue = firstValue.split('-');
+                                var s_date = new Date();
+                                var secondValue = (s_date.getFullYear() + "-" + (s_date.getMonth() + 1) + "-" + '@_lockAttendanceDay').split('-');
+                                var firstDate = new Date();
+                                firstDate.setFullYear(firstValue[0], (firstValue[1] - 1), firstValue[2]);
+                                var secondDate = new Date();
+                                secondDate.setFullYear(secondValue[0], (secondValue[1] - 1), 1);
+                                var secondDate_pev_month = new Date();
+                                secondDate_pev_month.setFullYear(secondValue[0], (secondValue[1] - 2), 1);
+                                var Current_date = new Date();
+                                var Lock_date_day = new Date();
+                                Lock_date_day.setFullYear(secondValue[0], (secondValue[1] - 1), '@_lockAttendanceDay');
+                                if (full.IsApprove == '0' && selectstatus == 0 && firstDate < secondDate) {
+                                    if (firstDate >= secondDate_pev_month && Current_date <= Lock_date_day) {
+                                        data = '<a href="javascript:;" class="btn green_btnnew approve tooltips" data-placement="top" data-original-title="Approve"><i class="fa-solid fa-check "></i></a><span></span> <a href="javascript:;" class="btn red_btnnew reject tooltips" data-placement="top" data-original-title="Reject"><i class="fa-solid fa-xmark"></i></a>';
+                                    } else {
+                                        data = '<a href="javascript:;" class="btn green_btnnew disapprove tooltips" data-placement="top" data-original-title="Approve" id="btndisableapprove" disabled><i class="fa-solid fa-check "></i></a><span></span> <a href="javascript:;" class="btn red_btnnew disreject tooltips" data-placement="top" data-original-title="Reject" id="btndisablereject" disabled><i class="fa-solid fa-xmark "></i></a>';
+                                    }
+                                }
+                                else {
+                                    data = '<a href="javascript:;" class="btn green_btnnew approve tooltips" data-placement="top" data-original-title="Approve"><i class="fa-solid fa-check "></i></a><span></span> <a href="javascript:;" class="btn red_btnnew reject tooltips" data-placement="top" data-original-title="Reject"><i class="fa-solid fa-xmark"></i></a>';
+                                }
+
+                            } else {
+                                if (full.IsApprove == '0' && selectstatus == 0) {
+                                    data = '<a href="javascript:;" class="btn green_btnnew approve tooltips" data-placement="top" data-original-title="Approve"><i class="fa-solid fa-check "></i></a><span></span> <a href="javascript:;" class="btn red_btnnew reject tooltips" data-placement="top" data-original-title="Reject"><i class="fa-solid fa-xmark"></i></a>';
+
+                                }
+                                else {
+                                    data = '<a href="javascript:;" class="btn green_btnnew disapprove tooltips" data-placement="top" data-original-title="Approve" id="btndisableapprove" disabled><i class="fa-solid fa-check "></i></a><span></span> <a href="javascript:;" class="btn red_btnnew disreject tooltips" data-placement="top" data-original-title="Reject" id="btndisablereject" disabled><i class="fa-solid fa-xmark "></i></a>';
+                                }
+                            }
+
+                            return data;
+
+                        }
+                    },
+
+                    { width: 500, targets: 8 },
+
+                ],
+                "initComplete": function (settings, json) {
+
+                    if (json.recordsTotal === 0) {
+                        //alert("DataTable is empty after loading data.");
+                        $('#divtblWebpunchApproval').hide();  // Example: Show an empty message
+                        $('#no_data').show();
+
+                    } else {
+                        //alert("DataTable has data.");
+                        $('#divtblWebpunchApproval').show();  // Hide the empty message
+                        $('#no_data').hide();
+                    }
+
+
+                        const visibleTable = $('table:visible').attr('id');
+                        $("#buttons").append(`
+                                <div id="export-button" class="export-button tooltips" data-placement="top" data-original-title="Download" data-table-id="${visibleTable}">
+                                    <img src="../Newlayout/images/download_icon.svg" alt="Download icon">
+                                </div>
+                          `);
+
+                }
+
+            }).draw();
+            setTimeout(function () {
+                $("#" + "tblWebpunchApproval" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+                $('.tooltips').tooltip();
+            }, 100);
+            $('#ajax_loaderDevice').hide();
+            datatable_res();
+        }
+
+
+        Date.prototype.toInputFormat = function () {
+            var yyyy = this.getFullYear().toString();
+            var mm = (this.getMonth() + 1).toString(); // getMonth() is zero-based
+            var dd = this.getDate().toString();
+            return yyyy + "-" + (mm[1] ? mm : "0" + mm[0]) + "-" + (dd[1] ? dd : "0" + dd[0]); // padding
+        };
+
+        function FilterFromDate() {
+            var daynew = 15;
+            if ($('#FilterFromDate').val() != "") {
+
+                var start = $('#FilterFromDate').val();
+                var end = $('#FilterToDate').val();
+                if (end != "") {
+                    var diff = Date.parse(end) - Date.parse(start);
+                    daynew = diff / 1000 / 60 / 60 / 24;
+                    if (daynew < 0 || daynew > 31) {
+                        if (selectstatus == 3) {
+                            daynew = 31;
+                        } else {
+                            daynew = 15;
+                        }
+                    }
+                }
+                else {
+                    if (selectstatus == 3) {
+                        daynew = 31;
+                    } else {
+                        daynew = 15;
+                    }
+                }
+
+                var date = new Date($("#FilterFromDate").val()), daynew,
+                 selectstatus = $("#selectstatus").val();
+
+                if (!isNaN(date.getTime())) {
+                    date.setDate(date.getDate() + daynew);
+                    $("#FilterToDate").val(date.toInputFormat());
+                }
+            }
+        };
+        function FilterToDate() {
+
+            var daynew = 15;
+            if ($('#FilterToDate').val() != "") {
+
+                var start = $('#FilterFromDate').val();
+                var end = $('#FilterToDate').val();
+                if (start != "") {
+                    var diff = Date.parse(end) - Date.parse(start);
+                    daynew = diff / 1000 / 60 / 60 / 24;
+                    if (daynew < 0 || daynew > 31) {
+                        if (selectstatus == 4) {
+                            daynew = 31;
+                        } else {
+                            daynew = 15;
+                        }
+                    }
+                }
+                else {
+                    if (selectstatus == 4) {
+                        daynew = 31;
+                    } else {
+                        daynew = 15;
+                    }
+                }
+
+
+                var date = new Date($("#FilterToDate").val()), daynew,
+                 selectstatus = $("#selectstatus").val();
+                if (!isNaN(date.getTime())) {
+                    date.setDate(date.getDate() - daynew);
+
+                    $("#FilterFromDate").val(date.toInputFormat());
+                }
+            }
+        };
+    </script>
+
+    <script type="text/javascript">
+        function initMap() {
+            console.log('at maps');
+            var map = new google.maps.Map(document.getElementById('MyMapLOC'), {
+                zoom: 10,
+                center: { lat: -34.397, lng: 150.644 }
+            });
+        }
+        function showPosition(position) {
+            var lat = position.split(',')[0];
+            var long = position.split(',')[1];
+            var LatLng = new google.maps.LatLng(lat, long);
+            var mapOptions = {
+                center: LatLng,
+                zoom: 16,
+                mapTypeId: google.maps.MapTypeId.ROADMAP
+            };
+            var map = new google.maps.Map(document.getElementById("MyMapLOC"), mapOptions);
+            var geocoder = new google.maps.Geocoder;
+            var infowindow = new google.maps.InfoWindow;
+            var address = '';
+            geocoder.geocode({ 'location': LatLng }, function (results, status) {
+                if (status === 'OK') {
+                    if (results[0]) {
+
+                        var marker = new google.maps.Marker({
+                            position: LatLng,
+                            title: results[0].formatted_address
+                        });
+                        $("#latlagAddress").val(results[0].formatted_address);
+                        marker.setMap(map);
+                        var getInfoWindow = new google.maps.InfoWindow({
+                            content: "<b>Your Current Location</b><br/> :" +
+                                results[0].formatted_address.replace(',', ',<br/>') + ""
+                        });
+                        getInfoWindow.open(map, marker);
+                    } else {
+                        window.alert('No results found');
+                    }
+                } else {
+                    window.alert('Geocoder failed due to: ' + status);
+                }
+            });
+
+        }
+
+
+    </script>
+
+    <style type="text/css">
+        .modal {
+            position: absolute;
+            top: 50% !important;
+            margin: auto 25%;
+            width: 100%;
+            height: 100%;
+        }
+
+        .gm-style-iw {
+            top: 15px !important;
+        }
+    </style>
+
+    <script defer src="https://maps.googleapis.com/maps/api/js?v=3&key=AIzaSyBZKLtQG-hhnOXL3OFg7uJzlusQj38k0VU&callback=initMap"></script>
+
+    <div class="page-bar">
+        @if (_RoleId == 1 || _RoleId == 6805 || _RoleId == 6806)
+        {
+            <ul class="page-breadcrumb">
+                <li>
+                    <a href="@(isClientDBMatchFlag == "True" ? "/Admin/AdminDashboard" : "/Dashboard/AdminDashboard")"><i class="fa-regular fa-house"></i></a>                 
+                </li>
+                <li>
+                    <span><i class="fa-light fa-angle-right"></i> Approve Webpunch</span>
+                </li>
+            </ul>
+        }
+        else
+        {
+            <ul class="page-breadcrumb">
+                <li>
+                    <a href="/Dashboard/EmployeeDashboard"><i class="fa-regular fa-house"></i></a>
+                </li>
+                <li>
+                    <span><i class="fa-light fa-angle-right"></i> Approve Webpunch</span>
+                </li>
+            </ul>
+        }
+    </div>
+
+    <div id="ajax_loaderDevice" class="modal_bg loading" aria-hidden="true">
+        <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading"/>
+    </div>
+
+    <div class="portlet">
+        <div class="portlet-body">
+            <div class="row">
+                <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                    <form id="frmsub"></form>
+                </div>
+                <div class="col-lg-12">
+                    <div class="row">
+                        <div class="col-lg-8">
+                            <div class="row">
+                                <div class="col-lg-3">
+                                    <label class="control-label">From Date <span class="required" aria-required="true"> * </span></label>
+                                    <div class="input-group  date date-picker" data-date-format="yyyy-mm-dd" data-date-end-date="0d" data-date-viewmode="years">
+
+                                        <span class="input-group-btn">
+                                            <button class="btn default btn-sm" type="button">
+                                                <i class="fa-light fa-calendar-days"></i>
+                                            </button>
+                                        </span>
+                                        <input type="text" id="FilterFromDate" class="form-control input-sm" autocomplete="off" onchange="FilterFromDate()">
+                                    </div>
+                                </div>
+                                <div class="col-lg-3">
+                                    <label class="control-label">To Date <span class="required" aria-required="true"> * </span></label>
+                                    <div class="input-group  date date-picker" data-date-format="yyyy-mm-dd" data-date-end-date="0d" data-date-viewmode="years">
+                                        <span class="input-group-btn">
+                                            <button class="btn default btn-sm" type="button" id="frmtodate">
+                                                <i class="fa-light fa-calendar-days"></i>
+                                            </button>
+                                        </span>
+                                        <input type="text" id="FilterToDate" class="form-control input-sm" autocomplete="off" onchange="FilterToDate()">
+                                    </div>
+                                </div>
+                                <div class="col-lg-4">
+                                    <div class="form-group">
+                                        <label>Status <span class="required" aria-required="true"> * </span></label>
+                                        <select class="form-control input-sm select2" id="selectstatus" name="selectstatus">
+                                            <option value="3">All</option>
+                                            <option value="1">Approved</option>
+                                            <option value="0" selected>Pending </option>
+                                            <option value="2">Rejected</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col-lg-2">
+                                    <button type="button" id="SearchFilter" class="search_btn tooltips" data-placement="top" data-original-title="Search Filters" data-toggle="tooltip" style="margin-top: 22px;"><i class="fa-solid fa-magnifying-glass"></i></button>
+                                </div>
+                            </div>
+                        </div>
+                        @if (obj.CanAdd)
+                        {
+                        <div class="col-lg-4 text-right">
+                            <button type="button" id="btnactive" class="search_btn tooltips" data-placement="top" data-original-title="Approve" data-toggle="tooltip" style="margin-top: 22px;"><i class="fa-solid fa-check"></i></button>
+                            <button type="button" id="btnDeactive" class="clear_btn tooltips margin-left-5" data-placement="top" data-original-title="Reject" data-toggle="tooltip" style="margin-top: 22px;"><i class="fa-solid fa-xmark"></i></button>
+                        </div>
+                        }
+                    </div>
+                    <div class="text-center">
+                        <span id="noteid" style="display: none; color: red; font-weight: 400;">Note : You can not change in any attendence due to attendance locked. </span><br />
+                        <span id="allnoteid" style="display: none; color: red; font-weight: 400;"> Note:This option is exclusively intended for viewing purposes and does not involve any operations or actions.</span>
+                    </div>
+                    <hr class="save_hr_line" />
+                    <div style="text-align:center;">
+                        <span id="prv_Date" style="display:none;color:red;font-weight:400"> </span>
+                    </div>
+                </div>
+                <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                    <div id="divtblWebpunchApproval">
+                        <div class="table-responsive" id="tableResponsive">
+                            <table id="tblWebpunchApproval" class="table new_datatbl table-striped table-bordered table-hover table-checkable order-column ">
+                                <thead>
+                                    <tr>
+                                        <th style="align-content:center"><input type="checkbox" id="selectall"></th>
+                                        <th hidden>WebpunchId</th>
+                                        <th hidden>Employee ID</th>
+                                        <th>Employee</th>
+                                        <th>Punch Date <i class='fa-regular fa-circle-info tooltips' data-placement='bottom' title='Date format is : @_isdateformat.ToUpper()' style='color: #295097;'></i></th>
+                                        <th>Punch Time</th>
+                                        <th>Punch Mode</th>
+                                        <th hidden>Reason</th>
+                                        <th style="min-width :280px;">Location</th>
+                                        <th>Status</th>
+                                        <th>EmpCode</th>
+                                        <th>Approval Date <i class='fa-regular fa-circle-info tooltips' data-placement='bottom' title='Date format is : @_isdateformat.ToUpper()' style='color: #295097;'></i></th>
+                                        <th>Reporting Person</th>
+                                    <th style="min-width: 85px;">Action</th>
+                                    </tr>
+                                </thead>
+                            </table>
+                            </div>
+                        </div>
+
+                        <div class="nodata_block no_recoed" style="display: none; text-align: center;" id="no_data">
+                            <img src="/assets/images/Data_not_found.jpg" height="200" width="200" alt="No Data Icon">
+                        </div>
+                        <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                            <hr class="save_hr_line" />
+                            <div class="col-lg-4 col-md-4 col-sm-4 col-xs-4 text-left" id="dvcnt">
+                            </div>
+                        </div>
+                    </div>
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    <span style="color:red">Unauthorized Access.</span>
+}
+
+<div id="frmloaction" class="modal fade" role="dialog" style="width:600px;" data-backdrop="static">
+    <div class="modal-content">
+        <div class="modal-header">
+            <button type="button" class="close" data-dismiss="modal">&times;</button>
+            <h4 class="modal-title">Webpunch Location</h4>
+        </div>
+        <div class="modal-body">
+            <div class="row">
+                <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                    <div id="MyMapLOC"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+    function datatable_res() {
+
+        setTimeout(function () {
+            $(".dataTables_wrapper > .dataTables_info").before('<div class="customforms_table"></div>');
+            $(".dataTables_wrapper > table").appendTo(".customforms_table");
+        }, 1000);
+    }
+</script>

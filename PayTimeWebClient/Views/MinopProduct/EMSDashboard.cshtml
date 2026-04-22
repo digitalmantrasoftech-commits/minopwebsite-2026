@@ -1,0 +1,1292 @@
+﻿@using System.Configuration;
+@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@using System.Data;
+@{
+    ViewBag.Title = "EMS Dashboard";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    int _UserId = Convert.ToInt32(HttpContext.Current.Session["UserId"]);
+    int _cmpid = Convert.ToInt32(HttpContext.Current.Session["CompanyId"]);
+    //int _islimit = ViewBag.Islimit;
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiEMSURL = ConfigurationManager.AppSettings["WebApiEMS"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    string _paravisionapi = ConfigurationManager.AppSettings["ParaVisionAPI"].ToString();
+    string _accountcd = HttpContext.Current.Session["cmpcode"].ToString();    
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    string _UserImg = HttpContext.Current.Session["photo"].ToString();
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+    //bool _isReligion = ViewBag.isReligion;
+    //bool _hasSMS = ViewBag.HasSMS;
+    //bool _IsEss = ViewBag.IsEss;
+    string _companyid = "0";
+    string _empid = "0";
+    string _empName = "0";
+    int DepartmentId = Convert.ToInt32(HttpContext.Current.Session["DepartmentId"]);
+    if (_RoleId != 1 && _RoleId != 6805 && _RoleId != 6806)
+    {
+        _empid = HttpContext.Current.Session["EmpId"].ToString();
+        _empName = HttpContext.Current.Session["EmpName"].ToString();
+    }
+    string _branchid = "0";
+    if (_RoleId == 6805)
+    {
+        _companyid = HttpContext.Current.Session["ClientCompanyId"].ToString();
+    }
+    if (_RoleId == 6806)
+    {
+        _companyid = HttpContext.Current.Session["ClientCompanyId"].ToString();
+        _branchid = HttpContext.Current.Session["BranchId"].ToString();
+    }
+    string _isPlanFace = HttpContext.Current.Session["isPlanFace"].ToString();
+    string _isdateformat = HttpContext.Current.Session["IsDateFormat"].ToString();
+    //if (_flgempover == "true")
+    //{
+    //    obj.CanAdd = false;
+
+    //}
+    string _CountryCode = HttpContext.Current.Session["CountryCode"].ToString();
+    string _AreaCode = HttpContext.Current.Session["AreaCode"].ToString();
+    string _dbName = HttpContext.Current.Session["DbName"].ToString();
+    //int _IsVerification = ViewBag.IsVerification;
+    string _isPlanId = HttpContext.Current.Session["planId"].ToString();
+    string isClientDBMatchFlag = HttpContext.Current.Session["IsClientDBMatch"] != null
+? HttpContext.Current.Session["IsClientDBMatch"].ToString()
+: "false";
+}
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com">
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@100;300;400;500;700;900&display=swap" rel="stylesheet">
+
+<script src="~/Newlayout/js/sortable.min.js"></script>
+<style>
+    .highcharts-figure,
+    .highcharts-data-table table {
+        max-width: 100%;
+        margin: 10px auto;
+    }
+</style>
+
+<script>
+    var currentRequestType = 1;
+    $(document).ready(function () {
+        var _UID = '@_UserId';
+        var _ComID = '@_companyid';
+        var _BranchID = '@_branchid';
+        var _DepID = '@DepartmentId';
+        var _empIdnew = '@_empid';
+        var _NewEmpName = "@_empName";
+        var _RoleIDnew = '@_RoleId';
+        var _Token = '@_tokan';
+        loadExpenseMonitor();
+        loadExpenseOverview();
+        $("#ExpenseMonitorFilter").change(function () {
+            loadExpenseMonitor();
+        });
+        loadMyRequests(1);
+        $("#emsMonth").change(function () {
+            var activeTab = $(".nav-tabs .active a").attr("href");
+            loadMyRequests(activeTab === "#MyExpense" ? 1 : 2);
+        });
+        loadWhoIsTraveling();
+        fillDepartment();
+        loadPendingRequests();
+        $("#emsMonths, #emsDepartment").change(function () {
+            loadPendingRequests();
+        });
+        $('a[data-toggle="tab"]').on('shown.bs.tab', function (e) {
+            var target = $(e.target).attr("href");
+
+            switch (target) {
+
+                // MY REQUESTS
+                case "#MyExpense":
+                    loadMyRequests(1); // Expense
+                    break;
+                case "#MyTravel":
+                    loadMyRequests(2); // Travel
+                    break;
+                //  PENDING REQUESTS
+                case "#PendingExpense":
+                    currentRequestType = 1;
+                    loadPendingRequests();
+                    break;
+
+                case "#PendingMyTravel":
+                    currentRequestType = 2;
+                    loadPendingRequests();
+                    break;
+            }
+        });
+
+        function loadExpenseMonitor() {
+            var filterType = parseInt($("#ExpenseMonitorFilter").val());
+            var request = {
+                empId: parseInt(_empIdnew),
+                roleId: parseInt(_RoleIDnew),
+                companyId: _ComID,
+                branchId: _BranchID,
+                departmentId: _DepID,
+                filterType: filterType
+            };
+            $.ajax({
+                url: '@_webapiEMSURL' + 'CommanMaster/GetAdminExpenseCountMonitor',
+                type: "POST",
+                contentType: "application/json",
+                headers: {
+                    "Authorization": "Bearer " + _Token
+                },
+                data: JSON.stringify(request),
+                success: function (res) {
+                    $("#TotalExpenseCount").text(res.totalExpense || 0);
+                    $("#TodayExpenseCount").text(res.todayExpense || 0);
+                    $("#TravelExpenseCount").text(res.travelExpense || 0);
+                    $("#PendingExpenseCount").text(res.pendingExpense || 0);
+                    $("#ApprovedExpenseCount").text(res.approvedExpense || 0);
+                    $("#RejectedExpenseCount").text(res.rejectedExpense || 0);
+                },
+                error: function (xhr) {
+                    console.error("Expense Monitor API Error", xhr.status, xhr.responseText);
+                }
+            });
+        }
+        function loadExpenseOverview() {
+            var request = {
+                empId: parseInt(_empIdnew),
+                roleId: parseInt(_RoleIDnew),
+                companyId: _ComID,
+                branchId: _BranchID,
+                departmentId: _DepID
+            };
+            $.ajax({
+                url: '@_webapiEMSURL' + 'CommanMaster/GetExpenseOverview',
+                type: "POST",
+                contentType: "application/json",
+                headers: {
+                    "Authorization": "Bearer " + _Token
+                },
+                data: JSON.stringify(request),
+                success: function (res) {
+                    // Normalize API response
+                    var expenseItems = Array.isArray(res?.expenseItems)
+                        ? res.expenseItems
+                        : [];
+                    //  Empty case
+                    if (expenseItems.length === 0) {
+                        drawTravelChart([], []);
+                        $("#Expense_Overview").hide();
+                        $("#Expense_Empty").show();
+                        $("#Travel_Overview").hide();
+                        $("#Travel_Empty").show();
+                        return;
+                    }
+                    // ===== Expense Overview =====
+                    var expenseOnly = expenseItems.filter(item => item.expenseRequestType === 1);
+                    if (expenseOnly.length > 0) {
+                        prepareExpenseOverview(expenseOnly);
+                    } else {
+                        $("#Expense_Overview").hide();
+                        $("#Expense_Empty").show();
+                    }
+                    // ===== Travel Overview =====
+                    var travelOnly = expenseItems.filter(item => item.expenseRequestType === 2);
+                    if (travelOnly.length > 0) {
+                        prepareTravelOverview(travelOnly);
+                    } else {
+                        $("#Travel_Overview").hide();
+                        $("#Travel_Empty").show();
+                    }
+                },
+                error: function () {
+                    drawTravelChart([], []);
+                }
+            });
+        }
+        function prepareExpenseOverview(data) {
+            let categories = [...new Set(
+                data.map(x => moment(x.expenseDate).format('DD-MMM'))
+            )];
+            const expenseTypes = [...new Set(data.map(x => x.categoryName))];
+            const colors = [
+                '#62B2FD', // Conveyance
+                '#9BDFC4', // Petrol
+                '#DA6F84', // Hardware
+                '#A2845E', // Postage
+                '#5856D6'  // Other
+            ];
+            let isSinglePoint = categories.length === 1;
+            if (isSinglePoint) {
+                categories.push(categories[0]);
+            }
+            let series = [];
+            expenseTypes.forEach((type, i) => {
+                let values = [];
+                let lastValue = null;
+                categories.forEach((date, index) => {
+                    let item = data.find(x =>
+                        moment(x.expenseDate).format('DD-MMM') === date &&
+                        x.categoryName === type
+                    );
+                    if (item) {
+                        lastValue = item.amount;
+                        values.push(item.amount);
+                    } else if (isSinglePoint && index === 1) {
+                        values.push(lastValue);
+                    } else {
+                        values.push(lastValue);
+                    }
+                });
+                series.push({
+                    name: type,
+                    data: values,
+                    color: colors[i % colors.length]
+                });
+            });
+            drawExpenseOverview(categories, series);
+        }
+        function drawExpenseOverview(categories, series) {
+            Highcharts.chart('ExpenseOverview', {
+                chart: {
+                    type: 'spline',
+                    backgroundColor: '#ffffff',
+                    spacingTop: 20,
+                    spacingBottom: 15,
+                    style: {
+                        fontFamily: 'Roboto'
+                    }
+                },
+                title: { text: '' },
+                xAxis: {
+                    categories: categories,
+                    tickLength: 0,
+                    lineColor: '#E6E6E6',
+                    labels: {
+                        style: {
+                            color: '#666',
+                            fontSize: '12px'
+                        }
+                    }
+                },
+                yAxis: {
+                    title: { text: '' },
+                    gridLineColor: '#F2F2F2',
+                    labels: {
+                        formatter: function () {
+                            return '₹' + (this.value / 1000) + 'k';
+                        },
+                        style: {
+                            color: '#666',
+                            fontSize: '12px'
+                        }
+                    }
+                },
+                legend: {
+                    align: 'center',
+                    verticalAlign: 'bottom',
+                    symbolRadius: 6,
+                    symbolHeight: 8,
+                    symbolWidth: 8,
+                    itemStyle: {
+                        fontSize: '12px',
+                        fontWeight: '400',
+                        color: '#444'
+                    }
+                },
+                tooltip: {
+                    shared: true,
+                    useHTML: true,
+                    backgroundColor: '#ffffff',
+                    borderColor: '#DADADA',
+                    borderRadius: 6,
+                    shadow: true,
+                    formatter: function () {
+                        let html = `<b>${this.x}</b><br/>`;
+                        this.points.forEach(p => {
+                            html += `
+                        <span style="color:${p.color}">●</span>
+                        ${p.series.name}:
+                        <b>₹${Highcharts.numberFormat(p.y, 0)}</b><br/>
+                    `;
+                        });
+                        return `<div style="padding:6px 10px">${html}</div>`;
+                    }
+                },
+                plotOptions: {
+                    series: {
+                        connectNulls: true,
+                        lineWidth: 2,
+                        marker: {
+                            radius: 4,
+                            symbol: 'circle',
+                            lineWidth: 2,
+                            lineColor: '#ffffff'
+                        }
+                    }
+                },
+                series: series,
+                credits: { enabled: false }
+            });
+        }
+        function prepareTravelOverview(items) {
+            var groupedData = {};
+            items.forEach(function (item) {
+                var d = new Date(item.expenseDate);
+                var day = d.getDate().toString().padStart(2, '0');
+                var month = d.toLocaleString('en-US', { month: 'short' });
+                var key = day + '-' + month;
+                if (!groupedData[key]) {
+                    groupedData[key] = 0;
+                }
+                groupedData[key] += Number(item.amount);
+            });
+            var categories = Object.keys(groupedData);
+            var amounts = Object.values(groupedData);
+            drawTravelChart(categories, amounts);
+        }
+
+        function drawTravelChart(categories, data) {
+            Highcharts.chart('container', {
+                chart: {
+                    type: 'column'
+                },
+                title: {
+                    text: ''
+                },
+                legend: {
+                    enabled: false
+                },
+                xAxis: {
+                    categories: categories
+                },
+                yAxis: {
+                    min: 0,
+                    title: {
+                        text: ''
+                    },
+                    labels: {
+                        formatter: function () {
+                            return '₹' + this.value;
+                        }
+                    }
+                },
+                tooltip: {
+                    useHTML: true,
+                    formatter: function () {
+                        return `
+                    <b>${this.x} ${new Date().getFullYear()}</b><br/>
+                    ₹${Highcharts.numberFormat(this.y, 0)}
+                `;
+                    }
+                },
+                plotOptions: {
+                    column: {
+                        pointPadding: 0.2,
+                        borderWidth: 0,
+                        color: '#62B2FD'
+                    }
+                },
+                series: [{
+                    name: 'Amount',
+                    data: data
+                }]
+            });
+        }
+
+        function loadMyRequests(requestType) {
+            var request = {
+                empId: parseInt(_empIdnew),
+                month: parseInt($("#emsMonth").val()),
+                requestType: requestType // 1 = Expense, 2 = Travel
+            };
+            $.ajax({
+                url: '@_webapiEMSURL' + 'CommanMaster/GetMyRequests',
+                type: "POST",
+                contentType: "application/json",
+                headers: {
+                    "Authorization": "Bearer " + _Token
+                },
+                data: JSON.stringify(request),
+                success: function (res) {
+                    $("#Myrequest_Expense").hide();
+                    $("#Myrequest_Travel").hide();
+                    $("#Myrequest_Empty").hide();
+                    if (!res || !res.requestItems || res.requestItems.length === 0) {
+                        $("#Myrequest_Empty").show();
+                        getTargetContainer(requestType).html(
+                            '<p class="text-center text-muted">No records found</p>'
+                        );
+                        return;
+                    }
+                    if (requestType === 1) {
+                        $("#Myrequest_Expense").show();
+                    }
+                    if (requestType === 2) {
+                        $("#Myrequest_Travel").show();
+                    }
+                    bindMyRequests(res.requestItems, requestType);
+                },
+                error: function (xhr) {
+                    console.error("My Requests API Error", xhr.status, xhr.responseText);
+                }
+            });
+        }
+        function bindMyRequests(items, requestType) {
+            var html = '';
+            $.each(items, function (i, item) {
+                var dateObj = new Date(item.requestDate);
+                var day = dateObj.getDate();
+                var month = dateObj.toLocaleString('default', { month: 'short' });
+                var statusClass = getStatusClass(item.statusName);
+                html += `
+                <div class="myleave_detail">
+                    <div class="d-flex align-items-center justify-content-between">
+                        <div class="d-flex align-items-center">
+                            <div class="h_box">
+                                <div class="h_date">${day}</div>
+                                <div class="h_day">${month}</div>
+                            </div>
+                            <div class="margin-left-10">
+                                <p class="pr_ttl_new">${item.requestTitle}</p>
+                            </div>
+                        </div>
+                        <div class="${statusClass}">
+                            ${item.statusName}
+                        </div>
+                    </div>
+                </div>`;
+                    });
+                    getTargetContainer(requestType).html(html);
+                }
+        function getStatusClass(status) {
+            switch (status) {
+                case 'Approved':
+                    return 'green_font';
+                case 'Pending':
+                case 'Submitted':
+                    return 'orange_font';
+                case 'Rejected':
+                case 'Declined':
+                    return 'red_font';
+                default:
+                    return '';
+            }
+        }
+        function getTargetContainer(requestType) {
+            return requestType === 1
+                ? $("#MyExpense .expensemyrequest_fullheight_card")
+                : $("#MyTravel .expensemyrequest_fullheight_card");
+        }
+       function loadWhoIsTraveling() {
+            var request = {
+                empId: parseInt(_empIdnew),
+                roleId: parseInt(_RoleIDnew),
+                companyId: _ComID,
+                branchId: _BranchID,
+                departmentId: _DepID
+            };
+            $.ajax({
+                url: '@_webapiEMSURL' + 'CommanMaster/GetWhoIsTraveling',
+                type: "POST",
+                contentType: "application/json",
+                headers: {
+                    "Authorization": "Bearer " + _Token
+                },
+                data: JSON.stringify(request),
+                success: function (res) {
+                    $("#whoIsTravelingContainer").empty();
+                    if (res && res.travelItems && res.travelItems.length > 0) {
+                        $("#whoIsTravelingContainer").show();
+                        $("#WhoIsTraveling_Empty").hide();
+                        bindWhoIsTraveling(res.travelItems);
+                    } else {
+                        $("#whoIsTravelingContainer").hide();
+                        $("#WhoIsTraveling_Empty").show();
+                    }
+                },
+                error: function (xhr) {
+                    console.error("Who Is Traveling API Error",
+                        xhr.status, xhr.responseText);
+                    $("#whoIsTravelingContainer").hide();
+                    $("#WhoIsTraveling_Empty").show();
+                }
+            });
+        }
+        function bindWhoIsTraveling(data) {
+            var container = $("#whoIsTravelingContainer");
+            var html = "";
+            if (!data || data.length === 0) {
+                container.html('<p class="text-center text-muted">No employees traveling</p>');
+                return;
+            }
+            $.each(data, function (i, item) {
+                var startDate = new Date(item.tripStartDate);
+                var endDate = new Date(item.tripEndDate);
+                var startDay = startDate.getDate();
+                var endDay = endDate.getDate();
+                var month = startDate.toLocaleString('default', { month: 'short' });
+                html += `
+                <div class="myleave_detail">
+                    <div class="d-flex">
+                        <div class="h_box">
+                            <div class="h_date">${startDay}-${endDay}</div>
+                            <div class="h_day">${month}</div>
+                        </div>
+                        <div class="tripdetail_main margin-left-10">
+                            <div class="reqby">
+                                <span>${item.empName || '-'}</span>
+                            </div>
+                            <div class="tripdetail">
+                                ${item.tripPurpose || ''}
+                            </div>
+                        </div>
+                    </div>
+                </div>`;
+            });
+            container.html(html);
+        }
+
+        function formatDate(dateStr) {
+            if (!dateStr) return '';
+            var date = new Date(dateStr);
+            return date.toLocaleDateString('en-GB');
+        }
+
+        //Add Customwidget modal open code
+        $("#customwidget_btn").on('click', function () {
+            $("#customwidget_btn").attr("data-toggle", "modal");
+            $("#customwidget_btn").attr("data-target", "#customwidget_modal");
+        });
+
+        $("#TotalExpense").on('click', function () {
+            $("#TotalExpense").attr("data-toggle", "modal");
+            $("#TotalExpense").attr("data-target", "#TotalExpense_modal");
+        });
+
+        //TotalExpense Modal in datatable code ============================
+        var table = $("#totalexpense_table").DataTable({
+            dom: _domCommon,
+            language: _languageCommon,
+            ordering: true,
+        });
+        setTimeout(function () {
+            $("#" + "totalexpense_table" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+            $('.tooltips').tooltip();
+        }, 100);
+        $("#totalexpense_table thead").on("keyup", "input", function () {
+            table.column($(this).parent().index())
+                .search(this.value)
+                .draw();
+        });
+
+        function fillDepartment() {
+            $.ajax({
+                url: '@_webapiurl' + "/Master/DepartmentGetAll",
+                method: "GET",
+                contentType: "application/json; charset=utf-8",
+                headers: {
+                    "Authorization": "Bearer " + _Token
+                },
+                success: function (data) {
+                    var $deptDropdown = $("#emsDepartment");
+                    $deptDropdown.empty();
+
+                    $deptDropdown.append('<option value="0">All</option>');
+
+                    $.each(data, function (i, dept) {
+                        $deptDropdown.append('<option value="' + dept.DepartmentId + '">' + dept.DepartmentName + '</option>');
+                    });
+                },
+                error: function (err) {
+                    console.error("Error loading departments", err);
+                }
+            });
+        }
+       function loadPendingRequests() {
+            var request = {
+                empId: parseInt(_empIdnew),
+                roleId: parseInt(_RoleIDnew),
+                companyId: _ComID,
+                branchId: _BranchID,
+                departmentId: parseInt($("#emsDepartment").val()),
+                month: parseInt($("#emsMonths").val()),
+                requestType: currentRequestType
+            };
+            $("#Pendingrequest_Expense").hide();
+            $("#Pendingrequest_Travel").hide();
+            $("#Pendingrequest_Empty").hide();
+            $("#pendingExpenseContainer").empty();
+            $("#pendingTravelContainer").empty();
+            $.ajax({
+                url: '@_webapiEMSURL' + 'CommanMaster/GetPendingRequests',
+                type: "POST",
+                contentType: "application/json",
+                headers: {
+                    "Authorization": "Bearer " + _Token
+                },
+                data: JSON.stringify(request),
+                success: function (res) {
+                    $("#pendingExpenseContainer").empty();
+                    $("#pendingTravelContainer").empty();
+                    if (!res || !Array.isArray(res.pendingItems) || res.pendingItems.length === 0) {
+                        $("#Pendingrequest_Expense").hide();
+                        $("#Pendingrequest_Travel").hide();
+                        $("#Pendingrequest_Empty").show();
+                        return;
+                    }
+                    var filteredItems = res.pendingItems.filter(
+                        x => x.expenseRequestType === currentRequestType
+                    );
+                    if (filteredItems.length === 0) {
+                        $("#Pendingrequest_Expense").hide();
+                        $("#Pendingrequest_Travel").hide();
+                        $("#Pendingrequest_Empty").show();
+                        return;
+                    }
+                    $("#Pendingrequest_Empty").hide();
+                    if (currentRequestType === 1) {
+                        $("#Pendingrequest_Expense").show();
+                        renderPendingRequests(filteredItems, "#pendingExpenseContainer");
+                    } else {
+                        $("#Pendingrequest_Travel").show();
+                        renderPendingRequests(filteredItems, "#pendingTravelContainer");
+                    }
+                },
+                error: function () {
+                    $("#Pendingrequest_Expense").hide();
+                    $("#Pendingrequest_Travel").hide();
+                    $("#Pendingrequest_Empty").show();
+                }
+            });
+        }
+        function renderPendingRequests(items, containerId) {
+            var html = '';
+            $.each(items, function (i, item) {
+                html += `
+                <div class="pending_request_block d-flex justify-content-between margin-bottom-10">
+                    <div class="tripdetail_main">
+                        <div class="reqby">Requested by: <span>${item.empName}</span></div>
+                        <div class="tripdetail">${item.description || ''}</div>
+                        <div class="text-muted small">Date: ${formatDate(item.expenseDate)}</div>
+                    </div>
+                    <div class="tripactionbtn">
+                        <a href="javascript:;" class="btn green_btnnew approve"
+                           onclick="updateApproval(${item.expenseId}, 'Approve')"><i class="fa-solid fa-check"></i></a>
+                        <a href="javascript:;" class="btn red_btnnew reject"
+                           onclick="updateApproval(${item.expenseId}, 'Reject')"><i class="fa-solid fa-xmark"></i></a>
+                    </div>
+                </div>`;
+            });
+            $(containerId).html(html);
+        }
+        window.updateApproval = function (expenseId, action) {
+            var request = {
+                ExpenseId: expenseId,
+                UserId: parseInt(_empIdnew),
+                Action: action
+            };
+            $.ajax({
+                url: '@_webapiEMSURL' + 'CommanMaster/UpdateApprovalStatus',
+                type: "POST",
+                contentType: "application/json",
+                headers: { "Authorization": "Bearer " + _Token },
+                data: JSON.stringify(request),
+                success: function (res) {
+                    toastr.success(res.message);
+                    loadPendingRequests();
+                },
+                error: function (xhr) {
+                    console.error("Approval API Error", xhr.status, xhr.responseText);
+                    alert("Failed to update request.");
+                }
+            });
+        };
+        $("#widgetSave").on("click", function () {
+            $(".widget-checkbox").each(function () {
+                var widgetKey = $(this).data("widget");
+                // Select ONLY dashboard widgets (exclude modal completely)
+                var $dashboardWidget = $(
+                    ".row[data-widget='" + widgetKey + "'], " +
+                    ".col-lg-6[data-widget='" + widgetKey + "']"
+                ).not("#customwidget_modal *");
+                if ($(this).is(":checked")) {
+                    $dashboardWidget.show();
+                } else {
+                    $dashboardWidget.hide();
+                }
+            });
+            $("#customwidget_modal").modal("hide");
+        });
+    });
+
+</script>
+
+@if (obj.CanView)
+{
+    <div class="page-bar">
+        <ul class="page-breadcrumb">
+            <li>
+                <a href="/MinopProduct/EMSDashboard"><i class="fa-regular fa-house"></i></a>
+            </li>
+            <li>
+                <span> <i class="fa fa-angle-right"> </i> Expense Management Dashboard</span>
+            </li>
+        </ul>
+        <div class="filter_search pull-right">
+            <button id="customwidget_btn" class="btn icon_transparent_btn tooltips margin-right-5" type="button" data-placement="left" data-original-title="Custom Widget"><i class="fa-light fa-objects-column"></i></button>
+            <button id="Filter_search" class="btn icon_transparent_btn tooltips" type="button" data-placement="bottom" data-original-title="Filter"><i class="fa-light fa-filter"></i></button>
+        </div>
+    </div>
+
+    <div class="body_section">
+
+        <div class="row" data-widget="expenseMonitor">
+            <!-- Expense Monitor Block : Begin -->
+            <div class="col-lg-12">
+                <div class="card_box margin-bottom-20">
+                    <div class="card_header">
+                        <div class="d-flex align-items-center">
+                            <img class="margin-right-8" src="~/assets/images/icons/icon_activitymonitor.svg" alt="" width="25" height="24">
+                            <p class="card-title margin-right-10">Expense Monitor</p>
+                            <img class="tooltips" src="/assets/images/icons/icon_info.svg" alt="" width="12" height="12" data-placement="right" data-original-title="Lorem Ipsum is simply dummy text">
+                            <div class="dropdown_box margin-left-15">
+                                <div class="form-group margin-bottom-0">
+                                    <select id="ExpenseMonitorFilter" class="btn blue btn-outline select2" data-width="100%">
+                                        <option value="1">Today</option>
+                                        <option value="2">This Week</option>
+                                        <option value="3">This Month</option>
+                                    </select>
+
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card_summarylist">
+                        <div class="row">
+                            <div class="col-lg-2 col-sm-4 col-xs-6">
+                                <div class="activity_block">
+                                    <a href="javascript:;" id="TotalExpense">
+                                        <img src="~/assets/images/icons/ems_icon/icon_exptotal.svg" alt="" width="48" height="48">
+                                        <div>
+                                            <p>Total Expense</p>
+                                            <div class="activity_count" id="TotalExpenseCount">0</div>
+                                        </div>
+                                    </a>
+                                </div>
+                            </div>
+                            <div class="col-lg-2 col-sm-4 col-xs-6">
+                                <div class="activity_block">
+                                    <a href="javascript:;" id="">
+                                        <img src="~/assets/images/icons/ems_icon/icon_exptoday.svg" alt="" width="48" height="48">
+                                        <div>
+                                            <p>Today’s Expense</p>
+                                            <div class="activity_count" id="TodayExpenseCount">0</div>
+                                        </div>
+                                    </a>
+                                </div>
+                            </div>
+                            <div class="col-lg-2 col-sm-4 col-xs-6">
+                                <div class="activity_block">
+                                    <a href="javascript:;" id="">
+                                        <img src="~/assets/images/icons/ems_icon/icon_exptravel.svg" alt="" width="48" height="48">
+                                        <div>
+                                            <p>Travel Expense</p>
+                                            <div class="activity_count" id="TravelExpenseCount">0</div>
+                                        </div>
+                                    </a>
+                                </div>
+                            </div>
+                            <div class="col-lg-2 col-sm-4 col-xs-6">
+                                <div class="activity_block">
+                                    <a href="javascript:;" id="">
+                                        <img src="~/assets/images/icons/ems_icon/icon_exppending.svg" alt="" width="48" height="48">
+                                        <div>
+                                            <p>Pending Expense</p>
+                                            <div class="activity_count" id="PendingExpenseCount">0</div>
+                                        </div>
+                                    </a>
+                                </div>
+                            </div>
+                            <div class="col-lg-2 col-sm-4 col-xs-6">
+                                <div class="activity_block">
+                                    <a href="javascript:;" id="">
+                                        <img src="~/assets/images/icons/ems_icon/icon_expapprove.svg" alt="" width="48" height="48">
+                                        <div>
+                                            <p>Approve Expense</p>
+                                            <div class="activity_count" id="ApprovedExpenseCount">0</div>
+                                        </div>
+                                    </a>
+                                </div>
+                            </div>
+                            <div class="col-lg-2 col-sm-4 col-xs-6">
+                                <div class="activity_block">
+                                    <a href="javascript:;" id="">
+                                        <img src="~/assets/images/icons/ems_icon/icon_exprejected.svg" alt="" width="48" height="48">
+                                        <div>
+                                            <p style="min-width: 108px; display: block;">Rejected Expense</p>
+                                            <div class="activity_count" id="RejectedExpenseCount">0</div>
+                                        </div>
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Attendance Activity Monitor Block : End -->
+        </div>
+
+        <div class="row" id="ems-dashboard-sortable-row">
+            <!-- Expense Overview Block : Begin -->
+            <div class="col-lg-6" data-widget="expenseOverview">
+                <div class="card_box margin-bottom-20 h-380">
+                    <div class="card_header d-flex align-items-center justify-content-between">
+                        <div class="d-flex align-items-center">
+                            <img class="margin-right-8" src="/assets/images/icons/ems_icon/icon_expoverview.svg" alt="" width="22" height="22">
+                            <p class="card-title margin-right-10">Expense Overview</p>
+                            <img class="tooltips" src="/assets/images/icons/icon_info.svg" alt="" width="12" height="12" data-placement="right" data-original-title="Lorem Ipsum is simply dummy text">
+                        </div>
+                    </div>
+                    <div class="card_summarylist">
+                        <div id="Expense_Overview">
+                            <figure class="highcharts-figure">
+                                <div id="ExpenseOverview" style="height: 320px;"></div>
+                            </figure>
+                        </div>
+                        <div id="Expense_Empty" style="display:none">
+                            <div class="empty_block no_record">
+                                <img src="~/assets/images/emptyscreen_3.png" height="122" width="230" alt="No Records Found">
+                                <p>No records found.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Expense Overview Block : End -->
+            <!-- Travel Overview Block : Begin -->
+            <div class="col-lg-6" data-widget="travelOverview">
+                <div class="card_box margin-bottom-20 h-380">
+                    <div class="card_header d-flex align-items-center justify-content-between">
+                        <div class="d-flex align-items-center">
+                            <img class="margin-right-8" src="/assets/images/icons/ems_icon/icon_traveloverview.svg" alt="" width="22" height="22">
+                            <p class="card-title margin-right-10">Travel Overview</p>
+                            <img class="tooltips" src="/assets/images/icons/icon_info.svg" alt="" width="12" height="12" data-placement="right" data-original-title="Lorem Ipsum is simply dummy text">
+                        </div>
+                    </div>
+                    <div class="card_summarylist">
+                        <div id="Travel_Overview">
+                            <figure class="highcharts-figure">
+                                <div id="container" style="height: 320px;"></div>
+                            </figure>
+                        </div>
+                        <div id="Travel_Empty" style="display:none">
+                            <div class="empty_block no_record">
+                                <img src="~/assets/images/emptyscreen_3.png" height="122" width="230" alt="No Records Found">
+                                <p>No records found.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Travel Overview Block : End -->
+            <!-- My Requests Block : Begin -->
+            <div class="col-lg-6" data-widget="myRequests">
+                <div class="card_box margin-bottom-20 h-380">
+                    <div class="card_header d-flex align-items-center justify-content-between">
+                        <div class="d-flex align-items-center">
+                            <img class="margin-right-8" src="/assets/images/icons/ems_icon/icon_myrequests.svg" alt="" width="20" height="20">
+                            <p class="card-title margin-right-10">My Requests</p>
+                            <img class="tooltips" src="/assets/images/icons/icon_info.svg" alt="" width="12" height="12" data-placement="right" data-original-title="Lorem Ipsum is simply dummy text">
+                        </div>
+                    </div>
+                    <div class="card_summarylist">
+                        <div class="tab_block" style="margin-top: 0;">
+                            <ul class="nav nav-tabs nav-tabs-custom mobile_w100" role="tablist" style="margin-bottom: 8px;">
+                                <li class="nav-item active">
+                                    <a class="nav-link" data-toggle="tab" href="#MyExpense" role="tab" aria-selected="false">
+                                        <span class="">Expense</span>
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link" data-toggle="tab" href="#MyTravel" role="tab" aria-selected="false">
+                                        <span class="">Travel</span>
+                                    </a>
+                                </li>
+                            </ul>
+                            <div class="tab-content text-muted tab_content_box">
+                                <div class="row">
+                                    <div class="d-flex align-center justify-content-between">
+                                        <div class="col-md-3 col-xs-6">
+                                            <div class="form-group">
+                                                <select class="form-control input-sm select2" id="emsMonth">
+                                                    <option value="0">All</option>
+                                                    <option value="1">January</option>
+                                                    <option value="2">February</option>
+                                                    <option value="3">March</option>
+                                                    <option value="4">April</option>
+                                                    <option value="5">May</option>
+                                                    <option value="6">June</option>
+                                                    <option value="7">July</option>
+                                                    <option value="8">August</option>
+                                                    <option value="9">September</option>
+                                                    <option value="10">October</option>
+                                                    <option value="11">November</option>
+                                                    <option value="12">December</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div id="Myrequest_Expense">
+                                    <div class="tab-pane active" id="MyExpense" role="tabpanel">
+                                        <div class="p_request_box expensemyrequest_fullheight_card" id="">
+                                        </div>
+                                    </div>
+                                </div>
+                                <div id="Myrequest_Travel">
+                                    <div class="tab-pane" id="MyTravel" role="tabpanel">
+                                        <div class="p_request_box expensemyrequest_fullheight_card" id="">
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div id="Myrequest_Empty" style="display:none">
+                                    <div class="empty_block no_record" style=" height: 220px;">
+                                        <img src="~/assets/images/emptyscreen_3.png" height="122" width="230" alt="No Records Found">
+                                        <p>No records found.</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- My Requests Block : End -->
+            <!-- Pending Requests Block : Begin -->
+            <div class="col-lg-6" data-widget="pendingRequests">
+                <div class="card_box margin-bottom-20 h-380">
+                    <div class="card_header d-flex align-items-center justify-content-between">
+                        <div class="d-flex align-items-center">
+                            <img class="margin-right-8" src="/assets/images/icons/ems_icon/icon_pendingrequests.svg" alt="" width="20" height="20">
+                            <p class="card-title margin-right-10">Pending Requests</p>
+                            <img class="tooltips" src="/assets/images/icons/icon_info.svg" alt="" width="12" height="12" data-placement="right" data-original-title="Lorem Ipsum is simply dummy text">
+                        </div>
+                    </div>
+                    <div class="card_summarylist">
+                        <div class="tab_block" style="margin-top: 0;">
+                            <ul class="nav nav-tabs nav-tabs-custom mobile_w100" role="tablist" style="margin-bottom: 8px;">
+                                <li class="nav-item active">
+                                    <a class="nav-link" data-toggle="tab" href="#PendingExpense" role="tab" aria-selected="true">
+                                        <span>Expense</span>
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link" data-toggle="tab" href="#PendingMyTravel" role="tab" aria-selected="false">
+                                        <span>Travel</span>
+                                    </a>
+                                </li>
+                            </ul>
+                            <div class="tab-content text-muted tab_content_box">
+                                <div class="row">
+                                    <div class="d-flex align-center justify-content-between">
+                                        <div class="col-md-3 col-xs-6">
+                                            <div class="form-group">
+                                                <select class="form-control input-sm select2" id="emsMonths">
+                                                    <option value="0">All</option>
+                                                    <option value="1">January</option>
+                                                    <option value="2">February</option>
+                                                    <option value="3">March</option>
+                                                    <option value="4">April</option>
+                                                    <option value="5">May</option>
+                                                    <option value="6">June</option>
+                                                    <option value="7">July</option>
+                                                    <option value="8">August</option>
+                                                    <option value="9">September</option>
+                                                    <option value="10">October</option>
+                                                    <option value="11">November</option>
+                                                    <option value="12">December</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-4 col-xs-6">
+                                            <div class="form-group">
+                                                <select class="form-control input-sm select2" id="emsDepartment">
+                                                    <option value="0">All</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div id="Pendingrequest_Expense">
+                                    <div class="tab-pane" id="PendingExpense" role="tabpanel">
+                                        <div class="expensemyrequest_fullheight_card" id="pendingExpenseContainer"></div>
+                                    </div>
+                                </div>
+                                <div id="Pendingrequest_Travel">
+                                    <div class="tab-pane" id="PendingMyTravel" role="tabpanel">
+                                        <div class="expensemyrequest_fullheight_card" id="pendingTravelContainer"></div>
+                                    </div>
+                                </div>
+                                <div id="Pendingrequest_Empty" style="display:none">
+                                    <div class="empty_block no_record" style="height:220px;">
+                                        <img src="~/assets/images/emptyscreen_3.png" height="122" width="230">
+                                        <p>No records found.</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Pending Requests Block : End -->
+            <!-- Who Traveling Block : Begin -->
+            <div class="col-lg-6" data-widget="whoIsTraveling">
+                <div class="card_box margin-bottom-20">
+                    <div class="card_header d-flex align-items-center justify-content-between">
+                        <div class="d-flex align-items-center">
+                            <img class="margin-right-8" src="/assets/images/icons/ems_icon/icon_travelperson.svg" alt="" width="20" height="20">
+                            <p class="card-title margin-right-10">Who is Traveling</p>
+                            <img class="tooltips" src="/assets/images/icons/icon_info.svg" alt="" width="12" height="12" data-placement="right" data-original-title="Employees currently on trip">
+                        </div>
+                    </div>
+                    <div class="card_summarylist">
+                        <div class="p_request_box expensemyrequest_fullheight_card"
+                             id="whoIsTravelingContainer">
+                        </div>
+                        <div id="WhoIsTraveling_Empty" style="display:none">
+                            <div class="empty_block no_record" style="height:220px;">
+                                <img src="~/assets/images/emptyscreen_3.png" height="122" width="230"><p>No records found.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Who Traveling Block : End -->
+        </div>
+    </div>
+
+    <!-- Custom Widget Modal : Begin -->
+    <div id="customwidget_modal" class="modal fade" role="dialog" data-backdrop="static">
+        <div class="modal-dialog w-500">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    <h4 class="modal-title">Customize Widget</h4>
+                </div>
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-lg-12">
+                            <div class="widget_block">
+                                <ul>
+                                    <li>
+                                        <label class="margin-bottom-0">
+                                            <input type="checkbox" class="widget-checkbox" data-widget="expenseMonitor" checked>
+                                            <span>Expense Monitor</span>
+                                        </label>
+                                    </li>
+                                    <li>
+                                        <label class="margin-bottom-0">
+                                            <input type="checkbox" class="widget-checkbox" data-widget="expenseOverview" checked>
+                                            <span>Expense Overview</span>
+                                        </label>
+                                    </li>
+                                    <li>
+                                        <label class="margin-bottom-0">
+                                            <input type="checkbox" class="widget-checkbox" data-widget="travelOverview" checked>
+                                            <span>Travel Overview</span>
+                                        </label>
+                                    </li>
+                                    <li>
+                                        <label class="margin-bottom-0">
+                                            <input type="checkbox" class="widget-checkbox" data-widget="myRequests" checked>
+                                            <span>My Requests</span>
+                                        </label>
+                                    </li>
+                                    <li>
+                                        <label class="margin-bottom-0">
+                                            <input type="checkbox" class="widget-checkbox" data-widget="pendingRequests" checked>
+                                            <span>Pending Requests</span>
+                                        </label>
+                                    </li>
+                                    <li>
+                                        <label class="margin-bottom-0">
+                                            <input type="checkbox" class="widget-checkbox" data-widget="whoIsTraveling" checked>
+                                            <span>Who is Traveling</span>
+                                        </label>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer text-right">
+                    <button type="button" class="btn save_btn" id="widgetSave">
+                        <i class="fa fa-save"></i> Save
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- Custom Widget Modal : End -->
+    <!-- Check in Modal : Begin -->
+    <div id="TotalExpense_modal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog w-1080">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    <h4 class="modal-title">Total Expense</h4>
+                </div>
+                <div class="modal-body nomodalfooter">
+                    <fieldset>
+                        <div class="admin_tbl table-responsive" id="tableResponsive">
+                            <div id="loader_totalexpense" class="table-loader" style="display:none;">
+                                <img src="~/LandingAssets/images/loading.gif" style="width: 60px; top: 40%; position: relative;" alt="loading" title="loading" />
+                            </div>
+                            <table id="totalexpense_table" class="table table-striped table-bordered table-hover table-checkable order-column">
+                                <thead>
+                                    <tr>
+                                        <th style="min-width: 100px;">Employee Code</th>
+                                        <th style="min-width: 180px;">Name</th>
+                                        <th>Punch ID</th>
+                                        <th style="min-width: 100px;">Department</th>
+                                        <th style="min-width: 100px;">Designation</th>
+                                        <th>Shift</th>
+                                        <th style="min-width: 55px;">Status</th>
+                                        <th>Punch Time</th>
+                                        <th style="min-width: 60px;">Date</th>
+                                    </tr>
+                                </thead>
+                                <tbody>                                   
+                                </tbody>
+                            </table>
+                        </div>
+                    </fieldset>
+                </div>
+                <div class="modal-footer" style="visibility: hidden;">
+                    <div class="row">
+                        <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                            <button type="button" class="btn save_btn" id=""><i class="fa fa-check"></i> Save</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Check in  Modal : End -->
+
+    <!-- Drag & Drop Card Reorder for EMS Dashboard -->
+    <script>
+        (function () {
+            var EMS_USER_ID = '@_UserId';
+            var EMS_ACCOUNT = '@_accountcd';
+            var STORAGE_KEY = 'emsDashboardCardOrder_' + EMS_ACCOUNT + '_' + EMS_USER_ID;
+
+            function addDragHandles() {
+                $('#ems-dashboard-sortable-row > div').each(function () {
+                    var $header = $(this).find('.card_header').first();
+                    if ($header.length && !$header.find('.drag-handle').length) {
+                        var $firstChild = $header.children().first();
+                        var $handle = $('<span class="drag-handle tooltips" data-placement="top" data-original-title="Drag to reorder"><i class="fa-light fa-grip-dots-vertical"></i></span>');
+                        if ($firstChild.hasClass('d-flex')) {
+                            $firstChild.prepend($handle);
+                        } else {
+                            $header.prepend($handle);
+                        }
+                    }
+                });
+            }
+
+            function getCardOrder() {
+                var order = [];
+                $('#ems-dashboard-sortable-row > div').each(function () {
+                    var widget = $(this).data('widget');
+                    if (widget) {
+                        order.push(widget);
+                    }
+                });
+                return order;
+            }
+
+            function saveCardOrder() {
+                var order = getCardOrder();
+                try {
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(order));
+                } catch (e) { }
+            }
+
+            function restoreCardOrder() {
+                try {
+                    var saved = localStorage.getItem(STORAGE_KEY);
+                    if (!saved) return;
+                    var order = JSON.parse(saved);
+                    if (!Array.isArray(order) || order.length === 0) return;
+
+                    var $container = $('#ems-dashboard-sortable-row');
+                    var widgetMap = {};
+
+                    $container.children().each(function () {
+                        var widget = $(this).data('widget');
+                        if (widget) {
+                            widgetMap[widget] = $(this);
+                        }
+                    });
+
+                    for (var i = 0; i < order.length; i++) {
+                        if (widgetMap[order[i]]) {
+                            $container.append(widgetMap[order[i]]);
+                            delete widgetMap[order[i]];
+                        }
+                    }
+                    for (var key in widgetMap) {
+                        $container.append(widgetMap[key]);
+                    }
+                } catch (e) { }
+            }
+
+            // Restore card order IMMEDIATELY to prevent position flash
+            restoreCardOrder();
+
+            function initEMSDashboardSortable() {
+                var el = document.getElementById('ems-dashboard-sortable-row');
+                if (!el) return;
+
+                addDragHandles();
+                $('.drag-handle.tooltips').tooltip({ container: 'body', trigger: 'hover' });
+
+                Sortable.create(el, {
+                    handle: '.drag-handle',
+                    animation: 250,
+                    ghostClass: 'sortable-ghost',
+                    chosenClass: 'sortable-chosen',
+                    dragClass: 'sortable-drag',
+                    easing: 'cubic-bezier(0.25, 1, 0.5, 1)',
+                    forceFallback: false,
+                    onEnd: function () {
+                        saveCardOrder();
+                    }
+                });
+            }
+
+            // Only delay Sortable init + drag handles, NOT the order restore
+            setTimeout(function () {
+                initEMSDashboardSortable();
+            }, 1500);
+        })();
+    </script>
+}
+else
+{
+    <span style="color:red">@PayTimeWebClient.Resource.Resource.UnauthorizedAccess .</span>
+}

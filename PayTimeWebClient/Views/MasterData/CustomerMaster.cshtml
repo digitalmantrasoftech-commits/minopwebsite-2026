@@ -1,0 +1,606 @@
+﻿@model PayTimeWebClient.Models.CustomerMaster
+@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@using System.Configuration;
+
+@{
+    ViewBag.Title = "CustomerMaster";
+    Layout = "~/Views/Shared/_PartnerLayout.cshtml";
+    string _Message = ViewBag.msg;
+    string _error = ViewBag.error;
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+
+    string isClientDBMatchFlag = HttpContext.Current.Session["IsClientDBMatch"] != null
+    ? HttpContext.Current.Session["IsClientDBMatch"].ToString()
+    : "false"; // Default to "false" if the session is null
+
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+    }
+    <style>
+        .pac-container {
+            z-index: 10000 !important;
+        }
+
+        #map {
+            width: 100%;
+            height: 310px;
+            position: relative !important;
+        }
+    </style>
+    <script type="text/javascript" async defer src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBZKLtQG-hhnOXL3OFg7uJzlusQj38k0VU&libraries=places"></script>
+
+    <div class="page-bar">
+        @if (_RoleId == 1)
+    {
+    <ul class="page-breadcrumb">
+        <li>
+            @if (isClientDBMatchFlag == "True")
+            {
+                <a href="/Admin/AdminDashboard"><i class="fa fa-home"></i></a>
+            }
+            else
+            {
+                <a href="/Dashboard/AdminDashboard"><i class="fa fa-home"></i></a>
+            }
+        </li>
+        <li>
+            <span><i class="fa fa-angle-right"></i> Customer</span>
+        </li>
+    </ul>
+    }
+    else
+    {
+    <ul class="page-breadcrumb">
+        <li>
+            <a href="/Dashboard/EmployeeDashboard"><i class="fa fa-home"></i></a>
+        </li>
+        <li>
+            <span><i class="fa fa-angle-right"></i> Customer</span>
+        </li>
+    </ul>
+    }
+
+        <div class="page-toolbar">
+
+            @*@if (obj.CanAdd && _RoleId != 6806)
+                {*@
+            <div class="">
+                <a href="#" id="Add" class="btn blue btn-sm" style="float:right"> <i class="fa fa-plus"></i> Add Customer</a>
+            </div>
+            @*}*@
+        </div>
+    </div>
+    @*@if (obj.CanView)
+        {*@
+    <div class="row">
+        <div class="col-md-12">
+            <div class="portlet ">
+                <div class="portlet-body">
+                    <div>
+                        <table id="tblCustomerDetails" class="table table-striped table-bordered table-hover table-checkable order-column">
+                            <thead>
+                                <tr>
+                                    <th hidden>Cust ID</th>
+                                    <th>Customer Name</th>
+                                    <th>Customer Mobile</th>
+                                    <th>Customer Email</th>
+                                    <th>Customer Address</th>
+                                    <th>Customer Latitude</th>
+                                    <th>Customer Longitude</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                        </table>
+                    </div>
+                    <div id="ajax_loaderbranch" class="modal_bg loading" aria-hidden="true">
+                        <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading"/>
+                    </div>
+                    <div id="frmpopup" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+                        <div class="modal-dialog" style="width: 900px">
+                            <!-- Modal content-->
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                                    <h4 class="modal-title">Customer</h4>
+                                </div>
+                                <div class="modal-body">
+                                    <fieldset class="">
+                                        <div class="row">
+                                            <div class="col-lg-4 col-md-4 col-sm-6 col-xs-12">
+                                                <div class="form-group">
+                                                    <label class="control-label">
+                                                        @Html.Hidden("CustID")
+                                                        Customer Name <span class="required" aria-required="true"> * </span>
+                                                    </label>
+                                                    @Html.Editor("CustName", new { htmlAttributes = new { @class = "form-control input-sm", @maxlength = 50, placeholder = "Enter Customer Name" } })
+                                                </div>
+                                                <div class="form-group">
+                                                    <label class="control-label">
+                                                        Customer Mobile <span class="required" aria-required="true"> * </span>
+                                                    </label>
+                                                    @Html.Editor("CustMobile", new { htmlAttributes = new { @class = "form-control input-sm", @maxlength = 10, placeholder = "Enter Customer Mobile" } })
+                                                    <span class="help-block" style="color: red;" hidden id="spMNo"></span>
+                                                </div>
+                                                <div class="form-group">
+                                                    <label class="control-label">
+                                                        Customer Email
+                                                    </label>
+                                                    <input type="text" id="CustEmail" class="form-control input-sm" placeholder="Enter Customer Email" name="CustomerEmail" />
+                                                    <span class="help-block" style="color: red;" hidden id="spEmail"></span>
+                                                </div>
+                                                <div class="form-group">
+                                                    <label class="control-label">Customer Address <span class="required" aria-required="true"> * </span></label>
+                                                    <textarea type="text" id="CustAddress" class="form-control" placeholder="Enter Customer Address" name="CustAddress" maxlength="500"></textarea>
+                                                    <span class="help-block" hidden id="spschadd" style="color: red;"></span>
+                                                    <input type="hidden" id="Letlng" name="Letlng" />
+                                                    <input type="hidden" id="CustLatitude" name="CustLatitude" />
+                                                    <input type="hidden" id="CustLongitude" name="CustLongitude" />
+                                                </div>
+                                                @*<div id="map"></div>*@
+                                            </div>
+                                            <div class="col-lg-8 col-md-8 col-sm-6 col-xs-12">
+                                                <div id="map"></div>
+                                            </div>
+                                        </div>
+                                        <div class="row">
+                                            <div class="editor-field col-md-12 control-label text-right">
+                                                <button type="button" class="btn btn-sm blue" id="btnmainsubmit" style="float: right"> <i class="fa fa-floppy-o"></i> Save</button>
+                                            </div>
+                                        </div>
+                                    </fieldset>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+    @*}
+        else
+        {
+            <span style="color:red">Unauthorized Access.</span>
+        }*@
+    <script type="text/javascript">
+    var iconBase = "../assets/images/";
+    var schoolmarker;
+    var geocoder;
+    var radiusCircle;
+        $(document).ready(function () {
+        var isvalid = false;
+        var flg = 0;
+        var _url = '@_webapiurl' + 'Master/CustomerGetAll';        
+        var t = $('#tblCustomerDetails').DataTable(
+            {
+                "processing": true,
+                "ajax": {
+                    url: _url,
+                    type: "GET",
+                    headers: { 'Authorization': '@_tokan' },
+                    dataSrc: '',
+                },
+                "columns": [
+                    { "data": "CustID" },
+                    { "data": "CustName" },
+                    { "data": "CustMobile" },
+                    { "data": "CustEmail" },
+                    { "data": "CustAddress" },
+                    { "data": "CustLatitude" },
+                    { "data": "CustLongitude" },
+                ],
+            
+                dom: 'Bfrtip',
+                buttons: [
+                    {
+                        extend: 'excelHtml5',
+                        text: '<i class="fa fa-file-excel-o" style="color:green; Font-size:15px"></i>',
+                        titleAttr: 'Excel'
+                    }
+                ],
+            
+                "columnDefs": [
+                  {
+                      "targets": [0,5,6],
+                      "visible": false
+                  },
+                  {
+                      "targets": 7,
+                      "data": null,
+                      "render": function (data, type, full, meta) {
+                          @*if (emprole == 1) {
+                              data = "<a class='editclass btn btn-xs blue tooltips' title='Edit'><i class='fa fa-edit'></i></a";
+                          }
+                          else if (emprole == 6805 && '@obj.CanEdit.ToString()' == 'True' && (data.CompanyID != 0 && data.CompanyID == cmpid)) {
+                              data = "<a class='editclass btn btn-xs blue tooltips' title='Edit'><i class='fa fa-edit'></i></a";
+                          }
+                          else if (emprole == 6806 && '@obj.CanEdit.ToString()' == 'True' && (data.CompanyID != 0 && data.BranchId == branchid)) {
+                              data = "<a class='editclass btn btn-xs blue tooltips' title='Edit'><i class='fa fa-edit'></i></a";
+                          }
+                          else {
+                              data = "";
+                          }*@
+                          data = "<a class='editclass btn btn-xs blue tooltips' title='Edit'><i class='fa fa-edit'></i></a";
+                          return data;
+                      }
+                  },
+                  {
+                      "searchable": false,
+                      "orderable": false,
+                      "targets": 0
+                  }
+                ],
+                "order": [[1, 'asc']],
+                }
+            );
+            t.on('order.dt search.dt', function () {
+                t.column(0, { search: 'applied', order: 'applied' }).nodes().each(function (cell, i) {
+                    cell.innerHTML = i + 1;
+                });
+            }).draw();
+    
+        $("#tblCustomerDetails").on('click', '.editclass', function () {
+            
+            $("#CustID").removeClass('field_error');
+            $("#CustName").removeClass('field_error');
+            $("#CustMobile").removeClass('field_error');
+            $("#CustEmail").removeClass('field_error');
+            $("#CustAddress").removeClass('field_error');
+            $("#spEmail").hide();
+            $("#Letlng").val("");
+            $('#CustLatitude').val();
+            $('#CustLongitude').val();
+            $("#CustID").val(t.row($(this).parent('td').parent('tr')).data()["CustID"]);
+            $("#CustName").val(t.row($(this).parent('td').parent('tr')).data()["CustName"]);
+            $('#CustMobile').val(t.row($(this).parent('td').parent('tr')).data()["CustMobile"]);
+            $('#CustEmail').val(t.row($(this).parent('td').parent('tr')).data()["CustEmail"]);
+            $('#CustAddress').val(t.row($(this).parent('td').parent('tr')).data()["CustAddress"]);
+            $('#CustLatitude').val(t.row($(this).parent('td').parent('tr')).data()["CustLatitude"]);
+            $('#CustLongitude').val(t.row($(this).parent('td').parent('tr')).data()["CustLongitude"]);
+            $('#Letlng').val($('#CustLatitude').val() + ',' + $('#CustLongitude').val());
+            $("#CustAddress").focus();
+            var pos;
+            var strpos = $('#Letlng').val();
+            if (strpos != "" && strpos != null) {
+                pos = Getposlatlng(strpos);
+                initMap(pos);
+            }
+            else {
+                // alert('Branch address should be on map.please set it.');
+                $("#CustAddress").focus();
+                
+                if (navigator.geolocation) {
+                    navigator.geolocation.getCurrentPosition(function (position) {
+                        pos = {
+                            lat: position.coords.latitude,
+                            lng: position.coords.longitude
+                        };
+                        initMap(pos);
+                        geocoder = new google.maps.Geocoder();
+                        Placeservice(pos, geocoder);
+                        $("#Letlng").val("(" + pos.lat + ", " + pos.lng + ")");
+                        //}, function () {
+                        //    pos = new google.maps.LatLng(parseFloat(23.0745648), parseFloat(72.52532870000005));
+                        //initMap(pos);
+                    });
+                } else {
+                    // Browser doesn't support Geolocation
+                    alert('Browser doesn\'t support Geolocation');
+                }
+            }
+            $(".editclass").attr("data-toggle", "modal");
+            $(".editclass").attr("data-target", "#frmpopup");
+            // $("#frmpopup").dialog("open");
+
+        });
+        });
+        $("#Add").on('click', function () {
+            frmClear();
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(function (position) {
+                    pos = {
+                        lat: position.coords.latitude,
+                        lng: position.coords.longitude
+                    };
+                    initMap(pos);
+                    geocoder = new google.maps.Geocoder();
+                    Placeservice(pos, geocoder);
+                    $("#CustLatitude").val(pos.lat);
+                    $("#CustLongitude").val(pos.lng);
+                    $("#Letlng").val("(" + pos.lat + ", " + pos.lng + ")");
+                });
+            } else {
+                alert('Browser doesn\'t support Geolocation');
+            }
+            $("#Add").attr("data-toggle", "modal");
+            $("#Add").attr("data-target", "#frmpopup");
+        });
+        function frmClear() {
+            $("#CustID").val(0);
+            $("#CustName").val("");
+            $("#CustName").attr("placeholder", "Enter Customer Name");
+            $("#CustMobile").val("");
+            $("#CustMobile").attr("placeholder", "Enter Customer Mobile");
+            $("#CustEmail").val("");
+            $("#CustEmail").attr("placeholder", "Enter Customer Email");
+            $("#CustAddress").val("");
+            $("#CustAddress").attr("placeholder", "Enter Customer Address");
+
+        }
+        $("#CustMobile").keypress(function (e) {
+            if (e.which != 8 && e.which != 0 && (e.which < 48 || e.which > 57)) {
+                return false;
+            }
+        });
+        function Getposlatlng(strlocation) {
+            var input = strlocation.replace('(', '').replace(')', '');
+            var latlngStr = input.split(',', 2);
+            var latlng = new google.maps.LatLng(parseFloat(latlngStr[0]), parseFloat(latlngStr[1]));
+            return latlng;
+        }
+
+        function initMap(vpos) {
+            
+            var directionsService = new google.maps.DirectionsService();
+            var directionsDisplay = new google.maps.DirectionsRenderer();
+            var map = new google.maps.Map(document.getElementById('map'), {
+                center: vpos,
+                zoom: 18,
+                mapTypeId: google.maps.MapTypeId.ROADMAP
+            });
+            geocoder = new google.maps.Geocoder();
+            directionsDisplay.setMap(map);
+            showsmarker(map, vpos, true);
+
+            map.addListener('mouseover', function () {                
+                window.setTimeout(function () {
+                    map.panTo(schoolmarker.getPosition());
+                }, 200);
+
+            });
+
+            map.addListener('click', function (event) {
+                pos = event.latLng;
+                schoolmarker.setVisible(false);
+                showsmarker(map, pos, true);
+                Placeservice(vpos, geocoder);
+            });
+
+            var input = document.getElementById('CustAddress');
+            var autocomplete = new google.maps.places.Autocomplete(input);
+            autocomplete.bindTo('bounds', map);
+
+            autocomplete.addListener('place_changed', function () {
+                schoolmarker.setVisible(false);
+                var place = autocomplete.getPlace();
+                if (!place.geometry) {
+                    window.alert("No details available for input: '" + place.name + "'");
+                    return;
+                }
+                showsmarker(map, place.geometry.location, true);                
+                $("#Letlng").val(place.geometry.location);
+                schoolmarker.setVisible(true);
+
+            });
+
+        }
+
+        function Placeservice(latlng, geocoder) {
+            var _placename = '';
+            geocoder.geocode({ 'location': latlng }, function (results, status) {
+                if (status === 'OK') {
+                    if (results[0]) {
+                        _placename = results[0].formatted_address;
+                        $("#CustAddress").val(_placename);
+                    } else {
+                        window.alert('No results found');
+
+                    }
+                } else {
+                    window.alert('Geocoder failed due to: ' + status);
+                }
+            });
+        }
+
+        function showsmarker(map, pos, isdraggable) {
+            schoolmarker = new google.maps.Marker({
+                position: pos,
+                map: map,
+                icon: iconBase + 'School.png',
+                draggable: isdraggable,
+                //title: "school"
+            });
+            schoolmarker.addListener('dragend', function () {
+                var _position = schoolmarker.getPosition();
+                Placeservice(_position, geocoder);
+                $("#Letlng").val(_position);
+                if (radiusCircle !== undefined) {
+                    radiusCircle.setMap(null);
+                }
+                //showsradius(map, _position, parseInt($('#BranchRadius').val()));
+            });
+            $("#Letlng").val(pos);
+            schoolmarker.setVisible(true);
+            //radiusCircle.remove();
+            if (radiusCircle !== undefined) {
+                radiusCircle.setMap(null);
+            }
+            //showsradius(map, pos, parseInt($('#BranchRadius').val()));
+            //Placeservice(pos, geocoder);
+        }
+        function showsradius(map, pos, radiusval) {
+            radiusCircle = new google.maps.Circle({
+                strokeColor: '#708090',
+                strokeOpacity: 0.8,
+                strokeWeight: 2,
+                fillColor: '#708090',
+                fillOpacity: 0.35,
+                map: map,
+                center: pos,
+                //radius: Math.sqrt(radiusval) * 100
+                radius: radiusval
+            })
+        }
+        $("#btnmainsubmit").click(function (event) {
+            event.stopPropagation();
+            event.preventDefault();
+            var el = $(this);
+            el.prop('disabled', true);
+            setTimeout(function () { el.prop('disabled', false); }, 3000);
+
+            if ($("#CustName").val() == "") {
+                $("#CustName").addClass('field_error');
+                $("#CustName").focus();
+                event.preventDefault();
+                return false;
+            }
+            else {
+                $("#CustName").removeClass('field_error');
+            }
+
+            if ($("#CustMobile").val() == "") {
+                $("#CustMobile").addClass('field_error');
+                $("#CustMobile").focus();
+                $("#spMNo").hide();
+                event.preventDefault();
+                return false;
+            }
+            else {
+                $("#CustMobile").removeClass('field_error');
+                if ($("#CustMobile").val().length != 10) {
+                    $("#CustMobile").addClass('field_error');
+                    $("#spMNo").html("required 10 digits, match requested format!").show();
+                    event.preventDefault();
+                    return false;
+                }
+                else {
+                    $("#MobileNo").removeClass('field_error');
+                    $("#spMNo").hide();
+
+                }
+            }
+
+            if ($("#CustEmail").val() != "") {
+                var filter = new RegExp(/^[_A-Za-z0-9-]+(\.[_A-Za-z0-9-]+)*@@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*(\.[A-Za-z]{2,4})$/);
+        if (!filter.test($("#CustEmail").val())) {
+            $("#spEmail").html("Please Enter Valid Email ID.").show();
+            return false;
+        }
+        else {
+            $("#spEmail").hide();
+        }
+    }
+
+        if ($("#CustAddress").val() == "") {
+            $("#CustAddress").addClass('field_error');
+            $("#CustAddress").focus();
+            event.preventDefault();
+            return false;
+        }
+    else {
+                $("#CustAddress").removeClass('field_error');
+    }
+
+    if ($('#Letlng').val() != "")
+    {
+        var _Letlng = $('#Letlng').val().split(",");
+        $("#CustLatitude").val(_Letlng[0].replace('(', ''));
+        $("#CustLongitude").val(_Letlng[1].replace(')', ''));
+    }
+
+    var obj = {
+        CustID: $('#CustID').val(),
+        CustName: $("#CustName").val(),
+        CustMobile: $("#CustMobile").val(),
+        CustEmail: $('#CustEmail').val(),
+        CustAddress: $('#CustAddress').val(),
+        CustLatitude: $("#CustLatitude").val(),
+        CustLongitude: $("#CustLongitude").val(),
+        CustLat: $('#Letlng').val(),
+    };
+
+    if ($('#CustID').val() == "0") {
+        $.ajax({
+            type: "POST",
+            headers: { 'Authorization': '@_tokan' },
+            url: '@_webapiurl' + 'Master/CustomerCreate',
+            data: JSON.stringify(obj),
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            success: function (response) {
+                if (response != null) {
+                    if (response.MegSts == 'ok') {
+                        $("<div class='alert alert-success overlay'><label>" + response.Meg + "</label></div>").insertBefore(".portlet-body").fadeOut(3000);
+                        $('#tblCustomerDetails').DataTable().ajax.reload();
+                        $('#frmpopup').modal('toggle');
+                    }
+                    else {
+                        $("<div class='alert alert-danger overlay'><label>" + response.Meg + "</label></div>").insertBefore(".portlet-body").fadeOut(3000);
+                        $('#tblCustomerDetails').DataTable().ajax.reload();
+                        $('#frmpopup').modal('toggle');
+                    }
+                } else {
+                    $("<div class='alert alert-danger overlay'><label>" + response.Meg + "</label></div>").insertBefore(".portlet-body").fadeOut(3000);
+                    $('#tblCustomerDetails').DataTable().ajax.reload();
+                    $('#frmpopup').modal('toggle');
+                }
+            },
+            error: function (response) {
+                if (response != null) {
+                    var obj = JSON.parse(response.responseText);
+                    if (obj.MegSts == 'error') {
+                        $("<div class='alert alert-danger overlay'><label>" + obj.Meg + "</label></div>").insertBefore(".portlet-body").fadeOut(3000);
+                        $('#tblCustomerDetails').DataTable().ajax.reload();
+                        $('#frmpopup').modal('toggle');
+                    }
+                }
+            }
+
+        });
+    }
+    else {
+        $.ajax({
+            type: "POST",
+            headers: { 'Authorization': '@_tokan' },
+            url: '@_webapiurl' + 'Master/CustomerUpdate',
+            data: JSON.stringify(obj),
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            success: function (response) {
+
+                if (response != null) {
+                    $("<div class='alert alert-success overlay'><label>" + response.Meg + "</label></div>").insertBefore(".portlet-body").fadeOut(3000);
+                    $('#tblCustomerDetails').DataTable().ajax.reload();
+                    $('#frmpopup').modal('toggle');
+                } else {
+                    $("<div class='alert alert-danger overlay'><label>" + response.Meg + "</label></div>").insertBefore(".portlet-body").fadeOut(3000);
+                    $('#tblCustomerDetails').DataTable().ajax.reload();
+                    $('#frmpopup').modal('toggle');
+                }
+            },
+            error: function (response) {
+                if (response != null) {
+                    var obj = JSON.parse(response.responseText);
+                    if (obj.MegSts == 'error') {
+                        $("<div class='alert alert-danger overlay'><label>" + obj.Meg + "</label></div>").insertBefore(".portlet-body").fadeOut(3000);
+                        $('#tblCustomerDetails').DataTable().ajax.reload();
+                        $('#frmpopup').modal('toggle');
+                    }
+                }
+            }
+        });
+    }
+    });
+    </script>

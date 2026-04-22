@@ -1,0 +1,2542 @@
+﻿@using System.Configuration;
+@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@{
+    ViewBag.Title = "OKRAssign";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+    string _webapiurlokr = ConfigurationManager.AppSettings["webapiurlokr"].ToString();
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _userid = HttpContext.Current.Session["UserId"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    int _companyid = 0;
+    int _branchid = 0;
+    if (_RoleId == 6805 || _RoleId == 6806 || _RoleId > 1)
+    {
+        _companyid = Convert.ToInt32(HttpContext.Current.Session["ClientCompanyId"].ToString());
+        _branchid = Convert.ToInt32(HttpContext.Current.Session["BranchId"].ToString());
+
+    }
+    string _isdateformat = HttpContext.Current.Session["IsDateFormat"].ToString();
+}
+
+<link href="/Newlayout/css/payrollstructure.css" rel="stylesheet">
+<script src="~/Scripts/Helpers/noDataHandler.js"></script>
+<style type="text/css">
+    #okrassigntbl thead tr:nth-child(2) th:nth-child(1) .search_input,
+    #okrassigntbl thead tr:nth-child(2) th:nth-child(1) i,
+    #okrassigntbl thead tr:nth-child(2) th:nth-last-child(-n+3) .search_input,
+    #okrassigntbl thead tr:nth-child(2) th:nth-last-child(-n+3) i {
+        display: none;
+    }
+
+    .search-dropdown {
+        width: 100%;
+        padding: 3px 3px 3px 6px;
+        box-sizing: border-box;
+        border: 1px solid #dddddd;
+        border-radius: 3px !important;
+        font-size: 12px;
+        font-weight: 300;
+        position: relative;
+    }
+
+    .modal-open { /* ap problem fix of modal */
+        overflow-y: auto !important;
+    }
+</style>
+
+<script type="text/javascript">
+    var table = "";
+    var emprole = '@_RoleId';
+    var flag = 0;
+    var $Companyselect = "";
+    var $Branchselect = "";
+    var $Departmentselect = "";
+    var CompIdlst = "";
+    var DeptIdlst = "";
+    var BranchIdlst = "";
+    var cmpid = '@_companyid';
+    var brnid = '@_branchid';
+    var selectedcompNames = [];
+    var selectedbrnname = [];
+    var selecteddeptnames = [];
+    var targetperiod = ["Please Select"];
+    var empidassign = "";
+    $(document).ready(function () {
+        targetperiod.push("Quarterly", "Monthly", "Yearly");
+        //$("#OKR_assigntbl").css('display', 'none');
+        $("#tblempty").hide();
+        $Companyselect = $("#CompanyID").multiselect({
+            selectAllValue: 'multiselect-all',
+            enableCaseInsensitiveFiltering: true,
+            includeSelectAllOption: true,
+            allSelectedText: 'All Select',
+            enableFiltering: true,
+            maxHeight: '300',
+            buttonWidth: '100%',
+            enableClickableOptGroups: true,
+            nonSelectedText: 'Select Company'
+
+        });
+        $Branchselect = $("#BranchIds").multiselect({
+            selectAllValue: 'multiselect-all',
+            enableCaseInsensitiveFiltering: true,
+            includeSelectAllOption: true,
+            allSelectedText: 'All Select',
+            enableFiltering: true,
+            maxHeight: '300',
+            buttonWidth: '100%',
+            enableClickableOptGroups: true,
+            nonSelectedText: 'Select Branch'
+
+        });
+        $Departmentselect = $("#DeptIds").multiselect({
+            selectAllValue: 'multiselect-all',
+            enableCaseInsensitiveFiltering: true,
+            includeSelectAllOption: true,
+            allSelectedText: 'All Select',
+            enableFiltering: true,
+            maxHeight: '300',
+            buttonWidth: '100%',
+            enableClickableOptGroups: true,
+            nonSelectedText: 'Select Department',
+
+        });
+        //$("#applied_filter").hide();
+        fillcompany();
+        if (emprole > 1 && emprole != 6805 && emprole != 6806 && emprole != 6000) {
+            // show the loader first
+            $(".loading").show();
+            setTimeout(function () {
+                fillBranchbycompnyid(cmpid, brnid);
+                fillDeptTable(brnid, '');
+                var dept = DeptIdlst.replace(/\s/g, '');
+                var obj = {
+                    "Userid": "@_userid",
+                    "Roleid": "@_RoleId",
+                    "Companyid": cmpid,
+                    "Branchid": brnid,
+                    "Departmentid": ''
+                }
+                $(".loading").show(); // Show loader
+                tableGet(obj);
+                $(".div_head_1").hide();
+                $('.attendance_selected_emp').html('<div class="selected_list">Selected Employee: <span id="selectedemp"></span></div><div class="selected_list_btn"><a href="javascript:;" class="btn add_btn margin-right-15" id="MulAssignOkr"> Assign OKR </a><a href="javascript:;" class="btn add_btn white_btn" id="MulClearBtn">Clear</a></div>');
+                $('div.tbl_text').html('<div class="dft_view">Default View</div>');
+                $(".loading").hide();
+            }, 0);//  loader
+        }
+        // assign text click event assigned employee show.
+        $(document).on('click', '.assign_text', function () {
+            var index = $(this).attr('id').replace('ass_text_', '');
+            var obj_id = $("#obj_chk_" + index).text().trim();
+            $("#obj_right").css('display', 'none');
+            GetAssignedemployee(obj_id, index);
+        });
+        // close button click the modal  div close of assign objectives.
+        $(document).on('click', '#assobjbtn', function () {
+            $("#ass_obj_block").css('display', 'none');
+            $("#obj_right").css('display', 'block');
+            $("#modal_Btn").css('visibility', 'visible');
+        });
+        GetObjective();
+        getobjectiveassign();
+        // click method of assign objective.
+        $(document).on('click', '#OpenModalAssign', function (e) {
+            clearModalContent();
+            e.preventDefault();
+            $('#Objective_modal').modal('show');
+            var rowData = table.row($(this).closest('tr')).data();
+            GetAssignObjectiveEmpwise(rowData["EmpID"]);
+            getKRdetailsEmpWise(rowData["EmpID"]);
+            empidassign = rowData["EmpID"];
+        });
+        // close function of the assignobjective datatable refresh
+        $(document).on('click', '#assign_obj_modal_lst', function (e) {
+            // Check if the DataTable instance exists before attempting to reload
+            if ($.fn.DataTable.isDataTable('#okrassigntbl')) {
+                $('#okrassigntbl').DataTable().ajax.reload();
+            } else {
+                // Handle the case where the DataTable instance is not initialized
+                console.error('DataTable instance not found or not initialized.');
+            }
+        });
+
+        $(document).on("input", "#search_assign_objective", function () {
+            var searchText = $(this).val().trim().toLowerCase(); // Trim and convert search text to lowercase
+
+            $('#ul_obj_assign_list #li_obj_assign_list').each(function (index) {
+                var listItemText = $(this).text().trim().toLowerCase(); // Trim and convert list item text to lowercase
+                // Check if the list item text contains the search text
+                if (listItemText.includes(searchText)) {
+                    var $checkbox = $(this).find('.objselect_assign');
+                    if (!$checkbox.prop('checked')) {
+                        // Remove the closest li element when checkbox is unchecked
+                        $(this).hide();
+                        var $okrAcc = $("#acc_box_assign_" + index);
+                        $okrAcc.hide();
+                    }
+                    else {
+                        $(this).show(); // Show the list item if it matches the search text
+                        var $okrAcc = $("#acc_box_assign_" + index);
+                        $okrAcc.show();
+                    }
+                } else {
+                    $(this).hide(); // Hide the list item if it does not match the search text
+                    var $okrAcc = $("#acc_box_assign_" + index);
+                    $okrAcc.hide();
+                }
+            });
+
+            // Show all list items if search input is empty
+            if (searchText === '') {
+                $('#ul_obj_assign_list li').show();
+                $('#ul_obj_assign_list #li_obj_assign_list').each(function (index) {
+                    var $checkbox = $(this).find('.objselect_assign');
+                    if (!$checkbox.prop('checked')) {
+                        // Remove the closest li element when checkbox is unchecked
+                        $(this).hide();
+                        var $okrAcc = $("#acc_box_assign_" + index);
+                        $okrAcc.hide();
+                    }
+                });
+            }
+        });
+
+        // Filtersearch click  filter hide/show
+        $("#Filter_search").click(function () {
+            const wrapper = $(".filter_portlet_wrapper");
+            wrapper.toggleClass("full-width");
+
+            var screenWidth = $(window).width();
+            if (screenWidth >= 300 && screenWidth <= 600) {
+                $('.filter_portlet_tbl').toggle();
+                $('.filter_portlet_wrapper .filter_boxModal').css('width', '100%');
+            }
+        });
+
+        // Close filter panel on close button click
+        $(".filterclose_btn").click(function () {
+            const wrapper = $(".filter_portlet_wrapper");
+            wrapper.addClass("full-width");
+
+            var screenWidth = $(window).width();
+            if (screenWidth >= 300 && screenWidth <= 600) {
+                $(".filter_portlet_tbl").css("display", "block");
+            }
+        });
+
+        // clear opertaion  dropdown
+        $("#clear_operation").click(function () {
+            $("#CompanyID").val('0');
+            $("#txt5").val('0');
+            $Companyselect.multiselect('rebuild');
+            $("#BranchIds").val('0');
+            $("#BranchIds option:selected").prop("selected", false);
+            $("#BranchIds").multiselect('refresh');
+            $("#BranchIds").empty();
+            $("#BranchIds").multiselect('disable');
+            //BranchIds
+            $("#txt2").val(0);
+            $("#DeptIds").val('0');
+            $("#DeptIds option:selected").prop("selected", false);
+            $("#DeptIds").multiselect('refresh');
+            $("#DeptIds").empty();
+            $("#DeptIds").multiselect('disable');
+            //departmentid
+            $("#txt3").val(0);
+        });
+
+
+        // OKR remove assign objective
+        $(document).on('click', '[id^="remove_assign_obj_"]', function () {
+            var index = $(this).attr("id").replace("remove_assign_obj_", "");
+            var objectiveid = $("#obj_chk_assign_" + index).text();
+            var IsActive = false;
+            var empid = empidassign;
+            $.ajax({
+                type: "POST",
+                headers: { 'Authorization': '@_tokan' },
+                url: '@_webapiurlokr' + 'Objectve/RemoveAssignObjective/' + objectiveid + '/' + IsActive + '/' + empid,
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                beforeSend: function () {
+                    $(".loading").show();
+                },
+                success: function (response) {
+                    if (response.success == true) {
+                         toastr.remove();
+                         toastr.success("Assigned objective removed sucessfully.");
+                        $('#Objective_modal').modal('show');
+                        setTimeout(function () {
+                            GetAssignObjectiveEmpwise(empid);
+                        }, 100);
+                    }
+                    if (response.success == false) {
+                        toastr.remove();
+                        toastr.error(response.message);
+                        $('#Objective_modal').modal('show');
+                    }
+                },
+                error: function () {
+                    $(".loading").hide();
+                },
+                complete: function () {
+                    $(".loading").hide();
+                }
+            });
+
+        });
+        //okr list assign click event
+
+        // click event of oke title collapse class and aria expanded
+        $(document).on('click', '[id^="okr_acc_assign_"]', function () {
+            var index = $(this).attr("id").replace("okr_acc_assign_", "");
+
+            // Check if the element has the class "in"
+            if ($("#okr_list_assign_col_" + index).hasClass('in')) {
+                // If it has the class, remove it and set aria-expanded to 'false'
+                $("#okr_list_assign_col_" + index).removeClass('in');
+                $("#okr_list_assign_col" + index).attr('aria-expanded', 'false');
+            } else {
+                // If it doesn't have the class, add it and set aria-expanded to 'true'
+                $("#okr_list_assign_col_" + index).addClass('in');
+                $("#okr_list_assign_col_" + index).attr('aria-expanded', 'true');
+            }
+        });
+        $("#btnapply").click(function (event) {
+            if ($("#CompanyID").val() == "" || $("#CompanyID").val() == null) {
+                toastr.remove();
+                toastr.error("Please  select company.");
+                event.preventDefault();
+                return false;
+            }
+            if ($("#BranchIds").val() == "" || $("#BranchIds").val() == null) {
+                toastr.remove();
+                toastr.error("Please  select branch.");
+                event.preventDefault();
+                return false;
+            }
+
+
+
+            $("#fltrSearchdrpEmpID").val(0);
+            $("#fltrSearchdrpDesg").val(0);
+            $("#fltrSearchdrpDesg").val(0);
+
+            if (emprole > 1 && emprole != 6805 && emprole != 6806 && emprole != 6000) {
+                var dept = DeptIdlst.replace(/\s/g, '');
+                var obj = {
+                    "Userid": "@_userid",
+                    "Roleid": "@_RoleId",
+                    "Companyid": cmpid,
+                    "Branchid": brnid,
+                    "Departmentid": dept
+                }
+            }
+            else {
+                var dept = DeptIdlst.replace(/\s/g, '');
+                var obj = {
+                    "Userid": "@_userid",
+                    "Roleid": "@_RoleId",
+                    "Companyid": CompIdlst,
+                    "Branchid": BranchIdlst,
+                    "Departmentid": dept
+                }
+            }
+            $(".loading").show();
+
+            setTimeout(function () {
+                // Create search inputs in footer ================
+                tableGet(obj);
+                $(".loading").hide();
+                $(".div_head_1").hide();
+                $('.attendance_selected_emp').html('<div class="selected_list">Selected Employee: <span id="selectedemp"></span></div><div class="selected_list_btn"><a href="javascript:;" class="btn add_btn margin-right-15" id="MulAssignOkr"> Assign OKR </a><a href="javascript:;" class="btn add_btn white_btn" id="MulClearBtn">Clear</a></div>');
+                $('div.tbl_text').html('<div class="dft_view">Default View</div>');
+                //$("#applied_filter").show();
+                $("#appl_com").text(selectedcompNames.join(', '));
+                $("#appl_brn").text(selectedbrnname.join(', '));
+                $("#appl_dept").text(selecteddeptnames.join(', '));
+            }, 10)
+        });
+        //by click div head 1 OKR modal open and close.
+            
+        $('body').on('click', '#MulAssignOkr', function () {
+            frmclearOKRassign();
+            $("#MulAssignOkr").attr("data-toggle", "modal");
+            $("#MulAssignOkr").attr("data-target", "#assign_okrModal");
+            getAssignobjective();
+            $(".assign_text span").text("0");
+            $("#lstcon").css('display', 'none');
+            $("#div_total_weightage").css('display', 'none');
+            $("#selectemployee").text($("#chkempall:checked").length);
+            flag = 1;
+        });
+
+        // if all  datatable rows click then  all check box clicked
+        $('#okrassigntbl tbody').on('change', 'input[type="checkbox"]', function () {
+            if ($('#okrassigntbl tbody input[type="checkbox"]:checked').length === table.rows().count()) {
+                // If all rows are selected, check the "select all" checkbox
+                $('#selectall').prop('checked', true);
+            } else {
+                // If not all rows are selected, uncheck the "select all" checkbox
+                $('#selectall').prop('checked', false);
+            }
+        });
+        //Save Assign Objective
+        $("#btnsave").click(function () {
+            SaveOKRASSign();
+        });
+        //employee id search fiilter
+        $(document).on('change', '#fltrSearchdrpEmpID', function () {
+            var empIDFilter = $(this).val(); // Using $(this) to refer to the element triggering the event
+
+            if (empIDFilter === '0') {
+                table.column(1).search('').draw();
+            } else {
+                table.column(1).search(empIDFilter).draw();
+            }
+        });
+        //designation serach filter
+
+        $(document).on('change', '#fltrSearchdrpDesg', function () {
+            var desgfltr = $('#fltrSearchdrpDesg').val();
+            // If "All" is selected, clear the designation filter
+            if (desgfltr === '0') {
+                table.column(3).search('').draw();
+            } else {
+                // Otherwise, perform the search based on the selected value
+                table.column(3).search(desgfltr).draw();
+            }
+        });
+
+        $(document).on('change', '#fltrSearchdrpObjective', function () {
+            var objfltr = $('#fltrSearchdrpObjective').val();
+            if (objfltr === '0') {
+                table.column(4).search('').draw();
+            }
+            else {
+                table.column(4).search(objfltr).draw();
+            }
+        });
+
+        // Apply the Search ================
+        $("#okrassigntbl thead").on("keyup", "input", function () {
+            var columnIndex = $(this).closest('th').index();
+            table.column(columnIndex).search(this.value).draw();
+        });
+
+        // Modal Open Close Code ================
+        $("#okrassigntbl").on('click', '.assign_okr', function () {
+            var rowData = table.row($(this).closest('tr')).data();
+            GetObjectiveEmpwise(rowData["EmpID"]);
+            getAssignobjective();
+            $(".assign_text span").text("0");
+            $("#Empname").val(rowData["Empname"]);
+            $("#EmpID").val(rowData["EmpID"]);
+            $("#Designationid").val(rowData["Designationid"]);
+            frmclearOKRassign();
+            $(".assign_okr").attr("data-toggle", "modal");
+            $(".assign_okr").attr("data-target", "#assign_okrModal"); 
+            $("#lstcon").css('display', 'none');
+            $(".accordion_box_main").css('display', 'none');
+            $("#div_total_weightage").css('display', 'none');
+            $("#selectemployee").text(1);
+            var anyCheckboxChecked = $(".objselect:checked").length > 0;
+            var objData = $("#obj_img_data");
+            if (anyCheckboxChecked) {
+                objData.hide();
+            } else {
+                objData.css("display", "flex");
+            }
+            flag = 0;
+        });
+        // check box objective checked.
+        $("body").on('change', ".objselect", function () {
+            $("#obj_img_data").css('display', 'none');
+            // Hide all data inside "accordion_box_main"
+            $(".accordion_box_main").hide();
+            $("#lstcon").show();
+            $("#div_total_weightage").show();
+            // Loop through all elements with class "objselect"
+            $(".objselect").each(function () {
+                var isChecked = $(this).prop('checked');
+                var $objData = $(this).closest('.objselect');
+                var objDataId = $objData.attr('id').replace('obj_select_', "");
+                var $okrAcc = $("#acc_box_" + objDataId);
+                var initialTotalWeightage = parseFloat($("#ttlweightage").text()) || 0;
+                if (initialTotalWeightage > 100) {
+                    $("#obj_select_" + objDataId).prop('checked', false);
+                }
+                if (isChecked) {
+                    $okrAcc.css('display', 'block');
+                } else {
+                    $okrAcc.css('display', 'none');
+                }
+            });
+        });
+        // By clicking clear Button.
+        $('body').on('click', '#MulClearBtn', function () {
+            $(".Selectallemp").prop('checked', false);
+            $("#selectall").prop('checked', false);
+            $("#selectedemp").text('0'); // Update the text to '0'
+            $(".div_head_1").css('display', 'none'); // Hide the element with ID 'div_head_1'
+            $(".div_head_2").css('display', 'block'); // Show the element with ID 'div_head_2'
+            $('.assign_okr').prop('disabled', false);
+        });
+        // All check box checked.
+        $(document).on("change", "#selectall", function () {
+            if ($(this).is(":checked")) {
+                var numberOfCheckedCheckboxes = 0;
+                $("#okrassigntbl #chkempall").each(function () {
+                    $(this).prop('checked', true);
+                    $('.assign_okr').prop('disabled', true);
+                    numberOfCheckedCheckboxes++;
+                });
+                if (emprole == 1 || emprole == 6805 || emprole == 6806) {
+                    $(".div_head_1").hide();
+                }
+                else {
+                    if (numberOfCheckedCheckboxes > 1)
+                    {
+                        $(".div_head_1").show();
+                    }
+                }
+                $(".div_head_2").hide();
+                $("#selectedemp").html(numberOfCheckedCheckboxes);
+            } else {
+                $("#okrassigntbl .ClsChkEmp").each(function () {
+                    $(this).prop('checked', false);
+                    if (emprole == 1 || emprole == 6805 || emprole == 6806) {
+                        $('.assign_okr').prop('disabled', true);
+                    }
+                    else {
+                        $('.assign_okr').prop('disabled', false);
+                    }
+                });
+                $(".div_head_2").show();
+                $(".div_head_1").hide();
+            }
+        });
+        //by clicking checkbox the div_head_1 head show.
+        $('#okrassigntbl').on('change', '#chkempall', function () {
+            if ($('#chkempall:checked').length > 1) {
+                if (emprole == 1 || emprole == 6805 || emprole == 6806) {
+                    $(".div_head_1").hide();
+                }
+                else {
+
+                    $(".div_head_1").show();
+                }
+                $(".div_head_2").hide();
+                $("#selectedemp").html($('#chkempall:checked').length);
+                $("#okrassigntbl #chkempall").each(function () {
+                    $('.assign_okr').prop('disabled', true);
+                });
+            } else {
+                $(".div_head_2").show();
+                $(".div_head_1").hide();
+            }
+        });
+        // on clicking remove fileds.
+        $("body").on('click', "a[title='Remove fields']", function () {
+            var id = $(this).closest('[id^="okr_acc_"]').attr('id').replace('okr_acc_', ''); // Get the closest parent element with an ID starting with "okr_acc_"
+            if (id) {
+                var objWeightageField = $("#obj_weightage_" + id);
+                var weightageValue = parseFloat(objWeightageField.val()) || 0;
+                $("#acc_box_" + id).hide(); // Remove the element with the dynamic ID accordation box
+                $("#obj_select_" + id).prop('checked', false);
+                var totalWeightage = parseFloat($("#ttlweightage").text()) || 0;
+                totalWeightage -= weightageValue;
+                $("#ttlweightage").text(totalWeightage === 0 ? "00" : totalWeightage);
+                // Clear the value of the input field
+                objWeightageField.val('');
+            }
+            else {
+                $("#acc_box_" + id).show();
+                $("#obj_select_" + id).prop('checked', true);
+            }
+            var numChecked = $(".objselect:checked").length;
+
+            if (numChecked === 0) {
+                // No checkboxes are checked, so show the image with class "img_obj"
+                $("#obj_img_data").css('display', 'flex');
+                $("#lstcon").css('display', 'none');
+                $("#div_total_weightage").css('display', 'none');
+                $("#ttlweightage").text("00");
+                $("[id^='obj_weightage_']").val("");
+            } else {
+                // At least one checkbox is checked, so hide the image with class "img_obj"
+                $("#obj_img_data").css('display', 'none');
+                $("#lstcon").css('display', 'block');
+                $("#div_total_weightage").css('display', 'flex');
+            }
+        });
+
+        //weightage numeric key input.
+        $(document).on("keypress", "[id^='obj_weightage_']", function (e) {
+            var keyCode = e.which;
+            // Allow only numeric keys (0-9) and some special keys (e.g., backspace, delete, left, right, etc.)
+            if (keyCode < 48 || keyCode > 57) {
+                // Prevent the input if it's not a numeric key
+                e.preventDefault();
+            }
+        });
+        //$("body").on('change', "[id^='obj_weightage_']", function () {
+        //    calculateTotalWeightage();
+        //});
+
+        //backbtn click
+        $("#Btnback").click(function () {
+            $("#assignedokr_Modal").modal('hide');
+        });
+        // btnsave preview click function
+        $("#btnsavepreview").click(function () {
+            savemultiplepreview();
+        });
+        // weightage 0 to 100.
+        $(document).on("input", "[id^='obj_weightage_']", function (e) {
+            var value = $(this).val();
+
+            // Remove any non-numeric characters and convert to a number
+            var floatValue = parseFloat(value);
+
+            // Constrain the value to be between 0 and 100
+            if (isNaN(floatValue) || floatValue <= 0 || floatValue > 100) {
+                $(this).val(''); // Set the input field to blank
+            } else {
+                // Update the input field with the constrained value
+                $(this).val(floatValue);
+            }
+        });
+        // Btnreset click
+
+        $("#btnReset").on('click', function () {
+            $("#lstcon").css('display', 'none');
+            $("#div_total_weightage").css('display', 'none');
+            frmclearOKRassign();
+        });
+        // company id change event
+        $('#CompanyID').change(function () {
+            var s = $('#CompanyID').val();
+            $('#CompanyName').val($("#CompanyID option:selected").text());
+            fillBranchbycompnyid(s, "");
+            $("#DeptIds").empty();
+            $Departmentselect.multiselect('rebuild');
+            var branid = $('#CompanyID option:selected');
+            var CompanyArray = [];
+            $(branid).each(function (index, branid) {
+                CompanyArray.push([$(this).val()]);
+            });
+            if (CompanyArray == "") {
+                $("#txt5").val(0);
+            }
+            else {
+                $("#txt5").val(CompanyArray);
+            }
+            var Arrbranch = $("#txt5").val();
+            CompIdlst = Arrbranch;
+
+            $('#CompanyID option:selected').each(function () {
+                selectedcompNames.push($(this).text()); // Add selected names to the array
+            });
+        });
+        $('#BranchIds').change(function () {
+            $("#spvalidation").hide();
+            var s = $('#BranchIds').val();
+            $('#BranchName').val($('#BranchIds :selected').text());
+            fillDeptTable(s, "");
+            // Loop through the selected values and find their corresponding names
+            $('#BranchIds option:selected').each(function () {
+                selectedbrnname.push($(this).text()); // Add selected names to the array
+            });
+        });
+
+    });
+    //function to fill the Employee code dropdown.
+    function FillEmployeeID(obj) {
+        $.ajax({
+            type: "POST",
+            headers: { 'Authorization': '@_tokan' }, // Ensure that @_tokan holds a valid token
+            url: '@_webapiurlokr' + 'Objectve/GetAssignListDetails', // Ensure that @_webapiurlokr holds a valid URL
+            data: JSON.stringify(obj),
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            async: false,
+            beforeSend: function () {
+                $(".loading").show();
+            },
+            success: function (data) {
+                // Here, use 'data' instead of 'response'
+                if (data.isRedirect) {
+                    window.location.href = data.redirectUrl;
+                }
+                if (data && data.length > 0) {
+                    var selectElement = $('#fltrSearchdrpEmpID');
+
+                    var uniqueEmployee = new Set();
+                    for (var i = 0; i < data.length; i++) {
+                        // Add options to the select element
+                        uniqueEmployee.add(data[i].EmpCode);
+                    }
+                    selectElement.empty(); // Clear existing options
+
+                    selectElement.append("<option value='0' selected>All</option>");
+
+                    uniqueEmployee.forEach(function (EmpCode) {
+                        selectElement.append("<option value='" + EmpCode + "'>" + EmpCode + "</option>");
+                    });
+                }
+            },
+            error: function () {
+                $(".loading").hide();
+                // Handle errors appropriately
+            },
+            complete: function () {
+                $(".loading").hide();
+            }
+        });
+    }
+    // function to fill drp the designation .
+    function FillDesg(obj) {
+        $.ajax({
+            type: "POST",
+            headers: { 'Authorization': '@_tokan' }, // Ensure that @_tokan holds a valid token
+            url: '@_webapiurlokr' + 'Objectve/GetAssignListDetails', // Ensure that @_webapiurlokr holds a valid URL
+            data: JSON.stringify(obj),
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            async: false,
+            beforeSend: function () {
+                $(".loading").show();
+            },
+            success: function (response) {
+                if (response.isRedirect) {
+                    window.location.href = response.redirectUrl;
+                }
+                if (response && response.length > 0) {
+                    var selectElement = $('#fltrSearchdrpDesg');
+
+                    var uniqueDesignations = new Set();
+                    for (var i = 0; i < response.length; i++) {
+                        if (response[i].DesignationName !== null && response[i].DesignationName !== undefined && response[i].DesignationName !== "") {
+                            // Add options to the select element
+                            uniqueDesignations.add(response[i].DesignationName);
+                        }
+                    }
+                    selectElement.empty(); // Clear existing options
+                    // Add unique options to the select element
+                    selectElement.append("<option value='0' selected>All</option>");
+                    uniqueDesignations.forEach(function (designation) {
+                        selectElement.append("<option value='" + designation + "'>" + designation + "</option>");
+                    });
+                }
+            },
+            error: function () {
+                $(".loading").hide();
+            },
+            complete: function () {
+                $(".loading").hide();
+            }
+        });
+    }
+    // Dropdown function fill objectives.
+    function Fillobjective(obj) {
+        $.ajax({
+            type: "POST",
+            headers: { 'Authorization': '@_tokan' }, // Ensure that @_tokan holds a valid token
+            url: '@_webapiurlokr' + 'Objectve/GetAssignListDetails', // Ensure that @_webapiurlokr holds a valid URL
+            data: JSON.stringify(obj),
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            async: false,
+            beforeSend: function () {
+                $(".loading").show();
+            },
+            success: function (response) {
+                if (response.isRedirect) {
+                    window.location.href = response.redirectUrl;
+                }
+                if (response && response.length > 0) {
+                    var selectElement = $('#fltrSearchdrpObjective');
+                    selectElement.empty(); // Clear existing options
+                    selectElement.append("<option value='0' selected>All</option>");
+                    var uniqueObjectives = {}; // Object to store unique Assignobjectives
+                    for (var i = 0; i < response.length; i++) {
+                        if (response[i].Assignobjective !== 0 && !uniqueObjectives[response[i].Assignobjective] && response[i].Assignobjective != null) {
+                            // Add options to the select element if it's not already present
+                            uniqueObjectives[response[i].Assignobjective] = true;
+                            selectElement.append("<option value='" + response[i].Assignobjective + "'>" + response[i].Assignobjective + "</option>");
+                        }
+                    }
+                    selectElement.append("<option value = 'NIL' >NIL</option>")
+                }
+            },
+            error: function () {
+                $(".loading").hide();
+            },
+            complete: function () {
+                $(".loading").hide();
+            }
+        });
+    }
+    // Function to get the objectives.
+    function GetObjective() {
+        debugger;
+        $.ajax({
+            type: "GET",
+            headers: { 'Authorization': '@_tokan' },
+            url: '@_webapiurlokr' + 'Objectve/GetObjectveList/' + '@_userid' + '/' + '@_RoleId' + '/' + '@_companyid' + '/' + '@_branchid' + '/0',
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            beforeSend: function () {
+                $(".loading").show();
+            },
+            success: function (response) {
+                // Create the left part of the structure
+                var selectobjBlockLeft = $('<div class="selectobj_block_left" id="select_obj_left"><p class="ttl">Step 1 - Select Objective</p><div class="obj_data" id="objective_data"></div></div>');
+                var objData = selectobjBlockLeft.find("#objective_data");
+                var ulElement = $('<ul></ul>');
+                response.Table.forEach(function (item, index) {
+                    // Count the Kr details
+                    var relatedKrItems = response.Table1.filter(function (krItem) {
+                        return item.objective_id === krItem.krObjectiveId;
+                    });
+
+                    relatedKrItems = relatedKrItems.map(function (krItem) {
+                        return {
+                            BranchID: krItem.BranchID,
+                            CompanyID: krItem.CompanyID,
+                            KrDescription: krItem.KrDescription,
+                            Krreviewdby: krItem.Krreviewdby,
+                            krFieldby: krItem.krFieldby,
+                            krKeyResult: krItem.krKeyResult,
+                            krObjectiveId: krItem.krObjectiveId,
+                            krWeightage: krItem.krWeightage,
+                            krid: krItem.krid,
+                            StartDate: moment(krItem.StartDate, ['MM-DD-YYYY', 'YYYY-MM-DD', 'DD-MM-YYYY', 'DD-MMM-YYYY', 'MMM-DD-YYYY', 'YYYY-MMM-DD']).format('YYYY-MM-DD'),
+                            EndDate: moment(krItem.EndDate, ['MM-DD-YYYY', 'YYYY-MM-DD', 'DD-MM-YYYY', 'DD-MMM-YYYY', 'MMM-DD-YYYY', 'YYYY-MMM-DD']).format('YYYY-MM-DD')
+                        };
+                    });
+
+                    var krCount = relatedKrItems.length;
+
+                    var totalWeightage = relatedKrItems.reduce(function (total, krItem) {
+                        return total + parseInt(krItem.krWeightage);
+                    }, 0);
+
+                    var minStartDate = new Date(Math.min.apply(null, relatedKrItems.map(function (krItem) {
+                        return new Date(krItem.StartDate);
+                    })));
+
+                    var maxEndDate = new Date(Math.max.apply(null, relatedKrItems.map(function (krItem) {
+                        return new Date(krItem.EndDate);
+                    })));
+
+
+                    var currentDate = new Date();
+
+                    if (maxEndDate < currentDate) {
+                        return;
+                    }
+                    //Check conddition if the Kr element 2 define and its weightage is > 100
+                    if (krCount >= 2 && totalWeightage >= 100 && maxEndDate >= currentDate) {
+                        // Create and append each objective to objData
+                        var objectiveItem = $('<li><label><input type="checkbox" class="chkall ClsChkEmp objselect" value="' + item.objective_id + '" id="obj_select_' + index + '">' + item.Title + '</label><span id="obj_chk_' + index + '" hidden>' + item.objective_id + '</span><a href="javascript:;" class="assign_text" id="ass_text_' + index + '">Assigned: <span id="Assobjecive_' + index + '"></span></a></li>');
+                        ulElement.append(objectiveItem);
+                    }
+                });
+                objData.append(ulElement);
+                // Create the right part of the structure
+                var selectobjBlockRight = $('<div class="selectobj_block_right" id="obj_right"><div class="d-flex align-items-center justify-content-between margin-bottom-10"> <p class="ttl">Step2 - Give Weightage for Objective</p> </div><div class="obj_data img_obj" id="obj_img_data" style="display: none"><img src="/assets/images/nodata_block.png" alt="No Data Icon" width="162" height="161" class=""><p class="obj_note">Not Selected any objective</p></div><div class="list-content" id="lstcon"><div class="step2_dataheader"> <div class="row"> <div class="col-lg-9">Objective</div> <div class="col-lg-3">Weightage</div> </div> </div></div></div>');
+
+                var listContent = selectobjBlockRight.find("#lstcon");
+                if (response.Table && response.Table.length > 0) {
+                    response.Table.forEach(function (item, index) {
+                        // Create the list of objectives with key results
+                        var objectiveDiv = $('<div class="accordion_box_main" id ="acc_box_' + index + '"><div class="accordian-header okr_acc_header" id="okr_acc_' + index + '"><div><a href="#okr_list_' + index + '" class="acc_ttl" data-toggle="collapse" aria-expanded="false" aria-controls="okr_list_' + index + '"><span id="obj_id_' + index + '" hidden>' + item.objective_id + '</span><img src="/assets/images/icon_objective.svg" alt="objective icon" width="18" height="18" />' + item.Title + '<i class="fa-solid fa-chevron-down arrow_down"></i></a></div><div class="d-flex align-items-center margin-right-10 w-100px"><input type="text" class="form-control input-sm margin-right-5" name="obj_weightage" id="obj_weightage_' + index + '" placeholder="Enter"><a href="javascript:void(0)" title="Remove fields"><img src="/assets/images/close_icon.svg" alt="Close icon" /></a></div></div><div class="collapse" id="okr_list_' + index + '"></div></div>');
+                        var okrList = objectiveDiv.find(".collapse");
+
+                        response.Table1.forEach(function (krItem, KrIndex) {
+                            if (item.objective_id == krItem.krObjectiveId) {
+                                // Create and append each key result to the corresponding objective
+                                 var keyResult = $('<div class="no_bd_radius"><div class="portlet-body"><div class="okr_acc_body"><div class="okr_body_ttl"><img src="/assets/images/icon_kr.svg" alt="objective icon" width="13" height="14" />' + krItem.krKeyResult + '</div><div class="d-flex align-items-center"><div class="okr_acc_based">Weightage: ' + krItem.krWeightage + '</div><div class="okr_acc_date_1">' + krItem.StartDate + '</div><div class="okr_acc_date_1">' + krItem.EndDate + '</div></div></div></div></div>');
+                                okrList.append(keyResult);
+                            }
+                        });
+
+                        listContent.append(objectiveDiv);
+                    });
+                }
+                else {
+                    var objData = selectobjBlockRight.find("#obj_img_data");
+                    objData.css("display", "flex");
+                }
+                // Set the total weightage
+                //selectobjBlockRight.append('<div class="step3_effected d-flex align-items-center justify-content-between"> <p class="ttl">Step3 - Effected From</p> <div> <div class="form-group margin-bottom-0"> <select class="form-control input-sm" data-val="true" id="Effectedfrom" name="Effectedfrom"></select></div> </div> </div>');
+
+                // Append both left and right blocks to the target container
+                $("#obj_assigned_block").append(selectobjBlockLeft);
+                $("#obj_assigned_block").append(selectobjBlockRight);
+
+                // Call the function to bind the "Effected From" dropdown
+               // bindEffectedFromDropdown();
+
+
+            },
+            error: function (xhr, ajaxOptions, thrownError) {
+                // Handle error here
+                $(".loading").hide();
+            },
+            complete: function () {
+                $(".loading").hide();
+            }
+        });
+    }
+    // Function to bind the "Effected From" dropdown
+    //function bindEffectedFromDropdown() {
+    //    // Get the current date
+    //    var currentDate = new Date();
+    //    var currentMonth = currentDate.getMonth(); // Get current month (0-11)
+
+    //    for (var i = 0; i < 4; i++) {
+    //        var nextMonth = currentMonth + i;
+    //        var nextYear = currentDate.getFullYear();
+
+    //        // Adjust year if next month exceeds December
+    //        if (nextMonth >= 12) {
+    //            nextMonth -= 12;
+    //            nextYear++;
+    //        }
+
+    //        // Create a new date for the next month
+    //        var nextMonthDate = new Date(nextYear, nextMonth, 1);
+
+    //        var formattedDate;
+
+    //        // Check if the current month is the month being iterated
+    //        if (i === 0 && currentMonth === nextMonth) {
+    //            var currentDay = ('0' + currentDate.getDate()).slice(-2); // Get current day with leading zero if necessary
+    //            formattedDate = nextYear + '-' + ('0' + (nextMonth + 1)).slice(-2) + '-' + currentDay;
+    //        } else {
+    //            formattedDate = nextYear + '-' + ('0' + (nextMonth + 1)).slice(-2) + '-01'; // First day of the month
+    //        }
+
+    //        // Create an option element
+    //        var option = $('<option>', {
+    //            value: formattedDate, // Set the date as value (first day of the month)
+    //            text: GetMonthFullName(nextMonth) + ' ' + nextYear
+    //        });
+    //        $("#Effectedfrom").append(option);
+    //    }
+    //}
+    // Remove fileds okr assign
+    function frmclearOKRassign() {
+        var firstValue = $('#Effectedfrom option:first').val();
+        $('#Effectedfrom').val(firstValue);
+        $(".objselect").prop("checked", false);
+        $("#ass_obj_block").css('display', 'none');
+        $("#lstcon_ass").css('display', 'none');
+        $("#obj_right").css('display', 'block');
+        $(".img_obj").css('display', 'flex');
+        $("[id^='obj_chk_']").closest('li').show();
+        $("[id^='obj_weightage_']").val("");
+        $("#ttlweightage").text("00");
+        $("#modal_Btn").css('visibility', 'visible');
+    }
+    // Calculate teh toatal weightage of objectives.
+    //function calculateTotalWeightage() {
+    //    var totalWeightage = 0;
+    //    $("[id^='obj_weightage_']").each(function () {
+    //        var value = parseFloat($(this).val()) || 0; // Convert the value to a float
+    //        totalWeightage += value;
+    //    });
+    //    // Update the total weightage display
+    //    $("#ttlweightage").text(totalWeightage);
+    //}
+    function savemultiplepreview() {
+        var obj = [];
+        $("#okrassigntbl #chkempall:checked").each(function () {
+            var row = $(this).closest('tr');
+            var EmpID = $(this).val(); // Value of the EmpID
+            var empName = row.find('td:eq(2) p').text().trim(); // Text within the <p> element in the third td EmpName
+            var designationID = table.cell({
+                row: row.index(),
+                column: 6 // 6th column index (0-based) with "visible: false"
+            }).data();
+
+            // Retrieve objective IDs and their weightages
+            var objIds = [];
+            var weightageStrings = [];
+
+            // Iterate over weightage inputs and objective IDs
+            $(".accordian-header input[name='obj_weightage']").each(function () {
+                var weightageValue = $(this).val();
+                if (weightageValue) {
+                    weightageStrings.push(weightageValue);
+
+                    // Extract the associated objective ID from the same accordion
+                    var $parentAccordion = $(this).closest(".accordion_box_main");
+                    if ($parentAccordion.css("display") === "block") {
+                        var objectiveId = $parentAccordion.find("span[id^='obj_id_']").text().trim();
+                        objIds.push(objectiveId);
+                    }
+                }
+            });
+
+            // Create data objects for each combination of objective ID and weightage
+            for (var i = 0; i < objIds.length; i++) {
+                var designationIdValue = $("#Designationid").val();
+                var parsedDesignationId = !isNaN(parseInt(designationIdValue)) && designationIdValue !== undefined ? parseInt(designationIdValue) : 0;
+                var data = {
+                    "EmpID": EmpID,
+                    "EmpName": empName,
+                    "Designationid": parsedDesignationId,
+                    "Assignobjective": weightageStrings[i],
+                    "ObjectiveId": objIds[i],
+                    "IsActive" : true
+                };
+                // Add the data object to the obj array
+                obj.push(data);
+            }
+        });
+        $.ajax({
+            type: "POST",
+            headers: { 'Authorization': '@_tokan' },
+            url: '@_webapiurlokr' + 'Objectve/SaveOKRAssign',
+            data: JSON.stringify(obj),
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            beforeSend: function () {
+                $(".loading").show();
+            },
+            success: function (response) {
+                var successCount = 0;
+                var failCount = 0;
+                var successMessages = [];
+                var failMessages = [];
+
+                for (var i = 0; i < response.length; i++) {
+                    var currentResponse = response[i];
+                    if (currentResponse.responseCode === 201) {
+                        successCount++;
+                        successMessages.push(currentResponse.message);
+                    } else if (currentResponse.responseCode === 210) {
+                        failCount++;
+                        failMessages.push("OKR Assign already exists.");
+                    } else if (currentResponse.responseCode === 212) {
+                        failCount++;
+                        failMessages.push("Total weightage shouldn't exceed 100.");
+                    }
+                    else if (currentResponse.responseCode === 213) {
+                        failCount++;
+                        failMessages.push("You can assign objectives to a maximum of 10 employees. No further assignments are allowed.");
+                    }
+                    else {
+                        failCount++;
+                        failMessages.push("Error occurred while creating OKR assign.");
+                    }
+                }
+
+                toastr.remove();
+
+                if (successCount > 0 && failCount === 0) {
+                    // All successful uploads
+                    toastr.success(" Successfully assigned " + successCount + " objectives.");
+                } else if (failCount > 0 && successCount === 0 && currentResponse.responseCode === 210) {
+                    // All failed uploads
+                    toastr.error("OKR Assign already exists.");
+                }
+                else if (failCount > 0 && successCount === 0 && currentResponse.responseCode === 212) {
+                    // All failed uploads
+                    toastr.error("Total weightage shouldn't exceed 100.");
+                }
+                else if (failCount > 0 && successCount === 0 && currentResponse.responseCode === 213) {
+                    // All failed uploads
+                    toastr.error("You can assign objectives to a maximum of 10 employees. No further assignments are allowed.");
+                }
+                else if (successCount >= 1 && failCount >= 1) {
+                    toastr.success(" Successfully assigned " + successCount + " objectives." + "    " + failCount + " Error occurred while creating OKR assign.");
+                } else {
+                    // Mixed results or single upload
+                    if (successCount > 0) {
+                        toastr.success("Successfully assigned " + successCount + " objectives.");
+                    }
+                    if (failCount > 0) {
+                        toastr.error(failCount + " Error occurred while creating OKR assign.");
+                    }
+                }
+                $('#assign_okrModal').modal('hide');
+                $('#assignedokr_Modal').modal('hide');
+                $('#okrassigntbl').DataTable().ajax.reload();
+                Fillobjectivedrp();
+                $(".div_head_1").css('display', 'none'); // Hide the element with ID 'div_head_1'
+                $(".div_head_2").css('display', 'block'); // Show the element with ID 'div_head_2'
+                $("#selectall").prop('checked', false);
+                //if (response.success == true) {
+                //    toastr.remove();
+                //    toastr.success("Successfully assigned objectives.");
+                //    // Add a slight delay before closing the modals
+                //    setTimeout(function () {
+                //        $('#assign_okrModal').modal('toggle');
+                //        $('#assignedokr_Modal').modal('toggle');
+                //        $('#okrassigntbl').DataTable().ajax.reload();
+                //        $("#selectall").prop('checked', false);
+                //        Fillobjectivedrp();
+                //        $(".div_head_1").css('display', 'none'); // Hide the element with ID 'div_head_1'
+                //        $(".div_head_2").css('display', 'block'); // Show the element with ID 'div_head_2'
+                //    }, 10); // Adjust the delay time (in milliseconds) as needed
+
+                //}
+                //else if (response.success == false) {
+                //    toastr.remove();
+                //    toastr.error(response.message);
+                //    setTimeout(function () {
+                //        $('#assign_okrModal').modal('toggle');
+                //        $('#assignedokr_Modal').modal('toggle');
+                //        $('#okrassigntbl').DataTable().ajax.reload();
+                //        $("#selectall").prop('checked', false);
+                //        $(".div_head_1").css('display', 'none'); // Hide the element with ID 'div_head_1'
+                //        $(".div_head_2").css('display', 'block'); // Show the element with ID 'div_head_2'
+                //    }, 10); // Adjust the delay time (in milliseconds) as needed
+
+                //}
+            },
+            error: function () {
+                $(".loading").hide();
+            },
+            complete: function () {
+                $(".loading").hide();
+            }
+        });
+
+    }
+    function saveOKRassigndata() {
+        var obj = [];
+        $("#okrassigntbl #chkempall:checked").each(function () {
+            var row = $(this).closest('tr');
+            var EmpID = $(this).val(); // Value of the EmpID
+            var empName = row.find('td:eq(2) p').text().trim(); // Text within the <p> element in the third td EmpName
+            var designationID = table.cell({
+                row: row.index(),
+                column: 6 // 6th column index (0-based) with "visible: false"
+            }).data();
+
+            // Retrieve objective IDs and their weightages
+            var objIds = [];
+            var weightageStrings = [];
+
+            // Iterate over weightage inputs and objective IDs
+            $(".accordian-header input[name='obj_weightage']").each(function () {
+                var weightageValue = $(this).val();
+                if (weightageValue) {
+                    weightageStrings.push(weightageValue);
+
+                    // Extract the associated objective ID from the same accordion
+                    var $parentAccordion = $(this).closest(".accordion_box_main");
+                    if ($parentAccordion.css("display") === "block") {
+                        var objectiveId = $parentAccordion.find("span[id^='obj_id_']").text().trim();
+                        objIds.push(objectiveId);
+                    }
+                }
+            });
+
+            // Create data objects for each combination of objective ID and weightage
+            for (var i = 0; i < objIds.length; i++) {
+                var designationIdValue = $("#Designationid").val();
+                var parsedDesignationId = !isNaN(parseInt(designationIdValue)) && designationIdValue !== undefined ? parseInt(designationIdValue) : 0;
+                var data = {
+                    "EmpID": EmpID,
+                    "EmpName": empName,
+                    "Designationid": parsedDesignationId,
+                    "Assignobjective": weightageStrings[i],
+                    "ObjectiveId": objIds[i],
+                    "Isactive": true
+
+                };
+                // Add the data object to the obj array
+                obj.push(data);
+            }
+        });
+        $.ajax({
+            type: "POST",
+            headers: { 'Authorization': '@_tokan' },
+            url: '@_webapiurlokr' + 'Objectve/SaveOKRAssign',
+            data: JSON.stringify(obj),
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            beforeSend: function () {
+                $(".loading").show();
+            },
+            success: function (response) {
+                var successCount = 0;
+                var failCount = 0;
+                var successMessages = [];
+                var failMessages = [];
+
+                for (var i = 0; i < response.length; i++) {
+                    var currentResponse = response[i];
+                    if (currentResponse.responseCode === 201) {
+                        successCount++;
+                        successMessages.push(currentResponse.message);
+                    } else if (currentResponse.responseCode === 210) {
+                        failCount++;
+                        failMessages.push("OKR Assign already exists.");
+                    } else if (currentResponse.responseCode === 212) {
+                        failCount++;
+                        failMessages.push("Total weightage shouldn't exceed 100.");
+                    }
+                    else if (currentResponse.responseCode === 213) {
+                        failCount++;
+                        failMessages.push("You can assign objectives to a maximum of 10 employees. No further assignments are allowed.");
+                    } else {
+                        failCount++;
+                        failMessages.push("Error occurred while creating OKR assign.");
+                    }
+                }
+
+                toastr.remove();
+
+                if (successCount > 0 && failCount === 0) {
+                    // All successful uploads
+                    toastr.success("Successfully assigned " + successCount + " objectives.");
+                } else if (failCount > 0 && successCount === 0 && currentResponse.responseCode === 210) {
+                    // All failed uploads
+                    toastr.error("OKR Assign already exists.");
+                }
+                else if (failCount > 0 && successCount === 0 && currentResponse.responseCode === 212) {
+                    // All failed uploads
+                    toastr.error("Total weightage shouldn't exceed 100.");
+                }
+                else if (failCount > 0 && successCount === 0 && currentResponse.responseCode === 213) {
+                    // All failed uploads
+                    toastr.error("You can assign objectives to a maximum of 10 employees. No further assignments are allowed.");
+                }
+                else if (successCount >= 1 && failCount >= 1) {
+                    toastr.success(" Successfully assigned " + successCount + " objectives." + "    " + failCount + " Error occurred while creating OKR assign.");
+                } else {
+                    // Mixed results or single upload
+                    if (successCount > 0) {
+                        toastr.success("Successfully assigned " + successCount + " objectives.");
+                    }
+                    if (failCount > 0) {
+                        toastr.error(failCount + " Error occurred while creating OKR assign.");
+                    }
+                }
+                $('#assign_okrModal').modal('hide');
+                $('#assignedokr_Modal').modal('hide');
+                $('#okrassigntbl').DataTable().ajax.reload();
+                Fillobjectivedrp();
+                $(".div_head_1").css('display', 'none'); // Hide the element with ID 'div_head_1'
+                $(".div_head_2").css('display', 'block'); // Show the element with ID 'div_head_2'
+                $("#selectall").prop('checked', false);
+                //if (response.success == true) {
+                //    toastr.remove();
+                //    toastr.success("Successfully assigned objectives.");
+                //}
+                //else if (response.success == false) {
+                //    toastr.remove();
+                //    toastr.error(response.message);
+                //    $('#assign_okrModal').modal('hide');
+                //    $('#assignedokr_Modal').modal('hide');
+                //    $('#okrassigntbl').DataTable().ajax.reload();
+                //    $("#selectall").prop('checked', false);
+                //    $(".div_head_1").css('display', 'none'); // Hide the element with ID 'div_head_1'
+                //    $(".div_head_2").css('display', 'block'); // Show the element with ID 'div_head_2'
+                //}
+            },
+            error: function () {
+                $(".loading").hide();
+            },
+            complete: function () {
+                $(".loading").hide();
+            }
+        });
+    }
+    // Save Okr assign
+    function SaveOKRASSign() {
+        var totalWeightage = 0;
+        var isValid = true;
+        // Iterate over all obj_weightage inputs to calculate the total weightage
+        //$(".accordian-header [id^='obj_weightage_']:not([id^='obj_weightage_assign_'])").each(function () {
+        //    var inputField = $(this); // Current input field within .accordian-header
+        //    var accBox = inputField.closest('[id^="acc_box_"]');
+        //    if (accBox.css('display') === 'block') { // Check if the parent element's display is block
+        //        var checkboxIndex = inputField.attr('id').split('_').pop(); // Extracting index from input ID
+        //        var checkbox = $("#obj_select_" + checkboxIndex);
+        //        var isChecked = checkbox.prop('checked');
+        //        if (isChecked) {
+        //            var weightageValue = parseFloat(inputField.val().trim());
+
+        //            if (isNaN(weightageValue) || inputField.val().trim() === "") {
+        //                isValid = false;
+        //            } else {
+        //                totalWeightage += weightageValue;
+        //            }
+        //        }
+        //    }
+        //});
+        var objectiveIds = [];
+
+        $(".accordian-header [id^='obj_weightage_']:not([id^='obj_weightage_assign_'])").each(function () {
+            var inputField = $(this); // Current input field within .accordian-header
+            var accBox = inputField.closest('[id^="acc_box_"]');
+            var objectiveId = accBox.find("span[id^='obj_id_']").text().trim();
+            var checkboxIndex = inputField.attr('id').split('_').pop(); // Extracting index from input ID
+            var checkbox = $("#obj_select_" + checkboxIndex);
+            var isChecked = checkbox.prop('checked');
+
+            if (isChecked) {
+                // Push objectiveId only if the checkbox is checked
+                objectiveIds.push(objectiveId);
+            }
+        });
+        if (!isValid) {
+            toastr.remove("");
+            toastr.error("Please enter valid weightage values.");
+            return false;
+        }
+        // Validate if total weightage is greater than 100
+        //if (totalWeightage > 100) {
+        //    // Show a validation message or perform necessary actions
+        //    toastr.remove("");
+        //    toastr.error("Total weightage cannot exceed 100.");
+        //    return false; // Exit function if validation fails
+        //}
+        if (objectiveIds == "") {
+            toastr.remove("");
+            toastr.error("Please select at least one objectives.");
+            return false;
+        }
+
+        // Initialize arrays to store data
+        var obj = [];
+
+        // Check if multiple employees are selected
+        if (flag == 1) {
+            if ($("#okrassigntbl #chkempall:checked").length > 1) {
+                var _assignkrlst = 0;
+                var _Assigncntlst = 0; // Default value
+                $("#okrassigntbl #chkempall:checked").each(function () {
+                    var row = $(this).closest('tr');
+                    var EmpID = $(this).val();
+                    if (_assignkrlst == 0) {
+                        _assignkrlst = EmpID;
+                    }
+                    else {
+                        _assignkrlst += "," + EmpID;
+                    }
+                });
+
+                var objIds = [];
+                var weightageStrings = [];
+                // Iterate over weightage inputs and objective IDs
+                $(".accordian-header input[name='obj_weightage']").each(function () {
+                    var weightageValue = $(this).val();
+                    if (weightageValue) {
+                        weightageStrings.push(weightageValue);
+                        // Extract the associated objective ID from the same accordion
+                        var $parentAccordion = $(this).closest(".accordion_box_main");
+                        if ($parentAccordion.css("display") === "block") {
+                            var objectiveId = $parentAccordion.find("span[id^='obj_id_']").text().trim();
+                            objIds.push(objectiveId);
+                        }
+                    }
+                });
+                GetAssignObjectiveEmpwiseModal(_assignkrlst, objIds, function (result) {
+                    _Assigncntlst = result;
+                    // Handle _Assigncntlst value here or call other functions based on it
+                    if (_Assigncntlst === 0) {
+                        saveOKRassigndata();
+                    }
+                });
+            }
+        }
+        else if (flag == 0) {
+            // Only one employee is selected
+            var objIds = [];
+            var weightageStrings = [];
+
+            // Retrieve objective IDs and their weightages
+            $(".accordian-header input[name='obj_weightage']").each(function () {
+                var weightageValue = $(this).val();
+                if (weightageValue) {
+                    weightageStrings.push(weightageValue);
+
+                    // Extract the associated objective ID from the same accordion
+                    var $parentAccordion = $(this).closest(".accordion_box_main");
+                    if ($parentAccordion.css("display") === "block") {
+                        var objectiveId = $parentAccordion.find("span[id^='obj_id_']").text().trim();
+                        objIds.push(objectiveId);
+                    }
+                }
+            });
+
+            // Create data objects for each combination of objective ID and weightage
+            for (var i = 0; i < objIds.length; i++) {
+                var designationIdValue = $("#Designationid").val();
+                var parsedDesignationId = !isNaN(parseInt(designationIdValue)) && designationIdValue !== undefined ? parseInt(designationIdValue) : 0;
+                var data = {
+                    "EmpID": $("#EmpID").val(),
+                    "EmpName": $("#Empname").val(),
+                    "Designationid": parsedDesignationId,
+                    "Assignobjective": weightageStrings[i],
+                    "ObjectiveId": objIds[i],
+                    "AssignCreatedate": $("#Effectedfrom").val(),
+                    "IsActive": true
+                };
+                // Add the data object to the obj array
+                obj.push(data);
+            }
+            // Send the data as an array of objects
+            $.ajax({
+                type: "POST",
+                headers: { 'Authorization': '@_tokan' },
+                url: '@_webapiurlokr' + 'Objectve/SaveOKRAssign',
+                data: JSON.stringify(obj),
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                beforeSend: function () {
+                    $(".loading").show();
+                },
+                success: function (response) {
+                    //if (response.success == true) {
+                    //
+                    //    toastr.remove();
+                    //    toastr.success("Successfully assigned objectives.");
+                    //    $('#assign_okrModal').modal('toggle');
+                    //    $('#okrassigntbl').DataTable().ajax.reload();
+                    //    Fillobjectivedrp();
+                    //    $(".div_head_1").css('display', 'none'); // Hide the element with ID 'div_head_1'
+                    //    $(".div_head_2").css('display', 'block'); // Show the element with ID 'div_head_2'
+                    //}
+                    //else if (response.success == false) {
+                    //    toastr.remove();
+                    //    toastr.error(response.message);
+                    //    $('#assign_okrModal').modal('toggle');
+                    //    $('#okrassigntbl').DataTable().ajax.reload();
+                    //}
+                    var successCount = 0;
+                    var failCount = 0;
+                    var successMessages = [];
+                    var failMessages = [];
+
+                    for (var i = 0; i < response.length; i++) {
+                        var currentResponse = response[i];
+                        if (currentResponse.responseCode === 201) {
+                            successCount++;
+                            successMessages.push(currentResponse.message);
+                        } else if (currentResponse.responseCode === 210) {
+                            failCount++;
+                            failMessages.push("OKR Assign already exists.");
+                        } else if (currentResponse.responseCode === 212) {
+                            failCount++;
+                            failMessages.push("Total weightage shouldn't exceed 100.");
+                        }
+                        else if (currentResponse.responseCode === 213) {
+                            failCount++;
+                            failMessages.push("You can assign objectives to a maximum of 10 employees. No further assignments are allowed.");
+                        }
+                        else {
+                            failCount++;
+                            failMessages.push("Error occurred while creating OKR assign.");
+                        }
+                    }
+
+                    toastr.remove();
+
+                    if (successCount > 0 && failCount === 0) {
+                        // All successful uploads
+                        toastr.success(" Successfully assigned " + successCount + " objectives.");
+                    } else if (failCount > 0 && successCount === 0 && currentResponse.responseCode === 210) {
+                        // All failed uploads
+                        toastr.error("OKR Assign already exists.");
+                    }
+                    else if (failCount > 0 && successCount === 0 && currentResponse.responseCode === 212) {
+                        // All failed uploads
+                        toastr.error("Total weightage shouldn't exceed 100.");
+                    }
+                    else if (failCount > 0 && successCount === 0 && currentResponse.responseCode === 213) {
+                        // All failed uploads
+                        toastr.error("You can assign objectives to a maximum of 10 employees. No further assignments are allowed.");
+                    }
+                    else if (successCount >= 1 && failCount >= 1) {
+                        toastr.success(" Successfully assigned " + successCount + " objectives." + "    "  + failCount + " Error occurred while creating OKR assign.");
+                    } else {
+                        // Mixed results or single upload
+                        if (successCount > 0) {
+                            toastr.success("Successfully assigned " + successCount + " objectives.");
+                        }
+                        if (failCount > 0) {
+                            toastr.error(failCount + " Error occurred while creating OKR assign.");
+                        }
+                    }
+                    $('#assign_okrModal').modal('hide');
+                    $('#assignedokr_Modal').modal('hide');
+                    $('#okrassigntbl').DataTable().ajax.reload();
+                    Fillobjectivedrp();
+                    $(".div_head_1").css('display', 'none'); // Hide the element with ID 'div_head_1'
+                    $(".div_head_2").css('display', 'block'); // Show the element with ID 'div_head_2'
+                    $("#selectall").prop('checked', false);
+                },
+                error: function () {
+                    $(".loading").hide();
+                },
+                complete: function () {
+                    $(".loading").hide();
+                }
+            });
+        }
+
+    }
+    //Get objective Empwsie
+    function GetObjectiveEmpwise(Empid, flag) {
+        $.ajax({
+            type: "GET",
+            headers: { 'Authorization': '@_tokan' },
+            url: '@_webapiurlokr' + 'Objectve/GetObjectiveEmpwise/' + Empid,
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            beforeSend: function () {
+                $(".loading").show();
+            },
+            success: function (response) {
+                $(".loading").hide();
+                if (response != null && response.length > 0) {
+                    response.forEach(function (obj) {
+                        var objectiveId = obj.objective_id;
+                        var assign_obj = obj.Assignobjective;
+                        $('ul li').each(function (index) {
+                            var spanvalue = $("#obj_chk_" + index).text();
+                            var $checkbox = $(this).find('.objselect');
+                            if (spanvalue == objectiveId) {
+                                $("#obj_chk_" + index).closest('li').hide();
+                                //$("#obj_select_" + index).prop('checked', true);
+                                //$(".img_obj").css('display', 'none');
+                                //$("#lstcon").css('display', 'block');
+                                //var $okrAcc = $("#acc_box_" + index);
+                                //$("#obj_weightage_" + index).val(assign_obj);
+                                //$okrAcc.show();
+                                //$("#div_total_weightage").css('display', 'flex');
+                                //calculateTotalWeightage();
+                            }
+                        });
+                    });
+                }
+            },
+            error: function () {
+                $(".loading").hide();
+            },
+            complete: function () {
+                $(".loading").hide();
+            }
+        });
+    }
+    // Get assign objective call
+    function getAssignobjective() {
+        $.ajax({
+            type: "GET",
+            headers: { 'Authorization': '@_tokan' },
+            url: '@_webapiurlokr' + 'Objectve/GetAssignObjWise',
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            beforeSend: function () {
+                $(".loading").show();
+            },
+            success: function (response) {
+                $(".loading").hide();
+                if (response != null) {
+                    if (response.length > 0) {
+                        for (let i = 0; i < response.length; i++) {
+                            var objid = response[i].objective_id;
+                            var Assignobjective = response[i].Assignobjective || 0;
+                            // Update the "Assigned" value for the specific checkbox
+                            updateAssignedValue(objid, Assignobjective);
+                        }
+                    } else {
+                        // Handle the case when there are no assignments
+                        $(".assign_text span").text("0");
+                    }
+                } else {
+                    // Handle the case when response is null
+                    $(".assign_text span").text("0");
+                }
+            },
+            error: function () {
+                $(".loading").hide();
+            },
+            complete: function () {
+                $(".loading").hide();
+            }
+        });
+    }
+    // Update the assign objective data
+    function updateAssignedValue(objid, Assignobjective) {
+        // Find the corresponding checkbox and update the "Assigned" value
+        var checkbox = $('.objselect[value="' + objid + '"]');
+        var assignTextSpan = checkbox.closest('li').find('.assign_text span');
+        // Check if Assignobjective is not present or falsy, then set value to 0
+        var assignedValue = Assignobjective ? Assignobjective : 0;
+        assignTextSpan.text(assignedValue);
+    }
+    function GetAssignedemployee(objectiveid, idAssign) {
+        $.ajax({
+            type: "GET",
+            headers: { 'Authorization': '@_tokan' },
+            url: '@_webapiurlokr' + 'Objectve/GetObjEmpwiseDetails/' + objectiveid,
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            beforeSend: function () {
+                $(".loading").show();
+            },
+            success: function (response) {
+                $(".loading").hide();
+                if (response != null && response.length > 0) {
+                    $("#modal_Btn").css('visibility', 'hidden');
+                    var accordionContainer = $("#ass_obj_block"); // Assuming you have a container for multiple accordions
+                    accordionContainer.remove(); // Clear any previous content
+                    var selectobjBlockRight = $('<div class="selectobj_block_right obj_data" id="ass_obj_block"> <div class="list-content asslist_content" id="lstcon_ass" style="display: block;"> <div class="step2_dataheader"> <div class="row"> <div class="col-lg-11"><span>Assigned Employees :<span id="ass_emps"></span></span></div><div class="col-lg-1"><button type="button" class="close" id="assobjbtn">×</button></div> </div></div> </div>');
+                    $('.objectivedata').append(selectobjBlockRight);
+                    $("#ass_emps").text($("#Assobjecive_" + idAssign).text());
+                    response.forEach(function (item, index) {
+                        var empPhotoId = "ass_emp_photo_" + index;
+                        var designation = item.DesignationName !== null && item.DesignationName !== undefined ? item.DesignationName : '';
+                        var itemphoto = item.EmpPhoto ? "/UploadEmpPhoto/" + item.EmpPhoto : "/assets/images/avtar.png";
+                        var selectblockrightcontent = $('<div class="objecdatabox d-flex align-items-center justify-content-between">' +
+                            '<div class="serch_datatable"> <div class="emp_box align-items-center">' +
+                            '<img src="/assets/images/avtar.png" alt="User icon" class="user_img" id="ass_emp_photo_' + index + '">' +
+                            '<span><p class="margin-top-0">' + item.EmpName + '</p>' + // Display the emp name
+                            '</span>' +
+                             '<span><p class="margin-top-0">' + item.Empcode + '</p>' + // Display the emp name
+                            '</span>' +
+                            '</div>' +
+                            '</div>' +
+                            '<div class="assign_position">' + designation + // Display the designation name
+                            '</div>' +
+                            '</div>');
+                        selectobjBlockRight.find('.list-content').append(selectblockrightcontent); // Appending to the '.list-content' div inside 'selectobjBlockRight'
+                        $("#" + empPhotoId).attr('src', itemphoto);
+                    });
+                } else {
+                    $("#modal_Btn").css('display', 'flex');
+                    $(".ass_obj_block").css('display', 'none');
+                    $("#obj_right").css('display', 'block');
+                    var accordionContainer = $("#ass_obj_block"); // Assuming you have a container for multiple accordions
+                    accordionContainer.remove(); // Clear any previous content
+                }
+            },
+            error: function () {
+                $(".loading").hide();
+            },
+            complete: function () {
+                $(".loading").hide();
+            }
+        });
+    }
+    // function to the get assign objective
+    function getobjectiveassign() {
+        debugger;
+        $.ajax({
+            type: "GET",
+            headers: { 'Authorization': '@_tokan' },
+            url: '@_webapiurlokr' + 'Objectve/GetObjectveList/' + '@_userid' + '/' + '@_RoleId' + '/' + '@_companyid' + '/' + '@_branchid' + '/0',
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            beforeSend: function () {
+                $(".loading").show();
+            },
+            success: function (response) {
+                var selectobjBlockLeft = $('<div class="selectobj_block_left" id="select_obj_left_assign"><div class="searchbyname"><label>Search <input type="search" class="form-control input-sm input-inline margin-left-5" placeholder="Search by Name" id="search_assign_objective"></label></div><div class="obj_data" id="objective_data_assign"></div></div>');
+
+                var objData = selectobjBlockLeft.find("#objective_data_assign");
+                var ulElement = $('<ul id="ul_obj_assign_list"></ul>');
+                response.Table.forEach(function (item, index) {
+                    // Create and append each objective to objData
+                    //var objectiveItem = $('<li id="li_obj_assign_list"><div class="obj_date"><label><input type="checkbox" class="chkall ClsChkEmp objselect_assign"  value="' + item.objective_id + '" id="obj_select_assign_' + index + '">' + item.Title + '</label><span id="obj_chk_assign_' + index + '" hidden>' + item.objective_id + '</span><span class="assign_obj_effective_date" id="Assign_objective_date_' + index + '"></span></div><span id="Assign_objective_targetperiod_' + index + '">' + getTargetPeriodValue(item.TragatPeriod) + '</span><span  class="assign_obj_remove_'+ index +'"><a href="javascript:;"><img src="/assets/images/close_icon.svg" height="20" width="20" alt="close icon" id="remove_assign_obj_'+ index +'"></a></span></li>');
+                    var objectiveItem = $('<li id="li_obj_assign_list"><div class="obj_date"><label><input type="checkbox" class="chkall ClsChkEmp objselect_assign"  value="' + item.objective_id + '" id="obj_select_assign_' + index + '">' + item.Title + '</label><span id="obj_chk_assign_' + index + '" hidden>' + item.objective_id + '</span></div><span  class="assign_obj_remove_' + index + '"><a href="javascript:;"><img src="/assets/images/close_icon.svg" height="20" width="20" alt="close icon" id="remove_assign_obj_' + index + '"></a></span></li>');
+                    ulElement.append(objectiveItem);
+                });
+                objData.append(ulElement);
+
+                // Create the right part of the structure
+                var selectobjBlockRight = $('<div class="selectobj_block_right" id="select_obj_right_assign"><div class="d-flex align-items-center justify-content-between margin-bottom-10"> </div><div class="list-content assigned_obj" id="lstcon_assign"><div class="step2_dataheader"> <div class="row"> <div class="col-lg-9">Objective</div> <div class="col-lg-3">Weightage</div> </div> </div></div></div>');
+
+                var listContent = selectobjBlockRight.find("#lstcon_assign");
+                if (response.Table && response.Table.length > 0) {
+                    response.Table.forEach(function (item, index) {
+                        // Create the list of objectives with key results
+                        var objectiveDiv = $('<div class="accordion_box_main_assign" id ="acc_box_assign_' + index + '"><div class="accordian-header okr_acc_header" id="okr_acc_assign_' + index + '"><div><a href="#okr_list_assign_' + index + '" class="acc_ttl" data-toggle="collapse" aria-expanded="false" aria-controls="okr_list_assign_' + index + '"><span id="obj_id_assign_' + index + '" hidden>' + item.objective_id + '</span><img src="/assets/images/icon_objective.svg" alt="objective icon" width="18" height="18" />' + item.Title + '<i class="fa-solid fa-chevron-down arrow_down"></i></a></div><div class="d-flex align-items-center margin-right-10 w-100px"><input type="text" class="form-control input-sm margin-right-5" name="obj_weightage_assign" id="obj_weightage_assign_' + index + '" placeholder="Enter"></div></div><div class="collapse" id="okr_list_assign_col_' + index + '"></div></div>');
+                        var okrList = objectiveDiv.find(".collapse");
+
+                        response.Table1.forEach(function (krItem, KrIndex) {
+                            if (item.objective_id == krItem.krObjectiveId) {
+                                // Create and append each key result to the corresponding objective
+                                var keyResult = $('<div class="no_bd_radius_assign"><div class="portlet-body"><div class="okr_acc_body"><div class="okr_body_ttl"><span id="kr_assign_id_' + KrIndex + '" hidden>' + krItem.krid + '</span><img src="/assets/images/icon_kr.svg" alt="objective icon" width="13" height="14" />' + krItem.krKeyResult + '</div><div class="d-flex align-items-center"><div class="okr_acc_date_1">Weightage: ' + krItem.krWeightage + '</div><div class="okr_acc_date_1">status:  <span  class= "kr_assign_status" id="kr_status_assign_' + krItem.krid + '"></span></div><div class="okr_acc_date_1">' + krItem.StartDate + '</div><div class="okr_acc_date_1">' + krItem.EndDate + '</div></div></div></div></div>');
+                                okrList.append(keyResult);
+                            }
+                        });
+
+                        listContent.append(objectiveDiv);
+                    });
+                }
+                $("#obj_assign_emp").append(selectobjBlockLeft);
+                $("#obj_assign_emp").append(selectobjBlockRight);
+            },
+            error: function (xhr, ajaxOptions, thrownError) {
+                // Handle error here
+                $(".loading").hide();
+            },
+            complete: function () {
+                $(".loading").hide();
+            }
+        });
+    }
+
+    // Function to fetch and assign objectives based on Empid in Objective_modal
+    function GetAssignObjectiveEmpwise(Empid) {
+        $.ajax({
+            type: "GET",
+            headers: { 'Authorization': '@_tokan' },
+            url: '@_webapiurlokr' + 'Objectve/GetObjectiveEmpwise/' + Empid,
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            beforeSend: function () {
+                $(".loading").show();
+            },
+            success: function (response) {
+                debugger;
+                $(".assign_obj_effective_date").text('');
+                $(".loading").hide();
+                $(".objselect_assign").prop('checked', false);
+                $(".accordion_box_main_assign").hide();
+                if (response != null && response.length > 0) {
+                    response.forEach(function (obj) {
+                        var objectiveId = obj.objective_id;
+                        var assign_obj = obj.Assignobjective;
+                        var review_status = obj.review_status;
+
+                        $('#ul_obj_assign_list #li_obj_assign_list').each(function (index) {
+                            var spanvalue = $("#obj_chk_assign_" + index).text();
+                            var $checkbox = $(this).find('.objselect_assign');
+                            if (spanvalue == objectiveId) {
+                                $("#obj_select_assign_" + index).prop('checked', true);
+                                $("#obj_select_assign_" + index).show();                                
+                                var $okrAcc = $("#acc_box_assign_" + index);
+                                $("#obj_weightage_assign_" + index).val(assign_obj);
+                                $okrAcc.show();
+                                if(review_status === "Pending")
+                                {
+                                    $("#remove_assign_obj_" + index).show();
+                                }
+                                else {
+                                    $("#remove_assign_obj_" + index).hide();
+                                }
+                            }
+                        });
+                    });
+                }
+                $('#ul_obj_assign_list #li_obj_assign_list').each(function (index) {
+                    var $checkbox = $(this).find('.objselect_assign');
+                    if (!$checkbox.prop('checked')) {
+                        // Remove the closest li element when checkbox is unchecked
+                        $(this).hide();
+                    }
+                });
+            },
+            error: function () {
+                $(".loading").hide();
+                // Handle error scenarios
+            },
+            complete: function () {
+                $(".loading").hide();
+            }
+        });
+    }
+    // this function is used to the get month name.
+    function getMonthName(monthIndex) {
+        const monthsAbbreviated = [
+            "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+            "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+        ];
+        return monthsAbbreviated[monthIndex];
+    }
+    //get the krdetails empwise status
+    function getKRdetailsEmpWise(Empid) {
+        $.ajax({
+            type: "GET",
+            headers: { 'Authorization': '@_tokan' },
+            url: '@_webapiurlokr' + 'Objectve/GetKrdetailsEmpwise/' + Empid,
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            beforeSend: function () {
+                $(".loading").show();
+            },
+            success: function (response) {
+                $(".loading").hide();
+                $(".kr_assign_status").text('');
+                if (response != null && response.length > 0) {
+                    var index =
+                    // Process each object in the response array
+                    response.forEach(function (obj) {
+                        // Access properties of each object
+                        var krId = obj.krid;
+                        var ObjectiveId = obj.objective_id;
+                        var review_status = obj.review_status;
+                        $('#kr_status_assign_' + krId).text(review_status);
+                    });
+                } else {
+                }
+            },
+            error: function () {
+                $(".loading").hide();
+                // Handle error scenarios
+            },
+            complete: function () {
+                $(".loading").hide();
+            }
+        });
+    }
+    // this function is used when again open objective modal
+    function clearModalContent() {
+        $('#ul_obj_assign_list #li_obj_assign_list').each(function (index) {
+            $("#obj_select_assign_" + index).prop('checked', false); // Uncheck checkboxes
+            $("#obj_weightage_assign_" + index).val(''); // Clear input values
+            $('#obj_select_assign_' + index).show(); // Show the checkboxes if hidden
+            $('#obj_select_assign_' + index).closest('li').show(); // Show the closest list item if hidden
+            $('#acc_box_assign_' + index).hide(); // Hide elements with the ID starting with 'acc_box_assign_'
+        });
+    }
+    function fillcompany() {
+        var _urlcmp = '@_webapiurl' + "Master/CompanyGetAll";
+        $("#CompanyID").empty()
+        $.ajax(
+            {
+                type: "GET",
+                headers: { 'Authorization': '@_tokan' },
+                url: _urlcmp,
+                dataType: "json",
+                beforeSend: function () {
+                    $(".loading").show();
+                },
+                success: function (data) {
+                    var markup = '';
+                    data.sort(function (a, b) {
+                        return a.CompanyName.localeCompare(b.CompanyName);
+                    });
+                    if (emprole == 6805 || emprole == 6806 || (emprole > 1 && emprole != 6000)) {
+                        for (var x = 0; x < data.length; x++) {
+                            if (data[x].CompanyID.toString() == cmpid) {
+                                markup += "<option value=" + data[x].CompanyID + ">" + data[x].CompanyName + "</option>";
+                            }
+                        }
+                    }
+                    else {
+                        for (var x = 0; x < data.length; x++) {
+                            markup += "<option value=" + data[x].CompanyID + ">" + data[x].CompanyName + "</option>";
+                        }
+                    }
+                    $("#CompanyID").append(markup);
+                    if (emprole > 1 && emprole != 6000 && emprole != 6805 && emprole != 6806) {
+                        $("#CompanyID option[value = '" + cmpid + "' ]").prop('selected', true);
+                    }
+                    $Companyselect.multiselect('rebuild');
+                },
+                error: function (jqXHR, ajaxOptions, thrownError) {
+                    if (jqXHR.status == 500) { //InternalServerError = 500,
+                        toastr.error("InternalServerError");
+                    } else if (jqXHR.status == 400) { //BadRequest = 400,
+                        toastr.error("BadRequest");
+                    } else if (jqXHR.status == 401) {
+                        window.location.href = "/PayTime/LoginPage";
+                    }
+                }
+            });
+    }
+    function fillBranchbycompnyid(companyid, selectedBranch) {
+        $('#BranchIds').empty();
+        $.ajax(
+         {
+             type: "GET",
+             url: "/MasterData/GetBranchbycomapnyid?CompanyID=" + companyid,
+             contentType: "application/json; charset=utf-8",
+             dataType: "json",
+             success: function (data) {
+                 var markup = '';
+                 for (var x = 0; x < data.length; x++) {
+                     data.sort(function (a, b) {
+                         return a.BranchName.localeCompare(b.BranchName);
+                     });
+                     if (selectedBranch.length != 0) {
+                         var re = new RegExp("(^|,)" + data[x].BranchId + "($|,)");
+                         if (re.test(selectedBranch) == true) {
+                             markup += '<option selected="selected" value="' + data[x].BranchId + '" >' + data[x].BranchName + '</option>';
+                         }
+                         else {
+                             markup += "<option value=" + data[x].BranchId + ">" + data[x].BranchName + "</option>";
+                         }
+                     }
+                     else {
+                         markup += "<option value=" + data[x].BranchId + ">" + data[x].BranchName + "</option>";
+                     }
+                 }
+                 $('#BranchIds').append(markup);
+                 $Branchselect.multiselect('rebuild');
+                 $(document.body).on('change', '#BranchIds', function () {
+                     $("#spvalidation").hide();
+                     var branid = $('#BranchIds option:selected');
+                     var BranchArray = [];
+                     $(branid).each(function (index, branid) {
+                         BranchArray.push([$(this).val()]);
+                     });
+                     if (BranchArray == "") {
+                         $("#txt2").val(0);
+                     }
+                     else {
+                         $("#txt2").val(BranchArray);
+                         $("#spValidation").hide();
+                     }
+                     var Arrbranch = $("#txt2").val();
+                     BranchIdlst = Arrbranch;
+                     $("#BranchId").val(BranchIdlst);
+                 });
+             },
+             error: function (xhr, ajaxOptions, thrownError) {
+
+                 if (xhr.status == 404) { //NotFound = 404
+                     toastr.error(thrownError);
+                 } else if (xhr.status == 500) { //InternalServerError = 500,
+                     toastr.error("InternalServerError");
+                 } else if (xhr.status == 400) { //BadRequest = 400,
+                     toastr.error("BadRequest");
+                 } else if (xhr.status == 419) {
+                     window.location.href = "/PayTime/LoginPage";
+                 } else {
+                     toastr.error(thrownError);
+                 }
+             }
+         });
+    }
+    function fillDeptTable(BranchId, selectedDept) {
+        $("#DeptIds").empty();
+        $.ajax({
+            type: "GET",
+            url: "/MasterData/GetDeptbyBranchstr?BranchId=" + BranchId,
+            contentType: "application/json; charset=utf-8",
+            datatype: "json",
+            async: "false",
+            success: function (response) {
+                if (response != null) {
+                    for (var i = 0; i < response.length; i++) {
+                        if (selectedDept.length != 0 && selectedDept != null) {
+                            var re = new RegExp("(^|,)" + response[i].Value + "($|,)");
+                            if (re.test(selectedDept) == true) {
+                                $('#DeptIds').append('<option value=" ' + response[i].Value + '" selected>' + response[i].Text + '</option>');
+                            }
+                            else {
+                                $('#DeptIds').append('<option value=" ' + response[i].Value + ' ">' + response[i].Text + '</option>');
+                            }
+                        }
+                        else {
+                            $('#DeptIds').append('<option value=" ' + response[i].Value + ' ">' + response[i].Text + '</option>');
+                        }
+                    }
+                    $Departmentselect.multiselect('rebuild');
+                    $(document.body).on('change', '#DeptIds', function () {
+                        $("#spvalidation").hide();
+                        var deptid = $('#DeptIds option:selected');
+                        var DeptArray = [];
+                        $(deptid).each(function (index, deptid) {
+                            DeptArray.push([$(this).val()]);
+                        });
+                        if (DeptArray == "") {
+                            $("#txt3").val(0);
+                        }
+                        else {
+                            $("#txt3").val(DeptArray);
+                            $("#spValidation").hide();
+                        }
+                        var ArrDept = $("#txt3").val();
+                        if (ArrDept == 0 || ArrDept === "") {
+                            DeptIdlst = ""; // Setting DeptIdlst to empty string if it's 0 or empty
+                        } else {
+                            DeptIdlst = ArrDept;
+                        }
+                        $("#DepId").val(DeptIdlst);
+                        // Loop through the selected values and find their corresponding names
+                        $('#DeptIds option:selected').each(function () {
+                            selecteddeptnames.push($(this).text()); // Add selected names to the array
+                        });
+                    });
+                }
+                $(".loading").hide();
+            },
+            beforeSend: function () {
+                $(".loading").show();
+            },
+            error: function () {
+                $(".loading").hide();
+            }
+        });
+    }
+    function tableGet(obj) {
+        $('#okrassigntbl').DataTable().destroy();
+        $("#dataTables_tbl_header").remove();
+        $("#okrassigntbl tbody").empty();
+        $("#okrassigntbl thead tr:eq(1)").remove();
+
+        //DataTable initialisation ================
+        table = $("#okrassigntbl").DataTable({
+            dom: _domCommon,
+            language:_languageCommon,
+            paging: true,
+            autoWidth: true,
+            ordering: false,
+            "ajax": {
+                type: "POST",
+                headers: { 'Authorization': '@_tokan' },
+                url: '@_webapiurlokr' + 'Objectve/GetAssignListDetails',
+                data: function (d) {
+                    return JSON.stringify(obj);
+                },
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                async: false,
+                dataSrc: function (json) {                    
+                    if (json != null) {
+                        const mp = json;
+                        handleGridVisibility("tblempty", "NotificationGrid-empty", mp, {
+                            imageUrl: "emptyscreen_3.png",
+                            subText: "No matching records found for the selected filters."
+                        });
+                        return mp; // Must return data to populate the table
+                    }
+                    else {
+                        handleGridVisibility("tblempty", "NotificationGrid-empty", [], {
+                            imageUrl: "emptyscreen_1.png",
+                            subText: "No entries found. Please add a record to get started."
+                        });
+                        return mp; // Return empty array to avoid DataTable errors
+                    }
+                },
+                beforeSend: function () {
+                    $(".loading").show();
+                },
+                complete: function () {
+                    $(".loading").hide();
+                },
+            },
+            "columns": [
+                { "data": "" },
+                { "data": "EmpCode" },
+                { "data": "Empname" },
+                { "data": "DesignationName" },
+                { "data": "Assignobjective" },
+                //{ "data": "Addeddate" },
+                { "data": "Designationid" }
+            ],
+            buttons: [
+                 {
+                     extend: 'excelHtml5',
+                     exportOptions: {
+                         columns: ':visible:not(:last-child,:first-child)',
+                         rows: function (idx, data, node) {
+                             var table = $('#okrassigntbl').DataTable(); // Replace 'yourDataTableId' with your actual DataTable ID
+                             var currentPageLength = table.page.len();
+                             return idx < currentPageLength;
+                         }
+                     }
+                 },
+            ],
+            initComplete: function (settings, json) {
+                var footer = "<tr><th style='min-width: 40px;'></th><th>Employee ID</th><th>Employee Details</th><th>Designation</th><th>Assigned Objective</th><th hidden>Designation Id</th><th>Action</th></tr>";
+                $("#okrassigntbl thead").append(footer);
+                bindSearchInputs();
+                FillEmployeeID(obj);
+                FillDesg(obj);
+                Fillobjective(obj);
+                const visibleTable = $('table:visible').attr('id');
+                $("#buttons").append(`
+                   <div id="export-button" class="export-button tooltips" data-placement="bottom" data-original-title="Download" data-table-id="${visibleTable}">
+                       <img src="../Newlayout/images/download_icon.svg" alt="Download icon">
+                   </div>
+               `);
+            },
+            "columnDefs": [
+                             {
+                                 "targets": 0,
+                                 "render": function (data, type, row) {
+                                     data = '<input type="checkbox" class="chkall ClsChkEmp Selectallemp" id="chkempall" value= "' + row.EmpID + '">';
+                                     return data;
+                                 }
+                             },
+                            {
+                                "targets": 6,
+                                "data": null,
+                                "render": function (data, type, full, meta) {
+                                    var assignOKRBtnHTML = '';
+
+                                    if (emprole == 1 || emprole == 6805 || emprole == 6806 || emprole == 6000)  {
+                                        assignOKRBtnHTML = "<div class='dayswise_action blue_font assign_okr' id='assign_OKR_btn'>ASSIGN OKR</div>";
+                                    }
+                                    else if ((emprole > 1) && ('@obj.CanAdd.ToString()' === 'True')) {
+                                        assignOKRBtnHTML = "<div class='dayswise_action blue_font assign_okr' id='assign_OKR_btn'>ASSIGN OKR</div>";
+                                    }
+                                    // Add other conditions as needed
+
+                                    return assignOKRBtnHTML;
+                                },
+                                "createdCell": function (td, cellData, rowData, row, col) {
+                                    if (emprole == 1 || emprole == 6805 || emprole == 6806) {
+                                        $(td).find('.assign_okr').prop('disabled', true);
+                                    }
+                                }
+                            },
+                             {
+                                 "targets": [2],
+                                 "render": function (data, type, row) {
+
+                                     var nameParts = row.Empname.replace(/\s+/g, ' ').trim().split(" ");
+                                     var initials = nameParts[0].charAt(0).toUpperCase();
+                                     if (nameParts.length > 1) {
+                                         initials += nameParts[1].charAt(0).toUpperCase();
+                                     }
+                                     const colors = ["#e74c3c", "#8e44ad", "#3498db", "#16a085", "#f39c12", "#d35400", "#2c3e50"];
+                                     //const randomColor = colors[Math.floor(Math.random() * colors.length)];
+                                     const randomColor = "#295097";
+
+                                     return `<div class="emp_box">
+                                            <img alt="" class="user_img img-circle tooltips" data-placement="right" data-original-title="Empcode : ${row.EmpCode}" src="/UploadEmpPhoto/${row.EmpPhoto.trim()}"
+                                            onerror="this.style.display='none'; this.nextElementSibling.style.display='inline-block';"/>
+                                            <span  class="tooltips" data-placement="right" data-original-title="Empcode : ${row.EmpCode}" style="display: none; min-width: 30px; height: 30px; line-height: 30px; text-align: center; background-color: #ecf3ff; color:  ${randomColor}; border-radius: 50% !important; border: 1px solid #8ab1f7; margin-right: 8px;">
+                                            ${initials}</span> ${row.Empname}</div>`;
+
+                                     //if (row.EmpPhoto == "" || row.EmpPhoto == null) {
+                                     //    return '<div class="emp_box"><img src="/assets/images/avtar.png" alt="User icon" class="user_img"><span><p>' + row.Empname + '</p></span></div>';
+                                     //} else {
+                                     //    return '<div class="emp_box"><img src="/UploadEmpPhoto/' + row.EmpPhoto.trim() + '" alt="User icon" class="user_img"><span><p>' + row.Empname + '</p></span></div>';
+                                     //}
+                                 }
+                             },
+                             {
+                                 "targets": [4],
+                                 "render": function (data, type, row) {
+                                     if (row.Assignobjective == "" || row.Assignobjective == null) {
+                                         return "NIL";
+                                     }
+                                     else {
+                                         return '<a href="#" id="OpenModalAssign">' + row.Assignobjective + '</a>';
+                                     }
+                                 }
+                             },
+                            {
+                                "targets": 5,
+                                "visible": false, // Use lowercase 'visible' here
+                            }
+            ],
+            "drawCallback": function (settings) {
+                var api = this.api();
+                var data = api.rows().data();
+                if (!data || data.length === 0) {
+                    $("#NotificationGrid-empty").show();
+                    $("#NotificationGrid-empty1").hide();
+                    //$("#no_data").show(); // Show the 'no_data' message if there is no data
+                  //  $("#OKR_assigntbl").hide(); // Hide the table container
+                } else {
+                    $("#no_data").hide(); // Hide the 'no_data' message
+                    $("#OKR_assigntbl").show(); // Show the table container if there is data
+                    const wrapper = $(".filter_portlet_wrapper");
+                    wrapper.addClass("full-width");
+                }
+                $(".loading").hide();
+            },
+        });
+        setTimeout(function () {
+            $("#" + "okrassigntbl" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+            $('.tooltips').tooltip();
+        }, 100);
+    }
+    function GetAssignObjectiveEmpwiseModal(Empid, objectiveid, callback) {
+        var accordionContainer = $("#emppreview_box"); // Assuming you have a container for multiple accordions
+        $.ajax({
+            type: "GET",
+            headers: { 'Authorization': '@_tokan' },
+            url: '@_webapiurlokr' + 'Objectve/GetObjectiveAssignEmpwise/' + Empid + '/' + objectiveid,
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            beforeSend: function () {
+                $(".loading").show();
+            },
+            success: function (response) {
+                $(".loading").hide();
+                accordionContainer.empty();
+                if (response != null && response.length > 0) {
+                    response.forEach(function (data, index) {
+                        var empPhotoIdpreview = "emp_photo_" + index;
+                        var itemphoto = data.EmpPhoto ? "/UploadEmpPhoto/" + data.EmpPhoto.trim() : "/assets/images/avtar.png";
+                        var review_box = $('<div class="p_databox">' +
+                            '<div class="p_list">' + data.Empcode + '</div>' +
+                            '<div class="p_list serch_datatable ">' +
+                            '<div class="emp_box align-items-center">' +
+                            '<img src="/assets/images/avtar.png" alt="User icon" class="user_img" id="emp_photo_' + index + '">' +
+                            '<span><p id="p_empname">' + data.EmpName + '</p></span>' +
+                            '</div>' +
+                            '</div>' +
+                            '<div class="p_list">' + data.designationname + '</div>' +
+                            '<div class="p_list">' + data.Title + '</div>' +
+                            '</div>');
+                        accordionContainer.append(review_box);
+                        $("#" + empPhotoIdpreview).attr('src', itemphoto);
+                    });
+                    $("#assignedokr_Modal").modal('show');
+
+                    callback(1); // Call the callback function with the value 1
+                }
+                else {
+                    callback(0); // Call the callback function with the value 0
+                }
+            },
+            error: function () {
+                $(".loading").hide();
+                $("#assignedokr_Modal").modal('show');
+                callback(1); // Call the callback function with the value 1 in case of an error
+            },
+            complete: function () {
+                $(".loading").hide();
+            }
+        });
+    }
+
+    // Dropdown function fill objectives.
+    function Fillobjectivedrp() {
+        $.ajax({
+            type: "GET",
+            url: '@_webapiurlokr' + 'Objectve/GetOKRAssigndrpdetails/' + '@_userid' + '/' + '@_RoleId' + '/' + '@_companyid' + '/' + '@_branchid',
+            headers: { 'Authorization': '@_tokan' },
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            async: false,
+            beforeSend: function () {
+                $(".loading").show();
+            },
+            success: function (response) {
+                if (response.isRedirect) {
+                    window.location.href = response.redirectUrl;
+                }
+                if (response && response.length > 0) {
+                    var selectElement = $('#fltrSearchdrpObjective');
+                    selectElement.empty(); // Clear existing options
+                    selectElement.append("<option value='0' selected>All</option>");
+                    var uniqueObjectives = {}; // Object to store unique Assignobjectives
+                    for (var i = 0; i < response.length; i++) {
+                        if (response[i].Assignobjective !== 0 && !uniqueObjectives[response[i].Assignobjective] && response[i].Assignobjective != null) {
+                            // Add options to the select element if it's not already present
+                            uniqueObjectives[response[i].Assignobjective] = true;
+                            selectElement.append("<option value='" + response[i].Assignobjective + "'>" + response[i].Assignobjective + "</option>");
+                        }
+                    }
+                    selectElement.append("<option value = 'NIL' >NIL</option>")
+                }
+            },
+            error: function () {
+                $(".loading").hide();
+            },
+            complete: function () {
+                $(".loading").hide();
+            }
+        });
+    }
+    function bindSearchInputs() {
+        $("#okrassigntbl thead tr:eq(1) th").each(function (index) {
+            if (index == 0) {
+                $(this).html('<input type="checkbox" class="chkall ClsChkEmp" value="" id="selectall" >');
+            }
+            else if (index == 1) {
+                $(this).html('<select class="search-dropdown" id="fltrSearchdrpEmpID"></select>');
+            }
+            else if (index == 3) {
+                $(this).html('<select class="search-dropdown" id="fltrSearchdrpDesg"></select>');
+            }
+            else if (index == 4) {
+                $(this).html('<select class="search-dropdown" id="fltrSearchdrpObjective"></select>');
+            }
+            else {
+                var title = $(this).text();
+                $(this).html('<input type="text" class="search_input" placeholder="Search" /><i class="clm-search"></i>');
+            }
+        });
+    }
+    function getTargetPeriodValue(index) {
+        return targetperiod[index];
+    }
+
+</script>
+
+<div class="page-bar">
+    @if (_RoleId == 1 || _RoleId == 6805 || _RoleId == 6806 || _RoleId == 6000)
+    {
+        <ul class="page-breadcrumb" style="float: none">
+            <li>
+                <a href="/Dashboard/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> OKR Assign</span>
+            </li>
+        </ul>
+    }
+    else
+    {
+        <ul class="page-breadcrumb" style="float: none">
+            <li>
+                <a href="/Dashboard/EmployeeDashboard"><i class="fa-regular fa-house"></i></a>
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> OKR Assign</span>
+            </li>
+        </ul>
+    }
+    <div class="emptotalcount justify-content-between">
+        <div class="d-flex align-items-center">
+            <div class="empcount_title">OKR Assign</div>
+            <div class="red_font margin-left-10" id="applied_filter" style="display:none;">Applied Filter: <span id="appl_com"></span>, Branch: <span id="appl_brn"></span>, Department: <span id="appl_dept"></span></div>
+        </div>
+        <div class="page-toolbar">
+            <div class="emp_btn_block">
+                <div class="text-right">
+                    <a href="javascript:;" class="btn icon_transparent_btn tooltips margin-left-10" id="Filter_search" data-placement="left" data-original-title="Filter"><i class="fa-light fa-filter" aria-hidden="true"></i></a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="filter_portlet_wrapper full-width">
+
+    <!-- Datatable Block : Begin -->
+    <div class="portlet filter_portlet_tbl">
+        <div class="portlet-body">
+            @if (obj.CanView)
+            {
+
+            <div id="ajax_loader" class="modal_bg loading" aria-hidden="true" style="display:none">
+                <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading" />
+            </div>
+
+            <div id="OKR_assigntbl">
+                <div class="row">
+                    <div class="col-lg-12">
+                        <input type="hidden" value="" id='EmpID'>
+                        <input type="hidden" value="" id='Empname'>
+                        <input type="hidden" value="" id='Designationid'>
+                        <div class="payroll_details_table">
+                            <!-- Datatable : Begin -->
+                            <div class="row div_head_1" style="display: none;">
+                                <div class="col-lg-12">
+                                    <div class="attendance_selected_emp">
+                                        <div class="selected_list">Selected Employee: <span id="selectedemp"></span></div><div class="selected_list_btn"><a href="javascript:;" class="btn add_btn margin-right-15" id="MulAssignOkr"> Assign OKR </a><a href="javascript:;" class="btn add_btn white_btn" id="MulClearBtn">Clear</a></div>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Datatable : End -->
+                            <div id="tblempty">
+                                <div class="table-responsive" id="tableResponsive">
+                                    <table id="okrassigntbl" class="table new_datatbl table-striped table-bordered tbl_middle table-hover tbl_newdatatbl serch_datatable table-checkable order-column">
+                                        <thead>
+                                            <tr>
+                                                <th style="min-width: 30px;">All</th>
+                                                <th style="min-width: 80px">Employee ID</th>
+                                                <th style="min-width: 200px">Employee Details</th>
+                                                <th style="min-width: 120px">Designation</th>
+                                                <th style="min-width: 120px">Assigned Objective</th>
+                                                @*<th style="min-width: 120px">Effected From</th>*@
+                                                <th style="min-width: 120px">Designation Id</th>
+                                                <th style="min-width: 100px">Action</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody></tbody>
+                                        <tfoot>
+                                        </tfoot>
+                                    </table>
+                                </div>
+                            </div>
+                            <div id="NotificationGrid-empty1">
+                                <div class="datanotfound">
+                                    <img src="~/assets/images/emptyscreen_3.png" height="148" width="280" alt="No Data Found Icon">
+                                    <p class="datanotfound_title">No data show</p>
+                                    <p class="datanotfound_subtitle">Start by applying a filter to view relevant data.</p>
+                                </div>
+                            </div>
+                            <div id="NotificationGrid-empty" style="display:none">
+                                <div class="datanotfound">
+                                    <img src="~/assets/images/emptyscreen_3.png" height="148" width="280" alt="Nodata Found Icon">
+                                    <p class="datanotfound_title">No data found</p> <!-- titleText -->
+                                    <p class="">No matching data found for the selected filters.</p><!-- subText -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            }
+        </div>
+    </div>
+    <!-- Datatable Block : End -->
+    <!-- Filter Block : Begin -->
+    <div class="portlet filter_boxModal">
+        <div class="filterbox_header">
+            <div class="d-flex align-items-center justify-content-between">
+                <h4 class="filter-title">Filters</h4>
+                <button type="button" class="filterclose_btn"><i class="fa-light fa-xmark"></i></button>
+            </div>
+        </div>
+        <div class="filterbox_body">
+            <div class="col-lg-12">
+                <div class="form-group ">
+                    <label class="control-label" id="lblcomp">Company<span class="required" aria-required="true"> * </span></label>
+                    <input type="text" id="txt5" value="0" hidden />
+                    <select id="CompanyID" class="mt-multiselect btn blue btn-outline" multiple="multiple" data-width="100%"></select>
+                </div>
+            </div>
+            <div class="col-lg-12">
+                <div class="form-group ">
+                    <label class="control-label" id="lblbranch">Branch <span class="required" aria-required="true"> * </span></label>
+                    <input type="text" id="txt2" value="0" hidden />
+                    <select id="BranchIds" class="mt-multiselect btn blue btn-outline" multiple="multiple" data-width="100%"></select>
+                </div>
+            </div>
+            <div class="col-lg-12">
+                <div class="form-group">
+                    <label class="control-label" id="lbldepartment">Department </label>
+                    <input type="text" id="txt3" value="0" hidden />
+                    <select id="DeptIds" class="mt-multiselect btn-sm btn blue btn-outline " aria-haspopup="true" aria-expanded="false" multiple="multiple" data-width="100%"></select>
+                </div>
+            </div>
+        </div>
+        <div class="filterbox_footer">
+            <div class="text-right">
+                <button type="submit" id="clear_operation" class="btn clear_btn tooltips" data-placement="top" data-original-title="Clear"><i class="fa-regular fa-eraser"></i></button>
+                <button type="submit" id="btnapply" class="btn icon_btn margin-left-5 tooltips" data-placement="top" data-original-title="Search Filters"><i class="fa-solid fa-magnifying-glass"></i></button>
+            </div>
+        </div>
+    </div>
+    <!-- Filter Block : End -->
+
+</div>
+
+@if (obj.CanView)
+{
+    <!-- Assign OKR Modal : Begin -->
+    <div id="assign_okrModal" class="modal fade popup_info_model employeeCTC_modal" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog">
+            <!-- Modal content-->
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    <h4 class="modal-title">Assign OKR: Selected Employee:<span id="selectemployee"></span></h4>
+                </div>
+                <div class="modal-body">
+                    <div class="modal-card">
+                        <fieldset>
+                            <div class="d-flex objectivedata assigned_block" id="obj_assigned_block"></div>
+                        </fieldset>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <div class="row">
+                        <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                            <div class="d-flex align-items-center justify-content-end" id="modal_Btn">
+                                @*<div class="weightage_surpass">
+                                        <img src="/assets/images/assign_info.svg" alt="info icon" width="24" height="24" class="margin-right-5">
+                                        <span class="red_font">Assign weightage to your Objectives while ensuring that the overall total weightage does not surpass 100</span>
+                                    </div>*@
+                                <div>
+                                    <input type="button" class="btn red_font" value="Reset" id="btnReset" />
+                                    <button type="button" class="btn save_btn" id="btnsave"> Assign</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Assign OKR Modal : End -->
+    <!-- Already Assigned OKR List Modal : Begin -->
+    <div id="assignedokr_Modal" class="modal fade popup_info_model employeeCTC_modal" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog">
+            <!-- Modal content-->
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    <div class="modal-title d-flex">
+                        Preview
+                        <div class="weightage_surpass margin-left-5">
+                            <img src="/assets/images/assign_info.svg" alt="info icon" width="16" height="16" class="margin-right-5">
+                            <span class="red_font">The selected objective is already assigned.</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-body">
+                    <div class="modal-card">
+                        <fieldset>
+                            <div class="okrpreview_box" id="emppreview_box">
+                            </div>
+                        </fieldset>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <div class="row">
+                        <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                            <input type="button" class="btn cancel_filter_btn" value="Back" id="Btnback" />
+                            <button type="button" class="btn save_btn" id="btnsavepreview"> Save</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Already Assigned OKR List Modal : End -->
+    <!-- Assign Objective Modal : Begin -->
+    <div id="Objective_modal" class="modal fade popup_info_model employeeCTC_modal" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog">
+            <!-- Modal content-->
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" id="assign_obj_modal_lst" data-dismiss="modal">&times;</button>
+                    <h4 class="modal-title">Assigned objective</h4>
+                </div>
+                <div class="modal-body">
+                    <div class="modal-card">
+                        <fieldset>
+                            <div class="d-flex objectivedata_assign_block assigned_block" id="obj_assign_emp"></div>
+                        </fieldset>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <div class="row">
+                        <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                            <input type="button" class="btn cancel_filter_btn" value="Back" id="Btnback" style="visibility:hidden;" />
+                            <button type="button" class="btn save_btn" id="btnsavepreview" style="visibility:hidden;"> Save</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!--  Assign Objective Modal : End -->
+}
+else
+{
+    <span style="color:red">Unauthorized Access.</span>
+}

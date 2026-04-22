@@ -1,0 +1,1234 @@
+﻿@using System.Configuration;
+@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@{
+    ViewBag.Title = "Announcements";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+}
+@{
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    int _isPlanexp = Convert.ToInt32(HttpContext.Current.Session["isPlanExp"]);
+
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+    string _companyid = string.Empty;
+    int _branchid = 0;
+    if (_RoleId == 6805)
+    {
+        _companyid = HttpContext.Current.Session["ClientCompanyId"].ToString();
+        _branchid = 0;
+    }
+
+    else if (_RoleId == 6806)
+    {
+        _companyid = HttpContext.Current.Session["ClientCompanyId"].ToString();
+        _branchid = Convert.ToInt32(HttpContext.Current.Session["BranchId"].ToString());
+    }
+    else
+    {
+        _companyid = HttpContext.Current.Session["CompanyId"].ToString();
+    }
+    string _datenow = DateTime.Now.ToString("dd, MMM yyyy");
+    string _isdateformat = HttpContext.Current.Session["IsDateFormat"].ToString();
+    string _CountryCode = HttpContext.Current.Session["CountryCode"].ToString();
+    string _dbName = HttpContext.Current.Session["DbName"].ToString();
+    int empid = Convert.ToInt32(HttpContext.Current.Session["EmpId"]);
+    string Cmpid = HttpContext.Current.Session["ClientCompanyId"].ToString();
+    string cmpname = HttpContext.Current.Session["cmpname"].ToString();
+
+    string isClientDBMatchFlag = HttpContext.Current.Session["IsClientDBMatch"] != null
+? HttpContext.Current.Session["IsClientDBMatch"].ToString()
+: "false"; // Default to "false" if the session is null
+}
+<script src="~/Scripts/Helpers/noDataHandler.js"></script>
+<style type="text/css">
+    .new_datatbl .bootstrap-switch .bootstrap-switch-handle-on.bootstrap-switch-primary {
+        background: var(--navyblue_color);
+    }
+
+    .new_datatbl .bootstrap-switch .bootstrap-switch-handle-on.bootstrap-switch-primary,
+    .new_datatbl .bootstrap-switch .bootstrap-switch-handle-off.bootstrap-switch-default {
+        width: 26px !important;
+        padding: 3px 7px;
+    }
+
+    .new_datatbl .bootstrap-switch.bootstrap-switch-small .bootstrap-switch-label {
+        width: 24px !important;
+        padding: 3px 10px;
+    }
+
+    .new_datatbl .bootstrap-switch {
+        width: 52px !important;
+    }
+</style>
+
+<script type="text/javascript">
+
+
+
+    document.addEventListener("contextmenu", function (event) {
+        event.preventDefault();
+    });
+    document.addEventListener("keydown", function (event) {
+
+        if (
+            event.key === "F12" ||
+            (event.ctrlKey && event.shiftKey && ["I", "J", "C"].includes(event.key)) ||
+            (event.ctrlKey && event.key === "U")
+        ) {
+            event.preventDefault();
+        }
+    });
+
+        var cmpId1 = '@_companyid';
+        var roleId1 = '@_RoleId';
+        var branchid = '@_branchid';
+        if (roleId1 == 1) {
+            cmpId1 = 0;
+            }
+        var cmpid = cmpId1;
+         var token = '@_tokan';
+    var webApiUrl = '@_webapiurl';
+    var dateformate = '@_isdateformat';
+        $(document).ready(function () {
+            let companyIds = "";
+            let branchIds = "";
+            annoucement_getData();
+            var announcementId;
+            // Checked in click modal open code ===========================================
+            $("#AddAnnouncement").on('click', function () {
+                $("#AddAnnouncement").attr("data-toggle", "modal");
+                $("#AddAnnouncement").attr("data-target", "#addanoucement_modal");
+            });
+            $('body').on('click', '.editclass', function () {
+                $(".editclass").attr("data-toggle", "modal");
+                $(".editclass").attr("data-target", "#addanoucement_modal");
+            });
+
+
+            // Announcements Dropdown Multiselect code
+            var $Companyselect = $("#CompanyID").multiselect({
+                selectAllValue: 'multiselect-all',
+                enableCaseInsensitiveFiltering: true,
+                includeSelectAllOption: true,
+                allSelectedText: 'All Select',
+                enableFiltering: true,
+                maxHeight: '300',
+                buttonWidth: '100%',
+                enableClickableOptGroups: true,
+                nonSelectedText: 'Select Company'
+            });
+            var $Companyselect = $("#BranchID").multiselect({
+                selectAllValue: 'multiselect-all',
+                enableCaseInsensitiveFiltering: true,
+                includeSelectAllOption: true,
+                allSelectedText: 'All Select',
+                enableFiltering: true,
+                maxHeight: '300',
+                buttonWidth: '100%',
+                enableClickableOptGroups: true,
+                nonSelectedText: 'Select Branch'
+            });
+            var $Companyselect = $("#DepartmentID").multiselect({
+                selectAllValue: 'multiselect-all',
+                enableCaseInsensitiveFiltering: true,
+                includeSelectAllOption: true,
+                allSelectedText: 'All Select',
+                enableFiltering: true,
+                maxHeight: '300',
+                buttonWidth: '100%',
+                enableClickableOptGroups: true,
+                nonSelectedText: 'Select Department'
+            });
+            $('#CompanyID').change(function () {
+                companyIds = ""; // Reset the global variable
+
+                $('#CompanyID :selected').each(function () {
+                    if (companyIds === "") {
+                        companyIds = $(this).val();
+                    } else {
+                        companyIds += "," + $(this).val();
+                    }
+                });
+
+                var s = $('#CompanyID').val();
+                if (s === "" || s === null) {
+                   /* location.reload();*/
+                } else {
+                    $('#CompanyName').val($("#CompanyID option:selected").map(function () {
+                        return $(this).text();
+                    }).get().join(", "));
+
+                    fillBranchbycompnyid(s, "");
+                }
+            });
+
+
+            $('#BranchID').change(function () {
+                branchIds = "";
+
+                $('#BranchID :selected').each(function () {
+                    if (branchIds === "") {
+                        branchIds = $(this).val();
+                    } else {
+                        branchIds += "," + $(this).val();
+                    }
+                });
+
+                var b = $('#BranchID').val();
+                if (b === "" || b === null) {
+                   /* location.reload();*/
+                } else {
+                    $('#BranchName').val($('#BranchID option:selected').map(function () {
+                        return $(this).text();
+                    }).get().join(", "));
+
+
+                }
+            });
+
+            //comman validation of form
+            function commonvalidation(event) {
+
+
+
+                function containsEmoji(text) {
+                    const emojiRegex = /[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F700}-\u{1F77F}\u{1F780}-\u{1F7FF}\u{1F800}-\u{1F8FF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FA6F}\u{1FA70}-\u{1FAFF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{FE0F}\u{1F1E0}-\u{1F1FF}]/u;
+                    return emojiRegex.test(text);
+                }
+                //validation for company
+
+                var fromDt = $("#startDate").val();
+                var toDt = $("#endDate").val();
+
+                // Validation for FromDate
+                if (fromDt == "") {
+                    $("#startDate").addClass('field_error');
+                    event.preventDefault(); // prevents form submission
+                    return false;
+                } else {
+                    $("#startDate").removeClass('field_error');
+                }
+
+                // Validation for ToDate
+                if (toDt == "") {
+                    $("#endDate").addClass('field_error');
+                    event.preventDefault();
+                    return false;
+                } else {
+                    $("#endDate").removeClass('field_error'); // Fixed typo: from 'filed_error' to 'field_error'
+                }
+
+                var fromDate = $("#startDate").val();
+                var toDate = $("#endDate").val();
+                fromDate = convertToYYYYMMDD(fromDate);
+                toDate = convertToYYYYMMDD(toDate);
+                // Compare dates
+                if (fromDate > toDate) {
+                    toastr.remove();
+                    toastr.error("To date should be greater than from date.");
+                    return false;
+                }
+
+
+
+                //validation for title
+
+                var titles = $('#title').val();
+                if (titles == null || titles == "" || titles == undefined) {
+                    $("#title").addClass('field_error');
+                    event.preventDefault();
+                    return false;
+                } else if (titles.length > 100) {
+                    toastr.error("Title text limit exceeds 100 words!");
+                    return false;
+                }
+                else {
+                    $("#title").removeClass('field_error');
+                }
+
+                //validation for description
+                var Des = $('#descriptions').val();
+                if (Des == null || Des == "" || Des == undefined) {
+                    $("#descriptions").addClass('field_error');
+                    event.preventDefault();
+                    return false;
+                } else if (Des.length > 1000) {
+                    toastr.error("Description text limit exceeds 1000 words!");
+                    return false;
+                }
+                else {
+                    $("#descriptions").removeClass('field_error');
+                }
+                var _CompanyId = $("#CompanyID option:selected").text();
+                if (_CompanyId == "Select Company" || _CompanyId == "") {
+                    toastr.remove();
+                    toastr.error("Please select company.");
+                    $("#CompanyID").addClass('field_error');
+                    event.preventDefault();//or return false
+                    $(".loading").hide();
+                    return false;
+                }
+                else {
+                    $("#CompanyID").removeClass('field_error');
+                }
+
+                var _BranchId = $("#BranchID option:selected").text();
+                if (_BranchId == "Select Branch" || _BranchId == "") {
+                    toastr.remove();
+                    toastr.error("Please select Branch.");
+                    $("#BranchID").addClass('field_error');
+                    event.preventDefault();//or return false
+                    $(".loading").hide();
+                    return false;
+                }
+                else {
+                    $("#BranchID").removeClass('field_error');
+                }
+
+                if (containsEmoji(Des)) {
+                    toastr.error("Emojis are not allowed in the description.");
+                    $("#descriptions").addClass('field_error');
+                    event.preventDefault();
+                    return false;
+                }
+                else {
+                    $("#descriptions").removeClass('field_error');
+                }
+                if (containsEmoji(titles)) {
+
+                    toastr.error("Emojis are not allowed in the titles.");
+                    $("#title").addClass('field_error');
+                    event.preventDefault();
+                    return false;
+                }
+                else {
+                    $("#title").removeClass('field_error');
+                }
+
+
+                return true;
+
+            }
+            $("#title").on('input', function () {
+                if ($(this).val() != "") {
+                    $(this).removeClass('field_error');
+                }
+            });
+
+            $("#descriptions").on('input', function () {
+                if ($(this).val() != "") {
+                    $(this).removeClass('field_error');
+                }
+            });
+
+            $("#CompanyID").on('change', function () {
+                if ($(this).val() != null && $(this).val().length > 0) {
+                    $(this).removeClass('field_error');
+                }
+            });
+            $("#startDate").on('input', function () {
+                if ($(this).val() != "") {
+                    $(this).removeClass('field_error');
+                }
+            });
+
+            $("#endDate").on('input', function () {
+                if ($(this).val() != "") {
+                    $(this).removeClass('field_error');
+                }
+            });
+
+            function removeFieldErrors() {
+                // Remove 'field_error' class from all fields
+                $('#announcementForm .form-control').removeClass('field_error');  // Remove from input fields
+                $('#announcementForm textarea').removeClass('field_error');  // Remove from textarea fields
+                $('#announcementForm select').removeClass('field_error');  // Remove from select fields (like dropdowns)
+            }
+
+            //Data for branch dropdown
+
+        function fillBranchbycompnyid(companyid, selectedBranch) {
+        $('#BranchID').empty();
+        $.ajax({
+            type: "GET",
+            url: "/MasterData/GetBranchbycomapnyid?CompanyID=" + companyid,
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            success: function (data) {
+
+                var markup = '';
+
+                // Sort data once, outside of the loop
+                data.sort(function (a, b) {
+                    return a.BranchName.localeCompare(b.BranchName);
+                });
+
+                // Loop through data
+                for (var x = 0; x < data.length; x++) {
+                    if (selectedBranch && selectedBranch.length !== 0) {
+                        var re = new RegExp("(^|,)" + data[x].BranchId + "($|,)");
+                        if (re.test(selectedBranch)) {
+                            markup += '<option selected="selected" value="' + data[x].BranchId + '">' + data[x].BranchName + '</option>';
+                        } else {
+                            markup += '<option value="' + data[x].BranchId + '">' + data[x].BranchName + '</option>';
+                        }
+                    } else {
+                        markup += '<option value="' + data[x].BranchId + '">' + data[x].BranchName + '</option>';
+                    }
+                }
+
+                $('#BranchID').append(markup);
+                $('#BranchID').multiselect('rebuild');
+            },
+            error: function (jqXHR) {
+                if (jqXHR.status === 500) {
+                    toastr.error("InternalServerError");
+                } else if (jqXHR.status === 400) {
+                    toastr.error("BadRequest");
+                } else if (jqXHR.status === 401) {
+                    window.location.href = "/PayTime/LoginPage";
+                }
+            }
+        });
+    }
+
+
+            //get annoucement data for data table(GET)
+            function annoucement_getData() {
+
+                //const params = new URLSearchParams({
+                //    companyid: cmpid,
+                //    branchid: branchid,
+                //    startdate: "",
+                //    enddate: "",
+                //    title: "",
+                //    description: "",
+                //    emailnotification: 0,
+                //    smsnotification: 0,
+                //    reqid: 2,
+                //});
+                //const urlWithQuery = `${webApiUrl}DashBoard/GetAnnoucementdata?${params.toString()}`;
+
+                const data = {
+                    CompanyId: cmpid,
+                    BranchId: ('@_RoleId' == 6805) ? 0 : branchid,  // Set BranchId to 0 if RoleId is 6805, otherwise use provided branchid
+                    StartDate: "",
+                    EndDate: "",
+                    Title: "",
+                    Description: "",
+                    EmailNotification: 0,
+                    SmsNotification: 0,
+
+                    ReqId: 2,
+                };
+
+                //companyadmin show it's company name only
+                @*var companyname = ('@_RoleId' == 6805) ? '@cmpname' : '';  // If role is 6805, set company name, else leave empty*@
+
+                //// Add companyname to data if role is 6805
+                //if (companyname) {
+                //    data.CompanyName = companyname;
+                //}
+                $('#anoucement_tbl').DataTable({
+                    "ajax": {
+                        "url": `${webApiUrl}DashBoard/GetAnnoucementdata`,
+                        "type": "POST",
+                        "data": data,
+                        "beforeSend": function (xhr) {
+                            xhr.setRequestHeader("Authorization", token);
+                        },
+                        "dataSrc": function (data) {
+                            if (data != null) {
+                                const payrollC = data;
+                                handleGridVisibility("tblempty", "NotificationGrid-empty", payrollC, {
+                                    imageUrl: "emptyscreen_1.png",
+                                    subText: "No entries found. Please add a record to get started."
+                                });
+                            }
+
+                            data.forEach(function (item) {
+                                if (item.startdate) {
+                                    item.startdate = convertToDateFormate(item.startdate);
+                                }
+                                if (item.enddate) {
+                                    item.enddate = convertToDateFormate(item.enddate);
+                                }
+                            });
+                            if (data.isRedirect) {
+                                window.location.href = data.redirectUrl;
+                                return [];
+                            }
+                            return data;
+                        }
+                    },
+                    "Destroy": true,
+                    //dom: 'lBfrtip',
+                    dom: _domCommon,
+                    language: _languageCommon,
+                    buttons: [
+                        {
+                            extend: 'excelHtml5'
+                        }
+                    ],
+                    "columns": [
+                        //{ "data": "companyname" },
+                        //{ "data": "branchname" },
+                        {
+                            "data": "startdate",
+                            "createdCell": function (td) {
+                                $(td).css({ "min-width": "100px", "white-space": "nowrap" });
+                            }
+
+                        },
+                        {
+                            "data": "enddate"
+
+                        },
+                        { "data": "annoucementtitle" },
+                        { "data": "Description" },
+                        {
+                            "data": "AnnoucementImage",
+
+                            "render": function (data, type, row) {
+                                if (data) {
+                                    let imageUrl = data;
+                                    return `<img src="${imageUrl}" onerror="this.onerror=null; this.src='/assets/images/announcement_icon.png';" style="width: 32px; height: 32px; border-radius: 50% !important;">`;
+                                } else {
+                                    return "No Image";
+                                }
+                            }
+                        },
+                        { "data": "AnnoucementId" }
+                    ],
+                    "columnDefs": [
+                        {
+                            "targets": -1,
+                            "orderable": false,
+                            "searchable": false,
+                            "render": function (data, type, row, meta) {
+                                const isChecked = row.isactive === 1 ? 'checked' : '';
+                                return `
+                                <div class="form-group margin-bottom-0">
+                                        <div>
+                                             <input type="checkbox" data-size="small" class="make-switch abc" id="isactive-${meta.row}" ${isChecked}
+                                                 data-info="${data}" data-on-text="<i class='fa-solid fa-check'></i>" data-off-text="<i class='fa-solid fa-xmark'></i>" />
+
+                                        <a class="editclass btn seagreen_btnnew tooltips" data-placement="top" data-original-title="Edit">
+                                            <span id="sp3" hidden="">${data}</span><i class="fa-regular fa-pen-to-square"></i>
+                                        </a>
+                                  </div>
+                                </div>`;
+                            }
+                        }
+                    ]
+                    //"createdRow": function (row, data, dataIndex) {
+
+                    //    $(row).find('.make-switch').bootstrapSwitch();
+                    //    $(row).find('.tooltips').tooltip();
+                    //}
+
+                }).on('draw.dt', function () {
+
+                    $('.make-switch').bootstrapSwitch();
+                setTimeout(function () {
+                    $("#" + "anoucement_tbl" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+                    $('.tooltips').tooltip();
+                }, 100);
+                });
+            }
+
+            //Edit Annoucements
+            $('#anoucement_tbl').on('click', '.editclass', function () {
+
+                announcementId = $(this).find('span').text();
+
+
+                GetIdAnnoucement(announcementId);
+            });
+            function GetIdAnnoucement(annoucementId) {
+                const params = new URLSearchParams({
+                    annoucementId: annoucementId,
+                    reqid:3
+                });
+                const urlWithQuery = `${webApiUrl}DashBoard/EditAnnoucementdata?${params.toString()}`;
+                $.ajax({
+                    type: "GET",
+                    url: urlWithQuery,
+                    contentType: "application/json; charset=utf-8",
+                    dataType: "json",
+                    beforeSend: function (xhr) {
+                        xhr.setRequestHeader("Authorization", token);
+                    },
+                    success: function (data) {
+
+
+
+                        if (data.isRedirect) {
+                            window.location.href = data.redirectUrl;
+                        } else {
+                            var i = 0;
+                            var j = 0;
+                            var companyids = data[0].companyid;
+                            companyids = companyids.split(",");
+
+                            for (i = 0; i < companyids.length; i++) {
+                                var optionVal = companyids[i].trim();
+                                $("#CompanyID").find("option[value='" + optionVal + "']").prop("selected", "selected");
+                            }
+
+
+                            $('#CompanyID').multiselect('rebuild');
+
+
+                            var companyValue = $('#CompanyID').val();
+                            if (companyValue) {
+                                //fillBranchbycompnyid this function do both fillation of branch and also work at edition time set branch.
+                                fillBranchbycompnyid(companyValue, data[0].branchid);
+                            }
+
+                            $('#BranchID').multiselect('rebuild');
+
+                            var startdate = convertToDateFormate(data[0].startdate);
+                            var enddate = convertToDateFormate(data[0].enddate);
+                            $('#startDate').val(startdate);
+                            $('#endDate').val(enddate);
+                            $('#title').val(data[0].annoucementtitle);
+                            $('#descriptions').val(data[0].Description);
+                            if (data[0].Email === 1) {
+                                $("#emailnoti").prop("checked", true);
+                            } else {
+                                $("#emailnoti").prop("checked", false);
+                            }
+
+                            // Check if SMS notification should be enabled
+                            if (data[0].SMS === 1) {
+                                $("#smsnoti").prop("checked", true);
+                            } else {
+                                $("#smsnoti").prop("checked", false);
+                            }
+                            if (data[0].AnnoucementImage != null && data[0].AnnoucementImage !== "") {
+                                $('#empimg').attr('src', data[0].AnnoucementImage);
+                                $('#Photo').val(data[0].AnnoucementImage);
+                            }
+
+                        }
+                    },
+                    error: function () {
+                        console.log("Error in annoucement updatation.");
+                    }
+                });
+            }
+
+            // for isactive-inactive(ACTIVE-INACTIVE)
+            $('body').on('switchChange.bootstrapSwitch', '.abc', function (event, state) {
+
+
+                var announcementId = $(this).data('info');
+                var flag;
+                if (state == true) {
+                    flag = 1;
+                }
+                else {
+                    flag = 0;
+                }
+                updateStatus(flag, announcementId);
+            });
+            function updateStatus(flag, announcementId) {
+
+                var annouceid = announcementId;
+
+                const params = new URLSearchParams({
+                    flag: flag,
+                    annocumentid: announcementId
+                });
+                const urlWithQuery = `${webApiUrl}DashBoard/UpdateStatus?${params.toString()}`;
+                $.ajax({
+                    type: "POST",
+                    url: urlWithQuery,
+                    contentType: "application/json; charset=utf-8",
+                    dataType: "json",
+                    beforeSend: function (xhr) {
+                        xhr.setRequestHeader("Authorization", token);
+                    },
+                    success: function (data) {
+
+                        if (data.isRedirect) {
+                            window.location.href = data.redirectUrl;
+                        } else {
+                            if (flag == 0) {
+                                toastr.success("Announcement Inactive Successfully.")
+                            } else {
+                                toastr.success("Announcement Active Successfully.")
+                            }
+                        }
+                    },
+                    error: function () {
+                        console.log("Error in Fillactivity_Checkin.");
+                    }
+                });
+            }
+
+            // for update exisiting data(PUT/PATCH)
+            function annoucement_updateData() {
+
+                $("#ajax_loader").show();
+                var companyids = $('#CompanyID').val();
+                var companyid = companyids.join(',');
+                var branchid = $('#BranchID').val();
+                var companyid = companyIds == "" ? companyid : companyIds;
+                branchid = branchid.join(',');
+              /*  var branchid = branchIds;*/
+                var startdate = $('#startDate').val();
+                var enddate = $('#endDate').val();
+                var title = $('#title').val();
+                var description = $('#descriptions').val();
+                var emailnotification = $('#emailnoti').prop('checked') ? 1 : 0;
+                var smsnotification = $('#smsnoti').prop('checked') ? 1 : 0;
+                var AnnoucementPhoto = $("#Photo").val();
+
+
+
+                startdate = convertToYYYYMMDD(startdate);
+                enddate = convertToYYYYMMDD(enddate);
+
+
+                const data = {
+                    CompanyId: companyid,
+                    BranchId: branchid,
+                    AnnoucementId: announcementId,
+                    StartDate: startdate,
+                    EndDate: enddate,
+                    Title: title,
+                    Description: description,
+                    EmailNotification: emailnotification,
+                    SmsNotification: smsnotification,
+                    AnnoucementPhoto: AnnoucementPhoto,
+                };
+
+                $.ajax({
+                    type: "POST",
+                    url: `${webApiUrl}DashBoard/UpdateAnnoucementdata`,
+                    contentType: "application/json; charset=utf-8",
+                    dataType: "json",
+                    data: JSON.stringify(data),
+                    beforeSend: function (xhr) {
+                        xhr.setRequestHeader("Authorization", token);
+                    },
+                    success: function (data) {
+
+                        announcementId = 0;
+
+                        if (data.isRedirect) {
+                            window.location.href = data.redirectUrl;
+                        } else {
+                            toastr.success("Annoucement Updated successfully");
+                            $("#addanoucement_modal").modal('hide');
+                            $('#CompanyID').multiselect('clearSelection');
+                            $('#BranchID').multiselect('clearSelection');
+                            $('#DepartmentID').multiselect('clearSelection');
+                            location.reload();
+                            $("#ajax_loader").hide();
+                        }
+                    },
+                    error: function () {
+                        console.log("Error in annocement saving");
+                        $("#ajax_loader").hide();
+                    }
+                })
+            }
+
+
+
+            function UploadImage(callback) {
+                //save image path in folder of local.
+                var empphoto = $("#EmpPhotoFile").val(); // This gave you fake path for security reason so we have  to change that and extract image name.
+                var imageName = empphoto.split('\\').pop();
+                if (empphoto != "") {
+                    var fileInput = $("#EmpPhotoFile")[0];
+                    var file = fileInput.files[0];
+                    var formData = new FormData();
+                    formData.append("EmpPhotoFile", file);
+
+                    $.ajax({
+                        url: '/Dashboard/UploadPhoto',
+                        type: 'POST',
+                        data: formData,
+                        contentType: false,
+                        processData: false,
+                        success: function (res) {
+
+                            $('#Photo').val(res.imagePath); // Save to hidden field
+                            if (typeof callback === "function") {
+                                callback();
+                            }
+
+                        },
+                        error: function () {
+                            console.error('Image upload failed!');
+                        }
+                    });
+                }
+                else {
+
+                    if (typeof callback === "function") {
+                        callback();
+                    }
+                }
+            }
+            //Data send In announcement tables(POST)
+            $("#Savedata").on('click', function () {
+
+
+                var annoucementid = announcementId;
+                UploadImage(function () {
+                    if (annoucementid != 0 && annoucementid != "" && annoucementid != undefined) {
+                        if (commonvalidation(event)) {
+                            annoucement_updateData();
+                        }
+                    }
+                    else {
+                        if (commonvalidation(event)) {
+
+                           // document.getElementById("Savedata").disabled = true;
+                            annoucement_setData();
+                            $('#Photo').val('');
+                        }
+                    }
+                });
+
+
+
+
+
+
+            });
+             function convertToYYYYMMDD(dateString) {
+
+                    const monthNames = {
+                        Jan: "01", Feb: "02", Mar: "03", Apr: "04", May: "05", Jun: "06",
+                        Jul: "07", Aug: "08", Sep: "09", Oct: "10", Nov: "11", Dec: "12"
+                    };
+
+                    let parts;
+
+                    switch ('@_isdateformat') {
+                        case "yyyy-mm-dd":
+                            return dateString;
+
+                        case "dd-mm-yyyy":
+                            parts = dateString.split("-");
+                            return `${parts[2]}-${parts[1]}-${parts[0]}`;
+
+                        case "mm-dd-yyyy":
+                            parts = dateString.split("-");
+                            return `${parts[2]}-${parts[0]}-${parts[1]}`;
+
+                        case "dd-M-yyyy":
+                            parts = dateString.split("-");
+                            return `${parts[2]}-${monthNames[parts[1]] || parts[1]}-${parts[0]}`;
+
+                        case "M-dd-yyyy":
+                            parts = dateString.split("-");
+                            return `${parts[2]}-${monthNames[parts[0]] || parts[0]}-${parts[1]}`;
+
+                        case "yyyy-M-dd":
+                            parts = dateString.split("-");
+                            return `${parts[0]}-${monthNames[parts[1]] || parts[1]}-${parts[2]}`;
+
+                        default:// Unrecognized format, return as-is
+                    }
+                }
+          function convertToDateFormate(dateString) {
+
+
+                // Input format: yyyymmdd
+               // if (!/^\d{8}$/.test(dateString)) return dateString; // Invalid input, return as-is
+
+                const year = dateString.substring(0, 4);
+                const month = dateString.substring(5, 7);
+                const day = dateString.substring(8, 11);
+
+                const monthNames = {
+                    "01": "Jan", "02": "Feb", "03": "Mar", "04": "Apr", "05": "May", "06": "Jun",
+                    "07": "Jul", "08": "Aug", "09": "Sep", "10": "Oct", "11": "Nov", "12": "Dec"
+                };
+
+            switch ('@_isdateformat') {
+                case "yyyy-mm-dd":
+                    return `${year}-${month}-${day}`;
+
+                case "dd-mm-yyyy":
+                    return `${day}-${month}-${year}`;
+
+                case "mm-dd-yyyy":
+                    return `${month}-${day}-${year}`;
+
+                case "dd-M-yyyy":
+                    return `${day}-${monthNames[month]}-${year}`;
+
+                case "M-dd-yyyy":
+                    return `${monthNames[month]}-${day}-${year}`;
+
+                case "yyyy-M-dd":
+                    return `${year}-${monthNames[month]}-${day}`;
+
+                default:
+                    return dateString; // If format not recognized, return original
+            }
+           }
+
+            function annoucement_setData() {
+                $("#ajax_loader").show();
+                var companyid = companyIds;
+                var branchid = branchIds;
+                var startdate = $('#startDate').val();
+                var enddate = $('#endDate').val();
+                var title = $('#title').val();
+                var description = $('#descriptions').val();
+                var emailnotification = $('#emailnoti').prop('checked') ? 1 : 0;
+                var smsnotification = $('#smsnoti').prop('checked') ? 1 : 0;
+                var AnnoucementPhoto = $("#Photo").val();
+
+
+                startdate = convertToYYYYMMDD(startdate);
+                enddate = convertToYYYYMMDD(enddate);
+
+                const data = {
+                    CompanyId: companyid,
+                    BranchId: branchid,
+                    annoucementId: announcementId,
+                    StartDate: startdate,
+                    EndDate: enddate,
+                    Title: title,
+                    Description: description,
+                    AnnoucementPhoto: AnnoucementPhoto,
+                    EmailNotification: emailnotification,
+                    SmsNotification: smsnotification,
+                    reqid: 0,
+                };
+
+                $.ajax({
+                    type: "POST",
+                    url: `${webApiUrl}DashBoard/SetAnnoucementdata`,
+                    contentType: "application/json; charset=utf-8",
+                    dataType: "json",
+                    data: JSON.stringify(data),
+                    beforeSend: function (xhr) {
+                        xhr.setRequestHeader("Authorization", token);
+                    },
+                    success: function (data) {
+
+                        if (data.isRedirect) {
+                            window.location.href = data.redirectUrl;
+                        } else {
+                            $("#addanoucement_modal").modal('hide');
+                            toastr.success("Annoucement Successfully Saved");
+                            $('#CompanyID').multiselect('clearSelection');
+                            $('#BranchID').multiselect('clearSelection');
+                            $('#DepartmentID').multiselect('clearSelection');
+                           // document.getElementById("Savedata").disabled = false;
+                            location.reload();
+                            $("#ajax_loader").hide();
+                        }
+                    },
+                    error: function () {
+                        console.log("Error in annocement saving");
+                        toastr.error("Annoucement not Saved yet.");
+                       // document.getElementById("Savedata").disabled = false;
+                        $("#ajax_loader").hide();
+                    }
+                })
+            }
+
+
+            //Model empty when click on close button
+            $("#close_model").on('click', function () {
+                removeFieldErrors();
+                $('#announcementForm')[0].reset();
+                $('#CompanyID').multiselect('clearSelection');
+                $('#BranchID').multiselect('clearSelection');
+                $('#DepartmentID').multiselect('clearSelection');
+                $('#Photo').val('');
+                $('#empimg').attr('src', '/assets/images/announcement_icon.png');
+            });
+
+            // Accept image in image section
+
+            document.getElementById('EmpPhotoFile').addEventListener('change', function (event) {
+
+                const file = event.target.files[0];
+                const maxSize = 5 * 1024 * 1024;
+                const trashBtn = document.getElementById('TrashImage');
+
+                if (file && file.size > maxSize) {
+                    toastr.error("File size exceeds 5 MB. Please upload a smaller image.");
+                    $(this).val("");
+                    document.getElementById('Photo').value = '';
+                    const img = document.getElementById('empimg');
+                    if (img) {
+                        img.src = '/assets/images/announcement_icon.png';
+                        img.style.display = 'block';
+                    }
+                    trashBtn.style.display = 'inline-block';
+                    return;
+                }
+                const validTypes = ['image/jpeg', 'image/jpg', 'image/png'];
+                if (validTypes.includes(file.type)) {
+
+                    const reader = new FileReader();
+                    reader.onload = function (e) {
+                        document.getElementById('empimg').src = e.target.result;
+                        document.getElementById('Photo').value = e.target.result;
+                        trashBtn.style.display = 'inline-block';
+                    };
+                    reader.readAsDataURL(file);
+                } else {
+
+                }
+            });
+
+            // Remove selected image and reset to default
+            $("#TrashImage").on('click', function () {
+
+                document.getElementById('EmpPhotoFile').value = '';
+                document.getElementById('empimg').src = '/assets/images/announcement_icon.png'; // Reset to default
+                document.getElementById('Photo').value = '';
+
+            });
+
+        });
+</script>
+
+<!-- Page Bar : Begin -->
+<div class="page-bar">
+    <ul class="page-breadcrumb">
+        <li>
+            @if (isClientDBMatchFlag == "True")
+            {
+                <a href="/Admin/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+            }
+            else
+            {
+                <a href="/Dashboard/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+            }
+        </li>
+        <li>
+            <span><i class="fa-light fa-angle-right"></i> Announcements</span>
+        </li>
+    </ul>
+    @if (obj.CanAdd)
+    {
+        <div class="page-toolbar">
+            <div class="text-right">
+                <a href="#" id="AddAnnouncement" class="btn icon_transparent_btn  tooltips" data-placement="left" data-original-title="Add Announcements"><i class="fa-solid fa-plus"></i></a>
+            </div>
+        </div>
+    }
+</div>
+<!-- Page Bar : End -->
+<!-- Datatable Block : Begin -->
+
+@if (obj.CanView)
+{
+    <div class="portlet">
+        <div class="portlet-body">
+            <div id='ajax_loader' class="modal_bg loading" aria-hidden="true">
+                <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading" />
+            </div>
+            <div class="Directory_details_table">
+                <div id="tblempty">
+                    <div class="table-responsive" id="tableResponsive">
+                        <table id="anoucement_tbl" class="table new_datatbl table-striped table-bordered table-hover table-checkable order-column">
+                            <thead>
+                                <tr>
+                                    @*<th style="min-width: 60px;">Company</th>
+                            <th style="min-width: 60px;">Branch</th>*@
+                                    <th>Start Date</th>
+                                    <th>End Date</th>
+                                    <th style="min-width: 160px;">Annoucement Title</th>
+                                    <th style="min-width: 400px;">Annoucement Body</th>
+                                    <th style="min-width: 100px;"> Photo</th>
+                                    <th style="min-width: 100px;">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div id="NotificationGrid-empty" style="display: none">
+                    <div class="datanotfound">
+                        <img src="" height="148" width="280" alt="Nodata Found Icon">
+                        <p class="datanotfound_title"></p> <!-- titleText -->
+                        <p class=""></p><!-- subText -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Datatable Block : End -->
+    <!-- Add Addanoucement Modal : Begin -->
+    <div id="addanoucement_modal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog w-500">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal" id="close_model">&times;</button>
+                    <h4 class="modal-title">Announcements</h4>
+                </div>
+                <div class="modal-body">
+                    <form id="announcementForm">
+                        <div class="modal-card">
+                            <fieldset>
+                                <div class="row">
+
+                                    <div class="col-sm-6 col-xs-12">
+
+                                        <div class="form-group">
+                                            @*<select id="CompanyID" class="mt-multiselect btn blue btn-outline" multiple="multiple" data-width="100%">*@
+                                            <label class="control-label">Company<span class="required" aria-required="true"> * </span></label>
+                                            @if (ViewBag.Companyslist != null)
+                                            {
+                                                @Html.DropDownList("CompanyID", new SelectList(ViewBag.Companyslist, "CompanyID", "CompanyName"), new { @class = "form-control input-sm", @multiple = "multiple" })
+                                            }
+                                            else
+                                            {
+                                                @Html.DropDownList("CompanyID", new SelectList(new[] { "" }), new { @class = "form-control input-sm", @multiple = "multiple" })
+                                            }
+                                        </div>
+                                    </div>
+                                    <div class="col-sm-6 col-xs-12">
+                                        <div class="form-group">
+                                            <label class="control-label">Branch<span class="required" aria-required="true">*</span></label>
+                                            <select id="BranchID" class="mt-multiselect btn blue btn-outline" multiple="multiple" data-width="100%"></select>
+                                        </div>
+                                    </div>
+                                    <div class="col-sm-6 col-xs-12" style="display: none;">
+                                        <div class="form-group">
+                                            <label class="control-label">Department</label>
+                                            <select id="DepartmentID" class="mt-multiselect btn blue btn-outline" multiple="multiple" data-width="100%"></select>
+                                        </div>
+                                    </div>
+                                    <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                        @*<div class="form-group">
+                                                <label class="control-label">Start Date<span class="required" aria-required="true">*</span></label>
+                                                <input type="date" id="startDate" placeholder="Please Enter" class="form-control" name="Start Date" required />
+                                            </div>*@
+                                        <div class="form-group data_picker_box">
+                                            <label class="control-label">Start Date <span class="required" aria-required="true"> * </span></label>
+                                            <div class="input-group input-group-sm date date-picker" id="" data-date-format="@_isdateformat" data-date-viewmode="years">
+                                                <span class="input-group-btn">
+                                                    <button class="btn default" type="button">
+                                                        <i class="fa-light fa-calendar-days"></i>
+                                                    </button>
+                                                </span>
+                                                <input type="text" class="form-control" id="startDate" data-date-format="@_isdateformat" placeholder="@_isdateformat.Replace("M","MMM")" autocomplete="off">
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                        @*<div class="form-group">
+                                                <label class="control-label">End Date<span class="required" aria-required="true">*</span></label>
+                                                <input type="date" id="endDate" placeholder="Please Enter" class="form-control" name="End Date" required />
+                                            </div>*@
+                                        <div class="form-group data_picker_box">
+                                            <label class="control-label">End Date <span class="required" aria-required="true"> * </span></label>
+                                            <div class="input-group input-group-sm date date-picker" id="" data-date-format="@_isdateformat" data-date-viewmode="years">
+                                                <span class="input-group-btn">
+                                                    <button class="btn default" type="button">
+                                                        <i class="fa-light fa-calendar-days"></i>
+                                                    </button>
+                                                </span>
+                                                <input type="text" class="form-control" id="endDate" data-date-format="@_isdateformat" placeholder="@_isdateformat.Replace("M","MMM")" autocomplete="off">
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-lg-12">
+                                        <div class="form-group">
+                                            <label class="control-label">Main Title<span class="required" aria-required="true">*</span></label>
+                                            <input type="text" id="title" placeholder="Please Enter Title" class="form-control" name="Main Title" maxlength="100" />
+                                        </div>
+                                    </div>
+                                    <div class="col-lg-12">
+                                        <div class="form-group">
+                                            <label>Body Text<span class="required" aria-required="true">*</span></label>
+                                            <textarea class="form-control" rows="3" name="" id="descriptions" placeholder="Please Enter text" style="resize: vertical;" maxlength="1000"></textarea>
+                                        </div>
+                                    </div>
+                                    <div class="col-sm-5 col-xs-12">
+                                        <div class="form-group margin-bottom-0">
+                                            <label>Announcements Photo</label>
+                                            <div class="upload-box">
+                                                <div class="fileinput fileinput-new" data-provides="fileinput">
+                                                    <div class="fileinput-new profile_img">
+                                                        <img src="~/assets/images/announcement_icon.png" alt="" id="empimg" />
+                                                    </div>
+                                                    <div class="profile_img fileinput-preview fileinput-exists profile_img"></div>
+                                                    <div class="upload-overlay">
+                                                        <div style="display: flex;">
+                                                            <span class="btn blueupload_btn btn-file">
+                                                                <span class="fileinput-new btn-block"><i class="fa-regular fa-arrow-up-from-bracket"></i></span>
+                                                                <span class="fileinput-exists"><i class="fa-regular fa-pen-to-square"></i></span>
+                                                                <input type="file" name="EmpPhotoFile" id="EmpPhotoFile" value="" accept=".png, .jpg, .jpeg">
+                                                                <input type="hidden" id="Photo" name="Photo">
+                                                            </span>
+                                                            <a href="javascript:;" class="btn redupload_btn fileinput-exists" id="TrashImage" data-dismiss="fileinput"><i class="fa-light fa-trash-can"></i></a>
+                                                        </div>
+                                                    </div>
+
+
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                    </div>
+                                    <div class="col-sm-7 col-xs-12">
+                                        <label id="AllowedFormate" class="announcement-note">*Image Size Should be less than 5 MB.</label>
+                                    </div>
+                                    <div class="col-sm-12" style="display: none">
+                                        <div class="form-group margin-bottom-0">
+                                            <div class="d-flex align-items-center">
+                                                <label class="control-label">Send notification via</label>
+                                                <div class="form-check margin-left-10">
+                                                    <input class="form-check-input" type="checkbox" checked="checked" value="false" id="emailnoti" name="emailnoti">
+                                                    <label class="form-check-label" for="emailnoti">Email</label>
+                                                </div>
+                                                <div class="form-check margin-left-10">
+                                                    <input class="form-check-input" type="checkbox" value="false" id="smsnoti" name="smsnoti">
+                                                    <label class="form-check-label" for="smsnoti">SMS</label>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </fieldset>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <div class="row">
+                        <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                            <button type="button" class="btn save_btn" id="Savedata"><i class="fa-light fa-floppy-disk"></i> Save</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Add Addanoucement Modal : End -->
+}
+else
+{
+    <span style="color:red">Unauthorized Access.</span>
+}

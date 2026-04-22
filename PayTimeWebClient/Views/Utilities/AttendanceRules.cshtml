@@ -1,0 +1,868 @@
+﻿@{
+    ViewBag.Title = "Attendance Rules";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    string _Message = ViewBag.msg;
+    string _error = ViewBag.error;
+}
+<script type="text/javascript">
+    $(document).ready(function () {
+        var navListItems = $('div.setup-panel div a'),
+                   allWells = $('.setup-content'),
+                   allNextBtn = $('.nextBtn'),
+                   allPrevBtb = $('.prevbtn');
+        allWells.hide();
+        navListItems.click(function (e) {
+            e.preventDefault();
+            var $target = $($(this).attr('href')),
+                    $item = $(this);
+
+            if (!$item.hasClass('disabled')) {
+                navListItems.removeClass('btn-primary').addClass('btn-default');
+                $item.addClass('btn-primary');
+                allWells.hide();
+                $target.show();
+                $target.find('input:eq(0)').focus();
+            }
+        });
+        allNextBtn.click(function () {
+            if ($("#Empcode").val() == "") {
+                $("#Empcode").attr('required', true);
+                $("#spEmpCode").append("Please Enter Employee Code").show();
+                return false;
+            }
+            else {
+                $("#spEmpCode").hide();
+            }
+            if ($("#EmpName").val() == "") {
+                $("#EmpName").attr('required', true);
+                $("#spEmpName").html("Please Enter Employee Name").show();
+                return false;
+            }
+            else {
+                $("#spEmpName").hide();
+            }
+            var curStep = $(this).closest(".setup-content"),
+                curStepBtn = curStep.attr("id"),
+                nextStepWizard = $('div.setup-panel div a[href="#' + curStepBtn + '"]').parent().next().children("a"),
+                curInputs = curStep.find("input[type='text'],input[type='url']"),
+                isValid = true;
+
+            $(".form-group").removeClass("has-error");
+            if (isValid)
+                nextStepWizard.removeAttr('disabled').trigger('click');
+        });
+        allPrevBtb.click(function () {
+            var curStep = $(this).closest(".setup-content"),
+                curStepBtn = curStep.attr("id"),
+                nextStepWizard = $('div.setup-panel div a[href="#' + curStepBtn + '"]').parent().prev().children("a"),
+                curInputs = curStep.find("input[type='text'],input[type='url']"),
+                isValid = true;
+            $(".form-group").removeClass("has-error");
+            if (isValid)
+                nextStepWizard.removeAttr('disabled').trigger('click');
+        });
+
+        $('div.setup-panel div a.btn-primary').trigger('click');
+        $("#frmpopup").dialog({
+            autoOpen: false,
+            modal: true,
+            resizable: false,
+            title: 'Employee Details',
+            width: "850px",
+
+            show: {
+                duration: "1000"
+            },
+            hide: {
+                duration: "1000"
+            }
+        });
+        $("#ddlCompany").change(function () {
+            $("#ddlBranch").empty();
+            $("#tblAttndDataEmp tbody").empty();
+            $("#
+            tbody").empty();
+            $("#ajax_loaderCompany").show();
+
+            $.post("/Utilities/FillBranch?id=" + $("#ddlCompany").val(), function (response) {
+                if (response.isRedirect) {
+                    window.location.href = response.redirectUrl;
+                }
+                $("#ajax_loaderCompany").hide();
+                if (response != null) {
+                    $("#ddlBranch").append("<option value='0'>-- Select Branch --</option>");
+                    for (var i = 0; i < response.length; i++) {
+                        $("#ddlBranch").append("<option value='" + response[i].BranchId + "'>" + response[i].BranchName + "</option>");
+                    }
+                }
+            });
+        });
+
+        $("#ddlBranch").change(function () {
+            $("#tblAttndDataEmp tbody").empty();
+            $("#tbldepartment tbody").empty();
+            GetBanchwiseDepartmentData();
+            $("#tbldepartment").empty();
+            $.post("/Transactions/GetDeptbyBranch?BranchId=" + $("#ddlBranch").val(), function (response) {
+                if (response.isRedirect) {
+                    window.location.href = response.redirectUrl;
+                }
+                var table = "";
+                if (response != null) {
+                    for (var i = 0; i < response.length; i++) {
+                        var tbl = "<tr class='odd gradeX'>";
+                        //tbl = tbl + "<td id='did' hidden>" + response[i].Value;
+                        //tbl = tbl + "</td>";
+                        tbl = tbl + "<td id='dnm'>" + response[i].Text;
+                        tbl = tbl + "</td>";
+                        tbl = tbl + "<td id=''><input type='checkbox' class='ClsChkDept' id='" + response[i].Value + "'/>";
+                        tbl = tbl + "</td>";
+                        tbl = tbl + "</tr>";
+
+                        table += tbl;
+                    }
+                }
+                $("#tbldepartment").destroy;
+                $('#tbldepartment').append(table);
+                $('#tbldepartment').dataTable({
+                    "destroy": true,
+                    "bInfo": false,
+                    "bPaginate": false,
+                    "bLengthChange": false,
+                    "bFilter": false,
+                    "columns": [
+                        //{ "title": "Dept ID" },
+                        { "title": "Department Name" },
+                        { "title": "<input type='checkbox' class='ClsChkAllDept' onchange='AllCheckedDept(this)' />" }
+                    ]
+                });
+            });
+        });
+        $("#btnsubmit").click(function () {
+            save();
+            window.location.href = "/Utilities/AttendanceRules/";
+        });
+
+        $("#AllErrorCase").change(function () {
+            if (this.checked) {
+                $("#AllErrorCase").attr("value", 1);
+            }
+            else {
+                $("#AllErrorCase").attr("value", 0);
+            }
+        });
+        $("#ErrorCaseWH").change(function () {
+            if (this.checked) {
+                $("#ErrorCaseWH").attr("value", 1);
+            }
+            else {
+                $("#ErrorCaseWH").attr("value", 0);
+            }
+        });
+        $("#TotalHrafterStatus").change(function () {
+            if (this.checked) {
+                $("#TotalHrafterStatus").attr("value", 1);
+            }
+            else {
+                $("#TotalHrafterStatus").attr("value", 0);
+            }
+        });
+        $("#TotalHrbeforeStatus").change(function () {
+            if (this.checked) {
+                $("#TotalHrbeforeStatus").attr("value", 1);
+            }
+            else {
+                $("#TotalHrbeforeStatus").attr("value", 0);
+            }
+        });
+        $("#HdLate").change(function () {
+            if (this.checked) {
+                $("#HdLatetxt").attr("readOnly", false);
+                $("#HdEdtxt").val(0);
+                $("#HdEdtxt").attr("readOnly", true);
+                $("#HdLateorEdtxt").val(0);
+                $("#HdLateorEdtxt").attr("readOnly", true);
+            }
+            else {
+                $("#HdLatetxt").val(0);
+                $("#HdLatetxt").attr("readOnly", true);
+
+
+            }
+        });
+        $("#HdEd").change(function () {
+            if (this.checked) {
+                $("#HdEdtxt").attr("readOnly", false);
+                $("#HdLatetxt").val(0);
+                $("#HdLatetxt").attr("readOnly", true);
+                $("#HdLateorEdtxt").val(0);
+                $("#HdLateorEdtxt").attr("readOnly", true);
+            }
+            else {
+                $("#HdEdtxt").val(0);
+                $("#HdEdtxt").attr("readOnly", true);
+            }
+        });
+        $("#HdLateorEd").change(function () {
+            if (this.checked) {
+                $("#HdLateorEdtxt").attr("readOnly", false);
+                $("#HdLatetxt").val(0);
+                $("#HdLatetxt").attr("readOnly", true);
+                $("#HdEdtxt").val(0);
+                $("#HdEdtxt").attr("readOnly", true);
+
+            }
+            else {
+                $("#HdLateorEdtxt").val(0);
+                $("#HdLateorEdtxt").attr("readOnly", true);
+
+
+            }
+        });
+
+        $("#ALate").change(function () {
+            if (this.checked) {
+                $("#ALatetxt").attr("readOnly", false);
+                $("#AEDtxt").val(0);
+                $("#AEDtxt").attr("readOnly", true);
+                $("#ALateorEDtxt").attr("readOnly", true);
+                $("#ALateorEDtxt").val(0);
+
+            }
+            else {
+                $("#ALatetxt").attr("readOnly", true);
+                $("#ALatetxt").val(0);
+
+            }
+        });
+        $("#AED").change(function () {
+            if (this.checked) {
+                $("#AEDtxt").attr("readOnly", false);
+                $("#ALatetxt").val(0);
+                $("#ALatetxt").attr("readOnly", true);
+                $("#ALateorEDtxt").val(0);
+                $("#ALateorEDtxt").attr("readOnly", true);
+
+            }
+            else {
+                $("#AEDtxt").val(0);
+                $("#AEDtxt").attr("readOnly", true);
+
+            }
+        });
+        $("#ALateorED").change(function () {
+            if (this.checked) {
+                $("#ALateorEDtxt").attr("readOnly", false);
+                $("#ALatetxt").val(0);
+                $("#ALatetxt").attr("readOnly", true);
+                $("#AEDtxt").val(0);
+                $("#AEDtxt").attr("readOnly", true);
+
+            }
+            else {
+                $("#ALateorEDtxt").val(0);
+                $("#ALateorEDtxt").attr("readOnly", true);
+
+            }
+        });
+        function GetBanchwiseDepartmentData() {
+
+            $("#tbldepartment tbody").empty();
+
+            $.post("/Transactions/GetDeptbyBranch?BranchId=" + $("#ddlBranch").val(), function (response) {
+                if (response.isRedirect) {
+                    window.location.href = response.redirectUrl;
+                }
+                var table = "";
+                if (response != null) {
+                    for (var i = 0; i < response.length; i++) {
+                        var tbl = "<tr class='odd gradeX'>";
+                        //tbl = tbl + "<td id='did' hidden>" + response[i].Value;
+                        //tbl = tbl + "</td>";
+                        tbl = tbl + "<td id='dnm'>" + response[i].Text;
+                        tbl = tbl + "</td>";
+                        tbl = tbl + "<td id=''><input type='checkbox' onchange='checkedDept(this)' class='ClsChkDept' id='" + response[i].Value + "'/>";
+                        tbl = tbl + "</td>";
+                        tbl = tbl + "</tr>";
+
+                        table += tbl;
+                    }
+                }
+                $("#tbldepartment").destroy;
+                $('#tbldepartment').append(table);
+                $('#tbldepartment').dataTable({
+                    // "data": data.d,
+                    "destroy": true,
+                    "columns": [
+                        //{ "title": "Dept ID" },
+                        { "title": "Department Name" },
+                        { "title": "<input type='checkbox' class='ClsChkAllDept' onchange='AllCheckedDept(this)' />" }
+                    ]
+                });
+            });
+
+
+        }
+
+    });
+    function checkedDept(ths) {
+        getEmp();
+    }
+    function getEmp() {
+
+        $("#tblAttndDataEmp").empty();
+        var allVals = [];
+        var bID = $("#ddlBranch").val();
+        $("#tbldepartment .ClsChkDept").each(function () {
+            if ($(this).is(':checked') == true) {
+                allVals.push($(this).attr("id"));
+            }
+        });
+
+        $.post("/Transactions/GetEmpByDept?empArr=" + allVals + ";" + bID, function (response) {
+            if (response.isRedirect) {
+                window.location.href = response.redirectUrl;
+            }
+            var table = "";
+            if (response != null) {
+                for (var i = 0; i < response.length; i++) {
+
+                    var tbl = "<tr class='odd gradeX'>";
+                    tbl = tbl + "<td id='eid'>" + response[i].EmpId;
+                    tbl = tbl + "</td>";
+                    tbl = tbl + "<td id='ecode'>" + response[i].Empcode;
+                    tbl = tbl + "</td>";
+                    tbl = tbl + "<td id='enm'>" + response[i].EmpName;
+                    tbl = tbl + "</td>";
+                    tbl = tbl + "<td id='epid'>" + response[i].EmpPunchID;
+                    tbl = tbl + "</td>";
+                    tbl = tbl + "<td id=''><input type='checkbox' class='ClsChkEmp'  onchange='CheckedEmp(this)'  id='" + response[i].EmpId + "'/>";
+                    tbl = tbl + "</td>";
+                    tbl = tbl + "</tr>";
+                    table += tbl;
+                }
+            }
+            $("#tblAttndDataEmp").destroy;
+            $('#tblAttndDataEmp').append(table);
+            $('#tblAttndDataEmp').dataTable({
+                // "data": data.d,
+                "destroy": true,
+                "columns": [
+                    { "title": "ID" },
+                     { "title": "Code" },
+                    { "title": "Name" },
+                    { "title": "Punch ID" },
+                    { "title": "<input type='checkbox' class='ClsChkAllDept' onchange='AllCheckedEmp(this)' />" }
+                ]
+            });
+        });
+
+        $("#addrule").show();
+    }
+
+    function Clear() {
+        $("#ddlCompany").val("0");
+        $("#ddlBranch").empty();
+        $(".alert-danger").hide();
+        $(".alert-success").hide();
+        $("#tblAttndDataEmp tbody").empty();
+        $("#tbldepartment tbody").empty();
+        $(".ClsChkAllDept").prop('checked', false);
+        $(".ClsChkAllEmp").prop('checked', false);
+    }
+    function AllCheckedDept(ths) {
+        if ($(ths).prop('checked') == true) {
+            $(".ClsChkDept").prop('checked', true);
+
+        }
+        else {
+            $(".ClsChkDept").prop('checked', false);
+        }
+        getEmp();
+    }
+    function AllCheckedEmp(ths) {
+        if ($(ths).prop('checked') == true) {
+            $(".ClsChkEmp").prop('checked', true);
+            $('#btnAddRules').removeAttr("disabled");
+            $("#btnAddRules").on('click', function () {
+                AttendanceRuleSAVE();
+            });
+        }
+        else {
+            $(".ClsChkEmp").prop('checked', false);
+            $('#btnAddRules').attr("disabled", "disabled");
+            $("#btnAddRules").unbind("click");
+        }
+
+    }
+    function ruleclear() {
+        $("#AttendanceRuleId").val(0);
+        $("#AllErrorCase").val(0);
+        $("#ErrorCaseWH").val(0);
+        $("#HdLatetxt").val(0);
+        $("#HdEdtxt").val(0);
+        $("#HdLateorEdtxt").val(0);
+        $("#ALatetxt").val(0);
+        $("#AEDtxt").val(0);
+        $("#ALateorEDtxt").val(0);
+        $("#TotalHrafterStatus").prop('checked', false);
+        $("#TotalHrafterStatus").val(0);
+        $("#TotalHrbeforeStatus").prop('checked', false);
+        $("#TotalHrbeforeStatus").val(0);
+        $("#LateInMin").val(0);
+        $("#EDMin").val(0);
+        var nextStepWizard = $('div.setup-panel div a[href="#step-1"]').parent().children("a");
+        nextStepWizard.removeAttr('disabled').trigger('click');
+    }
+    function save() {
+        var allVals = [];
+        $("#tblAttndDataEmp .ClsChkEmp").each(function () {
+            if ($(this).is(':checked') == true) {
+                allVals.push($(this).attr("id"));
+            }
+        });
+        var AttdRules = {
+            "AttendanceRuleId": parseInt($("#AttendanceRuleId").val()),
+            "AllErrorCase": parseInt($("#AllErrorCase").val()),
+            "ErrorCaseWH": parseInt($("#ErrorCaseWH").val()),
+            "HdLate": parseInt($("#HdLatetxt").val()),
+            "HdEd": parseInt($("#HdEdtxt").val()),
+            "HdLateorEd": parseInt($("#HdLateorEdtxt").val()),
+            "ALate": parseInt($("#ALatetxt").val()),
+            "AED": parseInt($("#AEDtxt").val()),
+            "ALateorED": parseInt($("#ALateorEDtxt").val()),
+            "TotalHrafterStatus": parseInt($("#TotalHrafterStatus").val()),
+            "TotalHrbeforeStatus": parseInt($("#TotalHrbeforeStatus").val()),
+            "LateInMin": parseInt($("#LateInMin").val()),
+            "EDMin": parseInt($("#EDMin").val()),
+            "empidlst": allVals
+        };
+        // alert(AttdRules);
+        $.post("/Utilities/AttendanceRulesAdd?AttdRules=" + JSON.stringify(AttdRules), function (response) {
+            if (response.isRedirect) {
+                window.location.href = response.redirectUrl;
+            }
+            if (response != null) {
+                if (response == "OK") {
+                    Clear();
+                    $("#frmpopup").dialog("close");
+                    $(".alert-success").append("Attendance Rule saved Sucessfully.");
+                    $(".alert-success").show();
+                    $(".alert-danger").hide();
+                }
+                else {
+                    $(".popMsg").append(response);
+                    $(".popMsg").show();
+                }
+            }
+        });
+    }
+    function CheckedEmp(ths) {
+        $("#tblAttndDataEmp .ClsChkEmp").each(function () {
+            //alert($('.ClsChkEmp:checked').size());
+            if ($(ths).is(':checked') == true) {
+                EmpId = $(this).attr("id");
+            }
+        });
+        if ($('.ClsChkEmp:checked').size() >= 1) {
+            $('#btnAddRules').removeAttr("disabled");
+            $("#btnAddRules").on('click', function () {
+                AttendanceRuleSAVE();
+            });
+        }
+        else {
+            $('#btnAddRules').attr("disabled", "disabled");
+            $("#btnAddRules").unbind("click");
+        }
+
+    }
+    function AttendanceRuleSAVE() {
+        ruleclear();
+        var EmpId = 0;
+
+        $("#tblAttndDataEmp .ClsChkEmp").each(function () {
+            //alert($('.ClsChkEmp:checked').size());
+            if ($(this).is(':checked') == true) {
+                EmpId = $(this).attr("id");
+            }
+        });
+        if ($('.ClsChkEmp:checked').size() == 1) {
+            $.ajax({
+                type: "GET",
+                async: false,
+                url: "/Utilities/GetAttendanceRuleIDByEmployee",
+                data: { EmpId: EmpId },
+                contenttype: "application/json; charset=utf-8",
+                datatype: "json",
+                success: function (result, status) {
+                    if (result.isRedirect) {
+                        window.location.href = result.redirectUrl;
+                    }
+                    var obj = JSON.parse(result);
+                    $("#AttendanceRuleId").val(obj.AttendanceRuleId);
+                    if (obj.AllErrorCase != 0) {
+                        $("#AllErrorCase").prop('checked', true);
+                        $("#AllErrorCase").attr("value", 1);
+                    }
+                    if (obj.ErrorCaseWH != 0) {
+                        $("#ErrorCaseWH").prop('checked', true);
+                        $("#ErrorCaseWH").attr("value", 1);
+                    }
+                    if (obj.HdLate != 0) {
+                        $("#HdLate").prop('checked', true);
+                    }
+                    $("#HdLatetxt").val(obj.HdLate);
+
+                    if (obj.HdEd != 0) {
+                        $("#HdEd").prop('checked', true);
+                    }
+                    $("#HdEdtxt").val(obj.HdEd);
+
+                    if (obj.HdLateorEd != 0) {
+                        $("#HdLateorEd").prop('checked', true);
+                    }
+                    $("#HdLateorEdtxt").val(obj.HdLateorEd);
+
+                    if (obj.ALate != 0) {
+                        $("#ALate").prop('checked', true);
+                    }
+                    $("#ALatetxt").val(obj.ALate);
+
+                    if (obj.AED != 0) {
+                        $("#AED").prop('checked', true);
+                    }
+                    $("#AEDtxt").val(obj.AED);
+
+                    if (obj.ALateorED != 0) {
+                        $("#ALateorED").prop('checked', true);
+                    }
+                    $("#ALateorEDtxt").val(obj.ALateorED);
+
+                    if (obj.TotalHrbeforeStatus != 0) {
+                        $("#TotalHrbeforeStatus").prop('checked', true);
+                        $("#TotalHrbeforeStatus").attr("value", 1);
+                    }
+                    if (obj.TotalHrafterStatus != 0) {
+                        $("#TotalHrafterStatus").prop('checked', true);
+                        $("#TotalHrafterStatus").attr("value", 1);
+                    }
+                    $("#LateInMin").val(obj.LateInMin);
+                    $("#EDMin").val(obj.EDMin);
+                },
+                error: function (jqXHR, ajaxOptions, thrownError) {
+                    if (jqXHR.status == 500) { //InternalServerError = 500,
+                        toastr.error("InternalServerError");
+                    } else if (jqXHR.status == 400) { //BadRequest = 400,
+                        toastr.error("BadRequest");
+                    } else if (jqXHR.status == 401) {
+                        window.location.href = "/PayTime/LoginPage";
+                    }
+                }
+            });
+            $("#frmpopup").dialog("open");
+        }
+        else {
+            ruleclear();
+            $("#frmpopup").dialog("open");
+        }
+    }
+
+    $('#btnAddRules').attr("disabled", "disabled");
+    $("#btnAddRules").unbind("click");
+
+
+</script>
+
+
+
+<div class="row">
+    <div class="col-md-12">
+        <div class="portlet light portlet-fit bordered">
+            <div class="portlet-title">
+                <div class="caption">
+                    <i class=" icon-layers font-dark"></i>Attendance Rules
+                </div>
+                <div class="col-md-8 margin-top-10">
+                    <div class="form-group col-md-6">
+                        <label class="col-md-4" style="padding-top: 5px;">Company</label>
+                        <select class="form-control input-sm col-md-8 select2" id="ddlCompany" name="ddlCompany">
+                            <option value="0" selected>-- Select Company --</option>
+                            @foreach (var item in ViewBag.CompanyList as IEnumerable<SelectListItem>)
+                            {
+                                <option value="@item.Value">@item.Text</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="form-group col-md-6">
+                        <label class="col-md-3" style="padding-top: 5px;">Branch</label>
+                        <select class="form-control input-sm col-md-7 select2" id="ddlBranch" name="ddlBranch">
+                            <option value="0" selected>-- Select Branch --</option>
+                        </select>
+                        <div id='ajax_loaderCompany' class="modal_bg loading">
+                            <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; margin-left:0px; width:30px;" alt="loading" title="loading"/>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+            <div class="portlet-body ">
+                <div class="row form">
+                    @*<div class="col-md-12">
+                            <div class="alert alert-success">
+                                <a href="#" class="close" data-dismiss="alert">&times;</a>
+                                <strong id="strstg">Success ! </strong> @_Message
+                            </div>
+                            <div class="alert alert-danger">
+                                <a href="#" class="close" data-dismiss="alert">&times;</a>
+                                <strong id="strstg">Error ! </strong> @_error
+                            </div>
+                        </div>*@
+
+                    <div class="col-md-12 clsTable">
+
+                        <table class="table table-striped table-bordered table-hover  order-column" id="tbldepartment"></table>
+                    </div>
+                    <div class="col-md-12 clsTable">
+                        <div class=" margin-bottom-10 text-right" hidden id="addrule">
+                            <a href="#" id="btnAddRules" class="btn blue"> <i class="fa-solid fa-plus"></i> ADD Rule</a>
+                        </div>
+                        <table class="table table-striped table-bordered table-hover  order-column" id="tblAttndDataEmp"></table>
+                    </div>
+                </div>
+                <div id="frmpopup" class="modal-scroll in">
+
+                    <div class="stepwizard">
+                        <div class="stepwizard-row setup-panel">
+                            <div class="stepwizard-step">
+                                <a href="#step-1" type="button" class="btn btn-primary btn-circle">1</a>
+                                <p>Attendance Status Rule</p>
+                            </div>
+                            <div class="stepwizard-step">
+                                <a href="#step-2" type="button" class="btn btn-default btn-circle" disabled="disabled">2</a>
+                                <p>Total hour Calculation Rules</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="setup-content form" id="step-1">
+
+                        <div class="row">
+                            <div class="col-md-12">
+                                <fieldset>
+                                    <div class="form-group" hidden>
+                                        <label>Attendance RuleId</label>
+                                        <input type="text" id="AttendanceRuleId" value="0" name="AttendanceRuleId" class="form-control col-sm-2" hidden>
+                                    </div>
+
+                                    <div class="row">
+                                        <div class="col-md-6">
+                                            <h4 class="form-section">Present</h4>
+                                            <div class="row">
+                                                <div class="col-md-12">
+                                                    <div class="form-group">
+
+                                                        <label class="mt-radio mt-radio-outline">
+                                                            <input type="radio" class="radio" id="AllErrorCase" value="0" name="AllErrorCase" />Any Error Case
+                                                            <span></span>
+                                                        </label>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-12">
+                                                    <div class="form-group">
+                                                        <label class="mt-radio mt-radio-outline">
+                                                            <input type="radio" class="radio" id="ErrorCaseWH" value="0" name="AllErrorCase" />Calculate Half Day/Present when error Case
+                                                            <span></span>
+                                                        </label>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <fieldset>
+                                                <h4 class="form-section">Half Day & Absend </h4>
+
+
+                                                <div class="form-group">
+                                                    <div class="row">
+                                                        <div class="col-md-9">
+                                                            <label>Count Late after Late in Minutes</label>
+                                                        </div>
+                                                        <div class="col-md-3">
+                                                            <input type="text" id="LateInMin" name="LateInMin" class="form-control input-sm">
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div class="form-group">
+                                                    <div class="row">
+                                                        <div class="col-md-9">
+                                                            <label>Count Early departure after Early Dept. In Minutes</label>
+                                                        </div>
+                                                        <div class="col-md-3">
+                                                            <input type="text" id="EDMin" name="EDMin" class="form-control input-sm">
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+
+
+
+                                            </fieldset>
+
+                                        </div>
+                                        <div class="col-md-6">
+                                            <h4 class="form-section">Calculate Half Day If</h4>
+                                            <div class="form-group">
+                                                <div class="row">
+                                                    <div class="col-md-9">
+                                                        <label class="mt-radio mt-radio-outline ">
+                                                            Late Count (Greater or Equal)
+                                                            <input value="0" name="IFHalfDay" id="HdLate" type="radio" checked>
+                                                            <span></span>
+                                                        </label>
+                                                    </div>
+                                                    <div class="col-md-3">
+                                                        <input type="text" class="form-control input-sm" id="HdLatetxt" value="0" />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="form-group">
+                                                <div class="row">
+                                                    <div class="col-md-9">
+                                                        <label class="mt-radio mt-radio-outline ">
+                                                            Early dept Count  (Greater or Equal)
+                                                            <input value="1" name="IFHalfDay" id="HdEd" type="radio">
+                                                            <span></span>
+                                                        </label>
+                                                    </div>
+                                                    <div class="col-md-3">
+                                                        <input type="text" class="form-control input-sm" id="HdEdtxt" readonly value="0" />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="form-group">
+                                                <div class="row">
+                                                    <div class="col-md-9">
+                                                        <label class="mt-radio mt-radio-outline ">
+                                                            Late or Early Dept count  (Greater or Equal)
+                                                            <input value="2" name="IFHalfDay" id="HdLateorEd" type="radio">
+                                                            <span></span>
+                                                        </label>
+                                                    </div>
+                                                    <div class="col-md-3">
+                                                        <input type="text" class="form-control input-sm " id="HdLateorEdtxt" readonly value="0" />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div class="col-md-6 ">
+                                            <h4 class="form-section">Calculate Absent If</h4>
+                                            <div class="row">
+
+                                                <fieldset>
+
+                                                    <div class="col-md-12">
+                                                        <div class="form-group">
+                                                            <div class="row">
+                                                                <div class="col-md-9">
+                                                                    <label class="mt-radio mt-radio-outline">
+                                                                        Late Count (Greater or Equal)
+                                                                        <input value="0" name="Absent" id="ALate" type="radio" checked>
+                                                                        <span></span>
+                                                                    </label>
+                                                                </div>
+                                                                <div class="col-md-3">
+                                                                    <input type="text" class="form-control input-sm" id="ALatetxt" value="0" />
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <div class="col-md-12">
+                                                        <div class="form-group">
+                                                            <div class="row">
+                                                                <div class="col-md-9">
+                                                                    <label class="mt-radio mt-radio-outline">
+                                                                        Early dept Count  (Greater or Equal)
+                                                                        <input value="1" name="Absent" id="AED" type="radio">
+                                                                        <span></span>
+                                                                    </label>
+                                                                </div>
+                                                                <div class="col-md-3">
+                                                                    <input type="text" class="form-control input-sm " id="AEDtxt" readonly value="0" />
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+
+                                                    <div class="col-md-12">
+                                                        <div class="form-group">
+                                                            <div class="row">
+                                                                <div class="col-md-9">
+                                                                    <label class="mt-radio mt-radio-outline">
+                                                                        Late or Early Dept count  (Greater or Equal)
+                                                                        <input value="2" name="Absent" id="ALateorED" type="radio">
+                                                                        <span></span>
+                                                                    </label>
+                                                                </div>
+
+                                                                <div class="col-md-3">
+                                                                    <input type="text" class="form-control input-sm " id="ALateorEDtxt" value="0" readonly />
+                                                                </div>
+                                                            </div>
+                                                        </div>
+
+                                                    </div>
+
+
+                                                </fieldset>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </fieldset>
+                                <div class="editor-field form-group  col-md-12 control-label text-right">
+                                    <button class="btn blue  nextBtn pull-right" type="button" id="frstNext"> Next <i class="fa-light fa-angle-right"></i></button>
+                                </div>
+
+                            </div>
+                        </div>
+                    </div>
+                    <div class=" setup-content form" id="step-2">
+                        <fieldset>
+                            <h4 class="form-section">Total hour Calculation Rules</h4>
+                            <div class="row">
+                                <div class="col-md-6">
+
+                                    <div class="form-group">
+                                        <label class="mt-checkbox mt-checkbox-single mt-checkbox-outline">
+                                            <input type="checkbox" class="checkboxes" id="TotalHrafterStatus" name="TotalHrafterStatus" />After Shift Start Time
+                                            <span></span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-group">
+                                        <label class="mt-checkbox mt-checkbox-single mt-checkbox-outline">
+                                            <input type="checkbox" class="checkboxes" id="TotalHrbeforeStatus" name="TotalHrbeforeStatus" />Before Shift End Time
+                                            <span></span>
+                                        </label>
+                                    </div>
+
+                                </div>
+
+                                <div class="editor-field form-group  col-md-12 control-label text-right">
+                                    <button class="btn blue prevbtn" type="button"> <i class="fa-regular fa-angle-left"></i> Prev</button>
+                                    @*<input type="submit" class="btn blue" value="Save" id="btnsubmit" />*@
+                                    <button type="submit" id="btnsubmit" class=" btn blue"> <i class="fa-light fa-floppy-disk"></i> Save</button>
+                                </div>
+                            </div>
+                        </fieldset>
+
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+

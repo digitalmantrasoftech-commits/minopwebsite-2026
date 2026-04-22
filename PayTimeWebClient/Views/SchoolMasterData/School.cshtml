@@ -1,0 +1,751 @@
+﻿@using System.Configuration;
+@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@{
+    ViewBag.Title = "School";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    string _companyCode = HttpContext.Current.Session["cmpcode"].ToString();
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+    string _companyid = string.Empty;
+    if (_RoleId == 6805)
+    {
+        _companyid = HttpContext.Current.Session["ClientCompanyId"].ToString();
+    }
+}
+<style>
+    #map {
+        width: 100%;
+        height: 500px;
+        position: relative !important;
+    }
+
+    #pac-container {
+        padding-bottom: 12px;
+        margin-right: 12px;
+    }
+
+    .pac-container {
+        z-index: 10000 !important;
+    }
+</style>
+<script type="text/javascript">
+    var iconBase = "../assets/images/";
+    var schoolmarker;
+    var geocoder;
+    var schoolid = '@_companyid';
+    var emprole = '@_RoleId';
+
+    $(document).ready(function () {
+
+        //fillsmseventtypedll(3);
+        var _url = '@_webapiurl' + 'Master/CompanyGetAll'
+        if (emprole == '6805') {
+            _url = '@_webapiurl' + 'Master/CompanyGetById?id=' + schoolid;
+        }
+
+        var t = $('#tblSchoolMaster').DataTable(
+         {
+             "processing": true,
+             "ajax": {
+                 url: _url,
+                 type: "GET",
+                 headers: { 'Authorization': '@_tokan' },
+                 dataSrc: '',
+             },
+             "columns": [
+                 { "data": null },
+                 { "data": "CompanyID" },
+                 { "data": "CompanyName" },
+                 { "data": "CompanyCode" },
+                 { "data": "CompanyEmail" },
+                 { "data": "CompanyAddress" },
+                 { "data": "CompanyUrl" },
+                 { "data": "CompanyContact" },
+                 { "data": "IsActive" },
+                 { "data": "LicenseType" }
+             ],
+             "columnDefs": [
+                 {
+                     "targets": [1, 3, 5, 8, 9],
+                     "visible": false
+                 },
+                 {
+                     "targets": 10,
+                     "data": null,
+                     "render": function (data, type, full, meta) {
+                         if ('@obj.CanEdit.ToString()' == 'True') {
+                             data = "<a class='editclass btn btn-xs blue tooltips' title='Edit'><i class='fa fa-edit'></i></a";
+                         }
+                         else {
+                             data = "";
+                         }
+                         return data;
+                     }
+                 },
+                  {
+                      "searchable": false,
+                      "orderable": false,
+                      "targets": 0
+                  }
+             ],
+             "order": [[1, 'asc']],
+         }
+         );
+        t.on('order.dt search.dt', function () {
+            t.column(0, { search: 'applied', order: 'applied' }).nodes().each(function (cell, i) {
+                cell.innerHTML = i + 1;
+            });
+        }).draw();
+        $("#SchoolContactNo").keypress(function (e) {
+            $("#SchoolContactNo").removeClass('field_error');
+            if (e.which != 8 && e.which != 0 && (e.which < 48 || e.which > 57)) {
+                return false;
+            }
+            else {
+                return true;
+            }
+        });
+        $('#SchoolContactNo').bind('cut copy paste', function (e) {
+            e.preventDefault(); //disable cut,copy,paste
+        });
+        $("#AddSchool").on('click', function () {
+            //fillsmseventtypedll(3);
+            frmClear();
+            $("#SchoolEmail").attr("readOnly", false);
+            $("#AddSchool").attr("data-toggle", "modal");
+            $("#AddSchool").attr("data-target", "#frmpopup");
+            var pos;
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(function (position) {
+                    pos = {
+                        lat: position.coords.latitude,
+                        lng: position.coords.longitude
+                    };
+                    initMap(pos);
+                }, function () {
+                    pos = new google.maps.LatLng(parseFloat(23.0745648), parseFloat(72.52532870000005));
+                    initMap(pos);
+                });
+            } else {
+                // Browser doesn't support Geolocation
+                alert('Browser doesnt support Geolocation');
+            }
+
+        });
+        $("#btnschoolsubmit").click(function (event) {
+            if ($("#SchoolName").val() == "") {
+                $("#SchoolName").addClass('field_error');
+                $("#SchoolName").focus();
+                event.preventDefault();//or return false
+                return false;
+            }
+            else {
+                $("#SchoolName").removeClass('field_error');
+            }
+            if ($("#SchoolEmail").val() == "") {
+                $("#SchoolEmail").addClass('field_error');
+                $("#SchoolEmail").focus();
+                event.preventDefault();//or return false
+                return false;
+            }
+            else {
+                $("#SchoolEmail").removeClass('field_error');
+            }
+            if ($("#SchoolAddress").val() == "") {
+                $("#SchoolAddress").addClass('field_error');
+                $("#SchoolAddress").focus();
+                event.preventDefault();//or return false
+                return false;
+            }
+            else {
+                $("#SchoolAddress").removeClass('field_error');
+            }
+            if ($("#SchoolContactNo").val() == "") {
+                $("#SchoolContactNo").addClass('field_error');
+                $("#SchoolContactNo").focus();
+                event.preventDefault();//or return false
+                return false;
+            }
+            else {
+                $("#SchoolContactNo").removeClass('field_error');
+            }
+            var obj = {
+                CompanyID: $('#SchoolId').val(),
+                CompanyName: $("#SchoolName").val(),
+                CompanyEmail: $('#SchoolEmail').val(),
+                CompanyAddress: $("#SchoolAddress").val(),
+                CompanyUrl: $('#SchoolWebsite').val(),
+                CompanyContact: $("#SchoolContactNo").val(),
+                CompanyCode: $("#AccountCode").val(),
+                IsActive: $("#IsActive").val(),
+                LicenseType: $("#sclLetlng").val(),
+                isSchool: 1
+                //SmsEventType: $("#smseventtypeid").val()
+            };
+            if ($('#SchoolId').val() == "0") {
+                $.ajax({
+                    type: "POST",
+                    headers: { 'Authorization': '@_tokan' },
+                    url: '@_webapiurl' + 'Master/CompanyCreate',
+                    data: JSON.stringify(obj),
+                    contentType: "application/json; charset=utf-8",
+                    dataType: "json",
+                    success: function (response) {
+                        if (response != null) {
+                            $("<div class='alert alert-success overlay'><label>Saved Successfully</label></div>").insertBefore(".portlet-body").fadeOut(3000);
+                            $('#tblSchoolMaster').DataTable().ajax.reload();
+                            $('#frmpopup').modal('toggle');
+                        } else {
+                            $("<div class='alert alert-danger overlay'><label>Error on save</label></div>").insertBefore(".portlet-body").fadeOut(3000);
+                            $('#tblSchoolMaster').DataTable().ajax.reload();
+                            $('#frmpopup').modal('toggle');
+                        }
+                    },
+                    error: function (response) {
+                        if (response != null) {
+                            var obj = JSON.parse(response.responseText);
+                            if (obj.MegSts == 'error') {
+                                $("<div class='alert alert-danger overlay'><label>" + obj.Meg + "</label></div>").insertBefore(".portlet-body").fadeOut(3000);
+                                $('#tblSchoolMaster').DataTable().ajax.reload();
+                                $('#frmpopup').modal('toggle');
+                            }
+                        }
+                    }
+                });
+            } else {
+                $.ajax({
+                    type: "POST",
+                    headers: { 'Authorization': '@_tokan' },
+                    url: '@_webapiurl' + 'Master/CompanyUpdate',
+                    data: JSON.stringify(obj),
+                    contentType: "application/json; charset=utf-8",
+                    dataType: "json",
+                    success: function (response) {
+                        if (response != null) {
+                            $("<div class='alert alert-success overlay'><label>Updated Successfully</label></div>").insertBefore(".portlet-body").fadeOut(3000);
+                            $('#tblSchoolMaster').DataTable().ajax.reload();
+                            $('#frmpopup').modal('toggle');
+                        } else {
+                            $("<div class='alert alert-danger overlay'><label>Error on updation</label></div>").insertBefore(".portlet-body").fadeOut(3000);
+                            $('#tblSchoolMaster').DataTable().ajax.reload();
+                            $('#frmpopup').modal('toggle');
+                        }
+                    }
+                });
+            }
+        });
+        $("#SchoolName").keypress(function (evt) {
+            $("#SchoolName").removeClass('field_error');
+            var k;
+            if (evt.keyCode > 0) {
+                k = evt.keyCode;
+            }
+            else if (typeof (evt.charCode) != "undefined") {
+                k = evt.charCode;
+            }
+            return ((k > 64 && k < 91) || (k > 96 && k < 123) || k == 8 || (k >= 48 && k <= 57) || k == 32 || k == 38 || k == 46);
+        });
+        $("#tblSchoolMaster").on('click', '.editclass', function () {
+
+            $("#spscnt").hide();
+            $("#SchoolWebsite").removeClass('field_error');
+            $("#spschweb").hide();
+            $("#SchoolEmail").removeClass('field_error');
+            $("#spscheml").hide();
+            $("#SchoolName").removeClass('field_error');
+            $("#SchoolContactNo").removeClass('field_error');
+            $("#SchoolId").val(t.row($(this).parent('td').parent('tr')).data()["CompanyID"]);
+            $("#SchoolName").val(t.row($(this).parent('td').parent('tr')).data()["CompanyName"]);
+            $("#SchoolEmail").val(t.row($(this).parent('td').parent('tr')).data()["CompanyEmail"]);
+            $("#SchoolAddress").val(t.row($(this).parent('td').parent('tr')).data()["CompanyAddress"]);
+            $("#SchoolWebsite").val(t.row($(this).parent('td').parent('tr')).data()["CompanyUrl"]);
+            $("#SchoolContactNo").val(t.row($(this).parent('td').parent('tr')).data()["CompanyContact"]);
+            $("#AccountCode").val(t.row($(this).parent('td').parent('tr')).data()["CompanyCode"]);
+            $("#smseventtypeid").val(t.row($(this).parent('td').parent('tr')).data()["smseventtypeid"]);
+
+            $(".editclass").attr("data-toggle", "modal");
+            $(".editclass").attr("data-target", "#frmpopup");
+            var pos;
+            var strpos = t.row($(this).parent('td').parent('tr')).data()["LicenseType"];
+            if (strpos != "" && strpos != null) {
+                pos = Getposlatlng(strpos);
+                initMap(pos);
+            }
+            else {
+                alert('School address should be on map.please set it.');
+                $("#SchoolAddress").focus();
+                if (navigator.geolocation) {
+                    navigator.geolocation.getCurrentPosition(function (position) {
+                        pos = {
+                            lat: position.coords.latitude,
+                            lng: position.coords.longitude
+                        };
+                        initMap(pos);
+                        //}, function () {
+                        //    pos = new google.maps.LatLng(parseFloat(23.0745648), parseFloat(72.52532870000005));
+                        //initMap(pos);
+                    });
+                } else {
+                    // Browser doesn't support Geolocation
+                    alert('Browser doesn\'t support Geolocation');
+                }
+            }
+
+
+        });
+        function Getposlatlng(strlocation) {
+            var input = strlocation.replace('(', '').replace(')', '');
+            var latlngStr = input.split(',', 2)
+            var latlng = new google.maps.LatLng(parseFloat(latlngStr[0]), parseFloat(latlngStr[1]));
+            return latlng;
+        }
+
+        $("#SchoolEmail").change(function () {
+            var filter = new RegExp(/^[_A-Za-z0-9-]+(\.[_A-Za-z0-9-]+)*@@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*(\.[A-Za-z]{2,4})$/);
+            if (!filter.test($("#SchoolEmail").val())) {
+                $("#spscheml").html("Please Enter Valid Email ID.").show();
+                $("#SchoolEmail").val("");
+                $("#SchoolEmail").focus();
+                $("#SchoolEmail").addClass('field_error');
+                return false;
+            }
+            var email = $("#SchoolEmail").val();
+            //$.get(url, { email: email }, function (data) {
+            $.ajax({
+                type: "GET",
+                headers: { 'Authorization': '@_tokan' },
+                url: '@_webapiurl' + "/SchoolMaster/GetSchoolEmail?email=" + email,
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                success: function (data) {
+                    if (data.isRedirect) {
+                        window.location.href = data.redirectUrl;
+                    }
+                    if (data != null && data.length > 0) {
+                        if (data[0]["email"].toLowerCase() == email.toLowerCase()) {
+                            $("#spscheml").html("Email ID must be Unique.").show();
+                            $("#SchoolEmail").val("");
+                            $("#SchoolEmail").focus();
+                            $("#SchoolEmail").addClass('field_error');
+                            return false;
+                        }
+                        else {
+                            $("#SchoolEmail").removeClass('field_error');
+                            $("#spscheml").hide();
+                            return true;
+                        }
+                    }
+                    else {
+                        $("#spscheml").hide();
+                    }
+
+                }
+            });
+
+        });
+
+        $("#SchoolName").change(function () {
+            var name = $("#SchoolName").val();
+            $.ajax({
+                type: "GET",
+                headers: { 'Authorization': '@_tokan' },
+                url: '@_webapiurl' + "/SchoolMaster/GetName?name=" + name,
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                success: function (data) {
+                    if (data.isRedirect) {
+                        window.location.href = data.redirectUrl;
+                    }
+                    if (data != null && data.length > 0) {
+                        if (data[0]["name"].toLowerCase() == name.toLowerCase()) {
+                            $("#spschnme").html("School name must be Unique.").show();
+                            $("#SchoolName").val("");
+                            $("#SchoolName").focus();
+                            $("#SchoolName").addClass('field_error');
+                            return false;
+                        }
+                        else {
+                            $("#SchoolName").removeClass('field_error');
+                            $("#spschnme").hide();
+                            return true;
+                        }
+                    }
+                    else {
+                        $("#spschnme").hide();
+                    }
+
+                }
+            });
+
+        });
+
+
+
+
+        $("#SchoolWebsite").change(function () {
+            var regUrl = /(http(s)?:\\)?([\w-]+\.)+[\w-]+[.com|.in|.org]+(\[\?%&=]*)?/;
+            if (!regUrl.test($("#SchoolWebsite").val())) {
+                $("#spschweb").html("Please Enter Valid URL.").show();
+                $("#SchoolWebsite").val("");
+                $("#SchoolWebsite").focus();
+                $("#SchoolWebsite").addClass('field_error');
+                event.preventDefault();//or return false
+                return false;
+            }
+            else {
+                $("#SchoolWebsite").removeClass('field_error');
+                $("#spschweb").hide();
+            }
+        });
+
+        $("#SchoolContactNo").change(function () {
+            var inputStr = $("#SchoolContactNo").val();
+            if (inputStr.length < 8) {
+                $("#spscnt").html("Please enter atleast 8 number.").show();
+                $("#SchoolContactNo").val("");
+                $("#SchoolContactNo").focus();
+                $("#SchoolContactNo").addClass('field_error');
+                //$("#spscnt").html("enter atleast 5 chars in the input box");
+            }
+            else {
+                $("#SchoolContactNo").removeClass('field_error');
+                $("#spscnt").hide();
+                return true;
+            }
+        });
+
+
+
+    });
+    function frmClear() {
+        $("#AccountCode").val('@_companyCode');
+        $("#SchoolId").val(0);
+        $("#SchoolName").val("");
+        $("#SchoolName").attr("placeholder", "Enter school name");
+        $("#SchoolName").removeClass('field_error');
+        $("#spschnme").hide();
+        $("#spscnt").hide();
+        $("#sclLetlng").val('');
+
+        $("#SchoolEmail").val("");
+        $("#SchoolEmail").attr("placeholder", "Enter school email");
+        $("#SchoolEmail").removeClass('field_error');
+        $("#spscheml").hide();
+
+        $("#SchoolWebsite").val("");
+        $("#SchoolWebsite").attr("placeholder", "Enter school website");
+        $("#SchoolWebsite").removeClass('field_error');
+
+        $("#SchoolContactNo").val("");
+        $("#SchoolContactNo").attr("placeholder", "Enter school Contact No");
+        $("#SchoolContactNo").removeClass('field_error');
+
+        $("#SchoolAddress").val("");
+        $("#SchoolAddress").attr("placeholder", "Enter school address");
+        $("#SchoolAddress").removeClass('field_error');
+    }
+    function fillsmseventtypedll(selectedsmseventtypeid) {
+        $('#smseventtypeid').empty();
+        $.ajax(
+         {
+             type: "GET",
+             headers: { 'Authorization': '@_tokan' },
+             url: '@_webapiurl' + "/SchoolMaster/SmseventtypeGetAll",
+             contentType: "application/json; charset=utf-8",
+             dataType: "json",
+             beforeSend: function () {
+             },
+             success: function (data) {
+                 if (data.isRedirect) {
+                     window.location.href = data.redirectUrl;
+                 }
+                 $("#smseventtypeid").append("<option value='0'>Select SMS Event Type</option>");
+                 for (var x = 0; x < data.length; x++) {
+                     $("#smseventtypeid").append("<option value=" + data[x].smseventtypeid + ">" + data[x].smseventtypename + "</option>");
+                 }
+                 $("#smseventtypeid option[value = '" + selectedsmseventtypeid + "' ]").prop('selected', true);
+             },
+             error: function (jqXHR, ajaxOptions, thrownError) {
+                 if (jqXHR.status == 500) { //InternalServerError = 500,
+                     toastr.error("InternalServerError");
+                 } else if (jqXHR.status == 400) { //BadRequest = 400,
+                     toastr.error("BadRequest");
+                 } else if (jqXHR.status == 401) {
+                     window.location.href = "/PayTime/LoginPage";
+                 }
+             }
+         });
+    }
+
+    function initMap(vpos) {
+
+        var directionsService = new google.maps.DirectionsService();
+        var directionsDisplay = new google.maps.DirectionsRenderer();
+        var map = new google.maps.Map(document.getElementById('map'), {
+            center: vpos,
+            zoom: 12,
+            mapTypeId: google.maps.MapTypeId.ROADMAP
+        });
+        geocoder = new google.maps.Geocoder();
+        directionsDisplay.setMap(map);
+        showsmarker(map, vpos, true);
+        //Placeservice(vpos, geocoder);
+
+
+        map.addListener('mouseover', function () {
+            // 3 seconds after the center of the map has changed, pan back to the
+            // marker.
+            window.setTimeout(function () {
+                map.panTo(schoolmarker.getPosition());
+            }, 200);
+
+        });
+
+        map.addListener('click', function (event) {
+            pos = event.latLng;
+            schoolmarker.setVisible(false);
+            showsmarker(map, pos, true);
+            Placeservice(vpos, geocoder);
+        });
+
+
+        var input = document.getElementById('SchoolAddress');
+        var autocomplete = new google.maps.places.Autocomplete(input);
+        autocomplete.bindTo('bounds', map);
+
+        autocomplete.addListener('place_changed', function () {
+            schoolmarker.setVisible(false);
+            var place = autocomplete.getPlace();
+            if (!place.geometry) {
+                // User entered the name of a Place that was not suggested and
+                // pressed the Enter key, or the Place Details request failed.
+                window.alert("No details available for input: '" + place.name + "'");
+                return;
+            }
+
+            // If the place has a geometry, then present it on a map.
+            if (place.geometry.viewport) {
+                map.fitBounds(place.geometry.viewport);
+            } else {
+                map.setCenter(place.geometry.location);
+                map.setZoom(17);  // Why 17? Because it looks good.
+
+            }
+
+            showsmarker(map, place.geometry.location, true);
+            $("#sclLetlng").val(place.geometry.location);
+            schoolmarker.setVisible(true);
+
+        });
+    }
+
+
+    function Placeservice(latlng, geocoder) {
+        var _placename = '';
+        geocoder.geocode({ 'location': latlng }, function (results, status) {
+            if (status === 'OK') {
+                if (results[0]) {
+                    _placename = results[0].formatted_address;
+                    $("#SchoolAddress").val(_placename);
+                } else {
+                    window.alert('No results found');
+
+                }
+            } else {
+                window.alert('Geocoder failed due to: ' + status);
+            }
+        });
+    }
+
+
+
+    function showsmarker(map, pos, isdraggable) {
+        schoolmarker = new google.maps.Marker({
+            position: pos,
+            map: map,
+            icon: iconBase + 'School.png',
+            draggable: isdraggable,
+            title: "school"
+        });
+        schoolmarker.addListener('dragend', function () {
+            var _position = schoolmarker.getPosition();
+            Placeservice(_position, geocoder);
+            $("#sclLetlng").val(_position);
+        });
+        $("#sclLetlng").val(pos);
+        schoolmarker.setVisible(true);
+        //Placeservice(pos, geocoder);
+    }
+
+
+
+</script>
+<script type="text/javascript" src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBZKLtQG-hhnOXL3OFg7uJzlusQj38k0VU&libraries=drawing,places" async defer></script>
+<div class="page-bar">
+    <ul class="page-breadcrumb">
+        <li>
+            <a href="/School/AdminDashboard">Home</a>
+            <i class="fa fa-circle"></i>
+        </li>
+        <li>
+            <span>School</span>
+        </li>
+    </ul>
+
+    <div class="page-toolbar">
+        @if (obj.CanAdd && Convert.ToInt32(Session["IsSchool"]) == 1)
+        {
+            <div class="">
+                <a href="#" id="AddSchool" class="btn btn-sm blue" style="float:right"> <i class="fa fa-plus"></i> Add School</a>
+            </div>
+        }
+
+    </div>
+</div>
+<h1 class="page-title">
+    <small></small>
+</h1>
+@if (obj.CanView && Convert.ToInt32(Session["IsSchool"]) == 1)
+{
+    <div class="row">
+        <div class="col-md-12">
+            <div class="portlet ">
+                <div class="portlet-body">
+                    <div>
+                        <table id="tblSchoolMaster" class="table table-striped table-bordered table-hover table-checkable order-column">
+                            <thead>
+                                <tr>
+                                    <th>Sr. No</th>
+                                    <th hidden>School ID</th>
+                                    <th>Name</th>
+                                    <th hidden>Account Code</th>
+                                    <th>Email</th>
+                                    <th hidden>Adress</th>
+                                    <th>Website</th>
+                                    <th>Contact No</th>
+                                    <th>IsActive</th>
+                                    <th hidden>Latlng</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                        </table>
+                    </div>
+                    <div id="frmpopup" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+                        <div class="modal-dialog" style="width:1000px!important;">
+                            <!-- Modal content-->
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                                    <h4 class="modal-title">School</h4>
+                                </div>
+                                <div class="modal-body">
+                                    <div class="row">
+                                        <div class="col-md-6">
+                                            <fieldset>
+                                                <div class="form-group">
+                                                    <label class=" control-label">
+                                                        @Html.Hidden("SchoolId")
+                                                        @Html.Hidden("IsActive", true)
+                                                        Name <span class="required" aria-required="true"> * </span>
+                                                    </label>
+
+                                                    <div class="editor-field">
+                                                        @Html.Editor("SchoolName", new { htmlAttributes = new { @class = "form-control input-sm", @maxlength = "100" } })
+                                                        <span class="help-block" hidden id="spschnme" style="color:red;"></span>
+                                                    </div>
+                                                </div>
+                                                <div class="form-group" hidden>
+                                                    <div class="editor-field">
+                                                        @Html.Editor("AccountCode", new { htmlAttributes = new { @class = "form-control input-sm", @maxlength = "100" } })
+                                                        <span class="help-block" hidden id="spschnme" style="color:red;"></span>
+                                                    </div>
+                                                </div>
+                                                <div class="form-group">
+                                                    <label class=" control-label">
+                                                        Email <span class="required" aria-required="true"> * </span>
+                                                    </label>
+
+                                                    <div class="editor-field">
+                                                        @Html.Editor("SchoolEmail", new { htmlAttributes = new { @class = "form-control input-sm" } })
+                                                        <span class="help-block" hidden id="spscheml" style="color:red;"></span>
+                                                    </div>
+                                                </div>
+                                                <div class="form-group">
+                                                    <label class=" control-label">
+                                                        Website
+                                                    </label>
+                                                    <div class="editor-field">
+                                                        @Html.Editor("SchoolWebsite", new { htmlAttributes = new { @class = "form-control input-sm" } })
+                                                        <span class="help-block" hidden id="spschweb" style="color:red;"></span>
+                                                    </div>
+                                                </div>
+                                            </fieldset>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <fieldset>
+                                                <div class="form-group">
+                                                    <label class=" control-label">
+                                                        Contact No <span class="required" aria-required="true"> * </span>
+                                                    </label>
+
+                                                    <div class="editor-field">
+                                                        @Html.Editor("SchoolContactNo", new { htmlAttributes = new { @class = "form-control input-sm", @maxlength = "15" } })
+                                                        <span class="help-block" hidden id="spscnt" style="color:red;"></span>
+                                                    </div>
+                                                </div>
+                                                <div class="form-group">
+                                                    <label class=" control-label">
+                                                        Address <span class="required" aria-required="true"> * </span>
+                                                    </label>
+                                                    <div class="editor-field">
+                                                        <input type="text" id="SchoolAddress" class="form-control input-sm" placeholder="Enter school Address" name="SchoolAddress" />
+                                                        @*<textarea id="SchoolAddress" class="form-control input-sm"  rows="4" placeholder="Enter school Address" maxlength="150"></textarea>*@
+                                                        <span class="help-block" hidden id="spschadd" style="color:red;"></span>
+                                                        <input type="hidden" id="sclLetlng" name="sclLetlng" />
+                                                    </div>
+                                                </div>
+                                                <div class="form-group" hidden>
+                                                    <label class=" control-label">
+                                                        SMS Event Type <span class="required" aria-required="true"> * </span>
+                                                    </label>
+                                                    <div class="editor-field">
+                                                        @Html.DropDownList("smseventtypeid", new SelectList(new[] { "" }), "Select SMS Event Type", new { @class = "form-control input-sm", @disabled = "disabled" })
+                                                    </div>
+                                                </div>
+                                                <span class="help-block" style="color:red;" hidden id="spvalidation"></span>
+                                                <div class="form-group">
+                                                    <button type="button" class=" btn btn-sm blue" id="btnschoolsubmit" style="float:right"> <i class="fa fa-check"></i> Save</button>
+                                                </div>
+                                            </fieldset>
+                                        </div>
+                                    </div>
+                                    <div class="row">
+                                        <div id="map"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    <span style="color:red">Unauthorized Access.</span>
+}
+

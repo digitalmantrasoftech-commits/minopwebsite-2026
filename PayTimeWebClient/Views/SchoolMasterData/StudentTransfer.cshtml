@@ -1,0 +1,744 @@
+﻿@using System.Configuration;
+@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models
+@{
+    ViewBag.Title = "StudentTransfer";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    int _UserId = Convert.ToInt32(HttpContext.Current.Session["UserId"]);
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    string _companyCode = HttpContext.Current.Session["cmpcode"].ToString();
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+    string _Message = string.Empty;
+    string _error = string.Empty;
+
+    string _companyid = string.Empty;
+    if (_RoleId == 6805)
+    {
+        _companyid = HttpContext.Current.Session["ClientCompanyId"].ToString();
+    }
+}
+<script type="text/javascript">
+    var schoolid = '@_companyid';
+    var emprole = '@_RoleId';
+    var _url = '';
+    var token = '@_tokan';
+    var webapiurl = '@_webapiurl';
+    $(document).ready(function () {
+
+        $(".alert").hide();
+        if ("@_Message" != "") {
+            $(".alert-danger").hide();
+            $(".alert-success").show();
+        }
+        if ('@_error' != "") {
+            $(".alert-danger").show();
+            $(".alert-success").hide();
+        }
+
+        var $select = $("#DeptIds").multiselect({
+            selectAllValue: 'multiselect-all',
+            enableCaseInsensitiveFiltering: true,
+            includeSelectAllOption: true,
+            allSelectedText: 'All Select',
+            enableFiltering: true,
+            maxHeight: '300',
+            buttonWidth: '100%',
+            enableClickableOptGroups: true
+        });
+
+        fillcompany();
+        fillSchool();
+        $("#ddlcompany").change(function () {
+            $("#ddlcompany").removeClass('field_error');
+            var cmpid = $("#ddlcompany").val();
+            fillbranch(cmpid);
+        });
+        $("#ddlSchool").change(function () {
+            $("#ddlSchool").removeClass('field_error');
+            var cmpid = $("#ddlSchool").val();
+            fillClass(cmpid);
+        });
+        $("#ddlClass").change(function () {
+            $("#ddlClass").removeClass('field_error');
+            var classid = $("#ddlClass").val();
+            filldivision(classid);
+        });
+        $("#btnstudenttransfer").click(function () {
+            $(".alert-danger").hide();
+            if ($("#ddlcompany").val() == "0") {
+                $("<div class='alert alert-danger overlay'><label>Please select School</label></div>").insertBefore(".portlet-body").fadeOut(3000);
+                return false;
+            }
+
+            if ($("#ddlBranch").val() == "0") {
+                $("<div class='alert alert-danger overlay'><label>Please select Class</label></div>").insertBefore(".portlet-body").fadeOut(3000);
+                return false;
+            }
+
+            clearform();
+
+            $("#btnstudenttransfer").attr("data-toggle", "modal");
+            $("#btnstudenttransfer").attr("data-target", "#frmpopup");
+            filldepartment();
+        });
+        function clearform() {
+            $("#ddlSchool").val("0");
+            $("#ddlClass").val("0");
+            $("#ddldivision").val("0");
+            $("#DeptIds").val("0");
+            $("#tblEmp").empty();
+        }
+        function filldepartment() {
+            $("#DeptIds").empty();
+            $.ajax({
+                type: "POST",
+                url: "/Transactions/GetDeptbyBranch?BranchId=" + $("#ddlBranch").val(),
+                contentType: "application/json; charset=utf-8",
+                datatype: "json",
+                async: "false",
+                success: function (response) {
+                    if (response.isRedirect) {
+                        window.location.href = response.redirectUrl;
+                    }
+                    if (response != null) {
+                        for (var i = 0; i < response.length; i++) {
+                            $('#DeptIds').append('<option value=" ' + response[i].Value + ' ">' + response[i].Text + '</option>');
+                        }
+                        $select.multiselect('rebuild');
+                        $(document.body).on('change', '#DeptIds', function () {
+                            $(".popMsg").hide();
+                            var deptid = $('#DeptIds option:selected');
+                            var DeptArray = [];
+                            $(deptid).each(function (index, deptid) {
+                                DeptArray.push([$(this).val()]);
+                            });
+                            if (DeptArray == "") {
+                                $("#txt2").val(0);
+                            }
+                            else {
+                                $("#txt2").val(DeptArray);
+                                $("#spValidation").hide();
+                            }
+                            var ArrDept = $("#txt2").val();
+                            DeptIdlst = ArrDept;
+                            getEmp();
+                        });
+                    }
+                    $(".loading").hide();
+                },
+                beforeSend: function () {
+                    $(".loading").show();
+                },
+                error: function () {
+                    $(".loading").hide();
+                }
+            });
+        }
+
+        $("#btnSave").click(function () {
+            save();
+        });
+
+
+        @*$('#tbltransferstudent').destroy;
+        var isedit = '@obj.CanEdit';
+        var t = $('#tbltransferstudent').DataTable({
+            processing: true,
+            serverSide: true,
+            "ajax": ({
+                "url": "/MasterData/EmployeeMasterAjax",
+                "method": "POST",
+                "type": "json",
+                "data": { "roleid": emprole, "loginempid": schoolid }
+            }),
+            "language": {
+                "search": "Search",
+                "searchplaceholder": "Search..."
+            },
+            lengthMenu: [
+           [10, 25, 50, 100, 1700],
+           ['10', '25', '50', '100', 'All']
+            ],
+            searching: true,
+            searchDelay: 500,
+            "bDestroy": true,
+            "columns": [
+                { "data": "EmpId" },
+                { "data": "Empcode" },
+                { "data": "EmpName" },
+                { "data": "EmpAddress" },
+                { "data": "EmpPhNo" },
+                { "data": "EmpMNo" },
+                { "data": "RoleId" },
+                { "data": "Gender" },
+                { "data": "Email" },
+                { "data": "EmpDOB" },
+                { "data": "EmpMarried" },
+                { "data": "EmpJoinDate" },
+                { "data": "EmpResignDate" },
+                { "data": "EmpPunchID" },
+                { "data": "MobNoSMS" },
+                { "data": "CompanyID" },
+                { "data": "BranchId" },
+                { "data": "DepartmentId" },
+                { "data": "DesignationId" },
+                { "data": "ShiftId" },
+                { "data": "ShiftGroupId" },
+                { "data": "UserId" },
+                { "data": "EmpPhoto" },
+                { "data": "ReportingTo" },
+                { "data": "PolicyId" },
+                { "data": "BranchName" },
+                { "data": "ReligionId" },
+                { "data": "IsSMS" },
+                { "data": "Status" },
+                { "data": "Married" },
+                { "data": "JoinDate" },
+                { "data": "BirthDate" },
+                { "data": "EmpGender" },
+                { "data": "DepartmentName" },
+                { "data": "DesignationName" },
+                { "data": "ShiftName" },
+                { "data": "PolicyName" },
+                { "data": "RoleName" }
+
+
+            ],
+            "dom": 'Bflrtip',
+            "responsive": true,
+            "buttons": [
+                {
+                    title: '',
+                    extend: 'excelHtml5',
+                    exportOptions: {
+                        columns: [1, 2, 13, 29, 30, 31, 33, 34, 35, 8, 32, 37, 36, 3, 4, 5]
+                    },
+                },
+            ],
+            "columnDefs": [
+                    {
+                        targets: [0, 3, 4, 5, 6, 7, 9, 10, 11, 12, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 26, 27, 29, 30, 31, 32, 33, 34, 35, 36, 37],
+                        visible: false,
+                        searchable: false,
+                    },
+                    //{
+                    //    targets: 28,
+                    //    render: function (data, type, row) {
+                    //        return row.IsActive ? '<span><b>Active</b></span>' : '<span><b>InActive</b></span>'
+                    //    }
+                    //},
+                    {
+                        targets: 38,
+                        render: function (data, type, row) {
+                            return isedit ? row.IsActive ? '<a class="editclass btn btn-xs blue tooltips" title="Edit"> <span id="sp3" hidden>' + row.Empcode + '</span> <i class="fa fa-edit"> </i> </a> <span></span><a class="Inactiveclass btn btn-xs blue tooltips" title="Inactive"><i class="fa fa-times"></i></a>' : '<a class="editclass btn btn-xs blue tooltips" title="Edit"> <span id="sp3" hidden>' + row.Empcode + '</span> <i class="fa fa-edit"> </i> </a> <span> </span><a class="Activeclass btn btn-xs blue tooltips" title="Active"><i class="fa fa-check"></i></a>' : ''
+                        }
+                    }
+
+
+            ]
+
+
+        }).draw();*@
+
+
+
+    });
+    function save() {
+        if (valid()) {
+            var allVals = [];
+            $("#tblEmp .ClsChkEmp").each(function () {
+                if ($(this).is(':checked') == true) {
+                    allVals.push($(this).attr("id"));
+                }
+            });
+
+            if ($("#ddlSchool").val() == "0") {
+                $("<div class='alert alert-danger overlay'><label>Please select School</label></div>").insertBefore(".popMsg").fadeOut(3000);
+                return false;
+            }
+            
+            if ($("#ddlClass").val() == "0") {
+                $("<div class='alert alert-danger overlay'><label>Please select Class</label></div>").insertBefore(".popMsg").fadeOut(3000);
+                return false;
+            }
+          
+            if ($("#ddldivision").val() == "0") {
+                $("<div class='alert alert-danger overlay'><label>Please select Division</label></div>").insertBefore(".popMsg").fadeOut(3000);
+                return false;
+            }
+           
+
+            var obj = {
+                "Studentids": allVals,
+                "NewSchool": $("#ddlSchool").val(),
+                "Newclass": $("#ddlClass").val(),
+                "Newdivision": $("#ddldivision").val()
+            };
+
+            $.ajax({
+                type: "POST",
+                headers: { 'Authorization': '@_tokan' },
+                url: '@_webapiurl' + "SchoolMaster/StudentTransfer",
+                data: JSON.stringify(obj),
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                async: "false",
+                beforeSend: function () {
+                    $("#ajax_loaderCompany").show();
+                },
+                success: function (response) {
+                    if (response.isRedirect) {
+                        window.location.href = response.redirectUrl;
+                    }
+                    if (response != null) {
+                        if (response.MsgSts == "ok") {
+                            $('#frmpopup').modal('toggle');
+                            $(".alert-danger").hide();
+                            $(".alert-success").text(response.Msg);
+                            $(".alert-success").show();
+                            $('.alert-success').fadeIn('fast').delay(3000).fadeOut('slow');
+                            $("#ddlcompany").val(0);
+                            $("#ddlBranch").val(0);
+                        }
+                        else {
+                            $(".alert-danger").text(response.Msg);
+                            $(".alert-danger").show();
+                            $('.alert-danger').fadeIn('fast').delay(3000).fadeOut('slow');
+                        }
+                    }
+                    $("#ajax_loaderCompany").hide();
+                },
+                error: function (response) {
+                    $("#ajax_loaderCompany").hide();
+                },
+            });
+        }
+    }
+
+    function getEmp() {
+        $("#lblemp").show();
+        $("#tblEmp").empty();
+        var bID = $("#ddlBranch").val();
+        $.post("/Transactions/GetEmpByDept?empArr=" + DeptIdlst + ";" + bID, function (response) {
+            if (response.isRedirect) {
+                window.location.href = response.redirectUrl;
+            }
+            var table = "";
+            if (response != null) {
+                for (var i = 0; i < response.length; i++) {
+
+                    var tbl = "<tr class='odd gradeX'>";
+                    tbl = tbl + "<td id='eid' hidden>" + response[i].EmpId;
+                    tbl = tbl + "</td>";
+                    tbl = tbl + "<td id='ecode'>" + response[i].Empcode;
+                    tbl = tbl + "</td>";
+                    tbl = tbl + "<td id='enm'>" + response[i].EmpName;
+                    tbl = tbl + "</td>";
+                    tbl = tbl + "<td id='epid'>" + response[i].EmpPunchID;
+                    tbl = tbl + "</td>";
+                    tbl = tbl + "<td id=''><input type='checkbox'  class='ClsChkEmp' id='" + response[i].EmpId + "'/>";
+                    tbl = tbl + "</td>";
+                    tbl = tbl + "</tr>";
+                    table += tbl;
+                }
+            }
+            $("#tblEmp").destroy;
+            $('#tblEmp').append(table);
+            $('#tblEmp').dataTable({
+                "columnDefs": [
+                                    {
+                                        "targets": [0],
+                                        "visible": false,
+                                        "searchable": false,
+                                    }
+
+                ],
+                "destroy": true,
+                "bInfo": false,
+                "bPaginate": false,
+                "bLengthChange": false,
+                "columns": [
+                    { "title": "Employee ID" },
+                    { "title": "Code" },
+                    { "title": "Name" },
+                    { "title": "Punch ID" },
+                    { "title": "<input type='checkbox' class='ClsChkAllDept' onchange='AllCheckedEmp(this)' />" }
+                ]
+            });
+        });
+    }
+    function AllCheckedDept(ths) {
+        $(".popMsg").hide();
+        if ($(ths).prop('checked') == true) {
+            $(".ClsChkDept").prop('checked', true);
+
+        }
+        else {
+            $(".ClsChkDept").prop('checked', false);
+        }
+
+    }
+    function AllCheckedEmp(ths) {
+        $(".popMsg").hide();
+        if ($(ths).prop('checked') == true) {
+            $(".ClsChkEmp").prop('checked', true);
+
+        }
+        else {
+            $(".ClsChkEmp").prop('checked', false);
+        }
+
+    }
+    var _urlschool = '@_webapiurl' + 'Master/CompanyGetAll';
+    var _urlclass = '@_webapiurl' + "Master/BranchGetAll";
+    if (emprole == '6805') {
+        _urlschool = '@_webapiurl' + 'Master/CompanyGetById?id=' + schoolid;
+        _urlclass = '@_webapiurl' + 'Master/BranchGetAllbycmp?id=' + schoolid;
+    }
+    function fillcompany(selectedcompanyid) {
+        $('#ddlcompany').empty();
+
+        $.ajax(
+         {
+             type: "GET",
+             headers: { 'Authorization': '@_tokan' },
+             url: _urlschool,
+             //contentType: "application/json; charset=utf-8",
+             dataType: "json",
+             beforeSend: function () {
+             },
+             success: function (data) {
+                 if (data.isRedirect) {
+                     window.location.href = data.redirectUrl;
+                 }
+                 $("#ddlcompany").append("<option value='0'>Select School</option>");
+                 for (var x = 0; x < data.length; x++) {
+                     $("#ddlcompany").append("<option value=" + data[x].CompanyID + ">" + data[x].CompanyName + "</option>");
+                 }
+                 //$("#ddlcompany").append("<option value='-1'>All Company</option>");
+                 $("#ddlcompany option[value = '" + selectedcompanyid + "' ]").prop('selected', true);
+                 fillbranch(0);
+             },
+             error: function (jqXHR, ajaxOptions, thrownError) {
+                 if (jqXHR.status == 500) { //InternalServerError = 500,
+                     toastr.error("InternalServerError");
+                 } else if (jqXHR.status == 400) { //BadRequest = 400,
+                     toastr.error("BadRequest");
+                 } else if (jqXHR.status == 401) {
+                     window.location.href = "/PayTime/LoginPage";
+                 }
+             }
+         });
+    }
+    function fillSchool(selectedschoolid) {
+        $('#ddlSchool').empty();
+        $.ajax(
+         {
+             type: "GET",
+             headers: { 'Authorization': '@_tokan' },
+             url: _urlschool,
+             //contentType: "application/json; charset=utf-8",
+             dataType: "json",
+             beforeSend: function () {
+             },
+             success: function (data) {
+                 if (data.isRedirect) {
+                     window.location.href = data.redirectUrl;
+                 }
+                 $("#ddlSchool").append("<option value='0'>Select School</option>");
+                 for (var x = 0; x < data.length; x++) {
+                     $("#ddlSchool").append("<option value=" + data[x].CompanyID + ">" + data[x].CompanyName + "</option>");
+                 }
+                 //$("#ddlcompany").append("<option value='-1'>All Company</option>");
+                 $("#ddlSchool option[value = '" + selectedschoolid + "' ]").prop('selected', true);
+                 fillClass(0);
+             },
+             error: function (jqXHR, ajaxOptions, thrownError) {
+                 if (jqXHR.status == 500) { //InternalServerError = 500,
+                     toastr.error("InternalServerError");
+                 } else if (jqXHR.status == 400) { //BadRequest = 400,
+                     toastr.error("BadRequest");
+                 } else if (jqXHR.status == 401) {
+                     window.location.href = "/PayTime/LoginPage";
+                 }
+             }
+         });
+    }
+    function fillClass(selectedschoolid) {
+
+        $('#ddlClass').empty();
+        $.ajax(
+         {
+             type: "GET",
+             headers: { 'Authorization': '@_tokan' },
+             url: _urlclass,
+             //contentType: "application/json; charset=utf-8",
+             dataType: "json",
+             beforeSend: function () {
+             },
+             success: function (data) {
+                 if (data.isRedirect) {
+                     window.location.href = data.redirectUrl;
+                 }
+                 $("#ddlClass").append("<option value='0'>Select Class</option>");
+                 for (var x = 0; x < data.length; x++) {
+                     if (data[x].CompanyID == selectedschoolid) {
+                         $("#ddlClass").append("<option value=" + data[x].BranchId + ">" + data[x].branchname + "</option>");
+                     }
+                 }
+             },
+             error: function (jqXHR, ajaxOptions, thrownError) {
+                 if (jqXHR.status == 500) { //InternalServerError = 500,
+                     toastr.error("InternalServerError");
+                 } else if (jqXHR.status == 400) { //BadRequest = 400,
+                     toastr.error("BadRequest");
+                 } else if (jqXHR.status == 401) {
+                     window.location.href = "/PayTime/LoginPage";
+                 }
+             }
+         });
+    }
+    function filldivision(classid) {
+        $("#ddldivision").empty();
+        $.ajax({
+            type: "GET",
+            headers: { 'Authorization': '@_tokan' },
+            url:'@_webapiurl'+ "Master/DepartmentGetAll",
+            contentType: "application/json; charset=utf-8",
+            datatype: "json",
+            async: "false",
+            success: function (response) {
+                if (response.isRedirect) {
+                    window.location.href = response.redirectUrl;
+                }
+                $("#ddldivision").append("<option value='0'>Select Division</option>");
+                if (response != null) {
+                    for (var i = 0; i < response.length; i++) {
+                            $('#ddldivision').append('<option value=" ' + response[i].DepartmentId + ' ">' + response[i].DepartmentName + '</option>');
+                    }
+                }
+            }
+        });
+    }
+    function fillbranch(selectedcompanyid) {
+        $('#ddlBranch').empty();
+        $.ajax(
+         {
+             type: "GET",
+             headers: { 'Authorization': '@_tokan' },
+             url: _urlclass,
+             //contentType: "application/json; charset=utf-8",
+             dataType: "json",
+             beforeSend: function () {
+             },
+             success: function (data) {
+                 if (data.isRedirect) {
+                     window.location.href = data.redirectUrl;
+                 }
+                 $("#ddlBranch").append("<option value='0'>Select Class</option>");
+                 for (var x = 0; x < data.length; x++) {
+                     if (data[x].CompanyID == selectedcompanyid) {
+                         $("#ddlBranch").append("<option value=" + data[x].BranchId + ">" + data[x].branchname + "</option>");
+                     }
+                 }
+
+                 //$("#ddlBranch").append("<option value='-1'>All Class</option>");
+                 if (selectedcompanyid == '-1') {
+                     $("#ddlBranch option[value = '-1' ]").prop('selected', true);
+                 }
+
+
+             },
+             error: function (jqXHR, ajaxOptions, thrownError) {
+                 if (jqXHR.status == 500) { //InternalServerError = 500,
+                     toastr.error("InternalServerError");
+                 } else if (jqXHR.status == 400) { //BadRequest = 400,
+                     toastr.error("BadRequest");
+                 } else if (jqXHR.status == 401) {
+                     window.location.href = "/PayTime/LoginPage";
+                 }
+             }
+         });
+    }
+    function valid() {
+        var allVals = [];
+        $("#tblEmp .ClsChkEmp").each(function () {
+            if ($(this).is(':checked') == true) {
+                allVals.push($(this).attr("id"));
+            }
+        });
+        if (allVals.length == 0) {
+            if($("#DeptIds").val()==0 || $("#DeptIds").val()==null ){
+                $("<div class='alert alert-danger overlay'><label>Please select Division</label></div>").insertBefore(".popMsg").fadeOut(3000);
+            }
+            else
+            {
+                $("<div class='alert alert-danger overlay'><label>Please select Student</label></div>").insertBefore(".popMsg").fadeOut(3000);
+            }
+           
+            return false;
+        }
+       
+        return true;
+    }
+
+</script>
+<div class="page-bar">
+    <ul class="page-breadcrumb">
+        <li>
+            <a href="/School/AdminDashboard">Home</a>
+            <i class="fa fa-circle"></i>
+        </li>
+        <li>
+            <span>Student Transfer</span>
+        </li>
+    </ul>
+</div>
+
+<h1 class="page-title">
+    <small></small>
+</h1>
+@if (obj.CanView)
+{
+    <div class="row">
+        <div class="col-md-12">
+            <div class="portlet">
+                <div class="portlet-title">
+                    <div class="row margin-top-15">
+                        <div class="col-md-4">
+                            <div class="form-group ">
+                                <select class="form-control input-sm " id="ddlcompany" name="ddlcompany">
+                                    <option value="0" selected>Select School</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="form-group ">
+                                <select class="form-control input-sm " id="ddlBranch" name="ddlBranch">
+                                    <option value="0" selected>Select Class</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <div id='ajax_loaderCompany' class="modal_bg loading">
+                                <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading"/>
+                            </div>
+                        </div>
+                        @if (obj.CanAdd)
+                        {
+                            <div class=" col-md-4">
+                                <a href="#" id="btnstudenttransfer" class="btn blue btn-sm" data-toggle="modal" style="float:right"> <i class="fa fa-exchange"></i> Student Transfer</a>
+                            </div>
+                        }
+                    </div>
+                </div>
+                <div class="portlet-body">
+                    <div>
+                        <div class="alert alert-success  overlay">
+                            <a href="/Transactions/ManualPunching" class="close" data-dismiss="alert">&times;</a>
+                            <strong id="strstg">Success ! </strong> @_Message
+                        </div>
+                        <div class="alert alert-danger cancel overlay">
+                            <a href="/Transactions/ManualPunching" class="close" data-dismiss="alert">&times;</a>
+                            <strong id="strstg1">Error ! </strong> @_error
+                        </div>
+                        <div class="row">
+                            <div class="col-md-12 clsTable" hidden>
+                                <table class="table table-striped table-bordered table-hover order-column" id="tbltransferstudent">
+                                    <thead>
+                                        <tr>
+                                            <th>G.R.No</th>
+                                            <th>PunchId</th>
+                                            <th>Name</th>
+                                            <th>Class</th>
+                                            <th>Division</th>
+                                            <th>Action</th>
+                                        </tr>
+                                    </thead>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div id="frmpopup" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+                        <div class="modal-dialog">
+                            <!-- Modal content-->
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                                    <h4 class="modal-title">Student Transfer</h4>
+                                </div>
+                                <div class="modal-body">
+                                    <div class="row">
+                                        <div class="alert alert-danger popMsg" hidden>
+                                        </div>
+                                        <div class="form-group">
+                                            <label class="control-label">Division</label>
+                                            <input type="text" id="txt2" value="0" hidden />
+                                            <select id="DeptIds" class="mt-multiselect btn-sm btn blue btn-outline " aria-haspopup="true" aria-expanded="false" multiple="multiple" data-width="100%"></select>
+                                        </div>
+                                        <div class="form-group">
+                                            <div class="divEmp">
+                                                <label id="lblemp" class="lbl_emp" hidden>Students</label>
+                                                <table class="table table-striped table-bordered table-hover order-column" id="tblEmp"></table>
+                                            </div>
+                                        </div>
+                                        <div class="form-group">
+                                            <h4>Transfer To</h4>
+                                        </div>
+                                        <div class="form-group">
+                                            <label class="control-label">School</label>
+                                            <select class="form-control input-sm" id="ddlSchool" name="ddlSchool">
+                                                <option value="0" selected>Select School</option>
+                                            </select>
+                                        </div>
+                                        <div class="form-group">
+                                            <label class="control-label">Class</label>
+                                            <div class="form-group ">
+                                                <select class="form-control input-sm" id="ddlClass" name="ddlClass">
+                                                    <option value="0" selected>Select Class</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="form-group">
+                                            <label class="control-label">Division</label>
+                                            <select id="ddldivision" class="form-control input-sm" name="ddldivision">
+                                                <option value="0" selected>Select Division</option>
+                                            </select>
+                                        </div>
+                                        <div class="col-md-12 form-actions text-right">
+                                            <button type="button" class=" btn btn-sm blue" id="btnSave"> <i class="fa fa-exchange"></i> Transfer</button>
+                                        </div>
+
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    <span style="color:red">Unauthorized Access.</span>
+}
+
+<script>
+    $('.overlay').fadeIn('fast').delay(5000).fadeOut('slow');
+  
+
+</script>

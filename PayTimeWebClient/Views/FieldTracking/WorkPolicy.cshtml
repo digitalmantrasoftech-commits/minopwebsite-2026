@@ -1,0 +1,1354 @@
+﻿@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@using System.Configuration;
+@{
+    ViewBag.Title = "Work Policy";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    string _Message = ViewBag.msg;
+    string _error = ViewBag.error;
+    string _success = ViewBag.success;
+    int _UserId = Convert.ToInt32(HttpContext.Current.Session["UserId"]);
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    string _webapifieldtrackingurl = ConfigurationManager.AppSettings["webapifieldtracking"].ToString();
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+    int _cmpid = 0;
+    int _branchid = 0;
+
+    if (_RoleId == 6805)
+    {
+        _cmpid = Convert.ToInt32(HttpContext.Current.Session["ClientCompanyId"]);
+    }
+    if (_RoleId == 6806)
+    {
+        _cmpid = Convert.ToInt32(HttpContext.Current.Session["ClientCompanyId"]);
+        _branchid = Convert.ToInt32(HttpContext.Current.Session["BranchId"]);
+    }
+    string _dbName = HttpContext.Current.Session["DbName"].ToString();
+
+    string isClientDBMatchFlag = HttpContext.Current.Session["IsClientDBMatch"] != null
+    ? HttpContext.Current.Session["IsClientDBMatch"].ToString()
+    : "false";
+}
+
+<script src="~/AssetsNew/js/CommonValidation.js"></script>
+<script src="~/Scripts/timeme.js"></script>
+
+<style type="text/css">
+    .connecting_line {
+        height: 1px;
+        background: #295097;
+        position: absolute;
+        width: 90%;
+        margin: 0 auto;
+        left: 0;
+        right: 0;
+        top: 50%;
+    }
+
+    .or_circle {
+        position: absolute;
+        top: 0px;
+        left: 48%;
+        width: 32px;
+        height: 32px;
+        background-color: #295097;
+        color: #ffffff;
+        border-radius: 25px !important;
+        font-size: 14px;
+        padding: 6px;
+        margin-top: 10px;
+        border: 1px solid #295097;
+    }
+
+    /*.field-sense-config {
+        background: #f5f7fa;
+        padding: 15px;
+        border-radius: 8px;
+        margin-top: 10px;
+    }*/
+
+    .config-section {
+        margin-bottom: 15px;
+    }
+
+    .range-container input[type="range"] {
+        -webkit-appearance: none;
+        width: 100%;
+        height: 8px;
+        background: #ddd;
+        outline: none;
+        border-radius: 5px;
+    }
+
+        .range-container input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            background: #295097;
+            cursor: pointer;
+            border-radius: 50%;
+        }
+
+        .range-container input[type="range"]::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            background: #295097;
+            cursor: pointer;
+            border-radius: 50%;
+        }
+</style>
+
+<div class="page-bar">
+    @if (_RoleId == 1 || _RoleId == 6805 || _RoleId == 6806)
+    {
+        <ul class="page-breadcrumb">
+            <li>
+                <a href="@(isClientDBMatchFlag == "True" ? "/Admin/AdminDashboard" : "/Dashboard/AdminDashboard")"><i class="fa-regular fa-house"></i></a>
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> Field Sense</span>
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> Work Policy</span>
+            </li>
+        </ul>
+    }
+    else
+    {
+        <ul class="page-breadcrumb">
+            <li>
+                <a href="/Dashboard/EmployeeDashboard"><i class="fa-regular fa-house"></i></a>
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> Field Sense</span>
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> Work Policy</span>
+            </li>
+        </ul>
+    }
+    <div class="page-toolbar">
+        @if (obj.CanAdd)
+        {
+            <div class="clearfix">
+                <a href="javascript:void(0)" id="btnCreateWorkPolicy" class="btn icon_transparent_btn tooltips" data-placement="left" data-original-title="Create Policy"><i class="fa-light fa-gavel"></i></a>
+            </div>
+        }
+    </div>
+</div>
+
+@if (obj.CanView)
+{
+    <div class="portlet">
+        <div class="portlet-body">
+            <div class="row">
+                <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                    <!-- Loading indicator -->
+                    <div id="workPolicyLoading" style="text-align: center; padding: 40px;">
+                        <i class="fa-thin fa-spinner fa-spin fa-3x"></i>
+                        <p>Loading work policies...</p>
+                    </div>
+
+                    <div class="table-responsive" id="tableResponsive" style="display:none;">
+                        <table id="tblWorkPolicy" class="new_datatbl table table-striped table-bordered table-hover order-column">
+                            <thead>
+                                <tr>
+                                    <th style="display:none;">Sr. No</th>
+                                    <th hidden>Policy ID</th>
+                                    <th>Policy Name</th>
+                                    <th>Default Radius (m)</th>
+                                    @*<th>Location Update</th>*@
+                                    <th>Task Creation</th>
+                                    <th>Proof of Work</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Data will be loaded dynamically via AJAX -->
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div id="NotificationGrid-empty" style="display:none;">
+                        <div class="datanotfound">
+                            <img src="~/assets/images/emptyscreen_1.png" height="148" width="280" alt="Nodata Found Icon">
+                            <p class="datanotfound_title">No work policies found</p>
+                            <p class="">No work policies have been created yet. Please add a work policy to get started.</p>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Work Policy Modal -->
+    <div id="frmWorkPolicyPopup" class="modal fade bs-modal-lg" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    <h4 class="modal-title">Policy</h4>
+                </div>
+                <form id="frmWorkPolicy">
+                    <div class="modal-body">
+                        @* Step Wizard Navigation - Commented out for MVP *@
+                        @*<div class="stepwizard">
+                            <div class="stepwizard-row setup-panel">
+                                <div class="stepwizard-step">
+                                    <a href="#step-1" id="s1" type="button" class="btn btn-primary btn-circle">
+                                        <i class="fa-regular fa-user"></i> Employment
+                                    </a>
+                                </div>
+                                <div class="stepwizard-step">
+                                    <a href="#step-2" id="s2" type="button" class="btn btn-default btn-circle disabled">
+                                        <i class="fa-regular fa-clock"></i> Overtime
+                                    </a>
+                                </div>
+                                <div class="stepwizard-step">
+                                    <a href="#step-3" id="s3" type="button" class="btn btn-default btn-circle disabled">
+                                        <i class="fa-regular fa-map-marker-alt"></i> Field Configuration
+                                    </a>
+                                </div>
+                            </div>
+                        </div>*@
+
+                        @* Step 1: Employment Section - Commented out for MVP *@
+                        @*<div class="setup-content form" id="step-1">
+                            <div class="modal-card">
+                                <fieldset>
+                                    <div class="row">*@
+                                        <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12" hidden>
+                                            <div class="form-group">
+                                                <input type="text" id="PolicyId" name="PolicyId" value="0" class="form-control input-sm">
+                                                <input type="text" id="ModifyBy" name="ModifyBy" value="@_UserId" class="form-control input-sm">
+                                            </div>
+                                        </div>
+                                        @*<div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                                            <div class="form-group">
+                                                <label class="control-label">Policy Name <span class="required" aria-required="true"> * </span></label>
+                                                <input type="text" id="PolicyName" name="PolicyName" required="" class="form-control input-sm" placeholder="Enter Work Policy Name" maxlength="50">
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                                            <h4 class="stepwizard_sub_title">Employee Rules</h4>
+                                        </div>
+                                        <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                            <div class="form-group">
+                                                <label>First Week Off </label>
+                                                <a class="tooltips" data-placement="top" title="Select default week off day">
+                                                    <i class="fa-regular fa-circle-info"></i>
+                                                </a>
+                                                <select class="form-control input-sm" id="EmpWeekOff" name="EmpWeekOff">
+                                                    <option value=0 selected>Select First Week Off</option>
+                                                    <option value=1>Sunday</option>
+                                                    <option value=2>Monday</option>
+                                                    <option value=3>Tuesday</option>
+                                                    <option value=4>Wednesday</option>
+                                                    <option value=5>Thursday</option>
+                                                    <option value=6>Friday</option>
+                                                    <option value=7>Saturday</option>
+                                                </select>
+                                                <span class="help-block error_help_block" hidden id="spEmpWeekOff"></span>
+                                            </div>
+                                        </div>
+                                        <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                            <div class="form-group">
+                                                <label>Second Week Off</label>
+                                                <a class="tooltips" data-placement="top" title="If applicable than please select second weekoff">
+                                                    <i class="fa-regular fa-circle-info"></i>
+                                                </a>
+                                                <select class="form-control input-sm" id="EmpSecondWeekOff" name="EmpSecondWeekOff">
+                                                    <option value=0 selected>Select Second Week Off</option>
+                                                    <option value=1>Sunday</option>
+                                                    <option value=2>Monday</option>
+                                                    <option value=3>Tuesday</option>
+                                                    <option value=4>Wednesday</option>
+                                                    <option value=5>Thursday</option>
+                                                    <option value=6>Friday</option>
+                                                    <option value=7>Saturday</option>
+                                                </select>
+                                                <span class="help-block error_help_block" hidden id="spEmpSecondWeekOff"></span>
+                                            </div>
+                                        </div>
+                                        <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                                            <div class="form-group" id="checkboxpanel">
+                                                <label>Second Week Off Rule</label>
+                                                <a class="tooltips" data-placement="top" title="Select week rules for second weekoff">
+                                                    <i class="fa-regular fa-circle-info"></i>
+                                                </a>
+                                                <div class="checkbox-list">
+                                                    <label class="checkbox-inline">
+                                                        <input type="checkbox" id="EmpSecondWeekOffRule1" name="EmpSecondWeekOffRule1" value="1" disabled> 1st Week
+                                                    </label>
+                                                    <label class="checkbox-inline">
+                                                        <input type="checkbox" id="EmpSecondWeekOffRule2" name="EmpSecondWeekOffRule2" value="2" disabled> 2nd Week
+                                                    </label>
+                                                    <label class="checkbox-inline">
+                                                        <input type="checkbox" id="EmpSecondWeekOffRule3" name="EmpSecondWeekOffRule3" value="3" disabled> 3rd Week
+                                                    </label>
+                                                    <label class="checkbox-inline">
+                                                        <input type="checkbox" id="EmpSecondWeekOffRule4" name="EmpSecondWeekOffRule4" value="4" disabled> 4th Week
+                                                    </label>
+                                                    <label class="checkbox-inline">
+                                                        <input type="checkbox" id="EmpSecondWeekOffRule5" name="EmpSecondWeekOffRule5" value="5" disabled> 5th Week
+                                                    </label>
+                                                </div>
+                                                <input type="hidden" id="EmpSecondWeekOffRule" name="EmpSecondWeekOffRule" value="0" />
+                                            </div>
+                                        </div>
+                                        <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                            <div class="form-group">
+                                                <label>Half Day</label>
+                                                <a class="tooltips" data-placement="top" title="Select half day if applicable">
+                                                    <i class="fa-regular fa-circle-info"></i>
+                                                </a>
+                                                <select class="form-control input-sm" id="EmpHalfDay" name="EmpHalfDay">
+                                                    <option value=0 selected>Select Half Day</option>
+                                                    <option value=1>Sunday</option>
+                                                    <option value=2>Monday</option>
+                                                    <option value=3>Tuesday</option>
+                                                    <option value=4>Wednesday</option>
+                                                    <option value=5>Thursday</option>
+                                                    <option value=6>Friday</option>
+                                                    <option value=7>Saturday</option>
+                                                </select>
+                                                <span class="help-block error_help_block" hidden id="spEmpHalfDay"></span>
+                                            </div>
+                                        </div>
+                                        <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                                            <div class="form-group" id="checkboxHalfDay">
+                                                <label>Half Day Rule</label>
+                                                <a class="tooltips" data-placement="top" title="Select week rules for half day">
+                                                    <i class="fa-regular fa-circle-info"></i>
+                                                </a>
+                                                <div class="checkbox-list">
+                                                    <label class="checkbox-inline">
+                                                        <input type="checkbox" id="EmpHalfDayRule1" name="EmpHalfDayRule1" value="1" disabled> 1st Week
+                                                    </label>
+                                                    <label class="checkbox-inline">
+                                                        <input type="checkbox" id="EmpHalfDayRule2" name="EmpHalfDayRule2" value="2" disabled> 2nd Week
+                                                    </label>
+                                                    <label class="checkbox-inline">
+                                                        <input type="checkbox" id="EmpHalfDayRule3" name="EmpHalfDayRule3" value="3" disabled> 3rd Week
+                                                    </label>
+                                                    <label class="checkbox-inline">
+                                                        <input type="checkbox" id="EmpHalfDayRule4" name="EmpHalfDayRule4" value="4" disabled> 4th Week
+                                                    </label>
+                                                    <label class="checkbox-inline">
+                                                        <input type="checkbox" id="EmpHalfDayRule5" name="EmpHalfDayRule5" value="5" disabled> 5th Week
+                                                    </label>
+                                                </div>
+                                                <input type="hidden" id="EmpHalfDayRule" name="EmpHalfDayRule" value="0" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                </fieldset>
+                            </div>
+                        </div>*@
+
+                        @* Step 2: Overtime Configuration - Commented out for MVP *@
+                        @*<div class="setup-content form" id="step-2" style="display:none;">
+                            <div class="modal-card">
+                                <fieldset>
+                                    <div class="row">
+                                        <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                                            <h4 class="stepwizard_sub_title">Overtime Configuration</h4>
+                                        </div>
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-lg-4 col-md-4 col-sm-12 col-xs-12">
+                                            <div class="form-group">
+                                                <label class="control-label">
+                                                    Minimum Hour For OverTime Start <span class="required">*</span>
+                                                    <a class="tooltips" data-placement="top" title="Minimum working hours after which overtime calculation starts">
+                                                        <i class="fa-regular fa-circle-info"></i>
+                                                    </a>
+                                                </label>
+                                                <input type="number" id="OTMinHour" name="OTMinHour" class="form-control input-sm"
+                                                       placeholder="Enter minimum hours" min="0" max="24" value="0">
+                                            </div>
+                                        </div>
+                                        <div class="col-lg-4 col-md-4 col-sm-12 col-xs-12">
+                                            <div class="form-group">
+                                                <label class="control-label">
+                                                    Weekly Off Hour Calculated As OT Hour
+                                                    <a class="tooltips" data-placement="top" title="Minimum hours for overtime on weekly off days">
+                                                        <i class="fa-regular fa-circle-info"></i>
+                                                    </a>
+                                                </label>
+                                                <div class="input-group">
+                                                    <span class="input-group-addon">
+                                                        <input type="checkbox" id="OTAllowWO" name="OTAllowWO" value="0">
+                                                    </span>
+                                                    <input type="number" id="WeekOffOTHour" name="WeekOffOTHour" class="form-control input-sm"
+                                                           placeholder="Hours" min="0" max="24" value="0" readonly>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="col-lg-4 col-md-4 col-sm-12 col-xs-12">
+                                            <div class="form-group">
+                                                <label class="control-label">
+                                                    Holiday Off Hour Calculated As OT Hour
+                                                    <a class="tooltips" data-placement="top" title="Minimum hours for overtime on holidays">
+                                                        <i class="fa-regular fa-circle-info"></i>
+                                                    </a>
+                                                </label>
+                                                <div class="input-group">
+                                                    <span class="input-group-addon">
+                                                        <input type="checkbox" id="OTAllowHO" name="OTAllowHO" value="0">
+                                                    </span>
+                                                    <input type="number" id="HolidayOffOTHour" name="HolidayOffOTHour" class="form-control input-sm"
+                                                           placeholder="Hours" min="0" max="24" value="0" readonly>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </fieldset>
+                            </div>
+                        </div>*@
+
+                        <!-- Field Configuration -->
+                        <div class="setup-content form" id="step-3">
+                            <div class="modal-card">
+                                <fieldset>
+                                    <div class="row">
+                                        <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                                            <div class="form-group">
+                                                <label class="control-label">Policy Name <span class="required" aria-required="true"> * </span></label>
+                                                <input type="text" id="ConfigurationName" name="ConfigurationName" required="" class="form-control input-sm" placeholder="Enter Policy Name" maxlength="50">
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                                            <h4 class="stepwizard_sub_title">Configuration Settings</h4>
+                                        </div>
+                                    </div>
+                                    <div class="field-sense-config">
+                                        <div class="row">
+                                            <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                                <div class="form-group">
+                                                    <label class="control-label">Default Radius (meters) <span class="required">*</span></label>
+                                                    <a class="tooltips" data-placement="top" title="Default geofence radius for task locations in meters">
+                                                        <i class="fa-regular fa-circle-info"></i>
+                                                    </a>
+                                                    <div class="range-container">
+                                                        <input type="range" id="DefaultRadius" name="DefaultRadius" class="form-control"
+                                                               min="50" max="1000" value="100" step="10">
+                                                        <div class="range-labels" style="display: flex; justify-content: space-between; margin-top: 5px;">
+                                                            <span>50m</span>
+                                                            <span id="radiusValue" style="font-weight: bold; color: #295097;">100m</span>
+                                                            <span>1km</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12"  style="display:none">
+                                                <div class="form-group">
+                                                    <label class="control-label">Location Update Frequency (minutes) <span class="required">*</span></label>
+                                                    <a class="tooltips" data-placement="top" title="How often to update employee location in minutes">
+                                                        <i class="fa-regular fa-circle-info"></i>
+                                                    </a>
+                                                    <select class="form-control input-sm" id="LocationUpdateFrequency" name="LocationUpdateFrequency">
+                                                        <option value="2">Every 2 minutes</option>
+                                                        <option value="5" selected>Every 5 minutes</option>
+                                                        <option value="10">Every 10 minutes</option>
+                                                        <option value="15">Every 15 minutes</option>
+                                                        <option value="30">Every 30 minutes</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="row">
+                                            <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                                <div class="form-group">
+                                                    <label>
+                                                        <input type="checkbox" id="EmpCanCreateTask" name="EmpCanCreateTask">
+                                                        Employee Can Create Task
+                                                    </label>
+                                                    <a class="tooltips" data-placement="top" title="Allow employees to create their own tasks">
+                                                        <i class="fa-regular fa-circle-info"></i>
+                                                    </a>
+                                                    <p class="help-block">If enabled, employees can create tasks that may require approval</p>
+                                                </div>
+                                            </div>
+                                            <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12"  style="display:none">
+                                                <div class="form-group">
+                                                    <label>
+                                                        <input type="checkbox" id="AutoCheckIn" name="AutoCheckIn">
+                                                        Auto Check-In at Task Location
+                                                    </label>
+                                                    <a class="tooltips" data-placement="top" title="Automatically check-in when employee enters geofence area">
+                                                        <i class="fa-regular fa-circle-info"></i>
+                                                    </a>
+                                                    <p class="help-block">Automatically check-in when inside the geofence region of task location</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="row">
+                                            <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                                                <div class="form-group">
+                                                    <label class="control-label">Proof of Work After Task Completion</label>
+                                                    <a class="tooltips" data-placement="top" title="Type of proof required when completing a task">
+                                                        <i class="fa-regular fa-circle-info"></i>
+                                                    </a>
+                                                    <select class="form-control input-sm" id="ProofOfWork" name="ProofOfWork">
+                                                        <option value="0" selected>No Proof Required</option>
+                                                        <option value="1">Photo</option>
+                                                        <option value="2">Signature</option>
+                                                        <option value="3">Photo + Signature</option>
+                                                        @*<option value="4">OTP Verification</option>*@
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </fieldset>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Modal Footer -->
+                    <div class="modal-footer">
+                        <button type="button" class="btn clear_btn" data-dismiss="modal">Cancel</button>
+                        <button type="submit" id="btnSubmit" class="btn next_btn"><i class="fa-light fa-floppy-disk"></i> Save </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+}
+
+<script type="text/javascript">
+            var form = "Work Policy";
+        var operation = "";
+        var count = 0;
+        var _webapiurl = '@_webapifieldtrackingurl';
+        var _tokan = '@_tokan';
+        var _UserId = '@_UserId';
+        var _CompanyId = '@_cmpid';
+        var _BranchId = '@_branchid';
+    $(document).ready(function () {
+
+
+        // Function to load all work policies
+
+        // Load policies on page load
+
+        loadWorkPolicies();
+
+        // Toast notifications
+        if ("@_Message" != "") {
+            toastr.remove();
+            toastr.success("@_Message");
+        }
+        if ('@_error' != "") {
+            toastr.remove();
+            toastr.error("@_error");
+        }
+
+        // Create Configuration button click - Updated for MVP
+        $("#btnCreateWorkPolicy").on('click', function () {
+            count++;
+            operation = "Add Form";
+            clearForm();
+            $("#step-3").show(); // Just show the form directly
+            $("#btnCreateWorkPolicy").attr("data-toggle", "modal");
+            $("#btnCreateWorkPolicy").attr("data-target", "#frmWorkPolicyPopup");
+        });
+
+        // Step navigation and Next/Prev buttons - Commented out for MVP
+        /*$("#s1").on("click", function (event) {
+            if (!$(this).hasClass('disabled')) {
+                showStep1();
+            }
+        });
+
+        $("#s2").on("click", function (event) {
+            if (!$(this).hasClass('disabled')) {
+                if (validateStep1()) {
+                    showStep2();
+                }
+            }
+        });
+
+        $("#s3").on("click", function (event) {
+            if (!$(this).hasClass('disabled')) {
+                if (validateStep1() && validateStep2()) {
+                    showStep3();
+                }
+            }
+        });
+
+        // Next/Previous button handlers
+        $("#btnNext1").click(function () {
+            if (validateStep1()) {
+                showStep2();
+            }
+        });
+
+        $("#btnNext2").click(function () {
+            if (validateStep2()) {
+                showStep3();
+            }
+        });
+
+        $("#btnPrev2").click(function () {
+            showStep1();
+        });
+
+        $("#btnPrev3").click(function () {
+            showStep2();
+        });*/
+
+        // Form submission via AJAX - Updated for MVP
+        $("#btnSubmit").click(function (event) {
+            event.preventDefault();
+
+            if (!validateForm()) {
+                return false;
+            }
+
+            // Prepare data object - MVP version with defaults for Employee/Overtime fields
+            var policyData = {
+                PolicyId: parseInt($("#PolicyId").val()) || 0,
+                PolicyName: $("#ConfigurationName").val(),  // Use ConfigurationName field
+
+                // Employee fields - Send defaults (commented out in UI)
+                EmpWeekOff: 0,
+                EmpSecondWeekOff: 0,
+                EmpSecondWeekOffRule: "",
+                EmpHalfDay: 0,
+                EmpHalfDayRule: "",
+
+                // Overtime fields - Send defaults (commented out in UI)
+                OTMinHour: 0,
+                OTAllowWO: false,
+                WeekOffOTHour: 0,
+                OTAllowHO: false,
+                HolidayOffOTHour: 0,
+
+                // Field Configuration - Active fields
+                DefaultRadius: parseInt($("#DefaultRadius").val()) || 100,
+                LocationUpdateFrequency: parseInt($("#LocationUpdateFrequency").val()) || 5,
+                EmpCanCreateTask: $("#EmpCanCreateTask").is(':checked'),
+                AutoCheckIn: $("#AutoCheckIn").is(':checked'),
+                ProofOfWork: parseInt($("#ProofOfWork").val()) || 0
+            };
+
+
+            // Add create-specific fields for new policies
+            if (policyData.PolicyId === 0) {
+                policyData.CreatedBy = parseInt(_UserId);
+                policyData.CreatedDate = new Date().toISOString();
+                policyData.IsActive = true;
+            }
+
+            // Determine API endpoint and method
+            var apiUrl = policyData.PolicyId === 0
+                ? _webapiurl + "workpolicy/add"
+                : _webapiurl + "workpolicy/update/" + policyData.PolicyId;
+
+            var httpMethod = policyData.PolicyId === 0 ? "POST" : "PUT";
+
+            // Show loading
+            $("#btnSubmit").prop('disabled', true).html('<i class="fa-thin fa-spinner fa-spin"></i> Saving...');
+
+            // Make AJAX call to save policy
+            $.ajax({
+                url: apiUrl,
+                type: httpMethod,
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                data: JSON.stringify(policyData),
+                headers: {
+                    "Authorization": _tokan
+                },
+                success: function(response) {
+                    if (response && response.success) {
+                        toastr.success(response.message || "Configuration saved successfully.");
+                        $("#frmWorkPolicyPopup").modal('hide');
+                        clearForm();
+                        loadWorkPolicies(); // Reload the table
+                    } else {
+                        toastr.error(response.Message || "Failed to save configuration.");
+                    }
+                    $("#btnSubmit").prop('disabled', false).html('<i class="fa-light fa-floppy-disk"></i> Save Configuration');
+                },
+                error: function(xhr, status, error) {
+                    console.error("Error saving configuration:", error);
+                    if (xhr.status === 401) {
+                        toastr.error("Session expired. Please login again.");
+                        window.location.href = "/PayTime/LoginPage";
+                    } else {
+                        toastr.error("An error occurred while saving the configuration.");
+                    }
+                    $("#btnSubmit").prop('disabled', false).html('<i class="fa-light fa-floppy-disk"></i> Save Configuration');
+                }
+            });
+        });
+
+        // Week off and Overtime change handlers - Commented out for MVP
+        /*$("#EmpWeekOff").change(function () {
+            if ($(this).val() != 0) {
+                if ($(this).val() == $("#EmpSecondWeekOff").val() || $(this).val() == $("#EmpHalfDay").val()) {
+                    toastr.remove();
+                    toastr.error("You cannot assign same day which is already applied.");
+                    $(this).val(0);
+                }
+            }
+        });
+
+        $("#EmpSecondWeekOff").change(function () {
+            if ($(this).val() != 0) {
+                if ($(this).val() == $("#EmpWeekOff").val() || $(this).val() == $("#EmpHalfDay").val()) {
+                    toastr.remove();
+                    toastr.error("You cannot assign same day which is already applied.");
+                    $(this).val(0);
+                } else {
+                    // Enable week off rule checkboxes
+                    $("#EmpSecondWeekOffRule1, #EmpSecondWeekOffRule2, #EmpSecondWeekOffRule3, #EmpSecondWeekOffRule4, #EmpSecondWeekOffRule5").prop('disabled', false);
+                }
+            } else {
+                // Disable and uncheck all week off rule checkboxes
+                $("#EmpSecondWeekOffRule1, #EmpSecondWeekOffRule2, #EmpSecondWeekOffRule3, #EmpSecondWeekOffRule4, #EmpSecondWeekOffRule5")
+                    .prop('disabled', true)
+                    .prop('checked', false);
+            }
+        });
+
+        $("#EmpHalfDay").change(function () {
+            if ($(this).val() != 0) {
+                if ($(this).val() == $("#EmpWeekOff").val() || $(this).val() == $("#EmpSecondWeekOff").val()) {
+                    toastr.remove();
+                    toastr.error("You cannot assign same day which is already applied.");
+                    $(this).val(0);
+                } else {
+                    // Enable half day rule checkboxes
+                    $("#EmpHalfDayRule1, #EmpHalfDayRule2, #EmpHalfDayRule3, #EmpHalfDayRule4, #EmpHalfDayRule5").prop('disabled', false);
+                }
+            } else {
+                // Disable and uncheck all half day rule checkboxes
+                $("#EmpHalfDayRule1, #EmpHalfDayRule2, #EmpHalfDayRule3, #EmpHalfDayRule4, #EmpHalfDayRule5")
+                    .prop('disabled', true)
+                    .prop('checked', false);
+            }
+        });
+
+        // OT checkbox handlers
+        $("#OTAllowWO").change(function () {
+            if (this.checked) {
+                $("#OTAllowWO").val(1);
+                $("#WeekOffOTHour").prop('readonly', false);
+            } else {
+                $("#OTAllowWO").val(0);
+                $("#WeekOffOTHour").prop('readonly', true).val(0);
+            }
+        });
+
+        $("#OTAllowHO").change(function () {
+            if (this.checked) {
+                $("#OTAllowHO").val(1);
+                $("#HolidayOffOTHour").prop('readonly', false);
+            } else {
+                $("#OTAllowHO").val(0);
+                $("#HolidayOffOTHour").prop('readonly', true).val(0);
+            }
+        });*/
+
+        // Field Configuration checkboxes - they manage their own checked state
+
+        // Range slider handler for Default Radius
+        $("#DefaultRadius").on('input', function() {
+            var value = $(this).val();
+            $("#radiusValue").text(value + "m");
+        });
+
+        // Initialize the range value display
+        $("#DefaultRadius").trigger('input');
+
+        // Edit Work Policy
+        $("#tblWorkPolicy").on('click', '.editclass', function () {
+            count++;
+            operation = "Edit Form";
+            $(".editclass").attr("data-toggle", "modal");
+            $(".editclass").attr("data-target", "#frmWorkPolicyPopup");
+
+            var policyId = $(this).attr('data-policy-id');
+            $("#PolicyId").val(policyId);
+
+            // Load policy data via direct API call
+            $.ajax({
+                url: _webapiurl + "workpolicy/" + policyId,
+                type: "GET",
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                headers: {
+                    "Authorization": _tokan
+                },
+                success: function(response) {
+                    if (response && response.success && response.data) {
+                        var obj = response.data;
+
+                        // Populate Policy Name
+                        $("#ConfigurationName").val(obj.policyName);
+
+                        // Field Configuration settings
+                        $("#DefaultRadius").val(obj.defaultRadius);
+                        $("#radiusValue").text(obj.defaultRadius + "m");
+                        $("#LocationUpdateFrequency").val(obj.locationUpdateFrequency);
+                        $("#EmpCanCreateTask").prop('checked', obj.empCanCreateTask);
+                        $("#AutoCheckIn").prop('checked', obj.autoCheckIn);
+                        $("#ProofOfWork").val(obj.proofOfWork);
+
+                        // Show the form (step-3 is already visible by default)
+                        $("#step-3").show();
+
+                        // Employee and Overtime fields - Commented out for MVP
+                        /*$("#EmpWeekOff").val(obj.empWeekOff);
+                        $("#EmpSecondWeekOff").val(obj.empSecondWeekOff);
+                        $("#EmpHalfDay").val(obj.empHalfDay);
+
+                        // Handle second week off rules
+                        if (obj.empSecondWeekOff != 0) {
+                            $("#EmpSecondWeekOffRule1, #EmpSecondWeekOffRule2, #EmpSecondWeekOffRule3, #EmpSecondWeekOffRule4, #EmpSecondWeekOffRule5").prop('disabled', false);
+                            if (obj.empSecondWeekOffRule) {
+                                var rules = obj.empSecondWeekOffRule.split(',');
+                                rules.forEach(function(rule) {
+                                    $("#EmpSecondWeekOffRule" + rule).prop('checked', true);
+                                });
+                            }
+                        }
+
+                        // Handle half day rules
+                        if (obj.empHalfDay != 0) {
+                            $("#EmpHalfDayRule1, #EmpHalfDayRule2, #EmpHalfDayRule3, #EmpHalfDayRule4, #EmpHalfDayRule5").prop('disabled', false);
+                            if (obj.empHalfDayRule) {
+                                var rules = obj.empHalfDayRule.split(',');
+                                rules.forEach(function(rule) {
+                                    $("#EmpHalfDayRule" + rule).prop('checked', true);
+                                });
+                            }
+                        }
+
+                        // Overtime settings
+                        $("#OTMinHour").val(obj.otMinHour);
+                        if (obj.otAllowWO == 1) {
+                            $("#OTAllowWO").prop('checked', true).val(1);
+                            $("#WeekOffOTHour").prop('readonly', false).val(obj.weekOffOTHour);
+                        }
+                        if (obj.otAllowHO == 1) {
+                            $("#OTAllowHO").prop('checked', true).val(1);
+                            $("#HolidayOffOTHour").prop('readonly', false).val(obj.holidayOffOTHour);
+                        }*/
+                    } else {
+                        toastr.error("Failed to load configuration details");
+                    }
+                },
+                error: function(xhr, status, error) {
+                    console.error("Error loading configuration:", error);
+                    if (xhr.status === 401) {
+                        toastr.error("Session expired. Please login again.");
+                        window.location.href = "/PayTime/LoginPage";
+                    } else {
+                        toastr.error("An error occurred while loading the configuration.");
+                    }
+                }
+            });
+        });
+
+        // View Work Policy
+        $("#tblWorkPolicy").on('click', '.previewclass', function () {
+            var policyId = $(this).attr('data-policy-id');
+            window.open('/FieldTracking/ViewWorkPolicy?id=' + policyId, '_blank');
+        });
+
+        // Delete Work Policy
+        $("#tblWorkPolicy").on('click', '.deleteclass', function () {
+            var policyId = $(this).attr('data-policy-id');
+            var rowData = $('#tblWorkPolicy').DataTable().row($(this).closest('tr')).data();
+            var policyName = rowData.policyName;
+
+            Swal.fire({
+                html: '<div class="swal_subtitle"><b>Do you want to delete the work policy: ' + policyName + '?</b></div>',
+                title: "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_error.svg' alt=''>Are you sure?",
+                showCloseButton: true,
+                showCancelButton: true,
+                focusConfirm: false,
+                cancelButtonText: 'Cancel',
+                confirmButtonText: 'Yes, delete it!',
+                allowOutsideClick: false,
+                allowEscapeKey: false,
+                customClass: {
+                    confirmButton: 'swal-confirm-button-class',
+                    cancelButton: 'swal-cancel-button-class'
+                }
+            }).then((result) => {
+                if (result.isConfirmed) {
+                // Make direct API call to delete policy
+                $.ajax({
+                    url: _webapiurl + "workpolicy/delete/" + policyId,
+                    type: "DELETE",
+                    contentType: "application/json; charset=utf-8",
+                    dataType: "json",
+                    headers: {
+                        "Authorization": _tokan
+                    },
+                    success: function(response) {
+                        if (response && response.IsSuccess) {
+                            Swal.fire({
+                                html: '<div class="swal_subtitle"><b>' + (response.Message || "Work policy has been deleted.") + '</b></div>',
+                                title: "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_success.svg' alt=''>Deleted!",
+                                showCloseButton: true,
+                                confirmButtonText: 'OK',
+                                allowOutsideClick: false,
+                                allowEscapeKey: false,
+                                customClass: {
+                                    confirmButton: 'swal-confirm-button-class'
+                                }
+                            });
+                            $('img[src="/assets/images/icons/swal_icon/icon_success.svg"]').parent().parent().parent().addClass('swal_success');
+                            // Reload the table
+                            loadWorkPolicies();
+                        } else {
+                            Swal.fire({
+                                html: '<div class="swal_subtitle"><b>' + (response.Message || "Failed to delete work policy.") + '</b></div>',
+                                title: "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_error.svg' alt=''>Error!",
+                                showCloseButton: true,
+                                confirmButtonText: 'OK',
+                                allowOutsideClick: false,
+                                allowEscapeKey: false,
+                                customClass: {
+                                    confirmButton: 'swal-confirm-button-class'
+                                }
+                            });
+                            $('img[src="/assets/images/icons/swal_icon/icon_error.svg"]').parent().parent().parent().addClass('swal_error');
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        console.error("Error deleting work policy:", error);
+                        if (xhr.status === 401) {
+                            Swal.fire({
+                                html: '<div class="swal_subtitle"><b>Session expired. Please login again.</b></div>',
+                                title: "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_error.svg' alt=''>Error!",
+                                showCloseButton: true,
+                                confirmButtonText: 'OK',
+                                allowOutsideClick: false,
+                                allowEscapeKey: false,
+                                customClass: {
+                                    confirmButton: 'swal-confirm-button-class'
+                                }
+                            });
+                            $('img[src="/assets/images/icons/swal_icon/icon_error.svg"]').parent().parent().parent().addClass('swal_error');
+                            setTimeout(function() {
+                                window.location.href = "/PayTime/LoginPage";
+                            }, 2000);
+                        } else {
+                            Swal.fire({
+                                html: '<div class="swal_subtitle"><b>An error occurred while deleting the work policy.</b></div>',
+                                title: "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_error.svg' alt=''>Error!",
+                                showCloseButton: true,
+                                confirmButtonText: 'OK',
+                                allowOutsideClick: false,
+                                allowEscapeKey: false,
+                                customClass: {
+                                    confirmButton: 'swal-confirm-button-class'
+                                }
+                            });
+                            $('img[src="/assets/images/icons/swal_icon/icon_error.svg"]').parent().parent().parent().addClass('swal_error');
+                        }
+                    }
+                });
+                }
+            });
+            $('img[src="/assets/images/icons/swal_icon/icon_error.svg"]').parent().parent().parent().addClass('swal_error');
+        });
+
+        // Toggle Work Policy Status (Active/Inactive)
+        window.statusChange = function(policyId) {
+            // Make direct API call to toggle policy status
+            $.ajax({
+                url: _webapiurl + "workpolicy/toggle-status/" + policyId,
+                type: "PUT",
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                headers: {
+                    "Authorization": _tokan
+                },
+                success: function(response) {
+                    if (response && response.success) {
+                        toastr.success(response.message || "Policy status updated successfully");
+                        loadWorkPolicies(); // Reload the table
+                    } else {
+                        toastr.error(response.message || "Failed to update policy status");
+                    }
+                },
+                error: function(xhr, status, error) {
+                    console.error("Error toggling policy status:", error);
+                    if (xhr.status === 422 & xhr.responseJSON.errorCode === 1300) {
+                        toastr.info(xhr.responseJSON.message);
+                    }
+                    else if (xhr.status === 401) {
+                        toastr.error("Session expired. Please login again.");
+                        setTimeout(function() {
+                            window.location.href = "/PayTime/LoginPage";
+                        }, 2000);
+                    }
+                    else {
+                        toastr.error("An error occurred while updating the policy status");
+                    }
+                }
+            });
+        };
+    });
+
+      function loadWorkPolicies() {
+            // Show loading indicator
+            $('#workPolicyLoading').show();
+            $('#tableResponsive').hide();
+            $('#NotificationGrid-empty').hide();
+
+            $.ajax({
+                url: _webapiurl + "workpolicy/all",
+                type: "GET",
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                headers: {
+                    "Authorization": _tokan
+                },
+                success: function (response) {
+                    // Hide loading indicator
+                    $('#workPolicyLoading').hide();
+
+                    if (response && response.data && response.data.length > 0) {
+                        // Destroy existing DataTable if exists
+                        if ($.fn.DataTable.isDataTable('#tblWorkPolicy')) {
+                            $('#tblWorkPolicy').DataTable().destroy();
+                        }
+
+                        $("#dataTables_tbl_header").remove();
+
+                        // Re-initialize DataTable with proper columns configuration
+                        $("#tblWorkPolicy").DataTable({
+                            dom: _domCommon || 'Bfrtip',
+                            language: _languageCommon || {
+                                search: "_INPUT_",
+                                searchPlaceholder: "Search..."
+                            },
+                            data: response.data,
+                            order: [],
+                            destroy: true,
+                            columns: [
+                                {
+                                    title: "Sr. No",
+                                    data: null,
+                                    visible: false,
+                                    render: function (data, type, row, meta) {
+                                        return meta.row + 1;
+                                    }
+                                },
+                                {
+                                    title: "Policy ID",
+                                    data: "policyId",
+                                    visible: false
+                                },
+                                {
+                                    title: "Policy Name",
+                                    data: "policyName"
+                                },
+                                {
+                                    title: "Default Radius (m)",
+                                    data: "defaultRadius",
+                                    render: function(data) {
+                                        return data + " m";
+                                    }
+                                },
+                                //{
+                                //    title: "Location Update",
+                                //    data: "locationUpdateFrequency",
+                                //    render: function(data) {
+                                //        return "Every " + data + " min";
+                                //    }
+                                //},
+                                {
+                                    title: "Task Creation",
+                                    data: "empCanCreateTask",
+                                    render: function(data) {
+                                        return data ? "Yes" : "No";
+                                    }
+                                },
+                                {
+                                    title: "Proof of Work",
+                                    data: "proofOfWorkType"
+                                },
+                                {
+                                    title: "Action",
+                                    data: null,
+                                    orderable: false,
+                                    render: function(data, type, row) {
+                                        var actions = "";
+                                        if ('@obj.CanEdit') {
+                                            actions += "<a class='editclass seagreen_btnnew tooltips' data-placement='top' data-original-title='Edit' data-policy-id='" + row.policyId + "'><i class='fa-regular fa-pen-to-square'></i></a> ";
+                                        }
+                                        actions += "<a class='previewclass blue_btnnew tooltips' data-placement='top' data-original-title='View' data-policy-id='" + row.policyId + "'><i class='fa-regular fa-eye'></i></a> ";
+
+                                        // Add active/inactive toggle button
+                                        if (row.isActive) {
+                                            actions += "<a class='Inactiveclass red_btnnew tooltips' data-placement='top' data-original-title='Inactive' onclick='statusChange(" + row.policyId + ")'><i class='fa-solid fa-xmark'></i></a>";
+                                        } else {
+                                            actions += "<a class='Activeclass green_btnnew tooltips' data-placement='top' data-original-title='Active' onclick='statusChange(" + row.policyId + ")'><i class='fa-solid fa-check'></i></a>";
+                                        }
+
+                                        return "<td class='tbl_btn'>" + actions + "</td>";
+                                    }
+                                }
+                            ],
+                            "columnDefs": [
+                                {
+                                    "targets": 6,
+                                    orderable: false
+                                }
+                            ],
+                            initComplete: function () {
+                                const visibleTable = 'tblWorkPolicy';
+
+                                // Safety check: only append if buttons container exists and is empty
+                                if ($('#buttons').length && $('#buttons').children().length === 0 && visibleTable) {
+                                    $("#buttons").append(`
+                                        <div id="export-button1" class="export-button tooltips" data-placement="bottom" data-original-title="Download" data-table-id="${visibleTable}">
+                                            <img src="../Newlayout/images/download_icon.svg" alt="Download icon">
+                                        </div>
+                                    `);
+                                }
+                            },
+                        });
+                        setTimeout(function () {
+                            $("#" + "tblWorkPolicy" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+                            $('.tooltips').tooltip();
+                        }, 100);
+
+                        // Show table
+                        $('#tableResponsive').show();
+                        $('#NotificationGrid-empty').hide();
+                    } else {
+                        // Show empty state
+                        $('#tableResponsive').hide();
+                        $('#NotificationGrid-empty').show();
+                    }
+                },
+                error: function(xhr, status, error) {
+                    // Hide loading indicator
+                    $('#workPolicyLoading').hide();
+
+                    console.error("Error loading work policies:", error);
+                    if (xhr.status === 401) {
+                        toastr.error("Session expired. Please login again.");
+                        setTimeout(function() {
+                            window.location.href = "/PayTime/LoginPage";
+                        }, 2000);
+                    } else {
+                        toastr.error("Failed to load work policies");
+                        // Show empty state on error
+                        $('#NotificationGrid-empty').show();
+                    }
+                }
+            });
+        }
+    // Step navigation functions - Commented out for MVP
+    /*function showStep1() {
+        $("#step-1").show();
+        $("#step-2, #step-3").hide();
+
+        $("#s1").addClass("btn-primary").removeClass("btn-default");
+        $("#s2, #s3").removeClass("btn-primary").addClass("btn-default");
+
+        $("#Step1BtnDiv").show();
+        $("#Step2BtnDiv, #Step3BtnDiv").hide();
+    }
+
+    function showStep2() {
+        $("#step-2").show();
+        $("#step-1, #step-3").hide();
+
+        $("#s2").addClass("btn-primary").removeClass("btn-default disabled");
+        $("#s1, #s3").removeClass("btn-primary").addClass("btn-default");
+
+        $("#Step2BtnDiv").show();
+        $("#Step1BtnDiv, #Step3BtnDiv").hide();
+    }
+
+    function showStep3() {
+        $("#step-3").show();
+        $("#step-1, #step-2").hide();
+
+        $("#s3").addClass("btn-primary").removeClass("btn-default disabled");
+        $("#s1, #s2").removeClass("btn-primary").addClass("btn-default");
+
+        $("#Step3BtnDiv").show();
+        $("#Step1BtnDiv, #Step2BtnDiv").hide();
+    }
+
+    function enableAllSteps() {
+        $("#s1, #s2, #s3").removeClass("disabled");
+    }*/
+
+    // Validation functions - Updated for MVP (single form validation)
+    function validateForm() {
+        var isValid = true;
+
+        // Validate Policy Name
+        if ($("#ConfigurationName").val().trim() == "") {
+            $("#ConfigurationName").addClass('field_error');
+            toastr.error("Please enter Policy Name");
+            isValid = false;
+        } else {
+            $("#ConfigurationName").removeClass('field_error');
+        }
+
+        // Validate Default Radius
+        var radius = parseInt($("#DefaultRadius").val());
+        if (isNaN(radius) || radius < 50 || radius > 1000) {
+            $("#DefaultRadius").addClass('field_error');
+            toastr.error("Please enter a valid radius between 50 and 1000 meters");
+            isValid = false;
+        } else {
+            $("#DefaultRadius").removeClass('field_error');
+        }
+
+        return isValid;
+    }
+
+    // Old validation functions - Commented out for MVP
+    /*function validateStep1() {
+        var isValid = true;
+
+        if ($("#PolicyName").val().trim() == "") {
+            $("#PolicyName").addClass('field_error');
+            toastr.error("Please enter policy name");
+            isValid = false;
+        } else {
+            $("#PolicyName").removeClass('field_error');
+        }
+
+        if ($("#EmpSecondWeekOff").val() != 0) {
+            if (!($("#EmpSecondWeekOffRule1").is(':checked') || $("#EmpSecondWeekOffRule2").is(':checked') ||
+                  $("#EmpSecondWeekOffRule3").is(':checked') || $("#EmpSecondWeekOffRule4").is(':checked') ||
+                  $("#EmpSecondWeekOffRule5").is(':checked'))) {
+                $("#checkboxpanel").addClass('field_error');
+                toastr.error("Please select at least one week for second week off rule");
+                isValid = false;
+            } else {
+                $("#checkboxpanel").removeClass('field_error');
+            }
+        }
+
+        if ($("#EmpHalfDay").val() != 0) {
+            if (!($("#EmpHalfDayRule1").is(':checked') || $("#EmpHalfDayRule2").is(':checked') ||
+                  $("#EmpHalfDayRule3").is(':checked') || $("#EmpHalfDayRule4").is(':checked') ||
+                  $("#EmpHalfDayRule5").is(':checked'))) {
+                $("#checkboxHalfDay").addClass('field_error');
+                toastr.error("Please select at least one week for half day rule");
+                isValid = false;
+            } else {
+                $("#checkboxHalfDay").removeClass('field_error');
+            }
+        }
+
+        return isValid;
+    }
+
+    function validateStep2() {
+        var isValid = true;
+
+        if ($("#OTMinHour").val() == "" || $("#OTMinHour").val() < 0) {
+            $("#OTMinHour").addClass('field_error');
+            toastr.error("Please enter minimum hours for overtime");
+            isValid = false;
+        } else {
+            $("#OTMinHour").removeClass('field_error');
+        }
+
+        if ($("#OTAllowWO").is(':checked') && ($("#WeekOffOTHour").val() == "" || $("#WeekOffOTHour").val() < 0)) {
+            $("#WeekOffOTHour").addClass('field_error');
+            toastr.error("Please enter weekly off overtime hours");
+            isValid = false;
+        } else {
+            $("#WeekOffOTHour").removeClass('field_error');
+        }
+
+        if ($("#OTAllowHO").is(':checked') && ($("#HolidayOffOTHour").val() == "" || $("#HolidayOffOTHour").val() < 0)) {
+            $("#HolidayOffOTHour").addClass('field_error');
+            toastr.error("Please enter holiday overtime hours");
+            isValid = false;
+        } else {
+            $("#HolidayOffOTHour").removeClass('field_error');
+        }
+
+        return isValid;
+    }
+
+    function validateStep3() {
+        var isValid = true;
+
+        var radius = parseInt($("#DefaultRadius").val());
+        if (isNaN(radius) || radius < 50 || radius > 1000) {
+            $("#DefaultRadius").addClass('field_error');
+            toastr.error("Please enter a valid radius between 50 and 1000 meters");
+            isValid = false;
+        } else {
+            $("#DefaultRadius").removeClass('field_error');
+        }
+
+        return isValid;
+    }*/
+
+    function clearForm() {
+        // Reset hidden fields
+        $("#PolicyId").val(0);
+
+        // Reset Policy Name
+        $("#ConfigurationName").val("");
+
+        // Reset Field Configuration fields
+        $("#EmpCanCreateTask, #AutoCheckIn").prop('checked', false);
+        $("#DefaultRadius").val(100);
+        $("#radiusValue").text("100m");
+        $("#LocationUpdateFrequency").val(5);
+        $("#ProofOfWork").val(0);
+
+        // Clear any error styling
+        $(".field_error").removeClass('field_error');
+
+        // Employee and Overtime fields - Commented out for MVP
+        /*$("#EmpWeekOff").val(0);
+        $("#EmpSecondWeekOff").val(0);
+        $("#EmpHalfDay").val(0);
+
+        // Disable week off and half day rule checkboxes
+        $("#EmpSecondWeekOffRule1, #EmpSecondWeekOffRule2, #EmpSecondWeekOffRule3, #EmpSecondWeekOffRule4, #EmpSecondWeekOffRule5").prop('checked', false).prop('disabled', true);
+        $("#EmpHalfDayRule1, #EmpHalfDayRule2, #EmpHalfDayRule3, #EmpHalfDayRule4, #EmpHalfDayRule5").prop('checked', false).prop('disabled', true);
+
+        // Overtime checkboxes
+        $("#OTAllowWO, #OTAllowHO").prop('checked', false);
+        $("#OTMinHour").val(0);
+        $("#WeekOffOTHour").val(0).prop('readonly', true);
+        $("#HolidayOffOTHour").val(0).prop('readonly', true);*/
+    }
+</script>

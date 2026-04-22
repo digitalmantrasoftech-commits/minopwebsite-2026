@@ -1,0 +1,3583 @@
+﻿@model PayTimeWebClient.Models.Employees
+@using System.Configuration;
+@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@using System.Configuration;
+@{
+    ViewBag.Title = "EmployeeDashboard";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    string _companyCode = HttpContext.Current.Session["cmpcode"].ToString();
+
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+    string _isdateformat = HttpContext.Current.Session["IsDateFormat"].ToString();
+    string _dbName = HttpContext.Current.Session["DbName"].ToString();
+    string _lockAttendanceDay = HttpContext.Current.Session["lockAttendanceDay"].ToString();
+    int _PlanId = Convert.ToInt32(HttpContext.Current.Session["PlanId"]);
+    int _cmpid = 0;
+    int _branchid = 0;
+    if (_RoleId == 6805)
+    {
+        _cmpid = Convert.ToInt32(HttpContext.Current.Session["ClientCompanyId"]);
+    }
+    if (_RoleId == 6806)
+    {
+        _cmpid = Convert.ToInt32(HttpContext.Current.Session["ClientCompanyId"]);
+        _branchid = Convert.ToInt32(HttpContext.Current.Session["BranchId"]);
+    }
+    int empid = Convert.ToInt32(HttpContext.Current.Session["EmpId"]);
+    bool hasTourCompletes = Convert.ToBoolean(HttpContext.Current.Session["Hastourcompleted"]);
+    int UserId = Convert.ToInt32(HttpContext.Current.Session["UserId"]);
+
+    string isClientDBMatchFlag = HttpContext.Current.Session["IsClientDBMatch"] != null
+    ? HttpContext.Current.Session["IsClientDBMatch"].ToString()
+    : "false"; // Default to "false" if the session is null
+}
+@*<link href="https://code.highcharts.com/5/css/highcharts.css" rel="stylesheet" type="text/css" />*@
+<script src="~/Newlayout/js/pako.min.js"></script>
+<style>
+    #ui-id-1 {
+        overflow-y: auto;
+        max-height: 100px;
+    }
+
+    .mycalendar_dropdown {
+        /*position: absolute;
+        top: -2px;
+        right: 15px;
+        width: 200px;*/
+    }
+
+    #confetti {
+        position: absolute;
+        left: 0;
+        top: 0;
+        height: 100%;
+        width: 100%;
+        z-index: 1;
+    }
+
+    .event_block .nav-tabs {
+        border-bottom: none;
+    }
+
+        .event_block .nav-tabs > li > a {
+            margin: 0;
+            padding: 6px 10px;
+            font-size: 14px;
+            background-color: transparent;
+            border: 1px solid transparent;
+            color: #444444;
+            border-radius: 3px !important;
+            margin-right: 10px;
+        }
+
+            .event_block .nav-tabs > li > a:hover,
+            .event_block .nav-tabs > li > a:focus {
+                background-color: #e0e0e0;
+                border: 1px solid transparent;
+                color: #2b2b2b;
+            }
+
+        .event_block .nav-tabs > li.active > a {
+            background-color: var(--navyblue_color);
+            color: #fff;
+        }
+
+    .event_block .tab-content > .active {
+        padding: 20px 0px;
+    }
+    .event_details .dataTables_wrapper {
+        padding: 30px 0 0px 0;
+    }
+    .dataTables_scrollHeadInner {
+        width: 100% !important;
+    }
+
+    .fc-unthemed .fc-today {
+        background: none !important;
+    }
+</style>
+
+<script async defer src="https://maps.googleapis.com/maps/api/js?v=3&key=AIzaSyArRiZ6rJGsALUVVJy80SRx0Wkz_JCwQgw&callback=initMap">
+</script>
+<link href="https://cdnjs.cloudflare.com/ajax/libs/intro.js/6.0.0/introjs.min.css" rel="stylesheet" />
+<script src="~/Scripts/timeme.js"></script>
+<script src="~/AssetsNew/js/CommonValidation.js"></script>
+
+<canvas id="confetti" style="display:none"></canvas>
+<div class="page-bar">
+    @if (_RoleId == 1 || _RoleId == 6805 || _RoleId == 6806)
+    {
+        <ul class="page-breadcrumb">
+            <li>
+                <a href="@(isClientDBMatchFlag == "True" ? "/Admin/AdminDashboard" : "/Dashboard/AdminDashboard")"><i class="fa-regular fa-house"></i></a>
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> Employee Dashboard</span>
+            </li>
+        </ul>
+    }
+    else
+    {
+        <ul class="page-breadcrumb">
+            <li>
+                <a href="/Dashboard/EmployeeDashboard"><i class="fa-regular fa-house"></i></a>
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> Employee Dashboard</span>
+            </li>
+        </ul>
+    }
+    <div class="page-toolbar">
+
+    </div>
+    <div class="poll-right quick_search">
+        <button id="quick-search-switcher" data-placement="bottom" class="tooltips" type="button"><i class="fa-solid fa-magnifying-glass"></i></button>
+    </div>
+</div>
+
+@if (obj.CanView)
+{
+<script type="text/javascript">
+        var isDateFormat = '@_isdateformat';
+        var emprole = '@_RoleId';
+        var companyid = '@_cmpid';
+        var branchid = '@_branchid';
+        var empid = '@empid';
+        //for calendar fill in emp dashboard
+        var date = new Date();
+        var firstDay = new Date(date.getFullYear(), date.getMonth(), 1);
+        var lastDay = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+        var i = "";
+        var j = "";
+        var k = "";
+        var l = "";
+        if (firstDay.getMonth() < 9) {
+            i = "0" + (firstDay.getMonth() + 1);
+        }
+        else {
+            i = (firstDay.getMonth() + 1);
+        }
+        if (lastDay.getMonth() < 9) {
+            j = "0" + (lastDay.getMonth() + 1);
+        }
+        else {
+            j = (lastDay.getMonth() + 1);
+        }
+
+        if (firstDay.getDate() < 10) {
+            k = "0" + (firstDay.getDate());
+        }
+        else {
+            k = (firstDay.getDate());
+        }
+        if (lastDay.getDate() < 10) {
+            l = "0" + (lastDay.getDate());
+        }
+        else {
+            l = (lastDay.getDate());
+        }
+
+        var FirstDayWithSlashes = (firstDay.getFullYear()) + '-' + i + '-' + k;
+        var lastDayWithSlashes = (lastDay.getFullYear()) + '-' + j + '-' + l;
+        var ids = "";
+        var count = 0;
+        var form = "Employee Dashboard";
+        var operation = "";
+        var currentTime = new Date();
+        var currentHour = ('0' + currentTime.getHours()).slice(-2);
+        var currentMinute = ('0' + currentTime.getMinutes()).slice(-2);
+        var currentFormattedTime = currentHour + ':' + currentMinute;
+        var id = '@Convert.ToInt32(Session["EmpId"])';
+        var operation = "";
+        var count = 0;
+        var form = "Leave Request";
+        $(document).ready(function () {
+
+            Date.prototype.toInputFormat = function () {
+                var yyyy = this.getFullYear().toString();
+                var mm = (this.getMonth() + 1).toString(); // getMonth() is zero-based
+                var dd = this.getDate().toString();
+                return yyyy + "-" + (mm[1] ? mm : "0" + mm[0]) + "-" + (dd[1] ? dd : "0" + dd[0]); // padding
+            };
+            // redirect to Approve Page
+            $('#attendanceTabLink').on('click', function () {
+                sessionStorage.setItem('activeTab', '#attendancetab_2');
+            });
+            $('#leaveTabLink').on('click', function () {
+                sessionStorage.setItem('activeTab', '#leavetab_1');
+            });
+            $('#webpunchTabLink').on('click', function () {
+                sessionStorage.setItem('activeTab', '#webpunchtab_3');
+            });
+
+            // Click event for the Tableview / Listview button
+            $('#listview_btn').click(function () {
+                $('#tableview').hide();
+                $('#listview').show();
+
+                $('#tableview_btn').removeClass('active');
+                $(this).addClass('active');
+            });
+            $('#tableview_btn').click(function () {
+                $('#listview').hide();
+
+                $('#tableview').show();
+
+                $('#listview_btn').removeClass('active');
+                $(this).addClass('active');
+            });
+
+            // Click event for the Modal correction/Leave
+            $("body").on('click', '.dot_correction', function () {
+                frmClear();
+                /* $("#AttendanceDatePicker").prop('disabled', true);*/
+                $('#AttendanceDatePicker input').attr('disabled', true);  // Disable all input fields inside the div
+                $('#AttendanceDatePicker button').attr('disabled', true); // Disable the button inside the div
+
+                // Optionally, add a 'disabled' class to visually indicate the entire div is disabled
+
+                $('#InPunchTime').timepicker('setTime', currentFormattedTime);
+                $('#OutPunchTime').timepicker('setTime', currentFormattedTime);
+                $(".dot_correction").attr("data-toggle", "modal");
+                $(".dot_correction").attr("data-target", "#dot_correction_modal");
+            });
+            $("body").on('click', '.dot_leave', function () {
+
+                count++;
+                operation = "Add Form";
+                Clearatadd();
+                /*      $("#leaveDatePicker").prop('disabled', true);*/
+                $('#leaveDatePicker input').attr('disabled', true);  // Disable all input fields inside the div
+                $('#leaveDatePicker button').attr('disabled', true);
+                $(".dot_leave").attr("data-toggle", "modal");
+                $(".dot_leave").attr("data-target", "#dot_leave_modal");
+            });
+
+
+            var availableNames = [];
+
+            /*timeMeInitialize function is  a javascript library which displays a timer to display how long you are actively viewing the current webpage.*/
+            clip();
+            getLocation();
+            timeMeInitialize();
+            ids = $("#EmpID").html();
+            $("#SearchName").autocomplete({
+                source: availableNames
+            });
+            if (emprole > 1 && emprole != 6805 && emprole != 6806) {
+                //EmployeeFill();
+            }
+            $("#quick-search-switcher").click(function () {
+                $("#quick-search").toggleClass("quick-search-visible");
+            });
+            $("#SearchName").keypress(function (e) {
+                if (e.which == 13) {
+                    e.preventDefault();
+                    $("#btnsearch").click();
+                }
+            });
+            $("#ddlLeaveType").change(function () {
+                $("#ddlLeaveType").removeClass('field_error');
+                $(".popMsg").hide();
+                CheckHalfLeave();
+                GetLeaveBalance();
+                CheckDocumentRequire();
+                CheckLocationEnabled();
+            });
+            $("#chkIsHalfLeave").on("change", function () {
+                if ($(this).is(":checked")) {
+                    CheckDocumentRequire();
+                }
+                else {
+                    CheckDocumentRequire();
+                }
+            });
+            $("#txtFromDate").change(function () {
+                $("#txtFromDate").removeClass('field_error');
+                $("#txtToDate").val("");
+                if (isDateFormat == "dd-mm-yyyy") {
+                    var fromDate = $("#txtFromDate").val().split("-");
+                    var newdate = new Date(fromDate[2], fromDate[1] - 1, fromDate[0]);
+                }
+                else if (isDateFormat == "mm-dd-yyyy") {
+                    var fromDate = moment($('#txtFromDate').val(), 'MM-DD-YYYY');
+                    var newdate = new Date(fromDate);
+                }
+                else if (isDateFormat == "yyyy-M-dd") {
+                    var fromDate = moment($('#txtFromDate').val(), 'YYYY-MMM-DD');
+                    var newdate = new Date(fromDate);
+                }
+                else if (isDateFormat == "M-dd-yyyy") {
+                    var fromDate = moment($('#txtFromDate').val(), 'MMM-DD-YYYY');
+                    var newdate = new Date(fromDate);
+                }
+                else if (isDateFormat == "dd-M-yyyy") {
+                    var fromDate = moment($('#txtFromDate').val(), 'DD-MMM-YYYY');
+                    var newdate = new Date(fromDate);
+                }
+                else {
+                    var fromDate = $("#txtFromDate").val();
+                    var newdate = new Date(fromDate);
+                }
+                //$('#txtToDate').datepicker("remove");
+                //$("#txtToDate").datepicker({
+                //    startDate: newdate,
+                //    autoclose: true
+                //}).on('changeDate', function (ev) {
+                //}).data('datepicker');
+                GetLeaveBalance();
+                CheckDocumentRequire();
+            });
+            $("#tblOnDutyLeave").on('click', '.cancel', function (e) {
+                e.preventDefault();
+                lst = [];
+                var leaveID = $(this).parent('td').parent('tr').children(1)[1].innerText;
+                var fromDate = $(this).parent('td').parent('tr').children(1)[3].innerText;
+                if (isDateFormat == "dd-mm-yyyy") {
+                    var fromDate = fromDate.split("-");
+                    var newdate = fromDate[2] + "-" + fromDate[1] + "-" + fromDate[0];
+                }
+                else if (isDateFormat == "mm-dd-yyyy") {
+                    var fromDate = fromDate.split("-");
+                    var newdate = fromDate[2] + "-" + fromDate[0] + "-" + fromDate[1];
+                }
+                else if (isDateFormat == "yyyy-M-dd") {
+                    var fromDate = fromDate.split("-");
+                    var getMonth = fromDate[1];
+                    var newdate = fromDate[0] + "-" + (GetMonthNumber(getMonth).toString().length > 1 ? GetMonthNumber(getMonth) : "0" + GetMonthNumber(getMonth)) + "-" + fromDate[2];
+                }
+                else if (isDateFormat == "M-dd-yyyy") {
+                    var fromDate = fromDate.split("-");
+                    var getMonth = fromDate[0];
+                    var newdate = fromDate[2] + "-" + (GetMonthNumber(getMonth).toString().length > 1 ? GetMonthNumber(getMonth) : "0" + GetMonthNumber(getMonth)) + "-" + fromDate[1];
+                }
+                else if (isDateFormat == "dd-M-yyyy") {
+                    var fromDate = fromDate.split("-");
+                    var getMonth = fromDate[1];
+                    var newdate = fromDate[2] + "-" + (GetMonthNumber(getMonth).toString().length > 1 ? GetMonthNumber(getMonth) : "0" + GetMonthNumber(getMonth)) + "-" + fromDate[0];
+                }
+                else {
+                    var fromDate = fromDate.split("-");
+                    var newdate = fromDate[0] + "-" + fromDate[1] + "-" + fromDate[2];
+                }
+                var toDate = $(this).parent('td').parent('tr').children(1)[4].innerText;
+                if (isDateFormat == "dd-mm-yyyy") {
+                    var toDate = toDate.split("-");
+                    var newtodate = toDate[2] + "-" + toDate[1] + "-" + toDate[0];
+                }
+                else if (isDateFormat == "mm-dd-yyyy") {
+                    var toDate = toDate.split("-");
+                    var newtodate = toDate[2] + "-" + toDate[0] + "-" + toDate[1];
+                }
+                else if (isDateFormat == "yyyy-M-dd") {
+                    var toDate = toDate.split("-");
+                    var getMonth = toDate[1];
+                    var newtodate = toDate[0] + "-" + (GetMonthNumber(getMonth).toString().length > 1 ? GetMonthNumber(getMonth) : "0" + GetMonthNumber(getMonth)) + "-" + toDate[2];
+                }
+                else if (isDateFormat == "M-dd-yyyy") {
+                    var toDate = toDate.split("-");
+                    var getMonth = toDate[0];
+                    var newtodate = toDate[2] + "-" + (GetMonthNumber(getMonth).toString().length > 1 ? GetMonthNumber(getMonth) : "0" + GetMonthNumber(getMonth)) + "-" + toDate[1];
+                }
+                else if (isDateFormat == "dd-M-yyyy") {
+                    var toDate = toDate.split("-");
+                    var getMonth = toDate[1];
+                    var newtodate = toDate[2] + "-" + (GetMonthNumber(getMonth).toString().length > 1 ? GetMonthNumber(getMonth) : "0" + GetMonthNumber(getMonth)) + "-" + toDate[0];
+                }
+                else {
+                    var toDate = toDate.split("-");
+                    var newtodate = toDate[0] + "-" + toDate[1] + "-" + toDate[2];
+                }
+                var applyReason = $(this).parent('td').parent('tr').children(1)[5].innerText;
+                var approvalReason = "Canceled";
+                var LeaveDoc = $(this).parent('td').parent('tr').children(1)[10].innerText;
+                var leaveTypeId = $(this).parent('td').parent('tr').children(1)[7].innerText;
+                var leavePaid = $(this).parent('td').parent('tr').children(1)[8].innerText;
+                var IsHalfLeave = $(this).parent('td').parent('tr').children(1)[9].innerText;
+                var obj = {
+                    LeaveId: leaveID,
+                    EmpId: ids,
+                    FromDate: newdate,
+                    ToDate: newtodate,
+                    ApplyReason: applyReason,
+                    LeaveTypeId: leaveTypeId,
+                    LeavePaid: leavePaid,
+                    LeaveStatus: 4,
+                    ApprovalReason: approvalReason,
+                    IsHalfLeave: IsHalfLeave,
+                    LeaveDoc: LeaveDoc
+
+                };
+                lst.push(obj);
+                $.ajax({
+                    url: '/ESS/ApproveLeaveUpdate',
+                    type: 'POST',
+                    headers: { 'Authorization': '@_tokan' },
+                    data: JSON.stringify(lst),
+                    contentType: "application/json; charset=utf-8",
+                    beforeSend: function () {
+                        $(".loading").show();
+                    },
+                    success: function (data) {
+                        if (data.isRedirect) {
+                            window.location.href = data.redirectUrl;
+                        }
+                        if (data = "OK") {
+                            toastr.success("Leave canceled successfully.");
+                            $(".loading").hide();
+
+                        }
+                        else {
+                            toastr.remove();
+                            toastr.error("Error in canceled Leave.");
+                            $(".loading").hide();
+                        }
+                    },
+                    statusCode: {
+                        404: function (content) { alert('cannot find resource'); },
+                        500: function (content) { alert('internal server error'); }
+                    },
+                    error: function (jqXHR, ajaxOptions, thrownError) {
+                        $(".loading").hide();
+
+                        if (jqXHR.status == 500) { //InternalServerError = 500,
+                            toastr.error("InternalServerError");
+                        } else if (jqXHR.status == 400) { //BadRequest = 400,
+                            toastr.error("BadRequest");
+                        } else if (jqXHR.status == 401) {
+                            window.location.href = "/PayTime/LoginPage";
+                        }
+                    }
+                });
+
+            });
+            $('#tblOnDutyLeave').DataTable();
+            $("#txtToDate").change(function () {
+                $("#txtToDate").removeClass('field_error');
+                GetLeaveBalance();
+                CheckDocumentRequire();
+            });
+            $("#uploadDoc").hide();
+            $("#btnsaveleave").click(function () { save(); });
+
+
+
+
+            $("#btnSave").click(function () {
+                checkSession();
+                if ($("#fromdate").val() == "") {
+                    $("#fromdate").addClass('field_error');
+                    $("#fromdate").focus();
+                    event.preventDefault();
+                    return false;
+                }
+                if (ids == 0) {
+                    toastr.remove();
+                    toastr.error("Employee not found.");
+                    event.preventDefault();
+                    return false;
+                }
+               
+                else if ($("#fromdate").val() != "" && '@_lockAttendanceDay' != "" && ('@_PlanId' == '6' || '@_PlanId' == '5' || '@_PlanId' == '3')) {
+                    var _data = $("#fromdate").val();
+                    var date = _data.split('-');
+                    if ("@_isdateformat" == "dd-mm-yyyy") {
+                        var firstValue = date[2] + "-" + date[1] + "-" + date[0] //yyyy-mm-dd
+                    }
+                    else if ("@_isdateformat" == "yyyy-mm-dd") {
+                        var firstValue = date[0] + "-" + date[1] + "-" + date[2] //yyyy-mm-dd
+                    }
+                    else if ("@_isdateformat" == "mm-dd-yyyy") {
+                        var firstValue = date[2] + "-" + date[1] + "-" + date[0] //yyyy-mm-dd
+                    }
+                    else if ("@_isdateformat" == "yyyy-M-dd") {
+                        var _date = new Date(date[2] + " " + date[1] + " " + date[0]);
+                        var locale = "en-us";
+                        var month = _date.toLocaleString(locale, { month: "numeric" });
+                        var firstValue = date[0] + "-" + month + "-" + date[2] //yyyy-mm-dd
+                    }
+                    else if ("@_isdateformat" == "M-dd-yyyy") {
+                        var _date = new Date(date[1] + " " + date[0] + " " + date[2]);
+                        var locale = "en-us";
+                        var month = _date.toLocaleString(locale, { month: "numeric" });
+                        var firstValue = date[2] + "-" + month + "-" + date[1] //yyyy-mm-dd
+                    }
+                    else if ("@_isdateformat" == "dd-M-yyyy") {
+                        var _date = new Date(date[0] + " " + date[1] + " " + date[2]);
+                        var locale = "en-us";
+                        var month = _date.toLocaleString(locale, { month: "numeric" });
+                        var firstValue = date[2] + "-" + month + "-" + date[0] //yyyy-mm-dd
+                    }
+                    firstValue = firstValue.split('-');
+                    var s_date = new Date();
+                    var secondValue = (s_date.getFullYear() + "-" + (s_date.getMonth() + 1) + "-" + '@_lockAttendanceDay').split('-');
+                    var firstDate = new Date();
+                    firstDate.setFullYear(firstValue[0], (firstValue[1] - 1), firstValue[2]);
+                    var secondDate = new Date();
+                    secondDate.setFullYear(secondValue[0], (secondValue[1] - 1), 1);
+                    var secondDate_pev_month = new Date();
+                    secondDate_pev_month.setFullYear(secondValue[0], (secondValue[1] - 2), 1);
+                    var Current_date = new Date();
+                    var Lock_date_day = new Date();
+                    Lock_date_day.setFullYear(secondValue[0], (secondValue[1] - 1), '@_lockAttendanceDay');
+                    if (firstDate < secondDate) {
+                        if (firstDate >= secondDate_pev_month && Current_date <= Lock_date_day) {
+                            $("#fromdate").removeClass('field_error');
+                        } else {
+                            toastr.remove();
+                            toastr.error("Please change the date because your attendance is locked on this date.");
+                            event.preventDefault();
+                            $("#fromdate").addClass('field_error');
+                            return false;
+                        }
+                    }
+                } else {
+                    $("#fromdate").removeClass('field_error');
+                }
+                if ($("#InPunchTime").val() == "") {
+                    $("#InPunchTime").addClass('field_error');
+                    $("#InPunchTime").focus();
+                    event.preventDefault();
+                    return false;
+                }
+                else {
+                    $("#InPunchTime").removeClass('field_error');
+                }
+                if ($("#OutPunchTime").val() == "") {
+                    $("#OutPunchTime").addClass('field_error');
+                    $("#OutPunchTime").focus();
+                    event.preventDefault();
+                    return false;
+                }
+                else {
+                    $("#OutPunchTime").removeClass('field_error');
+                }
+                if ("@_isdateformat" == "dd-mm-yyyy") {
+                    var _inpunchdate = $("#fromdate").val().split("-");
+                    var inpunchdates = _inpunchdate[2] + "-" + _inpunchdate[1] + "-" + _inpunchdate[0];
+                    var Inpunchdate = inpunchdates + " " + $("#InPunchTime").val();
+                    var Outpunchdate = inpunchdates + " " + $("#OutPunchTime").val();
+                }
+                else if ("@_isdateformat" == "mm-dd-yyyy") {
+                    var _inpunchdate = $("#fromdate").val().split("-");
+                    var inpunchdates = _inpunchdate[2] + "-" + _inpunchdate[0] + "-" + _inpunchdate[1];
+                    var Inpunchdate = inpunchdates + " " + $("#InPunchTime").val();
+                    var Outpunchdate = inpunchdates + " " + $("#OutPunchTime").val();
+                }
+                else if ("@_isdateformat" == "yyyy-mm-dd") {
+                    var _inpunchdate = $("#fromdate").val().split("-");
+                    var inpunchdates = _inpunchdate[0] + "-" + _inpunchdate[1] + "-" + _inpunchdate[2];
+                    var Inpunchdate = inpunchdates + " " + $("#InPunchTime").val();
+                    var Outpunchdate = inpunchdates + " " + $("#OutPunchTime").val();
+                }
+                else if ("@_isdateformat" == "yyyy-M-dd") {
+                    var _inpunchdate = $("#fromdate").val().split("-");
+                    var inpunchdates = _inpunchdate[0] + "-" + _inpunchdate[1] + "-" + _inpunchdate[2];
+                    var Inpunchdate = inpunchdates + " " + $("#InPunchTime").val();
+                    var Outpunchdate = inpunchdates + " " + $("#OutPunchTime").val();
+                }
+                else if ("@_isdateformat" == "M-dd-yyyy") {
+                    var _inpunchdate = $("#fromdate").val().split("-");
+                    var inpunchdates = _inpunchdate[2] + "-" + _inpunchdate[0] + "-" + _inpunchdate[1];
+                    var Inpunchdate = inpunchdates + " " + $("#InPunchTime").val();
+                    var Outpunchdate = inpunchdates + " " + $("#OutPunchTime").val();
+                }
+                else if ("@_isdateformat" == "dd-M-yyyy") {
+                    var _inpunchdate = $("#fromdate").val().split("-");
+                    var inpunchdates = _inpunchdate[2] + "-" + _inpunchdate[1] + "-" + _inpunchdate[0];
+                    var Inpunchdate = inpunchdates + " " + $("#InPunchTime").val();
+                    var Outpunchdate = inpunchdates + " " + $("#OutPunchTime").val();
+                }
+                var CorrectionDetails = {
+                    "AttendanceId": $("#AttCorrectionId").val(),
+                    "EmpId": $("#EmpID").html(),
+                    "InPunchTime": Inpunchdate,
+                    "OutPunchTime": Outpunchdate,
+                    "ApplyReason": $("#ApplyReason").val(),
+                    "Status": 3
+                }
+                $.post("/ESS/AttendanceCorrectionAdd?CorrectionDetails=" + JSON.stringify(CorrectionDetails), function (response) {
+                    var response = JSON.parse(response);
+                    if (response.MegSts == "ok") {
+                        $('#dot_correction_modal').modal('hide');
+                        toastr.remove();
+                        toastr.success("Attendace correction added successfully.");
+                    }
+                    else if (response.Meg == "Un Authorized Access") {
+                        window.setTimeout(function () {
+                            toastr.remove();
+                            toastr.error("No entry! This is a restricted area, even for ninjas like you.");
+                            window.setTimeout(function () {
+                                window.location.href = "/PayTime/LoginPage";
+                            }, 2000);
+                            return false;
+                        }, 1000);
+                    }
+
+                    else {
+                        $('#dot_correction_modal').modal('hide');
+                        toastr.remove();
+                        toastr.error(response.Meg);
+                    }
+
+                });
+
+            });
+            //$("#employeeId").change(function () {
+            //    fillCalenderEmpreportingTo();
+            //});
+   $("#EventBtn").on('click', function () {
+                $("#EventBtn").attr("data-toggle", "modal");
+                $("#EventBtn").attr("data-target", "#EventBtn_modal");
+                $.ajax({
+                    type: "GET",
+                    url: '@_webapiurl' + "Master/GetanniversaryData",
+                    headers: { 'Authorization': '@_tokan' },
+                    success: function (response) {
+                        if (response != null) {
+
+                            // Destroy any existing DataTable instances before re-initialization
+                            if ($.fn.DataTable.isDataTable('#tblbirthday')) {
+                                $('#tblbirthday').DataTable().clear().destroy();
+                            }
+                            if ($.fn.DataTable.isDataTable('#tblanniversary')) {
+                                $('#tblanniversary').DataTable().clear().destroy();
+                            }
+                            if ($.fn.DataTable.isDataTable('#tbljoining')) {
+                                $('#tbljoining').DataTable().clear().destroy();
+                            }
+
+                            // Initialize DataTable for Birthday Table
+                            if (response.Table1 != null && response.Table1.length > 0) {
+                                $('#tblbirthday').DataTable({
+                                    data: response.Table1,
+                                    scrollY: 'calc(100vh - 338px)',
+                                    scrollCollapse: true,
+                                    paging:false,
+                                    order: [],
+                                    columns: [
+                                        { data: 'Empcode', title: 'Employee No'},   // Map object property to column
+                                        { data: 'EmpName', title: 'Employee Name' },
+                                        { data: 'DesignationName', title: 'Designation' },
+                                        { data: 'BranchName', title: 'Branch' },
+                                        { data: 'DepartmentName', title: 'Department' },
+                                        { data: 'EmpDOB', title: 'Birthdate' }
+                                    ],
+
+                                })
+                            }
+
+                            // Initialize DataTable for Work Anniversary Table
+                            if (response.Table2 != null && response.Table2.length > 0) {
+                                $('#tblanniversary').DataTable({
+                                    data: response.Table2,
+                                    scrollY: 'calc(100vh - 338px)',
+                                    scrollCollapse: true,
+                                    paging: false,
+                                    order: [],
+                                    columns: [
+                                        { data: 'Empcode', title: 'Employee No' },
+                                        { data: 'EmpName', title: 'Employee Name' },
+                                        { data: 'DesignationName', title: 'Designation' },
+                                        { data: 'BranchName', title: 'Branch' },
+                                        { data: 'DepartmentName', title: 'Department' },
+                                        { data: 'EmpJoinDate', title: 'Joining Date' },
+                                        { data: 'Year', title: 'Year Complete' }
+                                    ],
+                                })
+                            }
+
+                            // Initialize DataTable for New Join Employee Table
+                            if (response.Table3 != null && response.Table3.length > 0) {
+
+                                $('#tbljoining').DataTable({
+                                    data: response.Table3,
+                                    scrollY: 'calc(100vh - 338px)',
+                                    scrollCollapse: true,
+                                    paging: false,
+                                    order: [],
+                                    columns: [
+                                        { data: 'Empcode', title: 'Employee No' },
+                                        { data: 'EmpName', title: 'Employee Name' },
+                                        { data: 'DesignationName', title: 'Designation' },
+                                        { data: 'BranchName', title: 'Branch' },
+                                        { data: 'DepartmentName', title: 'Department' },
+                                        { data: 'EmpJoinDate', title: 'Joining Date' }
+                                    ],
+
+                                });
+
+                            }
+
+                          if (response.Table1 != null && response.Table1.length > 0) {
+
+                                $("#divtblbirthday").hide();
+                                $("#tblbirthday").show();
+                            }
+                            else {
+                                $("#divtblbirthday").show();
+                                $("#tblbirthday").hide();
+                            }
+
+                            if (response.Table2 != null && response.Table2.length > 0) {
+
+                                $("#divtblanniversary").hide();
+                                $("#tblanniversary").show();
+                            }
+                            else {
+                                $("#divtblanniversary").show();
+                                $("#tblanniversary").hide();
+                            }
+
+                            if (response.Table3 != null && response.Table3.length > 0) {
+                                $("#divttbljoining").Hide();
+                                $("#tbljoining").show();
+                            }
+                            else {
+                                $("#divttbljoining").show();
+                                $("#tbljoining").hide();
+
+                            }
+                        }
+                    },
+                    error: function () {
+                        alert("error");
+                    }
+                });
+
+            });
+
+            $("#btnsearch").click(function () {
+                if ($("#searchselection").val() == "0" || $("#searchselection").val() == "" || $("#searchselection").val() == null) {
+                    toastr.remove();
+                    toastr.error("Please select search type.");
+                    return false;
+                }
+                Search();
+            });
+            $("#searchselection").change(function () {
+
+                var selectedValue = $(this).val();
+
+                if (selectedValue === "EmpName") {
+                    SearchNames();
+                }
+                else {
+                    availableNames = [];
+
+                }
+
+                $("#SearchName").val("");
+                $("#SearchName").attr("readonly", false);
+            });
+            if (ids != "") {
+                FillAttendanceChart();
+                GetPunchInformation();
+                updateclock();
+                CalendarListFill(FirstDayWithSlashes, lastDayWithSlashes);
+                CalendarFill();
+                Fillleavesummary1(ids);
+                Fillleavesummary2(ids);
+            }
+
+            window.onload = function () {
+                timeSpentOnPage();
+            }
+            $(window).on("beforeunload", function () {
+                if (operation == "" || operation == null || operation == '') {
+                    operation = "View  Employee Dashboard";
+                }
+                var url = '@_webapiurl' + '/DashBoard/AddAnalyticsUser';
+                var timeSpent = timeSpentOnPage();
+                analyticsDataUsage(url, '@_dbName', form, '@_tokan', count, operation, timeSpent)
+            })
+
+            $('.fc-prev-button').click(function () {
+                $('#MyCalendar').fullCalendar('removeEvents');
+                var b = $('#MyCalendar').fullCalendar('getDate');
+                var FirstDayoftheMonth = b.format("YYYY-MM-DD");
+
+                var addmonth = "";
+                var StartDate = new Date(b.format("YYYY-MM-DD"));
+                var EndDate = new Date(StartDate.getFullYear(), StartDate.getMonth() + 1, 0);
+                if (EndDate.getMonth() < 10 && EndDate.getMonth() != 9) {
+                    addmonth = "0" + (EndDate.getMonth() + 1);
+                }
+                else {
+                    addmonth = (EndDate.getMonth() + 1);
+                }
+                var lastDayoftheMonth = EndDate.getFullYear() + "-" + addmonth + "-" + EndDate.getDate();
+                //if ($("#employeeId").val() != '0')
+                //{
+                //    ids = $("#employeeId").val();
+                //}
+                CalendarListFill(FirstDayoftheMonth, lastDayoftheMonth)
+                $.ajax({
+                    type: "GET",
+                    url: '@_webapiurl' + "DashBoard/GetEmpAttendanceStatusSummary",
+                    headers: { 'Authorization': '@_tokan' },
+                    data: {
+                        empid: ids,
+                        fromdate: FirstDayoftheMonth,
+                        todate: lastDayoftheMonth,
+                        statusflg: 3,
+                        finalStatus: "",
+                        searchName: $("#searchselection").val(),
+                        searchBy: $("#SearchName").val()
+                    },
+                    success: function (events) {
+                        $('#MyCalendar').fullCalendar('removeEvents');
+                        $('#MyCalendar').fullCalendar('addEventSource', events);
+                        $('#MyCalendar').fullCalendar('rerenderEvents');
+                    },
+                    error: function () {
+                        alert("error");
+                    }
+                });
+            });
+            $('.fc-next-button').click(function () {
+                $('#MyCalendar').fullCalendar('removeEvents');
+                var b = $('#MyCalendar').fullCalendar('getDate');
+                var FirstDayoftheMonth = b.format("YYYY-MM-DD");
+                var addmonth = "";
+                var StartDate = new Date(b.format("YYYY-MM-DD"));
+                var EndDate = new Date(StartDate.getFullYear(), StartDate.getMonth() + 1, 0);
+                if (EndDate.getMonth() < 10 && EndDate.getMonth() != 9) {
+                    addmonth = "0" + (EndDate.getMonth() + 1);
+                }
+                else {
+                    addmonth = (EndDate.getMonth() + 1);
+                }
+                var lastDayoftheMonth = EndDate.getFullYear() + "-" + addmonth + "-" + EndDate.getDate();
+                //if ($("#employeeId").val() != '0') {
+                //    ids = $("#employeeId").val();
+                //}
+                CalendarListFill(FirstDayoftheMonth, lastDayoftheMonth)
+                $.ajax({
+                    type: "GET",
+                    url: '@_webapiurl' + "DashBoard/GetEmpAttendanceStatusSummary",
+                    headers: { 'Authorization': '@_tokan' },
+                    data: {
+                        empid: ids,
+                        fromdate: FirstDayoftheMonth,
+                        todate: lastDayoftheMonth,
+                        statusflg: 3,
+                        finalStatus: "",
+                        searchName: $("#searchselection").val(),
+                        searchBy: $("#SearchName").val()
+                    },
+                    success: function (events) {
+                        $('#MyCalendar').fullCalendar('removeEvents');
+                        $('#MyCalendar').fullCalendar('addEventSource', events);
+                        $('#MyCalendar').fullCalendar('rerenderEvents');
+                    },
+                    error: function () {
+                        alert("error");
+                    }
+                });
+            });
+            $.ajax({
+                type: "POST",
+                url: '@_webapiurl' + '/DashBoard/GetEmployeePendingCount?roleid=' + emprole + "&companyid=" + companyid + "&branchid=" + branchid + "&empId=" + empid,
+                headers: { 'Authorization': '@_tokan' },
+                contentType: "application/json; charset=utf-8",
+                datatype: "json",
+                async: false,
+                success: function (response) {
+                    if (response.isRedirect) {
+                        window.location.href = response.redirectUrl;
+                    } else {
+                        for (let i = 0; i < response.length; i++) {
+                            const activity = response[i];
+                            var cnt = activity.cnt || 0;
+                            var statusClass = cnt <= 5 ? 'status_green' : cnt <= 10 ? 'status_orange' : 'status_red';
+                            if (activity.type === 'webpunch') {
+                                if (activity.cnt === 0) {
+                                    $('#webpunchCount').removeClass('pulse2');
+                                } else {
+                                    $('#webpunchCount').addClass('pulse2');
+                                }
+                                sessionStorage.setItem("WebPunchCount", activity.cnt.toString());
+                                $('#webpunchCount').text(activity.cnt).removeClass('status_green status_orange status_red').addClass(statusClass);
+                            } else if (activity.type === 'Attendance') {
+                                if (activity.cnt === 0) {
+                                    $('#attendanceCount').removeClass('blink');
+                                } else {
+                                    $('#attendanceCount').addClass('blink');
+                                }
+                                sessionStorage.setItem("AttendanceCount", activity.cnt.toString());
+                                $('#attendanceCount').text(activity.cnt).removeClass('status_green status_orange status_red').addClass(statusClass);
+                            } else if (activity.type === 'leave') {
+                                if (activity.cnt === 0) {
+                                    $('#leaveCount').removeClass('pulse');
+                                } else {
+                                    $('#leaveCount').addClass('pulse');
+                                }
+                                sessionStorage.setItem("LeaveCount", activity.cnt.toString());
+                                $('#leaveCount').text(activity.cnt).removeClass('status_green status_orange status_red').addClass(statusClass);
+                            }
+                        }
+                        //const anyCountsGreaterThanZero = response.some(function (activity) {
+                        //    return activity.cnt !== '';
+                        //});
+                        //if (anyCountsGreaterThanZero) {
+                        //    $('.pendingcount').css('display', 'block');
+                        //} else {
+                        //    $('.pendingcount').css('display', 'none');
+                        //}
+                    }
+                },
+                error: function (textStatus, errorThrown) {
+                    window.setTimeout(function () {
+                        toastr.remove();
+                        toastr.error("No entry! This is a restricted area, even for ninjas like you.");
+                        window.setTimeout(function () {
+                            window.location.href = "/PayTime/LoginPage";
+                        }, 2000);
+                        return false;
+                    }, 1000);
+                }
+            });
+        });
+
+        function getLocation() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(showPosition, showError);
+            } else {
+                x.innerHTML = "Geolocation is not supported by this browser.";
+            }
+        }
+        function showPosition(position) {
+            var lat = position.coords.latitude;
+            var long = position.coords.longitude;
+            $("#lat").val(lat);
+            $("#lag").val(long);
+            var LatLng = new google.maps.LatLng(lat, long);
+            $("#latlag").val(LatLng);
+        }
+        function showError(error) {
+            switch (error.code) {
+                case error.PERMISSION_DENIED:
+                    showerrormsg("Geolocation is unavailable or user denied the request for geolocation.");
+                    break;
+                case error.POSITION_UNAVAILABLE:
+                    showerrormsg("Location information is unavailable.");
+                    break;
+                case error.TIMEOUT:
+                    showerrormsg("The request to get user location timed out.");
+                    break;
+                case error.UNKNOWN_ERROR:
+                    showerrormsg("An unknown error occurred.");
+                    break;
+            }
+        }
+        function showerrormsg(errormsg) {
+            toastr.remove();
+            toastr.warning(errormsg);
+        }
+        function Gcode() {
+            var latitude = $("#lat").val();
+            var longitude = $("#lag").val();
+            var LatLng = new google.maps.LatLng(latitude, longitude);
+            var geocoder = new google.maps.Geocoder;
+            geocoder.geocode({ 'location': LatLng }, function (results, status) {
+                if (status === 'OK') {
+                    if (results[0]) {
+                        $("#latlagAddress").val(results[0].formatted_address);
+                    } else {
+                        window.alert('No results found');
+                    }
+                } else {
+                    var apikey = 'AIzaSyDAtmmQTRUSi5Yc5X_09t-HW6fBbQaUjMQ';
+                    var query = 'https://maps.googleapis.com/maps/api/geocode/json?address=' + latitude + ',' + longitude + '&key=' + apikey;
+                    $.getJSON(query, function (data) {
+                        if (data.status === 'OK') {
+                            $("#latlagAddress").val(data.results[0].formatted_address);
+                        }
+                    });
+                }
+            });
+        }
+        function CheckHalfLeave() {
+            var ltype = $("#ddlLeaveType").val();
+            $.ajax({
+                type: "GET",
+                url: "/Transactions/HalfLeaveValidate?LeaveType=" + parseInt(ltype),
+                contentType: "application/json; charset=utf-8",
+                datatype: "json",
+                async: "false",
+                success: function (response) {
+                    if (response.isRedirect) {
+                        window.location.href = response.redirectUrl;
+                    }
+                    if (response != null) {
+                        if (response == "yes") {
+                            $("#chkIsHalfLeave").prop('disabled', false);
+                            $("#chkIsHalfLeave").prop('checked', false);
+                        }
+                        else {
+                            $("#chkIsHalfLeave").prop('disabled', true);
+                            $("#chkIsHalfLeave").prop('checked', false);
+                        }
+                    }
+                    $(".loading").hide();
+                },
+                beforeSend: function () {
+                    $(".loading").show();
+                },
+                error: function (jqXHR, ajaxOptions, thrownError) {
+                    $(".loading").hide();
+
+                    if (jqXHR.status == 500) { //InternalServerError = 500,
+                        toastr.error("InternalServerError");
+                    } else if (jqXHR.status == 400) { //BadRequest = 400,
+                        toastr.error("BadRequest");
+                    } else if (jqXHR.status == 401) {
+                        window.location.href = "/PayTime/LoginPage";
+                    }
+                }
+            });
+        }
+        function CheckLocationEnabled() {
+            var ltype = $("#ddlLeaveType").val();
+            $.ajax({
+                type: "GET",
+                url: "/Transactions/DocumentRequireForLeave?LeaveType=" + parseInt(ltype),
+                contentType: "application/json; charset=utf-8",
+                datatype: "json",
+                async: "false",
+                success: function (response) {
+                    if (response.isRedirect) {
+                        window.location.href = response.redirectUrl;
+                    }
+                    if (response != null && response.length > 0) {
+                        locationenabled = response[0].IsLocationEnabled;
+                        if (locationenabled != 0) {
+                            Gcode();
+                        }
+                    }
+                    $(".loading").hide();
+                },
+                beforeSend: function () {
+                    $(".loading").show();
+                },
+                error: function (jqXHR, ajaxOptions, thrownError) {
+                    $(".loading").hide();
+
+                    if (jqXHR.status == 500) { //InternalServerError = 500,
+                        toastr.error("InternalServerError");
+                    } else if (jqXHR.status == 400) { //BadRequest = 400,
+                        toastr.error("BadRequest");
+                    } else if (jqXHR.status == 401) {
+                        window.location.href = "/PayTime/LoginPage";
+                    }
+                }
+            });
+        }
+        function CheckDocumentRequire() {
+            var ltype = $("#ddlLeaveType").val();
+            $.ajax({
+                type: "GET",
+                url: "/Transactions/DocumentRequireForLeave?LeaveType=" + parseInt(ltype),
+                contentType: "application/json; charset=utf-8",
+                datatype: "json",
+                async: "false",
+                success: function (response) {
+                    if (response.isRedirect) {
+                        window.location.href = response.redirectUrl;
+                    }
+                    if (response != null && response.length > 0) {
+                        if (response[0].IsDocRequire) {
+                            if ("@_isdateformat" == "dd-mm-yyyy") {
+                                var fromDate = $("#txtFromDate").val().split("-");
+                                var _Fromdate = fromDate[2] + "-" + fromDate[1] + "-" + fromDate[0];
+                                var toDate = $("#txtToDate").val().split("-");
+                                var _toDate = toDate[2] + "-" + toDate[1] + "-" + toDate[0];
+                            }
+                            else if ("@_isdateformat" == "mm-dd-yyyy") {
+                                var fromDate = $("#txtFromDate").val().split("-");
+                                var _Fromdate = fromDate[2] + "-" + fromDate[0] + "-" + fromDate[1];
+                                var toDate = $("#txtToDate").val().split("-");
+                                var _toDate = toDate[2] + "-" + toDate[0] + "-" + toDate[1];
+                            }
+                            else if ("@_isdateformat" == "yyyy-mm-dd") {
+                                var fromDate = $("#txtFromDate").val().split("-");
+                                var _Fromdate = fromDate[0] + "-" + fromDate[1] + "-" + fromDate[2];
+                                var toDate = $("#txtToDate").val().split("-");
+                                var _toDate = toDate[0] + "-" + toDate[1] + "-" + toDate[2];
+                            }
+                            else if ("@_isdateformat" == "yyyy-M-dd") {
+                                var fromDate = $("#txtFromDate").val().split("-");
+                                var _Fromdate = fromDate[0] + "-" + fromDate[1] + "-" + fromDate[2];
+                                var toDate = $("#txtToDate").val().split("-");
+                                var _toDate = toDate[0] + "-" + toDate[1] + "-" + toDate[2];
+                            }
+                            else if ("@_isdateformat" == "M-dd-yyyy") {
+                                var fromDate = $("#txtFromDate").val().split("-");
+                                var _Fromdate = fromDate[2] + "-" + fromDate[0] + "-" + fromDate[1];
+                                var toDate = $("#txtToDate").val().split("-");
+                                var _toDate = toDate[2] + "-" + toDate[0] + "-" + toDate[1];
+                            }
+                            else if ("@_isdateformat" == "dd-M-yyyy") {
+                                var fromDate = $("#txtFromDate").val().split("-");
+                                var _Fromdate = fromDate[2] + "-" + fromDate[1] + "-" + fromDate[0];
+                                var toDate = $("#txtToDate").val().split("-");
+                                var _toDate = toDate[2] + "-" + toDate[1] + "-" + toDate[0];
+                            }
+                            if ($("#chkIsHalfLeave").prop("checked")) {
+                                var diff = Date.parse(_toDate) - Date.parse(_Fromdate);
+                                days = diff / 1000 / 60 / 60 / 24;
+                                daysDiff = (days + 1) / 2;
+                                if (daysDiff >= 0.5 && daysDiff >= response[0].LimitDays) {
+                                    $("#uploadDoc").show();
+                                } else {
+                                    $("#uploadDoc").hide();
+                                    $("#UploadLeaveDoc").text("");
+                                    $("#UploadLeaveDoc").val("");
+                                }
+                            }
+                            else {
+                                var dateDiff = Math.abs(new Date(_toDate) - new Date(_Fromdate));
+                                var daysDiff = Math.ceil(dateDiff / (1000 * 60 * 60 * 24));
+                                if (daysDiff === response[0].LimitDays - 1 || daysDiff >= response[0].LimitDays - 1) {
+                                    $("#uploadDoc").show();
+                                }
+                                else {
+                                    $("#uploadDoc").hide();
+                                    $("#UploadLeaveDoc").text("");
+                                    $("#UploadLeaveDoc").val("");
+                                }
+                            }
+                        }
+                    }
+                    else {
+                        $("#uploadDoc").hide();
+                    }
+                    $(".loading").hide();
+                },
+                beforeSend: function () {
+                    $(".loading").show();
+                },
+                error: function (jqXHR, ajaxOptions, thrownError) {
+                    $(".loading").hide();
+
+                    if (jqXHR.status == 500) { //InternalServerError = 500,
+                        toastr.error("InternalServerError");
+                    } else if (jqXHR.status == 400) { //BadRequest = 400,
+                        toastr.error("BadRequest");
+                    } else if (jqXHR.status == 401) {
+                        window.location.href = "/PayTime/LoginPage";
+                    }
+                }
+            });
+        }
+        function GetLeaveBalance() {
+            var EmpCode;
+            if ($("#hfEmpCode").val() == "0") {
+                EmpCode = id;
+            }
+            else {
+                EmpCode = id;
+            }
+            if ("@_isdateformat" == "dd-mm-yyyy") {
+                var fromDate = $("#txtFromDate").val().split("-");
+                var _Fromdate = fromDate[2] + "-" + fromDate[1] + "-" + fromDate[0];
+                var toDate = $("#txtToDate").val().split("-");
+                var _toDate = toDate[2] + "-" + toDate[1] + "-" + toDate[0];
+            }
+            else if ("@_isdateformat" == "mm-dd-yyyy") {
+                var fromDate = $("#txtFromDate").val().split("-");
+                var _Fromdate = fromDate[2] + "-" + fromDate[0] + "-" + fromDate[1];
+                var toDate = $("#txtToDate").val().split("-");
+                var _toDate = toDate[2] + "-" + toDate[0] + "-" + toDate[1];
+            }
+            else if ("@_isdateformat" == "yyyy-mm-dd") {
+                var fromDate = $("#txtFromDate").val().split("-");
+                var _Fromdate = fromDate[0] + "-" + fromDate[1] + "-" + fromDate[2];
+                var toDate = $("#txtToDate").val().split("-");
+                var _toDate = toDate[0] + "-" + toDate[1] + "-" + toDate[2];
+            }
+            else if ("@_isdateformat" == "yyyy-M-dd") {
+                var fromDate = $("#txtFromDate").val().split("-");
+                var _Fromdate = fromDate[0] + "-" + fromDate[1] + "-" + fromDate[2];
+                var toDate = $("#txtToDate").val().split("-");
+                var _toDate = toDate[0] + "-" + toDate[1] + "-" + toDate[2];
+            }
+            else if ("@_isdateformat" == "M-dd-yyyy") {
+                var fromDate = $("#txtFromDate").val().split("-");
+                var _Fromdate = fromDate[2] + "-" + fromDate[0] + "-" + fromDate[1];
+                var toDate = $("#txtToDate").val().split("-");
+                var _toDate = toDate[2] + "-" + toDate[0] + "-" + toDate[1];
+            }
+            else if ("@_isdateformat" == "dd-M-yyyy") {
+                var fromDate = $("#txtFromDate").val().split("-");
+                var _Fromdate = fromDate[2] + "-" + fromDate[1] + "-" + fromDate[0];
+                var toDate = $("#txtToDate").val().split("-");
+                var _toDate = toDate[2] + "-" + toDate[1] + "-" + toDate[0];
+            }
+            var OnDutyLeave = {
+                "EmpId": $("#EmpID").html(),
+                "LeaveTypeId": parseInt($("#ddlLeaveType").val()),
+                "FromDate": _Fromdate,
+                "ToDate": _toDate,
+                "PkEmpId": '@empid',
+            };
+            $.ajax({
+                type: "POST",
+                url: "/Transactions/GetBalanceByLeaveType?OnDutyLeave=" + JSON.stringify(OnDutyLeave),
+                contentType: "application/json; charset=utf-8",
+                datatype: "json",
+                async: "false",
+                success: function (response) {
+                    if (response.isRedirect) {
+                        window.location.href = response.redirectUrl;
+                    }
+                    if (response.Msg == "Un Authorized Access") {
+                        window.setTimeout(function () {
+                            toastr.remove();
+                            toastr.error("No entry! This is a restricted area, even for ninjas like you.");
+                            window.setTimeout(function () {
+                                window.location.href = "/PayTime/LoginPage";
+                            }, 2000);
+                            return false;
+                        }, 1000);
+                    }
+                    else if (response != null) {
+                        $("#lblLeaveBalance").text(response.LeaveBalance);
+                        $("#lblTotalBalance").text(response.Total);
+                        var lv = $("#lblLeaveBalance").text();
+                        var a = lv.indexOf("-");
+                        if (a != '-1') {
+                            $("#lblLeaveBalance").text("0");
+                            $("#lblTotalBalance").text("0");
+                        }
+                        var _lv = $("#lblTotalBalance").text();
+                        var b = _lv.indexOf("-");
+                        if (b != '-1') {
+                            $("#lblTotalBalance").text("0");
+                            $("#hfAvailBal").val(parseFloat(response.Total));
+                        }
+                        $("#lblEncashLeave").text(response.EncashLeaveBalance);
+
+                        $("#hfAvailBal").val(parseFloat(response.Total));
+                    }
+                    else {
+                        $("#lblLeaveBalance").text("0");
+                        $("#lblEncashLeave").text("0");
+                        $("#lblTotalBalance").text("0");
+                        $("#hfAvailBal").val("0");
+                    }
+                    var leavebalance = $('#lblLeaveBalance').text();
+                    var ddlLeaveType = $("#ddlLeaveType").val();
+                    if (ddlLeaveType == 1) {
+                        $("#ddlLeavePaid").empty();
+                        $("#ddlLeavePaid").append("<option value='1' selected> Paid </option>");
+                    }
+                    else {
+                        if (leavebalance > 0) {
+                            $("#ddlLeavePaid").empty();
+                            $("#ddlLeavePaid").append("<option value='1' selected> Paid </option>");
+                        }
+                        else {
+                            $("#ddlLeavePaid").empty();
+                            $("#ddlLeavePaid").append("<option value='0' selected> Unpaid </option>");
+                        }
+                    }
+                    $(".loading").hide();
+                },
+                beforeSend: function () {
+                    $(".loading").show();
+                },
+                error: function (jqXHR, ajaxOptions, thrownError) {
+                    $(".loading").hide();
+
+                    if (jqXHR.status == 500) { //InternalServerError = 500,
+                        toastr.error("InternalServerError");
+                    } else if (jqXHR.status == 400) { //BadRequest = 400,
+                        toastr.error("BadRequest");
+                    } else if (jqXHR.status == 401) {
+                        window.location.href = "/PayTime/LoginPage";
+                    }
+                }
+            });
+            window.onload = function () {
+                timeSpentOnPage();
+            }
+            $(window).on("beforeunload", function () {
+                if (operation == "" || operation == null || operation == '') {
+                    operation = "View Leave Request";
+                }
+                var url = '@_webapiurl' + '/DashBoard/AddAnalyticsUser';
+                var timeSpent = timeSpentOnPage();
+                analyticsDataUsage(url, '@_dbName', form, '@_tokan', count, operation, timeSpent)
+            })
+        }
+        function valid() {
+            var Employee = ids;
+            var Leave = $("#ddlLeaveType").val();
+            var FromDate = $("#txtFromDate").val();
+            var ToDate = $("#txtToDate").val();
+            var Reason = $("#txtReason").val();
+            var IsHalfLeave = 0;
+            if ($('#chkIsHalfLeave').is(':checked') == true) {
+                IsHalfLeave = true;
+            }
+            else {
+                IsHalfLeave = false;
+            }
+            var days;
+            if ("@_isdateformat" == "dd-mm-yyyy") {
+                var fromDate = $("#txtFromDate").val().split("-");
+                var _Fromdate = fromDate[2] + "-" + fromDate[1] + "-" + fromDate[0];
+                var toDate = $("#txtToDate").val().split("-");
+                var _toDate = toDate[2] + "-" + toDate[1] + "-" + toDate[0];
+            }
+            else if ("@_isdateformat" == "mm-dd-yyyy") {
+                var fromDate = $("#txtFromDate").val().split("-");
+                var _Fromdate = fromDate[2] + "-" + fromDate[0] + "-" + fromDate[1];
+                var toDate = $("#txtToDate").val().split("-");
+                var _toDate = toDate[2] + "-" + toDate[0] + "-" + toDate[1];
+            }
+            else if ("@_isdateformat" == "yyyy-mm-dd") {
+                var fromDate = $("#txtFromDate").val().split("-");
+                var _Fromdate = fromDate[0] + "-" + fromDate[1] + "-" + fromDate[2];
+                var toDate = $("#txtToDate").val().split("-");
+                var _toDate = toDate[0] + "-" + toDate[1] + "-" + toDate[2];
+            }
+            else if ("@_isdateformat" == "yyyy-M-dd") {
+                var fromDate = $("#txtFromDate").val().split("-");
+                var _Fromdate = fromDate[0] + "-" + fromDate[1] + "-" + fromDate[2];
+                var toDate = $("#txtToDate").val().split("-");
+                var _toDate = toDate[0] + "-" + toDate[1] + "-" + toDate[2];
+            }
+            else if ("@_isdateformat" == "M-dd-yyyy") {
+                var fromDate = $("#txtFromDate").val().split("-");
+                var _Fromdate = fromDate[2] + "-" + fromDate[0] + "-" + fromDate[1];
+                var toDate = $("#txtToDate").val().split("-");
+                var _toDate = toDate[2] + "-" + toDate[0] + "-" + toDate[1];
+            }
+            else if ("@_isdateformat" == "dd-M-yyyy") {
+                var fromDate = $("#txtFromDate").val().split("-");
+                var _Fromdate = fromDate[2] + "-" + fromDate[1] + "-" + fromDate[0];
+                var toDate = $("#txtToDate").val().split("-");
+                var _toDate = toDate[2] + "-" + toDate[1] + "-" + toDate[0];
+            }
+            var start1 = _Fromdate;
+            var end1 = _toDate;
+            if ($("#hfAvailBal").val().indexOf("-") != -1) {
+            }
+            else {
+
+                if (IsHalfLeave == 1) {
+                    var diff = Date.parse(end1) - Date.parse(start1);
+                    days = diff / 1000 / 60 / 60 / 24;
+                    days = (days + 1) / 2;
+                }
+                else {
+                    var diff = Date.parse(end1) - Date.parse(start1);
+                    days = diff / 1000 / 60 / 60 / 24;
+                    days = days + 1;
+                }
+
+                if ($("#hfAvailBal").val() != 0) {
+                    var _dydif = parseFloat($("#hfAvailBal").val()) >= parseFloat(days);
+                    if (_dydif != "1") {
+                        toastr.remove();
+                        toastr.error("You have not enough leave balanace..!!");
+                        return false;
+                    }
+                }
+            }
+            if ($("#OnDutyLeaveId").val() == "0") {
+                if (Employee == "0") {
+                    toastr.remove();
+                    toastr.error("Please select employee.");
+                    return false;
+                }
+            }
+            if (Leave == "0") {
+                $("#ddlLeaveType").addClass('field_error');
+
+                return false;
+            }
+            if (FromDate.trim() == "") {
+                $("#txtFromDate").addClass('field_error');
+
+                return false;
+            }
+            else if ($("#txtFromDate").val() != "" && '@_lockAttendanceDay' != "" && ('@_PlanId' == '6' || '@_PlanId' == '5' || '@_PlanId' == '3')) {
+                var _data = $("#txtFromDate").val();
+                var date = _data.split('-');
+                if ("@_isdateformat" == "dd-mm-yyyy") {
+                    var firstValue = date[2] + "-" + date[1] + "-" + date[0] //yyyy-mm-dd
+                }
+                else if ("@_isdateformat" == "yyyy-mm-dd") {
+                    var firstValue = date[0] + "-" + date[1] + "-" + date[2] //yyyy-mm-dd
+                }
+                else if ("@_isdateformat" == "mm-dd-yyyy") {
+                    var firstValue = date[2] + "-" + date[1] + "-" + date[0] //yyyy-mm-dd
+                }
+                else if ("@_isdateformat" == "yyyy-M-dd") {
+                    var _date = new Date(date[2] + " " + date[1] + " " + date[0]);
+                    var locale = "en-us";
+                    var month = _date.toLocaleString(locale, { month: "numeric" });
+                    var firstValue = date[0] + "-" + month + "-" + date[2] //yyyy-mm-dd
+                }
+                else if ("@_isdateformat" == "M-dd-yyyy") {
+                    var _date = new Date(date[1] + " " + date[0] + " " + date[2]);
+                    var locale = "en-us";
+                    var month = _date.toLocaleString(locale, { month: "numeric" });
+                    var firstValue = date[2] + "-" + month + "-" + date[1] //yyyy-mm-dd
+                }
+                else if ("@_isdateformat" == "dd-M-yyyy") {
+                    var _date = new Date(date[0] + " " + date[1] + " " + date[2]);
+                    var locale = "en-us";
+                    var month = _date.toLocaleString(locale, { month: "numeric" });
+                    var firstValue = date[2] + "-" + month + "-" + date[0] //yyyy-mm-dd
+                }
+                firstValue = firstValue.split('-');
+                var s_date = new Date();
+                var secondValue = (s_date.getFullYear() + "-" + (s_date.getMonth() + 1) + "-" + '@_lockAttendanceDay').split('-');
+                var firstDate = new Date();
+                firstDate.setFullYear(firstValue[0], (firstValue[1] - 1), firstValue[2]);
+                var secondDate = new Date();
+                secondDate.setFullYear(secondValue[0], (secondValue[1] - 1), 1);
+                var secondDate_pev_month = new Date();
+                secondDate_pev_month.setFullYear(secondValue[0], (secondValue[1] - 2), 1);
+                var Current_date = new Date();
+                var Lock_date_day = new Date();
+                Lock_date_day.setFullYear(secondValue[0], (secondValue[1] - 1), '@_lockAttendanceDay');
+                if (firstDate < secondDate) {
+                    if (firstDate >= secondDate_pev_month && Current_date <= Lock_date_day) {
+
+                    } else {
+                        toastr.remove();
+                        toastr.error("Please change the date because your attendance is locked on this date");
+                        event.preventDefault();
+                        $("#txtFromDate").addClass('field_error');
+                        return false;
+                    }
+                }
+            }
+            if (ToDate.trim() == "") {
+                $("#txtToDate").addClass('field_error');
+                return false;
+            }
+            if (Reason.trim() == "") {
+                $("#txtReason").addClass('field_error');
+                return false;
+            }
+            else {
+                $(".popMsg").hide();
+            }
+            if ($("#uploadDoc").is(":visible") && $("#UploadLeaveDoc").val() == "") {
+                toastr.remove();
+                toastr.error("Please upload document.");
+                return false;
+            }
+            return true;
+        }
+        function frmClear() {
+            $("#AttCorrectionId").val(0);
+
+            $("#ApplyReason").val('');
+        }
+        function Clearatadd() {
+            $("#ddlLeaveType").val("0");
+            $("#ddlLeavePaid").val("0");
+            $("#OnDutyLeaveId").val("0");
+
+            $("#txtReason").val("");
+            $("#chkIsHalfLeave").prop('checked', false);
+            $(".alert-danger").hide();
+            $(".alert-success").hide();
+            $(".alert-danger").text("");
+            $(".alert-success").text("");
+            $("#lblLeaveBalance").text("0");
+            $("#lblEncashLeave").text("0");
+            $("#lblTotalBalance").text("0");
+            $("#hfAvailBal").val(0);
+            $("#hfEmpCode").val("0");
+            $("#chkIsHalfLeave").prop('disabled', true);
+            $("#uploadDoc").hide();
+            $('#UploadLeaveDoc').val('');
+        }
+        function Clear() {
+            $("#ddlLeaveType").val("0");
+            $("#ddlLeavePaid").val("0");
+            $("#OnDutyLeaveId").val("0");
+            $("#txtFromDate").val("");
+            $("#txtToDate").val("");
+            $("#txtReason").val("");
+            $("#chkIsHalfLeave").prop('checked', false);
+            $(".alert-danger").hide();
+            $(".alert-success").hide();
+            $(".alert-danger").text("");
+            $(".alert-success").text("");
+            $("#lblLeaveBalance").text("0");
+            $("#lblEncashLeave").text("0");
+            $("#lblTotalBalance").text("0");
+            $("#hfAvailBal").val(0);
+            $("#hfEmpCode").val("0");
+            $("#chkIsHalfLeave").prop('disabled', true);
+            $("#uploadDoc").hide();
+            $('#UploadLeaveDoc').val('');
+        }
+        function popUpShow(jsEvent) {
+            // Get the click position relative to the body
+            var clickX = jsEvent.pageX;
+            var clickY = jsEvent.pageY;
+
+            // Get the offset and dimensions of the #MyCalendar container
+            var calendarOffset = $('#MyCalendar').offset();
+            var calendarHeight = $('#MyCalendar').outerHeight();
+            var calendarWidth = $('#MyCalendar').outerWidth();
+
+            // Calculate the position relative to #MyCalendar
+            var relativeX = clickX - calendarOffset.left;
+            var relativeY = clickY - calendarOffset.top;
+
+            // Get the dimensions of .attetype_box
+            var attetype_boxHeight = $('.attetype_box').outerHeight();
+            var attetype_boxWidth = $('.attetype_box').outerWidth();
+
+            // Calculate available space
+            var spaceBelow = calendarHeight - relativeY;
+            var spaceAbove = relativeY;
+            var spaceOnRight = calendarWidth - relativeX;
+
+            // Determine the arrow direction and position
+            if (spaceBelow < attetype_boxHeight) {
+                relativeY = relativeY - attetype_boxHeight - 35; // Position above
+            }
+
+            // Adjust position if there's not enough space on the right
+            if (spaceOnRight < attetype_boxWidth) {
+                relativeX = relativeX - attetype_boxWidth - -50; // Adjust to the left
+            }
+
+            // Show the .attetype_box element relative to #MyCalendar
+            $('.attetype_box').css({
+                'position': 'absolute',
+                'top': (relativeY + 20) + 'px',
+                'left': relativeX + 'px',
+                'display': 'block', // Make it visible
+            });
+
+            //$('.attetype_box').find('attetype_box::before, attetype_box::after').css({
+            //    'left': (relativeX + 6) + 'px' // Adjust to align with click position
+            //});
+        }
+
+
+        function checkSession() {
+            $.ajax({
+                type: "GET",
+                async: false,
+                url: "/ESS/checkSession",
+                contentType: "application/json; charset=utf-8",
+                success: function (data) {
+                    if (data.isRedirect) {
+                        window.location.href = data.redirectUrl;
+                    }
+                },
+                error: function (data) {
+                    window.location.href = data;
+                }
+            });
+        }
+        function save() {
+            checkSession();
+
+            if ("@_isdateformat" == "dd-mm-yyyy") {
+                var fromDate = $("#txtFromDate").val().split("-");
+                var _Fromdate = fromDate[2] + "-" + fromDate[1] + "-" + fromDate[0];
+                var toDate = $("#txtToDate").val().split("-");
+                var _toDate = toDate[2] + "-" + toDate[1] + "-" + toDate[0];
+            }
+            else if ("@_isdateformat" == "mm-dd-yyyy") {
+                var fromDate = $("#txtFromDate").val().split("-");
+                var _Fromdate = fromDate[2] + "-" + fromDate[0] + "-" + fromDate[1];
+                var toDate = $("#txtToDate").val().split("-");
+                var _toDate = toDate[2] + "-" + toDate[0] + "-" + toDate[1];
+            }
+            else if ("@_isdateformat" == "yyyy-mm-dd") {
+                var fromDate = $("#txtFromDate").val().split("-");
+                var _Fromdate = fromDate[0] + "-" + fromDate[1] + "-" + fromDate[2];
+                var toDate = $("#txtToDate").val().split("-");
+                var _toDate = toDate[0] + "-" + toDate[1] + "-" + toDate[2];
+            }
+            else if ("@_isdateformat" == "yyyy-M-dd") {
+                var fromDate = $("#txtFromDate").val().split("-");
+                var _Fromdate = fromDate[0] + "-" + fromDate[1] + "-" + fromDate[2];
+                var toDate = $("#txtToDate").val().split("-");
+                var _toDate = toDate[0] + "-" + toDate[1] + "-" + toDate[2];
+            }
+            else if ("@_isdateformat" == "M-dd-yyyy") {
+                var fromDate = $("#txtFromDate").val().split("-");
+                var _Fromdate = fromDate[2] + "-" + fromDate[0] + "-" + fromDate[1];
+                var toDate = $("#txtToDate").val().split("-");
+                var _toDate = toDate[2] + "-" + toDate[0] + "-" + toDate[1];
+            }
+            else if ("@_isdateformat" == "dd-M-yyyy") {
+                var fromDate = $("#txtFromDate").val().split("-");
+                var _Fromdate = fromDate[2] + "-" + fromDate[1] + "-" + fromDate[0];
+                var toDate = $("#txtToDate").val().split("-");
+                var _toDate = toDate[2] + "-" + toDate[1] + "-" + toDate[0];
+            }
+            if (valid()) {
+                var IsHalfLeave = 0;
+                if ($('#chkIsHalfLeave').is(':checked') == true) {
+                    IsHalfLeave = true;
+                }
+                else {
+                    IsHalfLeave = false;
+                }
+                var Empcodee = 0;
+                if ($("#OnDutyLeaveId").val() == "0") {
+                    Empcodee = parseInt(id);
+                }
+                else {
+                    Empcodee = parseInt($("#hfEmpCode").val());
+                }
+                var days;
+                var start1 = _Fromdate;
+                var end1 = _toDate;
+
+                if (IsHalfLeave == 1) {
+                    var diff = Date.parse(end1) - Date.parse(start1);
+                    days = diff / 1000 / 60 / 60 / 24;
+                    days = (days + 1) / 2;
+                }
+                else {
+                    var diff = Date.parse(end1) - Date.parse(start1);
+                    days = diff / 1000 / 60 / 60 / 24;
+                    days = days + 1;
+                }
+
+                var LeaveDoc = $("#UploadLeaveDoc").text();
+                var dt = new Date();
+
+                var OnDutyLeave = {
+                    "EmpId": $("#EmpID").html(),
+                    "LeaveTypeId": parseInt($("#ddlLeaveType").val()),
+                    "FromDate": _Fromdate,
+                    "ToDate": _toDate,
+                    "ApplyReason": $("#txtReason").val(),
+                    "LeaveStatus": 3,
+                    "IsHalfLeave": IsHalfLeave,
+                    "LeavePaid": parseInt($("#ddlLeavePaid").val()),
+                    "CreatedDate": dt,
+                    "CreatedBy": Empcodee,
+                    "LeaveDoc": LeaveDoc,
+                    "Location": $("#latlag").val(),
+                    "LocAddress": $("#latlagAddress").val()
+                };
+                $.ajax({
+                    type: "POST",
+                    url: "/ESS/LeaveCreate?OnDutyLeave=" + JSON.stringify(OnDutyLeave),
+                    contentType: "application/json",
+                    success: function (response) {
+
+                        if (response.isRedirect) {
+                            window.location.href = response.redirectUrl;
+                        }
+                        if (response.startsWith('\r\n\r')) {
+                            window.location = "/PayTime/Index";
+                        }
+                        if (response != null) {
+                            if (response === "OK") {
+                                $('#dot_leave_modal').modal('hide');
+                                $('#frmpopup').modal('toggle');
+                                toastr.remove();
+                                toastr.success("Leave added successfully.");
+                                var uploaddoc = $("#UploadLeaveDoc").val();
+                                if (uploaddoc != null && uploaddoc !== "") {
+                                    window.setTimeout(function () {
+                                        $("#frmupload").submit();
+                                    }, 1000);
+                                } else {
+                                    setTimeout(function () {
+                                        Clear();
+
+                                    }, 2000);
+                                }
+                            }
+                            else {
+                                $('#dot_leave_modal').modal('hide');
+                                toastr.remove();
+                                toastr.error(response);
+                            }
+                        }
+                    },
+                    beforeSend: function () {
+                        $("#ajax_loaderCompany").show();
+                    },
+                    complete: function () {
+                        $("#ajax_loaderCompany").hide();
+                    },
+                    error: function (jqXHR, ajaxOptions, thrownError) {
+                        $(".loading").hide();
+
+                        if (jqXHR.status == 500) { //InternalServerError = 500,
+                            toastr.error("InternalServerError");
+                        } else if (jqXHR.status == 400) { //BadRequest = 400,
+                            toastr.error("BadRequest");
+                        } else if (jqXHR.status == 401) {
+                            window.location.href = "/PayTime/LoginPage";
+                        } else {
+                            toastr.error("An error occurred while processing your request.");
+                        }
+                    }
+                });
+
+
+            }
+        }
+
+        function SearchNames() {
+            var jsonObj = '@ViewBag.empdata';
+            var compressedData = atob(jsonObj);;
+            var jsonArr = JSON.parse(pako.inflate(compressedData, { to: 'string' }));
+            availableNames = [];
+            $("#quick-search-switcher").css("display", "block");
+            for (var i = 0; i < jsonArr.length; i++) {
+                availableNames.push(jsonArr[i].EmpName);
+                if (emprole > 1 && emprole != 6805 && emprole != 6806) {
+                    if (jsonArr.length == 1) {
+                        if (jsonArr[i].EmpId == empid) {
+                            $("#quick-search-switcher").css("display", "none");
+                        }
+                    }
+                }
+            }
+            $("#SearchName").autocomplete("option", "source", availableNames);
+        }
+        function clip() {
+            // Get the current date and month
+            var currentDate = new Date();
+            var currentDay = currentDate.getDate();
+            var currentMonth = currentDate.getMonth() + 1; // JavaScript months are zero-based
+
+            // Get the date and month from the #EmpDOB element
+            var empDOBText = $("#EmpDOB").text().trim();
+
+            if ("@_isdateformat" == "dd-mm-yyyy") {
+                var empDob = empDOBText.split("-");
+                empDOBText = empDob[1] + "-" + empDob[0] + "-" + empDob[2];
+            }
+            var empDOBDate = new Date(empDOBText);
+            var empDay = empDOBDate.getDate();
+            var empMonth = empDOBDate.getMonth() + 1;
+
+            // Check if the day and month match
+            if (empDay === currentDay && empMonth === currentMonth) {
+                $('#confetti').show();
+                setTimeout(function () {
+                    // Hide the element with ID 'confetti'
+                    $('#confetti').hide();
+                }, 10000);
+            }
+        }
+        function Search() {
+
+            var id = $("#SearchName").val();
+            var searchselection = $("#searchselection").val();
+            $.ajax({
+                type: 'GET',
+                async: false,
+                url: "/PayTime/EmployeeFilteration",
+                data: { id: id, searchselection: searchselection },
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                beforeSend: function () {
+                    $('.loading').show();
+                },
+                success: function (result) {
+                    $('.loading').hide();
+                    if (result.isRedirect) {
+                        window.location.href = result.redirectUrl;
+                    }
+                    var obj = JSON.parse(result);
+                    if (obj == "No Data Found") {
+                        $("#SearchName").val("");
+                        swal({ title: "Oops.!", text: "No Data Found. Please Search Again.", type: "error", showConfirmButton: false, timer: 2000 });
+
+                    }
+                    else {
+                        $("#EmpID").text(obj.EmpId);
+                        empid = obj.EmpId;
+                        $("#Empcode").text(obj.Empcode);
+                        $("#EmpName").text(obj.EmpName);
+                        $("#EmpPunchID").text(obj.EmpPunchID);
+                        $("#EmpPhNo").text(obj.EmpMNo);
+                        $("#Email").text(obj.Email);
+                        $("#BranchName").text(obj.BranchName);
+                        $("#CompanyName").text(obj.CompanyName);
+                        $("#DepartmentName").text(obj.DepartmentName);
+                        if (obj.DesignationName == null) {
+                            $("#desli").hide();
+                        }
+                        else {
+                            $("#desli").show();
+                            $("#DesignationName").text(obj.DesignationName);
+                        }
+                        $("#EmpEmail").text(obj.Email);
+                        if ("@_isdateformat" == "dd-mm-yyyy") {
+                            var empDob = obj.EmpDOB.split("-");
+                            var date = empDob[0] + "-" + empDob[1] + "-" + empDob[2];
+                        }
+                        else if ("@_isdateformat" == "mm-dd-yyyy") {
+                            var empDob = obj.EmpDOB.split("-");
+                            var date = empDob[0] + "-" + empDob[1] + "-" + empDob[2];
+                        }
+                        else if ("@_isdateformat" == "yyyy-mm-dd") {
+                            var empDob = obj.EmpDOB.split("-");
+                            var date = empDob[0] + "-" + empDob[1] + "-" + empDob[2];
+                        }
+                        else if ("@_isdateformat" == "dd-M-yyyy") {
+                            var empDob = obj.EmpDOB.split("-");
+                            var date = empDob[0] + "-" + empDob[1] + "-" + empDob[2];
+                        }
+                        else if ("@_isdateformat" == "M-dd-yyyy") {
+                            var empDob = obj.EmpDOB.split("-");
+                            var date = empDob[0] + "-" + empDob[1] + "-" + empDob[2];
+                        }
+                        else if ("@_isdateformat" == "yyyy-M-dd") {
+                            var empDob = obj.EmpDOB.split("-");
+                            var date = empDob[0] + "-" + empDob[1] + "-" + empDob[2];
+                        }
+                        $("#EmpDOB").text(date);
+                        if ("@_isdateformat" == "dd-mm-yyyy") {
+                            var joinDt = obj.EmpJoinDate.split("-");
+                            var joindate = joinDt[0] + "-" + joinDt[1] + "-" + joinDt[2];
+                        }
+                        else if ("@_isdateformat" == "mm-dd-yyyy") {
+                            var joinDt = obj.EmpJoinDate.split("-");
+                            var joindate = joinDt[0] + "-" + joinDt[1] + "-" + joinDt[2];
+                        }
+                        else if ("@_isdateformat" == "yyyy-mm-dd") {
+                            var joinDt = obj.EmpJoinDate.split("-");
+                            var joindate = joinDt[0] + "-" + joinDt[1] + "-" + joinDt[2];
+                        }
+                        else if ("@_isdateformat" == "dd-M-yyyy") {
+                            var joinDt = obj.EmpJoinDate.split("-");
+                            var joindate = joinDt[0] + "-" + joinDt[1] + "-" + joinDt[2];
+                        }
+                        else if ("@_isdateformat" == "M-dd-yyyy") {
+                            var joinDt = obj.EmpJoinDate.split("-");
+                            var joindate = joinDt[0] + "-" + joinDt[1] + "-" + joinDt[2];
+                        }
+                        else if ("@_isdateformat" == "yyyy-M-dd") {
+                            var joinDt = obj.EmpJoinDate.split("-");
+                            var joindate = joinDt[0] + "-" + joinDt[1] + "-" + joinDt[2];
+                        }
+                        $("#EmpJoinDate").text(joindate);
+                        if (obj.EmpPhoto != "") {
+                            $("#employeephoto").attr("src", "/UploadEmpPhoto/" + obj.EmpPhoto);
+                        }
+                        else {
+                            $("#employeephoto").attr("src", "/assets/images/avtar.png");
+                        }
+                        if (obj.ShiftName == "") {
+                            $("#ShiftName").text("-- NA --");
+                        }
+                        else {
+                            $("#ShiftName").text(obj.ShiftName);
+                        }
+                        if (obj.ShiftGroupName == "") {
+                            $("#ShiftGroupName").text("-- NA --");
+                        }
+                        else {
+                            $("#ShiftGroupName").text(obj.ShiftGroupName);
+                        }
+                        if (obj.shifttimename == null || obj.shifttimename == "") {
+                            $("#ShiftTime").text('-- NA --');
+                        }
+                        else {
+                            $("#ShiftTime").text(obj.shifttimename);
+                        }
+                        if (obj.ReportingName == null || obj.ReportingName == "") {
+                            $("#ReportingTo").text('-- NA --');
+                        }
+                        else {
+                            $("#ReportingTo").text(obj.ReportingName);
+                        }
+                        if (obj.PolicyName == null || obj.PolicyName == "") {
+                            $("#PolicyName").text('-- NA --');
+                        }
+                        else {
+                            $("#PolicyName").text(obj.PolicyName);
+                        }
+                    }
+                },
+                error: function (jqXHR, ajaxOptions, thrownError) {
+                    $('.loading').hide();
+
+                    if (jqXHR.status == 500) { //InternalServerError = 500,
+                        toastr.error("InternalServerError");
+                    } else if (jqXHR.status == 400) { //BadRequest = 400,
+                        toastr.error("BadRequest");
+                    } else if (jqXHR.status == 401) {
+                        window.location.href = "/PayTime/LoginPage";
+                    }
+                },
+            });
+            
+            var b = $('#MyCalendar').fullCalendar('getDate');
+            var FirstDayoftheMonth = b.format("YYYY-MM-DD");
+
+            var addmonth = "";
+            var StartDate = new Date(b.format("YYYY-MM-DD"));
+            var EndDate = new Date(StartDate.getFullYear(), StartDate.getMonth() + 1, 0);
+            if (EndDate.getMonth() < 10 && EndDate.getMonth() != 9) {
+                addmonth = "0" + (EndDate.getMonth() + 1);
+            }
+            else {
+                addmonth = (EndDate.getMonth() + 1);
+            }
+            var lastDayoftheMonth = EndDate.getFullYear() + "-" + addmonth + "-" + EndDate.getDate();
+            Fillleavesummary1($("#EmpID").html());
+            Fillleavesummary2($("#EmpID").html());
+            CalendarListFill(FirstDayWithSlashes, lastDayWithSlashes)
+            FillAttendanceChart();
+            $.ajax({
+                type: "GET",
+                url: '@_webapiurl' + "DashBoard/GetEmpAttendanceStatusSummary",
+                headers: { 'Authorization': '@_tokan' },
+                data: {
+                    empid: ids,
+                    fromdate: FirstDayoftheMonth,
+                    todate: lastDayoftheMonth,
+                    statusflg: 3,
+                    finalStatus: "",
+                    searchName: $("#searchselection").val(),
+                    searchBy: $("#SearchName").val()
+                },
+                success: function (events) {
+                    if (events.isRedirect) {
+                        window.location.href = events.redirectUrl;
+                    }
+                    $('#MyCalendar').fullCalendar('removeEvents');
+                    $('#MyCalendar').fullCalendar('addEventSource', events);
+                    $('#MyCalendar').fullCalendar('rerenderEvents');
+                },
+                error: function () {
+                    alert("error");
+                }
+            });
+        }
+
+        function FillAttendanceChart() {
+
+            $.ajax({
+                type: "GET",
+                url: '@_webapiurl' + "DashBoard/GetEmpAttendanceStatusSummary",
+                headers: { 'Authorization': '@_tokan' },
+                data: { empid: ids, fromdate: FirstDayWithSlashes, todate: lastDayWithSlashes, statusflg: 1, finalStatus: "", searchName: $("#searchselection").val(), searchBy: $("#SearchName").val() },
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                success: function (data) {
+                    if (data.isRedirect) {
+                        window.location.href = data.redirectUrl;
+                    }
+                    var series = new Array();
+                    for (var i in data) {
+                        var serie = new Array(data[i].FinalStatus, data[i].CountStatus);
+                        series.push(serie);
+                    }
+
+                    Piachart(series, ids, FirstDayWithSlashes, lastDayWithSlashes, $("#searchselection").val(), $("#SearchName").val(), '@_webapiurl', '@_tokan');
+                },
+                error: function () {
+                }
+            });
+        }
+
+        function GetPunchInformation() {
+
+            $.ajax({
+                type: "GET",
+                url: '@_webapiurl' + "DashBoard/GetPunchTimeDetails?empid=" + ids,
+                headers: { 'Authorization': '@_tokan' },
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                success: function (data) {
+                    var obj = data
+
+                    if (obj.length > 0) {
+                        var _isNight = obj[0].isNight;
+                        $("#hidenightshiftflag").text(_isNight);
+
+                        if (obj[0].InTime == null) {
+                            $("#lblInTime").html("00:00");
+                        }
+                        else {
+                            $("#lblInTime").html(obj[0].InTime + ":00");
+                        }
+
+                        if (obj[0].OutTime == null) {
+                            $("#lblOutTime").html("00:00");
+                        }
+                        else {
+                            $("#lblOutTime").html(obj[0].OutTime + ":00");
+                        }
+
+                        if (obj[0].InTime == null && obj[0].OutTime == null) {
+                            $("#lblRemainTime").html("00:00:00");
+                            $("#hideremaintime").val("00:00:00");
+                        }
+                        else {
+                            var _RemainTime = obj[0].RemainTime;
+                            var _OutTime = obj[0].OutTime;
+
+                            $("#hideremaintime").val(obj[0].OutTime);
+                            if (_isNight == 0) {
+                                if (_OutTime < _RemainTime) {
+                                    if (_OutTime > "00:00") {
+                                        $("#hidenightshiftflag").text("0");
+                                    }
+                                    else {
+                                        $("#lblRemainTime").html("00:00:00");
+                                        $("#hideremaintime").val("00:00:00");
+                                    }
+                                }
+                            }
+                            else {
+                                if (_OutTime < _RemainTime) {
+                                    if (_OutTime > "00:00") {
+                                        $("#hidenightshiftflag").text("1");
+                                    }
+                                    else {
+                                        $("#lblRemainTime").html("00:00:00");
+                                        $("#hideremaintime").val("00:00:00");
+                                    }
+                                }
+                            }
+
+
+                        }
+                        if ($("#hideremaintime").val() == "00:00:00" || $("#hideremaintime").val() == null) {
+
+                        }
+                        else {
+                            window.onload = updateclock();
+                            setInterval(function () { updateclock(); }, 1000);
+                        }
+                    }
+                },
+                error: function () {
+                }
+            });
+        }
+
+        function updateclock() {
+            var upday = "";
+            var upmonth = "";
+            var d = new Date();
+            if (d.getDate() < 10) {
+
+                upday = "0" + (d.getDate());
+                if ($("#hidenightshiftflag").text() == "1") // Night shift flag
+                {
+                    upday = "0" + (d.getDate() + 1);
+                }
+            }
+            else {
+                upday = (d.getDate());
+                if ($("#hidenightshiftflag").text() == "1") // Night shift punch flag
+                {
+                    upday = (d.getDate() + 1);
+                }
+            }
+
+            if ((d.getMonth() + 1) < 10) {
+                upmonth = "0" + (d.getMonth() + 1);
+            }
+            else {
+                upmonth = (d.getMonth() + 1);
+            }
+
+            var day = d.getFullYear() + "-" + upmonth + "-" + upday;
+            var _hideremaintime = $("#hideremaintime").val();
+            var rtime = _hideremaintime + ":00";
+            var data = new Date(day + " " + rtime);
+
+            var d2 = new Date(data);
+            d2.setHours(d2.getHours());
+            var DateDiff = new Date(d2) - new Date();
+            if (isNaN(DateDiff) == false) {
+                if (Math.sign(DateDiff) === 1) {
+
+                    var diff = Math.abs(new Date(d2) - new Date());
+                    var hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                    var minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+                    var seconds = Math.floor((diff % (1000 * 60)) / 1000);
+                    if (hours < 10) {
+                        hours = "0" + hours;
+                    }
+                    if (minutes < 10) {
+                        minutes = "0" + minutes;
+                    }
+                    if (seconds < 10) {
+                        seconds = "0" + seconds;
+                    }
+                    $("#lblRemainTime").html(hours + ":" + minutes + ":" + seconds);
+                }
+                else {
+                    $("#lblRemainTime").html("Office time over");
+                }
+            }
+        }
+
+        var SelectedDate = "";
+        var AttendanceList = [];
+        function CalendarListFill(FirstDayWithSlashes, lastDayWithSlashes) {
+
+            $('#listviewtbl tbody').html('');
+            $.ajax({
+                type: 'GET',
+                url: '@_webapiurl' + "DashBoard/GetEmpAttendanceStatusSummary",
+                headers: { 'Authorization': '@_tokan' },
+                data: {
+                    empid: ids,
+                    fromdate: FirstDayWithSlashes,
+                    todate: lastDayWithSlashes,
+                    statusflg: 3,
+                    finalStatus: "",
+                    searchName: $("#searchselection").val(),
+                    searchBy: $("#SearchName").val()
+                },
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                success: function (data) {
+
+                    $('#listviewtbl tbody').empty();
+                    var tr;
+                    for (var i = 0; i < data.length; i++) {
+                        var inTime = data[i].InTime ? data[i].InTime : '00:00';
+                        var outTime = data[i].OutTime ? data[i].OutTime : '00:00';
+                        var hours = '00';
+                        var minutes = '00';
+                        var seconds = '00';
+
+                        // Check if InTime and OutTime are valid (not '00:00:00')
+                        if (inTime !== '00:00' && outTime !== '00:00') {
+                            var inTimeParts = inTime.split(':');
+                            var outTimeParts = outTime.split(':');
+                            var inMinutes = parseInt(inTimeParts[0]) * 60 + parseInt(inTimeParts[1]);
+                            var outMinutes = parseInt(outTimeParts[0]) * 60 + parseInt(outTimeParts[1]);
+                            var workingMinutes = outMinutes - inMinutes;
+                            hours = Math.floor(workingMinutes / 60);
+                            minutes = workingMinutes % 60;
+                            seconds = '00'; // Default seconds to 00
+
+                            // Format hours and minutes with leading zeros
+                            hours = hours < 10 ? '0' + hours : hours;
+                            minutes = minutes < 10 ? '0' + minutes : minutes;
+                        }
+
+                        // Create new row
+                        tr = $('<tr/>');
+                        tr.append("<td>" + data[i].start + "</td>");
+                        tr.append("<td>" + inTime.substring(0, 8) + "</td>"); // Show in HH:MM:SS format
+                        tr.append("<td>" + outTime.substring(0, 8) + "</td>"); // Show in HH:MM:SS format
+                        tr.append("<td>" + hours + ':' + minutes + "</td>"); // Show working hours in HH:MM:SS format
+                        tr.append("<td style='color:" + data[i].color + "'>" + data[i].title + "</td>"); // Set the color for title
+
+                        $('#listviewtbl').append(tr);
+                    }
+                },
+                error: function () {
+                    // Handle error cases
+                }
+            });
+
+
+            @*var table = $('#listviewtbl').DataTable({
+            "deferRender": true,
+            "destroy": true,
+            "paging": false,
+            "searching": false,
+            "order": false,
+            "info": false,
+        "ajax": {
+            "url": '@_webapiurl' + "DashBoard/GetEmpAttendanceStatusSummary",
+            "headers": { 'Authorization': '@_tokan' },
+            "data": {
+                empid: ids,
+                fromdate: FirstDayWithSlashes,
+                todate: lastDayWithSlashes,
+                statusflg: 3,
+                finalStatus: "",
+                searchName: $("#searchselection").val(),
+                searchBy: $("#SearchName").val()
+            },
+            "contentType": "application/json",
+            "dataSrc": "" // Assumes the data is returned as an array
+        },
+        "columns": [
+            { "data": "start", "title": "Date", "className": "text-center" },
+            { "data": "InTime", "title": "In Punch", "className": "text-center", "defaultContent": "N/A" },
+            { "data": "OutTime", "title": "Out Punch", "className": "text-center", "defaultContent": "N/A" },
+            {
+                "data": null,
+                "title": "Working Hour",
+                "className": "text-center",
+                "render": function (data, type, row) {
+                    if (row.InTime && row.OutTime) {
+                        // Calculate working hours (example logic)
+                        var inTime = row.InTime.split(':');
+                        var outTime = row.OutTime.split(':');
+                        var inMinutes = parseInt(inTime[0]) * 60 + parseInt(inTime[1]);
+                        var outMinutes = parseInt(outTime[0]) * 60 + parseInt(outTime[1]);
+                        var workingMinutes = outMinutes - inMinutes;
+                        var hours = Math.floor(workingMinutes / 60);
+                        var minutes = workingMinutes % 60;
+                        return hours + ':' + (minutes < 10 ? '0' + minutes : minutes);
+                    }
+                    return "N/A";
+                }
+            },
+            {
+                "data": "title",
+                "title": "Status",
+                "className": "text-center",
+                "render": function (data, type, row) {
+                    var color = row.color ? row.color : "black"; // Default color
+                    return '<span style="color:' + color + '">' + data + '</span>';
+                }
+            }
+            ],
+            "dom": 't'
+    });*@
+        }
+
+
+        function CalendarFill() {
+            $('#MyCalendar').fullCalendar({
+                displayEventTime: false,
+                firstDay: 0,
+                events: {
+                    url: '@_webapiurl' + "DashBoard/GetEmpAttendanceStatusSummary",
+                    headers: { 'Authorization': '@_tokan' },
+                    backgroundColor: "red",
+                    cache: true,
+                    type: 'GET',
+                    data: {
+                        empid: ids,
+                        fromdate: FirstDayWithSlashes,
+                        todate: lastDayWithSlashes,
+                        statusflg: 3,
+                        finalStatus: "",
+                        searchName: $("#searchselection").val(),
+                        searchBy: $("#SearchName").val()
+                    },
+                    error: function () {
+                        alert('There was an error while fetching events!');
+                    },
+                },
+
+                dayClick: function (date, jsEvent, view) {
+
+               var dateFormat = '@_isdateformat';
+               var clickedDate = date.format(dateFormat.toUpperCase());
+
+               var clickedDateMoment = moment(clickedDate, dateFormat.toUpperCase());
+               var currentDateMoment = moment().startOf('day');
+            // Find events on the clicked date
+
+            var events = $('#MyCalendar').fullCalendar('clientEvents', function (event) {
+                return event.start.format(dateFormat.toUpperCase()) === clickedDate;
+            });
+
+            // Remove 'bd_box' class from all elements
+
+            $('.attetype_box').css({
+                'display': 'none', // Hide attetype_box initially
+            });
+
+                var hasWHEvent = events.some(function (event) {
+                    return ["W", "H"].includes(event.title);
+                });
+
+               if (clickedDateMoment > currentDateMoment && !hasWHEvent) {
+                // If the clicked date is greater than the current date
+                SelectedDate = clickedDate;
+
+                $('#fromdate').val(SelectedDate);
+                $('#txtFromDate').val(SelectedDate);
+                $('#txtToDate').val(SelectedDate);
+                $('.date-picker').datepicker('setDate', SelectedDate);
+                popUpShow(jsEvent);
+              /*  clickedCell.addClass('bd_box');*/
+
+                // Show only the dot_leave option
+                $('.attetype_box').css({
+                    'display': 'block', // Show attetype_box
+                });
+                $('.attetype_box .dot_leave').css({
+                    'display': 'block',  // Show Leave Request option
+                });
+                $('.attetype_box .dot_correction').css({
+                    'display': 'none',   // Show Attendance Correction option
+                });
+            } else {
+                // Handle past dates
+                if (events.length > 0 && !["P", "W", "PW", "PH", "H","HW"].includes(events[0].title)) {
+                    SelectedDate = clickedDate;
+
+                    $('#fromdate').val(SelectedDate);
+                    $('#txtFromDate').val(SelectedDate);
+                    $('#txtToDate').val(SelectedDate);
+                    $('.date-picker').datepicker('setDate', SelectedDate);
+                    popUpShow(jsEvent);
+                   /* clickedCell.addClass('bd_box');*/
+
+                    // Show full attetype_box
+                    $('.attetype_box').css({
+                        'display': 'block', // Show attetype_box
+                    });
+                    $('.attetype_box .dot_leave').css({
+                        'display': 'block',  // Show Leave Request option
+                    });
+                    $('.attetype_box .dot_correction').css({
+                        'display': 'block',   // Show Attendance Correction option
+                    });
+                }
+            }
+        },
+
+
+        eventRender: function (event, element) {
+            element.find('.fc-event-time').hide();
+            $(element).find(".fc-event-time").remove();
+        },
+
+                eventAfterAllRender: function () {
+                    // Remove all previously appended "more-dot" buttons
+                    $('.attendanceblock').remove();
+
+                    // Get the current view's visible range (start and end of the current view range)
+                    var view = $('#MyCalendar').fullCalendar('getView');
+                    var start = view.start.clone(); // Start of the current view (might be in the previous month)
+                    var end = view.end.clone();     // End of the current view
+
+                    // Get the current date for comparison
+                    var currentDate = moment().startOf('day'); // Today's date without the time part
+
+                    // Loop through each visible day in the calendar view
+                    while (start.isBefore(end)) {
+                        var currentDayFormatted = start.format('YYYY-MM-DD');
+                        var currentDayCell = $('.fc-day[data-date="' + currentDayFormatted + '"]');
+
+                        // Check if the current day is greater than today
+                        if (start.isAfter(currentDate)) {
+                            var eventsOnDate = $('#MyCalendar').fullCalendar('clientEvents', function (event) {
+                                return event.start.format('YYYY-MM-DD') === currentDayFormatted;
+                            });
+
+                            var hasWHEvent = eventsOnDate.some(function (event) {
+                                return ["W", "H","HW"].includes(event.title);
+                            });
+
+                            if (!hasWHEvent && currentDayCell.find('.attendanceblock').length === 0) {
+                                currentDayCell.append('<div class="more-options attendanceblock" id="moreoptions"><button class="more-btn"><span class="more-dot"></span><span class="more-dot"></span><span class="more-dot"></span></button></div>');
+                            }
+                        }
+
+                        start.add(1, 'day');
+                    }
+
+                    // Handle appending dots for events as usual
+                    $('#MyCalendar').fullCalendar('getView').calendar.clientEvents().forEach(function (event) {
+                        var eventDate = event.start.format('YYYY-MM-DD');
+                        var cell = $('.fc-day[data-date="' + eventDate + '"]');
+
+                        // Append the dots only if the event title is not in the restricted list
+                        if (!["H", "W", "P", "PW", "PH","HW"].includes(event.title)) {
+                            if (cell.find('.attendanceblock').length === 0) {
+                                cell.append('<div class="more-options attendanceblock" id="moreoptions"><button class="more-btn"><span class="more-dot"></span><span class="more-dot"></span><span class="more-dot"></span></button></div>');
+                            }
+                        }
+                    });
+                },
+                eventMouseover: function (event) {
+                    var word = event.title;
+                    var InTime = event.InTime;
+                    var OutTime = event.OutTime;
+                    var tooltipword = "";
+
+                    if (InTime == null || InTime == "") {
+                        InTime = '00:00:00';
+                    }
+
+                    if (OutTime == null || OutTime == "") {
+                        OutTime = '00:00:00';
+                    }
+
+                    if (word == "A") {
+                        tooltipword = "Absent";
+
+                    }
+                    if (word == "E") {
+                        //tooltipword = "Error";
+                        tooltipword = "Error <br/> InTime :" + InTime + "<br/> OutTime :" + OutTime;
+                    }
+                    if (word == "W" || word == "WO" || word == "POW") {
+                        tooltipword = "Week off";
+                    }
+                    if (word == "H") {
+                        tooltipword = "Holiday";
+                    }
+                    if (word == "P") {
+                        tooltipword = "Present <br/> InTime :" + InTime + "<br/> OutTime :" + OutTime;
+                        //tooltipword = "Present";
+                    }
+                    if (word == "PW") {
+                        //tooltipword = "Present on Weekoff";
+                        tooltipword = "Present on Weekoff <br/> InTime :" + InTime + "<br/> OutTime :" + OutTime;
+                    }
+                    if (word == "HD") {
+                        //tooltipword = "Half Day";
+                        tooltipword = "Half Day <br/> InTime :" + InTime + "<br/> OutTime :" + OutTime;
+                    }
+                    if (word == "PH") {
+                        //tooltipword = "Present on Holiday";
+                        tooltipword = "Present on Holiday <br/> InTime :" + InTime + "<br/> OutTime :" + OutTime;
+                    }
+                    if (word == "HW") {
+                        //tooltipword = "Present on Holiday";
+                        tooltipword = "Holiday/Weekoff <br/> InTime :" + InTime + "<br/> OutTime :" + OutTime;
+                    }
+                    if (word == "LH") {
+                        //tooltipword = "Less Hour";
+                        tooltipword = "Less Hour <br/> InTime :" + InTime + "<br/> OutTime :" + OutTime;
+                    }
+                    if (word == "CL" || word == "OD" || word == "SL" || word == "EL" || word == "SP" || word == "PL" || word == "ML" || word == "LC") {
+                        tooltipword = "Leave";
+                    }
+                    var tooltip = '<div class="tooltipevent" >' + tooltipword + '</div>';
+                    var $tooltip = $(tooltip).appendTo('body');
+                    $(this).mouseover(function (e) {
+                        $(this).css('z-index', 10000);
+                        $tooltip.fadeIn('500');
+                        $tooltip.fadeTo('10', 1.9);
+                    }).mousemove(function (e) {
+                        $tooltip.css('top', e.pageY + 10);
+                        $tooltip.css('left', e.pageX + 20);
+                        $tooltip.css({
+                            'top': e.pageY + 10,  // Slightly below the cursor
+                            'left': e.pageX - $tooltip.outerWidth() - 20 // To the left of the cursor
+                        });
+                    });
+
+                },
+                eventMouseout: function () {
+                    $(this).css('z-index', 8);
+                    $('.tooltipevent').remove();
+                },
+
+            });
+
+            // Outside Click attetype_box and bd_box hide code
+            $(document).on('click', function (e) {
+                if (!$(e.target).closest('.fc-view-container').length) {
+                    $('.attetype_box').css('display', 'none');
+               /*     $('.fc-day').removeClass("bd_box");*/
+                }
+            });
+
+        }
+
+        function Fillleavesummary1(ids) {
+            $('#tblleave tbody').html('');
+            var _LeaveBalance = 0;
+            var _ConsumDays = 0;
+            var _TotalLV = 0;
+            $.ajax({
+                type: "GET",
+                url: '@_webapiurl' + "DashBoard/Fillleavesummary?typeid=1&empid=" + ids,
+                headers: { 'Authorization': '@_tokan' },
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                success: function (data) {
+                    var tr;
+                    for (var i = 0; i < data.length; i++) {
+                        tr = $('<tr/>');
+                        tr.append("<td>" + data[i].LeaveTypeName + "</td>");
+                        tr.append("<td>" + data[i].LeaveBalance + "</td>");
+                        tr.append("<td>" + data[i].ConsumDays + "</td>");
+                        tr.append("<td>" + data[i].Total + "</td>");
+
+                        _LeaveBalance += data[i].LeaveBalance;
+                        _ConsumDays += data[i].ConsumDays;
+                        _TotalLV += data[i].Total;
+
+
+                        $('#tblleave').append(tr);
+
+                        if (i == data.length - 1) {
+                            tr = $('<tr/>');
+                            tr.append("<td><b>Total</b></td>");
+                            tr.append("<td><b>" + _LeaveBalance + "</b></td>");
+                            tr.append("<td><b>" + _ConsumDays + "</b></td>");
+                            tr.append("<td><b>" + _TotalLV + "</b></td>");
+                            tr.css("background-color", "silver");
+                            $('#tblleave').append(tr);
+                        }
+                    }
+                },
+                error: function () {
+
+                }
+            });
+        }
+
+        function Fillleavesummary2(ids) {
+            $('#tblleaveconsume tbody').html('');
+            $.ajax({
+                type: "GET",
+                url: '@_webapiurl' + "DashBoard/Fillleavesummary?typeid=2&empid=" + ids,
+                headers: { 'Authorization': '@_tokan' },
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                success: function (data) {
+                    var tr;
+                    for (var i = 0; i < data.length; i++) {
+                        tr = $('<tr/>');
+                        tr.append("<td>" + data[i].LeaveTypeName + "</td>");
+                        tr.append("<td>" + data[i].fromdate + "</td>");
+                        tr.append("<td>" + data[i].Todate + "</td>");
+                        tr.append("<td>" + data[i].ApplyReason + "</td>");
+                        tr.append("<td>" + data[i].ConsumDays + "</td>");
+                        $('#tblleaveconsume').append(tr);
+                    }
+                },
+                error: function () {
+                }
+            });
+        }
+
+</script>
+
+    <div id='ajax_loader' class="modal_bg loading" aria-hidden="true">
+        <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading"/>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+            @if (_RoleId == 1 || _RoleId == 6805 || _RoleId == 6806 || _RoleId > 1)
+            {
+                <form id="quick-search" class="quick-search admin_search">
+                    <fieldset>
+                        <div>
+                            <div class="col-md-2 col-sm-2 serch_text">Search By:</div>
+                            <div class="col-md-4 col-sm-4">
+                                <div class="form-group">
+                                    <select class="form-control select2 input-sm" id="searchselection">
+                                        <option value="" disabled selected>Select Search Type</option>
+                                        <option value="PunchId">By Punch ID</option>
+                                        <option value="EmpID">By Employee Code</option>
+                                        <option value="EmpName">By Employee Name</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-md-4 col-sm-4">
+                                <div class="form-group">
+                                    <input class="form-control" placeholder="Filter by keywords" id="SearchName" type="text" readonly>
+                                </div>
+                            </div>
+                            <div class="col-md-2 col-sm-2">
+                                <button type="button" class="btn-block" id="btnsearch" title="Search by filters" data-toggle="tooltip" style="width: 38px; height: 30px; padding: 0 11px !important; border-radius: 3px !important;">
+                                    <i class="fa-solid fa-magnifying-glass" style="font-size:13px;"></i>
+                                    <span class="ladda-spinner"></span>
+                                    <div class="ladda-progress" style="width: 0px;"></div>
+                                </button>
+                            </div>
+                        </div>
+                        @*<div class="switcher">
+                                <button id="quick-search-switcher" data-original-title="Find Employee" data-placement="bottom" class="tooltips" type="button"><i class="fa-solid fa-magnifying-glass"></i></button>
+                            </div>*@
+                    </fieldset>
+                </form>
+            }
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-12">
+            @foreach (var item in Model.EmployeeList)
+            {
+                if (item != null)
+                {
+                    <div class="profile-content" style="overflow: visible">
+                        <div class="row">
+                            <div class="col-lg-6 col-md-12 col-sm-12">
+                                <div class="portlet light portlet-fit bordered h-505">
+                                    <div class="portlet-title">
+                                        <div class="caption caption-md">
+                                            <i class="fa-regular fa-user font-blue-madison" aria-hidden="true"></i>
+                                            <span class="caption-subject font-blue-madison bold uppercase">Personal Details</span>
+                                        </div>
+                                        <div class="actions event_btn">
+                                            <a href="javascript:;" id="EventBtn" class="btn add_btn"> <i class="fa-light fa-calendar-days" aria-hidden="true"></i> Moments</a>
+                                        </div>
+                                    </div>
+                                    <div class="portlet-body">
+                                        <div class="row">
+                                            <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                                <table class="table user-details-list">
+                                                    <tbody>
+                                                        <tr hidden>
+                                                            <th>Emp ID</th>
+                                                            <th>:</th>
+                                                            <td id="EmpID">@item.EmpId</td>
+                                                        </tr>
+                                                        <tr>
+                                                            <th>Emp Code</th>
+                                                            <th>:</th>
+                                                            <td id="Empcode">@item.Empcode</td>
+                                                        </tr>
+                                                        <tr>
+                                                            <th>Punch ID</th>
+                                                            <th>:</th>
+                                                            <td id="EmpPunchID">@item.EmpPunchID</td>
+                                                        </tr>
+                                                        <tr>
+                                                            <th>Company</th>
+                                                            <th>:</th>
+                                                            <td id="CompanyName">@item.CompanyName</td>
+                                                        </tr>
+                                                        <tr>
+                                                            <th>Branch</th>
+                                                            <th>:</th>
+                                                            <td id="BranchName">@item.BranchName</td>
+                                                        </tr>
+                                                        <tr>
+                                                            <th>Department</th>
+                                                            <th>:</th>
+                                                            <td id="DepartmentName">@item.DepartmentName</td>
+                                                        </tr>
+                                                        <tr id="desli">
+                                                            <th id="Deslabel">Designation</th>
+                                                            <th>:</th>
+                                                            <td id="DesignationName">@item.DesignationName </td>
+                                                        </tr>
+                                                        <tr>
+                                                            <th>Mobile No</th>
+                                                            <th>:</th>
+                                                            <td id="EmpPhNo">@item.EmpMNo</td>
+                                                        </tr>
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                            <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                                <table class="table user-details-list">
+                                                    <tbody>
+                                                        <tr hidden>
+                                                            <th></th>
+                                                            <th></th>
+                                                            <td></td>
+                                                        </tr>
+                                                        @if (_RoleId == 1 || _RoleId == 6805 || _RoleId == 6806 || _RoleId > 1)
+                                                        {
+                                                            <tr>
+                                                                <th>Emp Name</th>
+                                                                <th>:</th>
+                                                                <td id="EmpName">@item.EmpName</td>
+                                                            </tr>
+                                                        }
+                                                        <tr>
+                                                            <th>Join Date</th>
+                                                            <th>:</th>
+                                                            <td id="EmpJoinDate">@item.EmpJoinDate</td>
+                                                        </tr>
+                                                        <tr>
+                                                            <th>Date Of Birth</th>
+                                                            <th>:</th>
+                                                            <td id="EmpDOB">@item.EmpDOB</td>
+                                                        </tr>
+                                                        @if (_RoleId != 1 && _RoleId != 6805 && _RoleId != 6806)
+                                                        {
+                                                            <tr>
+                                                                <th>Policy</th>
+                                                                <th>:</th>
+                                                                @*<td><a style="margin-left: 0;" id="PolicyName">@ViewBag.PolicyName </a></td>*@
+                                                                <td><span style="margin-left: 0;" id="PolicyName">@ViewBag.PolicyName </span></td>
+                                                            </tr>
+                                                        }
+                                                        <tr>
+                                                            <th>Shift Name</th>
+                                                            <th>:</th>
+                                                            @if (item.ShiftName == null || item.ShiftName == "")
+                                                            {
+                                                                <td id="ShiftName">-- NA --</td>
+                                                            }
+                                                            else
+                                                            {
+                                                                <td id="ShiftName">@item.ShiftName</td>
+                                                            }
+
+                                                        </tr>
+                                                        <tr>
+                                                            <th>Shift Group</th>
+                                                            <th>:</th>
+                                                            @if (item.ShiftGroupName == null || item.ShiftGroupName == "")
+                                                            {
+                                                                <td id="ShiftGroupName">-- NA --</td>
+                                                            }
+                                                            else
+                                                            {
+                                                                <td id="ShiftGroupName">@item.ShiftGroupName </td>
+                                                            }
+
+                                                        </tr>
+                                                        <tr>
+                                                            <th>Shift TIme</th>
+                                                            <th>:</th>
+                                                            @if (item.shifttimename == null || item.shifttimename == "")
+                                                            {
+                                                                <td id="ShiftTime">-- NA --</td>
+                                                            }
+                                                            else
+                                                            {
+                                                                <td id="ShiftTime">@item.shifttimename </td>
+                                                            }
+                                                        </tr>
+                                                        <tr>
+                                                            <th>Reporting To</th>
+                                                            <th>:</th>
+                                                            @if (item.ReportingName == null || item.ReportingName == "")
+                                                            {
+                                                                <td id="ReportingTo">-- NA --</td>
+                                                            }
+                                                            else
+                                                            {
+                                                                <td id="ReportingTo">@item.ReportingName </td>
+                                                            }
+                                                        </tr>
+
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+
+                                        <div class="row margin-top-15">
+                                            @if (_RoleId != 1)
+                                            {
+                                                <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                                    <div class="profile-sidebar-portlet">
+
+                                                        <p class="pendingcount_title">Clocking In and Out</p>
+                                                        <div class="profile-usermenu margin-top-5">
+                                                            <ul class="nav margin-bottom-10">
+                                                                <li class="active ">
+                                                                    <a href="#" class="font-blue">
+                                                                        <i class="fa-solid fa-check-circle fa-2x"></i>Check In
+                                                                        <span class="label  label-info" id="lblInTime">00:00:00</span>
+                                                                    </a>
+                                                                </li>
+                                                                <li class="active ">
+                                                                    <a href="#" class="font-blue">
+                                                                        <i class="fa-regular fa-clock fa-2x"></i>End Time<span class="label  label-info right" id="lblOutTime">00:00:00</span>
+                                                                    </a>
+                                                                </li>
+                                                                <li class="active ">
+                                                                    <input type="text" id="hideremaintime" hidden />
+                                                                    <input type="text" id="hidenightshiftflag" hidden />
+                                                                    <a href="#" class="font-blue">
+                                                                        <i class="fa-regular fa-clock fa-2x"></i>Remaining Time<span class="label  label-info right" id="lblRemainTime">00:00:00</span>
+                                                                    </a>
+                                                                </li>
+                                                            </ul>
+                                                        </div>
+
+                                                    </div>
+                                                </div>
+                                            }
+                                            <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                                @*<div class="profile-sidebar-portlet">
+                                                        <div class="profile-userpic">
+                                                            @if (item.EmpPhoto != "")
+                                                            {
+                                                                <img src="/UploadEmpPhoto/@item.EmpPhoto" class="img-responsive" alt="" id="employeephoto">
+                                                            }
+                                                            else
+                                                            {
+                                                                <img src="~/Newlayout/images/avtar_two.jpg" class="img-responsive" alt="" id="employeephoto" />
+                                                            }
+                                                        </div>
+                                                        <div class="profile-usertitle">
+                                                            <div class="profile-usertitle-name" id="EmpName">@item.EmpName.ToUpper()</div>
+                                                            <div class="profile-usertitle-job" id="EmpEmail">@item.Email</div>
+                                                            @if (Session["cmpcode"] != null)
+                                                            {
+                                                                <div class="profile-usertitle-job" id="EmpEmail"> Company Code: @Session["cmpcode"]</div>
+                                                            }
+                                                        </div>
+                                                    </div>*@
+                                                <div class="pendingcount">
+                                                    <p class="pendingcount_title" id="pendingcounttitle">Attendance Clearance</p>
+                                                    <div class="profile-usermenu margin-top-5 pendingcount_new">
+                                                        <ul class="nav margin-bottom-10">
+                                                            <li class="active ">
+                                                                <a href="/ESS/ApproveLeave" class="font-blue" id="attendanceTabLink">
+                                                                    <i class="fa-regular fa-calendar-check"></i>Attendance
+                                                                    <span class="label label-info blink" id="attendanceCount">
+                                                                        <div></div>
+                                                                    </span>
+                                                                </a>
+                                                            </li>
+                                                            <li class="active ">
+                                                                <a href="/ESS/ApproveLeave" class="font-blue" id="leaveTabLink">
+                                                                    <i class="fa-light fa-calendar-days"></i>Leave
+                                                                    <span class="label label-info right pulse" id="leaveCount"></span>
+                                                                </a>
+                                                            </li>
+                                                            <li class="active ">
+                                                                <a href="/ESS/ApproveLeave" class="font-blue" id="webpunchTabLink">
+                                                                    <i class="fa-regular fa-file-lines"></i>Webpunch
+                                                                    <span class="label  label-info right pulse2" id="webpunchCount"></span>
+                                                                </a>
+                                                            </li>
+                                                        </ul>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-lg-6 col-md-12 col-sm-12">
+                                <div class="portlet light portlet-fit bordered calendar h-505">
+                                    <div class="portlet-title">
+                                        <div class="caption">
+                                            <i class="fa-light fa-calendar-days font-blue-madison"></i>
+                                            <span class="caption-subject font-blue-madison bold uppercase">Attendance Wizard</span>
+                                        </div>
+                                        <div class="actions event_btn">
+                                            <a href="javascript:;" id="tableview_btn" class="btn viewlist_btn tooltips active" data-placement="top" title="Table View"><i class="fa-light fa-table-cells" aria-hidden="true"></i></a>
+                                            <a href="javascript:;" id="listview_btn" class="btn viewlist_btn tooltips" data-placement="top" title="List View"><i class="fa-light fa-list" aria-hidden="true"></i></a>
+                                        </div>
+                                    </div>
+
+                                    <div class="portlet-body">
+                                        <div class="row" id="tableview">
+                                            <div class="col-md-12 col-sm-12">
+                                                <div id="MyCalendar" class="has-toolbar">
+                                                    <div class="attetype_box" style="display:none">
+                                                        <ul>
+                                                            <li><a href="javascript:;" class="dot_correction">Attendance Correction</a></li>
+                                                            <li><a href="javascript:;" class="dot_leave">Leave Request</a></li>
+                                                        </ul>
+                                                    </div>
+                                                </div>
+                                                @if (_RoleId > 1 && _RoleId != 6805 && _RoleId != 6806)
+                                                {
+                                                    <div class="mycalendar_dropdown" style="display:none">
+                                                        <div class="form-group">
+                                                            <select class="form-control input-sm select2" id="employeeId" name="employeeId"></select>
+                                                        </div>
+                                                    </div>
+                                                }
+                                            </div>
+                                        </div>
+
+                                        <div class="row" id="listview" style="display: none">
+                                            <div class="col-md-12 col-sm-12">
+                                                <div class="listviewtbl_height">
+                                                    <table id="listviewtbl" class="table" style="text-align:center;" cellspacing="0" width="80%">
+                                                        <thead>
+                                                            <tr>
+                                                                <th style="text-align:center; min-width:75px;">Date</th>
+                                                                <th style="text-align:center">In Punch</th>
+                                                                <th style="text-align:center">Out Punch</th>
+                                                                <th style="text-align:center">Working Hour</th>
+                                                                <th style="text-align:center">Status</th>
+                                                            </tr>
+                                                        </thead>
+                                                        @*<tbody>
+                                                                <tr>
+                                                                    <td style="text-align:center">01-08-2024</td>
+                                                                    <td style="text-align:center">10:00</td>
+                                                                    <td style="text-align:center">19:00</td>
+                                                                    <td style="text-align:center">09:00</td>
+                                                                    <td style="text-align:center; color:green">P</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td style="text-align:center">02-08-2024</td>
+                                                                    <td style="text-align:center">10:00</td>
+                                                                    <td style="text-align:center">19:00</td>
+                                                                    <td style="text-align:center">09:00</td>
+                                                                    <td style="text-align:center; color:green">P</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td style="text-align:center">03-08-2024</td>
+                                                                    <td style="text-align:center">10:00</td>
+                                                                    <td style="text-align:center">19:00</td>
+                                                                    <td style="text-align:center">09:00</td>
+                                                                    <td style="text-align:center; color:green">P</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td style="text-align:center">04-08-2024</td>
+                                                                    <td style="text-align:center">10:00</td>
+                                                                    <td style="text-align:center">19:00</td>
+                                                                    <td style="text-align:center">09:00</td>
+                                                                    <td style="text-align:center; color:red">LH</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td style="text-align:center">05-08-2024</td>
+                                                                    <td style="text-align:center">10:00</td>
+                                                                    <td style="text-align:center">19:00</td>
+                                                                    <td style="text-align:center">09:00</td>
+                                                                    <td style="text-align:center; color:green">P</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td style="text-align:center">06-08-2024</td>
+                                                                    <td style="text-align:center">10:00</td>
+                                                                    <td style="text-align:center">19:00</td>
+                                                                    <td style="text-align:center">09:00</td>
+                                                                    <td style="text-align:center; color:blue">A</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td style="text-align:center">07-08-2024</td>
+                                                                    <td style="text-align:center">10:00</td>
+                                                                    <td style="text-align:center">19:00</td>
+                                                                    <td style="text-align:center">09:00</td>
+                                                                    <td style="text-align:center; color:#f99157">W</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td style="text-align:center">08-08-2024</td>
+                                                                    <td style="text-align:center">10:00</td>
+                                                                    <td style="text-align:center">19:00</td>
+                                                                    <td style="text-align:center">09:00</td>
+                                                                    <td style="text-align:center; color:#f99157">W</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td style="text-align:center">09-08-2024</td>
+                                                                    <td style="text-align:center">10:00</td>
+                                                                    <td style="text-align:center">19:00</td>
+                                                                    <td style="text-align:center">09:00</td>
+                                                                    <td style="text-align:center; color:green">P</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td style="text-align:center">10-08-2024</td>
+                                                                    <td style="text-align:center">10:00</td>
+                                                                    <td style="text-align:center">19:00</td>
+                                                                    <td style="text-align:center">09:00</td>
+                                                                    <td style="text-align:center; color:#f99157">H</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td style="text-align:center">11-08-2024</td>
+                                                                    <td style="text-align:center">10:00</td>
+                                                                    <td style="text-align:center">19:00</td>
+                                                                    <td style="text-align:center">09:00</td>
+                                                                    <td style="text-align:center; color:green">P</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td style="text-align:center">12-08-2024</td>
+                                                                    <td style="text-align:center">10:00</td>
+                                                                    <td style="text-align:center">19:00</td>
+                                                                    <td style="text-align:center">09:00</td>
+                                                                    <td style="text-align:center; color:green">P</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td style="text-align:center">13-08-2024</td>
+                                                                    <td style="text-align:center">10:00</td>
+                                                                    <td style="text-align:center">19:00</td>
+                                                                    <td style="text-align:center">09:00</td>
+                                                                    <td style="text-align:center; color:green">P</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td style="text-align:center">14-08-2024</td>
+                                                                    <td style="text-align:center">10:00</td>
+                                                                    <td style="text-align:center">19:00</td>
+                                                                    <td style="text-align:center">09:00</td>
+                                                                    <td style="text-align:center; color:green">P</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td style="text-align:center">15-08-2024</td>
+                                                                    <td style="text-align:center">10:00</td>
+                                                                    <td style="text-align:center">19:00</td>
+                                                                    <td style="text-align:center">09:00</td>
+                                                                    <td style="text-align:center; color:green">P</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td style="text-align:center">16-08-2024</td>
+                                                                    <td style="text-align:center">10:00</td>
+                                                                    <td style="text-align:center">19:00</td>
+                                                                    <td style="text-align:center">09:00</td>
+                                                                    <td style="text-align:center; color:green">P</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td style="text-align:center">17-08-2024</td>
+                                                                    <td style="text-align:center">10:00</td>
+                                                                    <td style="text-align:center">19:00</td>
+                                                                    <td style="text-align:center">09:00</td>
+                                                                    <td style="text-align:center; color:green">P</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td style="text-align:center">18-08-2024</td>
+                                                                    <td style="text-align:center">10:00</td>
+                                                                    <td style="text-align:center">19:00</td>
+                                                                    <td style="text-align:center">09:00</td>
+                                                                    <td style="text-align:center; color:green">P</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td style="text-align:center">19-08-2024</td>
+                                                                    <td style="text-align:center">10:00</td>
+                                                                    <td style="text-align:center">19:00</td>
+                                                                    <td style="text-align:center">09:00</td>
+                                                                    <td style="text-align:center; color:green">P</td>
+                                                                </tr>
+                                                                <tr>
+                                                                    <td style="text-align:center">20-08-2024</td>
+                                                                    <td style="text-align:center">10:00</td>
+                                                                    <td style="text-align:center">19:00</td>
+                                                                    <td style="text-align:center">09:00</td>
+                                                                    <td style="text-align:center; color:green">P</td>
+                                                                </tr>
+                                                            </tbody>*@
+                                                    </table>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                @*<div id="eventContent" title="Attendance Status" style="display:none;" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">*@
+                                <div id="eventContent" class="modal fade bs-modal-lg" role="dialog" data-keyboard="false" data-backdrop="static">
+                                    <div class="modal-dialog modal-lg">
+                                        <div class="modal-content">
+                                            <div class="modal-header">
+                                                <button type="button" class="close " data-dismiss="modal">&times;</button>
+                                                <h4 class="modal-title" id="empattndstatus"></h4>
+                                            </div>
+                                            <div class="modal-body nomodalfooter">
+                                                <fieldset>
+                                                    <div class="row">
+                                                        <div class="col-md-12" id="empget">
+                                                            <table id="tblattndstatus" class="table table-striped table-bordered table-hover table-checkable order-column "></table>
+                                                        </div>
+                                                    </div>
+                                                </fieldset>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    @*<span id="startTime"></span><br>
+                                        <p id="eventInfo"></p>*@
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                }
+            }
+        </div>
+    </div>
+
+    <div class="portlet-body form">
+        <div class="row">
+            <div class="col-lg-6 col-md-12 col-sm-12">
+                <div class="portlet light portlet-fit bordered h-460">
+                    <div class="portlet-title">
+                        <div class="caption caption-md">
+                            <i class="fa-regular fa-file-lines font-blue-madison"></i>
+                            <span class="caption-subject font-blue-madison bold uppercase">Attendance Summary</span>
+                        </div>
+                        <div class="actions"></div>
+                    </div>
+                    <div class="portlet-body">
+
+                        <div id="container"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-6 col-md-12 col-sm-12">
+                <div class="portlet light portlet-fit bordered employee_table_tab h-460">
+                    <div class="portlet-title tabbable-line">
+                        <div class="caption">
+                            <i class="fa-regular fa-calendar-check font-blue-madison"></i>
+                            <span class="caption-subject font-blue-madison bold uppercase">Leave Balance</span>
+                        </div>
+                        <ul class="nav nav-tabs employee_dahsboard_tab">
+                            <li class="active">
+                                <a href="#tab_1_1" data-toggle="tab" aria-expanded="false">Leave Summary</a>
+                            </li>
+                            <li>
+                                <a href="#tab_1_2" data-toggle="tab" aria-expanded="false">Leave Consume</a>
+                            </li>
+                        </ul>
+                    </div>
+                    <div class="portlet-body">
+                        <div class="tab-content">
+                            <div id="tab_1_1" class="tab-pane active" style="overflow-x:auto">
+                                <table id="tblleave" class="table" style="text-align:center;" cellspacing="0" width="80%">
+                                    <thead>
+                                        <tr>
+                                            <th style="text-align:center">Leave Type</th>
+                                            <th style="text-align:center">Leave Balance</th>
+                                            <th style="text-align:center">Consume Days</th>
+                                            <th style="text-align:center">Total</th>
+                                        </tr>
+                                    </thead>
+                                </table>
+                            </div>
+                            <div id="tab_1_2" class="tab-pane" style="overflow-x:auto">
+                                <table id="tblleaveconsume" class="table" style="text-align:center;" cellspacing="0" width="90%">
+                                    <thead>
+                                        <tr>
+                                            <th style="text-align:center">Leave Type</th>
+                                            <th style="text-align:center">From Date <i class='fa-regular fa-circle-info tooltips' data-placement='bottom' title='Date format is : @_isdateformat.ToUpper()' style='color: #295097;'></i></th>
+                                            <th style="text-align:center">To Date <i class='fa-regular fa-circle-info tooltips' data-placement='bottom' title='Date format is : @_isdateformat.ToUpper()' style='color: #295097;'></i></th>
+                                            <th style="text-align:center">Reason</th>
+                                            <th style="text-align:center">Consume Days</th>
+                                        </tr>
+                                    </thead>
+                                </table>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Event Modal : Begin -->
+    <div id="EventBtn_modal" class="modal fade bs-modal-sm" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog w-900">
+            <!-- Modal content-->
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    <h4 class="modal-title">Upcoming Events</h4>
+                </div>
+                <div class="modal-body nomodalfooter">
+                    <fieldset>
+
+                        <div class="event_block" style="margin-top: 0;">
+                            <ul class="nav nav-tabs nav-tabs-custom" role="tablist" style="margin-bottom: 0;">
+                                <li class="nav-item active">
+                                    <a class="nav-link" data-toggle="tab" href="#Birthday" role="tab" aria-selected="false">
+                                        <span class="d-none d-sm-block"><i class="fa-light fa-cake-candles"></i> Birthday</span>
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link" data-toggle="tab" href="#WorkAnniversary" role="tab" aria-selected="true">
+                                        <span class="d-none d-sm-block"><i class="fa-light fa-person-sign"></i> Work Anniversary</span>
+                                    </a>
+                                </li>
+                                <li class="nav-item">
+                                    <a class="nav-link" data-toggle="tab" href="#NewJoining" role="tab" aria-selected="false">
+                                        <span class="d-none d-sm-block"><i class="fa-light fa-user-check"></i> New Joining</span>
+                                    </a>
+                                </li>
+                            </ul>
+                            <!-- Tab panes -->
+                            <div class="tab-content text-muted tab_content_box">
+                                <div class="tab-pane active" id="Birthday" role="tabpanel">
+                                    <div class="row">
+                                        <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                                            <div class="portlet" style="margin-bottom: 0;">
+                                                <div class="portlet-body">
+                                                    <div class="row">
+                                                        <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                                                            <div class="event_details" style="vertical-align: middle;">
+                                                                <table class=" table table-striped" id="tblbirthday">
+                                                                   
+                                                                </table>
+                                                                <div class="nodata_block no_recoed" style="display: none; text-align: center;" id="divtblbirthday">
+                                                                    <img src="/assets/images/Data_not_found.jpg" height="200" width="200" alt="No Data Icon">
+                                                                </div>
+                                                            </div>
+                                                        </div>
+
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="tab-pane" id="WorkAnniversary" role="tabpanel">
+                                    <div class="row">
+                                        <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                                            <div class="portlet" style="margin-bottom: 0;">
+                                                <div class="portlet-body">
+                                                    <div class="row">
+                                                        <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                                                            <div class="event_details" style="vertical-align: middle;">
+                                                                <table class="table table-striped" id="tblanniversary">
+                                                                   
+                                                                </table>
+                                                                <div class="nodata_block no_recoed" style="display: none; text-align: center;" id="divtblanniversary">
+                                                                    <img src="/assets/images/Data_not_found.jpg" height="200" width="200" alt="No Data Icon">
+                                                                </div>
+                                                            </div>
+
+                                                        </div>
+
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="tab-pane" id="NewJoining" role="tabpanel">
+                                    <div class="row">
+                                        <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                                            <div class="portlet" style="margin-bottom: 0;">
+                                                <div class="portlet-body">
+                                                    <div class="row">
+                                                        <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                                                            <div class="event_details">
+                                                                <table class="table table-striped" id="tbljoining">
+                                                                   
+                                                                </table>
+                                                                <div class="nodata_block no_recoed" style="display: none; text-align: center;" id="divttbljoining">
+                                                                    <img src="/assets/images/Data_not_found.jpg" height="200" width="200" alt="No Data Icon">
+                                                                </div>
+                                                            </div>
+
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                    </fieldset>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Event Modal : End -->
+
+    <!-- Attendance Correction Modal : Begin -->
+    <div id="dot_correction_modal" class="modal fade bs-modal-sm" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog w-500">
+            <!-- Modal content-->
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    <h4 class="modal-title">Attendance Correction Request</h4>
+                </div>
+                <div class="modal-body">
+                    <fieldset>
+                        <div class="card_new">
+                            <div class="row">
+                                <div class="col-lg-12">
+                                    <div class="form-group data_picker_box">
+                                        <input type="hidden" id="OnDutyLeaveId" value="0">
+                                        <input type="hidden" id="hfEmpCode" value="0">
+                                        <input type="hidden" id="hfAvailBal" value="0">
+                                        <input type="hidden" id="CompanyID" value="0" />
+                                        <input type="hidden" id="BranchID" value="0" />
+                                        <input type="hidden" id="ddlEmployee" value="@Convert.ToInt32(Session["EmpId"])">
+                                        <label>Select Date<span class="required" aria-required="true"> * </span></label>
+                                        <div class="input-group input-group-sm date date-picker" id="AttendanceDatePicker" data-date="@DateTime.Now" data-date-format="@_isdateformat" data-date-viewmode="years">
+                                            <span class="input-group-btn">
+                                                <button class="btn default" type="button">
+                                                    <i class="fa-light fa-calendar-days"></i>
+                                                </button>
+                                            </span>
+                                            <input type="text" class="form-control" id="fromdate" name="fromdate" placeholder="@_isdateformat" readonly="readonly">
+                                            <input type="hidden" id="EmpID" name="EmpID" />
+                                            <input type="hidden" id="isNight" name="isNight" />
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-lg-6">
+                                    <div class="form-group">
+                                        <label>IN Time <span class="required" aria-required="true"> *(24 Hr) </span></label>
+                                        <a class="tooltips" data-placement="bottom" title="Set in time in 24hr format">
+                                            <i class="fa-regular fa-circle-info"></i>
+                                        </a>
+                                        <div class="input-group input-group-sm" id="OutDiv">
+                                            <input type="text" class="form-control timepicker timepicker-24" data-minute-step="1" id="InPunchTime" name="InPunchTime" placeholder="00:00">
+                                            <span class="input-group-btn">
+                                                <button class="btn default" type="button" id="btnouttime">
+                                                    <i class="fa-regular fa-clock"></i>
+                                                </button>
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-lg-6">
+                                    <div class="form-group">
+                                        <label>OUT Time <span class="required" aria-required="true"> *(24 Hr)</span></label>
+                                        <a class="tooltips" data-placement="bottom" title="Set out time in 24hr format">
+                                            <i class="fa-regular fa-circle-info"></i>
+                                        </a>
+                                        <div class="input-group input-group-sm" id="OutDiv">
+                                            <input type="text" class="form-control timepicker timepicker-24" data-minute-step="1" id="OutPunchTime" name="OutPunchTime" placeholder="00:00">
+                                            <span class="input-group-btn">
+                                                <button class="btn default" type="button" id="btnouttime">
+                                                    <i class="fa-regular fa-clock"></i>
+                                                </button>
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-lg-12">
+                                    <div class="form-group">
+                                        <label>Reason</label>
+                                        <textarea id="ApplyReason" name="ApplyReason" class="form-control input-sm" maxlength="100"></textarea>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-lg-12 margin-top-15">
+                                <div class="form-actions text-right">
+                                    <button type="button" id="btnSave" class="btn btn-sm blue"><i class="fa-light fa-floppy-disk"></i> Save</button>
+                                </div>
+                            </div>
+                        </div>
+                    </fieldset>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Attendance Correction Modal : End -->
+
+    <!-- Apply Leave Modal : Begin -->
+    <div id="dot_leave_modal" class="modal fade bs-modal-sm" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog w-500">
+            <!-- Modal content-->
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    <h4 class="modal-title">Leave Request</h4>
+                </div>
+                <div class="modal-body">
+                    <fieldset>
+                        <div class="card_new">
+                            <div class="row">
+                                <div class="col-md-12">
+                                    <div class="row">
+
+                                        <div class="col-md-6">
+                                            <div class="form-group">
+                                                <label>Leave <span class="required" aria-required="true"> * </span></label>
+                                                <select class="form-control input-sm" id="ddlLeaveType" name="ddlLeaveType">
+                                                    <option value="0" selected>-- Select Leave --</option>
+                                                    @foreach (var item in ViewBag.LeaveTypeList as IEnumerable<SelectListItem>)
+                                                    {
+                                                        <option value="@item.Value">@item.Text</option>
+                                                    }
+                                                </select>
+                                            </div>
+                                            <div class="form-group data_picker_box">
+                                                <label>From Date <span class="required" aria-required="true"> * </span></label>
+                                                <div class="input-group input-group-sm date date-picker" id="leaveDatePicker" data-date="@DateTime.Now" data-date-format="@_isdateformat" data-date-viewmode="years">
+                                                    <span class="input-group-btn">
+                                                        <button class="btn default" type="button">
+                                                            <i class="fa-light fa-calendar-days"></i>
+                                                        </button>
+                                                    </span>
+                                                    <input type="text" class="form-control" id="txtFromDate" data-date-format="@_isdateformat" placeholder="@_isdateformat.Replace("M","MMM")" autocomplete="off">
+                                                </div>
+                                            </div>
+                                            <div class="form-group margin-top-10">
+                                                <label class="check mt-checkbox mt-checkbox-outline">
+                                                    <input type="checkbox" id="chkIsHalfLeave" class=""> Is Half-Leave?
+                                                    <span></span>
+                                                </label>
+                                            </div>
+                                        </div>
+
+                                        <div class="col-md-6">
+                                            <div class="form-group">
+                                                <label>Leave Type </label>
+                                                <select class="form-control input-sm" id="ddlLeavePaid" name="ddlLeavePaid">
+                                                    <option value="0" selected>UnPaid</option>
+                                                    <option value="1" selected>Paid</option>
+                                                </select>
+                                            </div>
+                                            <div class="form-group data_picker_box">
+                                                <label>To Date <span class="required" aria-required="true"> * </span></label>
+                                                <div class="input-group input-group-sm date date-picker" data-date="@DateTime.Now" data-date-format="@_isdateformat" data-date-viewmode="years">
+                                                    <span class="input-group-btn">
+                                                        <button class="btn default" type="button">
+                                                            <i class="fa-light fa-calendar-days"></i>
+                                                        </button>
+                                                    </span>
+                                                    <input type="text" class="form-control" id="txtToDate" placeholder="@_isdateformat.Replace("M","MMM")" data-date-format="@_isdateformat" autocomplete="off">
+                                                </div>
+                                            </div>
+                                            <div class="form-group" id="uploadDoc">
+                                                <form id="frmupload" method="post" action="/ESS/UploadLeaveRequestDocument" enctype="multipart/form-data">
+                                                    <div class="form-group">
+                                                        <label>Upload Document <span class="required" aria-required="true" id="uploadleaveid"> * (File size Required 5 MB. and extension files:.pdf,.png,.jpg,.jpeg)</span></label>
+                                                        <input type="file" name="UploadLeaveDoc" id="UploadLeaveDoc" value="" style="width: 100%;">
+                                                    </div>
+                                                </form>
+                                            </div>
+                                        </div>
+
+                                        <div class="col-md-12">
+                                            <div class="form-group">
+                                                <label>Reason <span class="required" aria-required="true"> * </span></label>
+                                                <textarea id="txtReason" class="form-control input-sm" maxlength="100"></textarea>
+                                            </div>
+                                            <div class="form-group">
+                                                <div class="row">
+                                                    <div class="col-md-6">
+                                                        <div class="form-group">
+                                                            <input type="hidden" id="latlag" name="latlag" value="">
+                                                            <input type="hidden" id="lat" name="lat" value="">
+                                                            <input type="hidden" id="lag" name="lag" value="">
+                                                            <input type="hidden" id="latlagAddress" name="latlagAddress" value="">
+                                                            <a class="btn default blue-stripe btn-block"><i class="fa-regular fa-calendar-check"></i> Leave Balance  : <span id="lblLeaveBalance"> 0</span> </a>
+                                                        </div>
+                                                    </div>
+                                                    <div class="col-md-6">
+                                                        <div class="form-group">
+                                                            <a class="btn default green-stripe btn-block"><i class="fa-light fa-calendar-plus"></i> Carry Forward leaves : <span id="lblEncashLeave"> 0</span> </a>
+                                                        </div>
+                                                    </div>
+                                                    <div class="col-md-6">
+                                                        <div class="form-group">
+                                                            <a class="btn default red-stripe btn-block"><i class="fa-solid fa-plus"></i> Total : <span id="lblTotalBalance"> 0</span> </a>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-12 margin-top-15">
+                                <div class="form-actions text-right">
+                                    <button type="submit" id="btnsaveleave" class="btn btn-sm blue"><i class="fa-light fa-floppy-disk"></i> Save</button>
+                                </div>
+                            </div>
+                        </div>
+                    </fieldset>
+                </div>
+            </div>
+
+        </div>
+    </div>
+    <!-- Apply Leave Modal : End -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/intro.js/6.0.0/intro.min.js"></script>
+    <script>
+
+
+        var uniqueid = '@empid';
+        var Tourflag = '@hasTourCompletes';
+        var UserId = '@UserId';
+        var hasTourCompletedLocally = sessionStorage.getItem('hasTourCompleted_' + uniqueid + '_' + UserId);
+
+
+
+        function startTour() {
+            Tourflag == 0;
+            introJs().setOptions({
+
+                steps: [
+                    {
+                        title: "<img class='margin-bottom-5' src='/AssetsNew/images/logo.png' height='20' width='100' > 🎉 What’s New!",
+                        intro: "<div class='wel_icon text-center'><img src='/assets/images/icon_startup.png' height='249' width='268'></div>"
+                        //intro: "<div class='wel_icon text-center'><p class='startup'><span>Moments :</span> Celebrate key milestones! 🎂 🎉</P><p class='startup'><span>Attendance Wizard :</span> Streamlined attendance management. 🗓️ ✏ ✈️ 👁</P><p class='startup'><span>Attendance Clearance :</span> Manage leave and corrections easily. 🏖️ 💻 ✅ ❌</P></div>Explore these updates! 👉"
+                    },
+                    {
+                        title: "Moments",
+                        element: document.querySelector('#EventBtn'),
+                        intro: "<div class='wel_icon text-center'><img src='/assets/images/icon_moments.png' height='153' width='268' ><p class='header'>Engage. Celebrate. Repeat.</P></div>Celebrate your team's Birthdays, Work Anniversaries, and New Joinees-all in one place. 👆"
+                    },
+                    {
+                        title: "Attendance Wizard",
+                        element: document.querySelector('.more-options'),
+                        intro: "<div class='wel_icon text-center'><img src='/assets/images/icon_wizard.png' height='153' width='268' ><p class='header'>Introducing Attendance Wizard!</P></div>Attendance Insights, Regularization and Plan Your Leave-All in one spot! 👉"
+                    },
+                    {
+                        title: "Attendance Wizard Listview",
+                        element: document.querySelector('#listview_btn'),
+                        intro: "<div class='wel_icon text-center'><img src='/assets/images/icon_wizard.png' height='153' width='268' ><p class='header'>Introducing Attendance Wizard!</P></div>Attendance Insights, Regularization and Plan Your Leave-All in one spot! 👉"
+                    },
+                    {
+                        title: "Attendance Clearance",
+                        element: document.querySelector('.pendingcount'),
+                        intro: "<div class='wel_icon text-center'><img src='/assets/images/icon_clearance.png' height='153' width='268' ><p class='header'>Effortless Attendance Clearance!</P></div>Manage leave, Attendance Corrections and Web Punches effortlessly-All in one spot! 👇"
+                    },
+                ],
+                //showStepNumbers: true,
+                //showStepNumbers: true, // Enable step numbers
+
+            }).oncomplete(function () {
+                updateTourFlag()
+            }).start();
+        }
+
+        window.addEventListener('load', (event) => {
+            if (Tourflag !== 'False') {
+                if (hasTourCompletedLocally !== 'False') {
+
+                    startTour();
+
+                }
+            }
+        });
+
+        function updateTourFlag() {
+
+            $.ajax({
+                url: '@_webapiurl' + 'Master/UpdateTourFlag',
+                headers: { 'Authorization': '@_tokan' },
+                type: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({
+                    EmpId: '@empid',
+                    UserId: '@UserId',
+                    RoleId:'@_RoleId',
+                    HasTourCompletes: false
+                }),
+                success: function (response) {
+
+                    if (response.MegSts == null) {
+                        console.log("Tour flag updated successfully.");
+                        sessionStorage.setItem('hasTourCompleted_' + uniqueid + '_' + UserId, 'False');
+                    } else {
+                        console.error("Error updating tour flag.");
+                    }
+                },
+                error: function (xhr, status, error) {
+                    console.error('Error during API call:', error);
+                }
+            });
+        }
+
+    </script>
+
+}
+else
+{
+    <span style="color:red">Unauthorized Access.</span>
+}
+
+<script src="~/assets/plugins/fullcalendar/fullcalendar.js" type="text/javascript"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/toastr.js/latest/toastr.min.js"></script>
+<script src="~/Newlayout/js/script.js"></script>

@@ -1,0 +1,421 @@
+﻿@model PayTimeWebClient.Models.ScheduleAction
+@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@{
+    ViewBag.Title = "Schedule Master";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    string _Message = ViewBag.msg;
+    string _error = ViewBag.error;
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+    string isClientDBMatchFlag = HttpContext.Current.Session["IsClientDBMatch"] != null
+    ? HttpContext.Current.Session["IsClientDBMatch"].ToString()
+    : "false"; // Default to "false" if the session is null
+}
+<script type="text/javascript">
+    $(document).ready(function () {
+        $(".alert").hide();
+        if ("@_Message" != "") {
+            $(".alert-danger").hide();
+            $(".alert-success").show();
+        }
+        if ('@_error' != "") {
+            $(".alert-danger").show();
+            $(".alert-success").hide();
+        }
+        $('#tblSchedule').DataTable();
+        $("#btnAddScheduler").click(function () {
+            ClearSelection();
+            $("#btnAddScheduler").attr("data-toggle", "modal");
+            $("#btnAddScheduler").attr("data-target", "#frmpopup");
+        });
+        var $selectDep = $("#DeptIds").multiselect({
+            selectAllValue: 'multiselect-all',
+            enableCaseInsensitiveFiltering: true,
+            includeSelectAllOption: true,
+            allSelectedText: 'All Select',
+            enableFiltering: true,
+            maxHeight: '300',
+            buttonWidth: '100%',
+            enableClickableOptGroups: true
+        });
+
+        $('#CompanyID').change(function () {
+            $("#CompanyID").removeClass('field_error');
+            var s = $('#CompanyID').val();
+            fillBranchbycompnyid(s, "");
+        });
+
+        $('#BranchId').change(function () {
+            $("#BranchId").removeClass('field_error');
+            $("#spvalidation").text("");
+            $("#spValidation").hide();
+            $("#txt3").val(0);
+            $("#DeptIds").empty();
+            $("#DeptIds option:selected").prop("selected", false);
+            $("#DeptIds").multiselect('refresh');
+            var s = $('#BranchId').val();
+            $('#BranchName').val($('#BranchId :selected').text());
+            $('#EmpIdTbl tr').remove();
+            $('#EmpIdTbl tr').empty();
+            $("#EmpIdTbl").empty();
+            $.ajax({
+                type: "POST",
+                url: "/Transactions/GetDeptbyBranch?BranchId=" + $('#BranchId :selected').val(),
+                contentType: "application/json; charset=utf-8",
+                datatype: "json",
+                async: "false",
+                success: function (response) {
+                    if (response.isRedirect) {
+                        window.location.href = response.redirectUrl;
+                    }
+                    if (response != null) {
+                        $selectDep.multiselect('enable');
+                        for (var i = 0; i < response.length; i++) {
+                            $('#DeptIds').append('<option value=" ' + response[i].Value + ' ">' + response[i].Text + '</option>');
+                        }
+                        $selectDep.multiselect('rebuild');
+
+                    }
+                    $(".loading").hide();
+                },
+                beforeSend: function () {
+                    $(".loading").show();
+                },
+                error: function () {
+                    $(".loading").hide();
+                }
+            });
+        });
+
+
+        $('#btnSubmit').click(function (event) {
+            if (Isvalidfilter()) {
+
+            }
+        });
+    });
+
+    function fillBranchbycompnyid(companyid, selectbranch) {
+        $('#BranchId').empty();
+        $.ajax(
+         {
+             type: "GET",
+             url: "/MasterData/GetBranchbycomapny",
+             data: { comapanyid: companyid },
+             contentType: "application/json; charset=utf-8",
+             dataType: "json",
+             beforeSend: function () {
+                 $("#ajax_loader").show();
+             },
+             success: function (data) {
+                 if (data.isRedirect) {
+                     window.location.href = data.redirectUrl;
+                 }
+                 $("#ajax_loader").hide();
+                 var markup = '';
+
+                 for (var x = 0; x < data.length; x++) {
+                     markup += "<option value=" + data[x].BranchId + ">" + data[x].BranchName + "</option>";
+                 }
+                 var newOption = '<option selected="selected"  value="">Select Branch</option>';
+
+                 $('#BranchId').html(newOption);
+                 $('#BranchId').append(markup);
+                 $('#BranchId').val(selectbranch);
+             },
+             error: function (jqXHR, ajaxOptions, thrownError) {
+                 if (jqXHR.status == 500) { //InternalServerError = 500,
+                     toastr.error("InternalServerError");
+                 } else if (jqXHR.status == 400) { //BadRequest = 400,
+                     toastr.error("BadRequest");
+                 } else if (jqXHR.status == 401) {
+                     window.location.href = "/PayTime/LoginPage";
+                 }
+             }
+         });
+    }
+    function ClearSelection() {
+        $("#CompanyID").val(null);
+        $("#select2-CompanyID-container").html("Select Company");
+        $("#select2-CompanyID-container").attr("title", "Select Company");
+        $("#BranchId").empty();
+        $("#BranchId").append("<option value='0'>Select Branch</option>");
+        $("#BranchId").val(0);
+        $("#DeptIds option:selected").prop("selected", false);
+        $("#DeptIds").multiselect('refresh');
+        $("#DeptIds").multiselect('disable');
+        $("#CompanyID").removeClass('field_error');
+        $("#BranchId").removeClass('field_error');
+    }
+    function Isvalidfilter() {
+        if ($('#CompanyID').val() <= 0) {
+            $("#CompanyID").addClass('field_error');
+            $("#CompanyID").focus();
+            event.preventDefault();
+            return false;
+        }
+        else {
+            $("#CompanyID").removeClass('field_error');
+        }
+        if ($('#BranchId').val() <= 0) {
+                $("#BranchId").addClass('field_error');
+                $("#BranchId").focus();
+                event.preventDefault();
+                return false;
+        }
+        else {
+            $("#BranchId").removeClass('field_error');
+        }
+        //else if (selectedrptIdArray.length <= 0) {
+        //    $("#spvalidationrpt").html("Please select at least one report").show();
+        //    $('#rptIDstr').focus();
+        //    return false;
+        //}
+    }
+
+</script>
+<div class="page-bar">
+    @if (_RoleId != 1 || _RoleId == 6805 || _RoleId == 6806)
+    {
+        <ul class="page-breadcrumb">
+            <li>
+                @if (isClientDBMatchFlag == "True")
+                {
+                    <a href="/Admin/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+                }
+                else
+                {
+                    <a href="/Dashboard/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+                }
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> Scheduler Master</span>
+            </li>
+        </ul>
+    }
+    else
+    {
+        <ul class="page-breadcrumb">
+            <li>
+                <a href="/Dashboard/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> Scheduler Master</span>
+            </li>
+        </ul>
+    }
+    <div class="page-toolbar">
+        @*@if (obj.CanAdd)
+        {*@
+            <div class="">
+                <a href="#" id="btnAddScheduler" class="btn btn-sm blue" style="float:right"> <i class="fa-solid fa-plus"></i> Add Scheduler</a>
+            </div>
+        @*}*@
+    </div>
+</div>
+@*@if (obj.CanView)
+{*@
+    <div class="row">
+        <div class="col-md-12">
+            <div class="portlet">
+                <div class="portlet-body">
+                    <div id='ajax_loader' class="modal_bg loading" aria-hidden="true">
+                        <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading"/>
+                    </div>
+                    <div>
+                        <table id="tblSchedule" class="table table-striped table-bordered table-hover table-checkable order-column ">
+                            <thead>
+                                <tr>
+                                    <th>No</th>
+                                    <th hidden>sa Id</th>
+                                    <th>Action Name</th>
+                                    <th hidden>Company ID</th>
+                                    <th>Company Name</th>
+                                    <th hidden>Branch ID</th>
+                                    <th>Branch Name</th>
+                                    <th hidden>Department Id</th>
+                                    <th>Department Name</th>
+                                    <th>Last Days</th>
+                                    <th>Report</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @{
+    int n = 1;
+                                }
+                                @if (Model.ScheduleActionlist != null)
+                                {
+                                    foreach (var i in Model.ScheduleActionlist)
+                                    {
+                                        <tr class="odd gradeX">
+                                            <td id="sr">@n</td>
+                                            <td id="hdnEmailConfigId" hidden>@i.saId</td>
+                                            <td id="ActionName">@i.saActionname</td>
+                                            <td id="hdnCompanyID" hidden>@i.saCompanyId</td>
+                                            <td id="CompanyName">@i.saCompanyName</td>
+                                            <td id="hdnBranchid" hidden>@i.saBranchId</td>
+                                            <td id="BranchName">@i.saBranchId</td>
+                                            <td id="hdnDepartmentID" hidden>@i.saDepartmentId</td>
+                                            <td id="DepartmentName">@i.saDepartmentId</td>
+                                            <td id="LastDays">@i.saLastdays</td>
+                                            <td id="Reports">@i.saReportId</td>
+                                            <td id="Col_@i.saId">
+
+                                                @*@if (obj.CanEdit)
+                                                {*@
+                                                <a class="editclass btn blue_btnnew tooltips" data-placement="bottom" title="Edit"><i class="fa-regular fa-pen-to-square"> </i></a>
+                                                @*}*@
+                                                @*@if (obj.CanDelete)
+                                                {*@
+                                                    <span>|</span><span> </span><a class="deleteclass btn btn-xs red tooltips" title="Delete"><i class="fa-regular fa-trash-can"></i></a>
+                                                @*}*@
+                                            </td>
+                                        </tr>
+                                                n++;
+                                    }
+                                }
+                                else
+                                {
+                                    <tr colspan="8" class="odd gradeX">No Data Available</tr>
+                                }
+                            </tbody>
+
+                        </table>
+                    </div>
+                    <div id="frmpopup" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+                        <div class="modal-dialog">
+                            <!-- Modal content-->
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                                    <h4 class="modal-title">Scheduler</h4>
+                                </div>
+                                <div class="modal-body">
+                                    @using (Html.BeginForm("ScheduleMaster", "Master"))
+                                    {
+                                        <div class="row">
+                                            <div class="col-md-12">
+                                                <fieldset class="form-horizontal">
+                                                    <div class="form-group">
+                                                        <div class="editor-label col-md-4 control-label">
+                                                            <label>
+                                                                Action Name <span class="required" aria-required="true"> * </span>
+                                                            </label>
+                                                        </div>
+                                                        <div class="editor-field col-md-7">
+                                                            @Html.EditorFor(model => model.saActionname, new { htmlAttributes = new { @class = "form-control input-sm", id = "saActionname" } })
+                                                            <span class="help-block" style="color:red;" hidden id="spsaActionname"></span>
+                                                        </div>
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <div class="editor-label col-md-4 control-label">
+                                                            <label>
+                                                                Company <span class="required" aria-required="true"> * </span>
+                                                            </label>
+                                                        </div>
+                                                        <div class="editor-field col-md-7">
+                                                            @Html.DropDownList("CompanyID", new SelectList(ViewBag.Companylist, "CompanyID", "CompanyName"), "Select Company", new { @class = "form-control input-sm" })
+                                                            @*<label id="lblIsChecked" style="color:red;visibility : hidden">Company's SMTP is already Configured.</label>*@
+                                                            <span class="help-block" style="color:red;" hidden id="spIsChecked"></span>
+                                                        </div>
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <div class="row">
+                                                            <div class="editor-label col-md-4 control-label">
+                                                                <label>
+                                                                    Branch<span class="required" aria-required="true"> * </span>
+                                                                </label>
+                                                            </div>
+                                                            <div class="editor-field col-md-7">
+                                                                @Html.DropDownList("BranchId", new SelectList(new[] { "" }), "Select Branch", new { @class = "form-control input-sm" })
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    <div class="form-group">
+                                                        <div class="editor-label   col-md-4 control-label">
+                                                            <label>
+                                                               Department<span class="required" aria-required="true"> * </span>
+                                                            </label>
+                                                        </div>
+                                                        <div class="editor-field col-md-7">
+                                                                <input type="text" id="txt3" value="0" hidden />
+                                                                <select id="DeptIds" class="mt-multiselect btn btn-default" multiple="multiple" data-label="left" data-select-all="true" data-width="100%" data-filter="true" data-action-onchange="true"></select>
+                                                        </div>
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <div class="editor-label   col-md-4 control-label">
+                                                            <label>
+                                                               Last Days
+                                                            </label>
+                                                        </div>
+                                                        <div class="editor-field col-md-7">
+                                                            @Html.EditorFor(model => model.saLastdays, new { htmlAttributes = new { @class = "form-control input-sm", @style = "width:60px" } })
+                                                        </div>
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <div class="editor-label   col-md-4 control-label">
+                                                            <label>
+                                                                Reports
+                                                            </label>
+                                                        </div>
+                                                        <div class="editor-field col-md-7">
+                                                            @{
+                                                                if (!string.IsNullOrEmpty(_tokan) && _RoleId > 0)
+                                                                {
+                                                                    var selectedUserMenuReport = objusedetails.GetReportDashBoardRoleWise(_RoleId);
+                                                                    var ParentMenu = selectedUserMenuReport.Where(m => m.ParentMenuName == null).Select(m => new { m.OperationName, m.ImgClassName }).Distinct();
+                                                                    foreach (var item in ParentMenu)
+                                                                    {
+                                                                        foreach (PayTimeWebClient.Models.reqDailyInOutReport itemSub in selectedUserMenuReport.Where(m => m.ParentMenuName == item.OperationName))
+                                                                        {
+                                                                            <div class="check-container col-md-6">
+                                                                                <label class="check mt-checkbox mt-checkbox-outline">
+                                                                                    @Html.CheckBox(itemSub.OperationName, new { @class = "checkboxes", Value = itemSub.OperationName })
+                                                                                    @itemSub.OperationName
+                                                                                    <span></span>
+                                                                                </label>
+                                                                            </div>
+                                                                        }
+                                                                    }
+                                                                }
+}
+                                                        </div>
+                                                    </div>
+                                                    <div class="text-right">
+                                                        <button type="submit" class=" btn btn-sm blue" id="btnSubmit" style="float:right"> <i class="fa-light fa-floppy-disk"></i> Save</button>
+                                                    </div>
+                                                </fieldset>
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+@*}
+else
+{
+    <span style="color:red">Unauthorized Access.</span>
+}*@
+
+<script>
+    $('.overlay').fadeIn('fast').delay(5000).fadeOut('slow');
+</script>

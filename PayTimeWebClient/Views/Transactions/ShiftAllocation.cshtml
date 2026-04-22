@@ -1,0 +1,2922 @@
+﻿@using System.Configuration;
+@model PayTimeWebClient.Models.Departments
+@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@{
+    ViewBag.Title = "ShiftAllocation";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    string _Message = ViewBag.msg;
+    string _error = ViewBag.error;
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    int _ChunkSize = Convert.ToInt32(HttpContext.Current.Session["DataDropDownThreShold"]);
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+    string _isdateformat = HttpContext.Current.Session["IsDateFormat"].ToString();
+    string _dbName = HttpContext.Current.Session["DbName"].ToString();
+
+    string isClientDBMatchFlag = HttpContext.Current.Session["IsClientDBMatch"] != null
+    ? HttpContext.Current.Session["IsClientDBMatch"].ToString()
+    : "false"; // Default to "false" if the session is null
+    string _compcode = HttpContext.Current.Session["cmpcode"].ToString();
+    int _cmpid = 0;
+    int _branchid = 0;
+    int _empid = 0;
+    if (_RoleId == 6805)
+    {
+        _cmpid = Convert.ToInt32(HttpContext.Current.Session["ClientCompanyId"]);
+    }
+    if (_RoleId == 6806)
+    {
+        _cmpid = Convert.ToInt32(HttpContext.Current.Session["ClientCompanyId"]);
+        _branchid = Convert.ToInt32(HttpContext.Current.Session["BranchId"]);
+        _empid = Convert.ToInt32(HttpContext.Current.Session["EmpId"].ToString());
+    }
+    if (_RoleId > 1 && _RoleId != 6805 && _RoleId != 6806)
+    {
+        _cmpid = Convert.ToInt32(HttpContext.Current.Session["ClientCompanyId"]);
+        _branchid = Convert.ToInt32(HttpContext.Current.Session["BranchId"]);
+        _empid = Convert.ToInt32(HttpContext.Current.Session["EmpId"].ToString());
+    }
+    int _UserId = Convert.ToInt32(HttpContext.Current.Session["UserId"]);
+    Int64 _DatagridThsold = 0;
+    _DatagridThsold = Convert.ToInt64(HttpContext.Current.Session["DataGridThresold"]);
+
+    Int64 _DatagridEmpListThsold = 0;
+    _DatagridEmpListThsold = Convert.ToInt64(HttpContext.Current.Session["DataEmpListThreShold"]);
+
+}
+<script src="~/Pages_JS/VirtuallScroll/NormalDropDownVirtualClientServer.js"></script>
+<script src="~/Pages_JS/VirtuallScroll/ServerSideMultiSelectDropDown.js"></script>
+<script src="~/AssetsNew/js/exportexcel.js"></script>
+<style type="text/css">
+    /*.bulkallocationtbl_block {
+        height: 250px;
+        overflow: auto;
+    }*/
+
+    .bulkallocationtbl_block thead {
+        background-color: #F0F0F0;
+        position: sticky;
+        top: 0;
+        z-index: 9;
+    }
+
+    .bulkallocationtbl_block tbody tr td {
+        vertical-align: middle;
+    }
+
+    .shift_responsive.table-responsive {
+        height: calc(100vh - 400px);
+    }
+
+    div#tblshiftAllocationBulkUpload_wrapper {
+        height: calc(100vh - 424px);
+        overflow: auto;
+    }
+
+    /*    .divEmp .table-scrollable {
+        max-height: unset;
+        height: calc(100vh - 260px);
+    }*/
+    #tblEmp_wrapper .table-scrollable {
+        max-height: unset;
+        height: calc(100vh - 260px);
+        overflow: auto;
+    }
+</style>
+<script src="~/AssetsNew/js/CommonValidation.js"></script>
+<div class="page-bar">
+    @if (_RoleId == 1 || _RoleId == 6805 || _RoleId == 6806)
+    {
+
+        <ul class="page-breadcrumb">
+            <li>
+                <a href="@(isClientDBMatchFlag == "True" ? "/Admin/AdminDashboard" : "/Dashboard/AdminDashboard")"><i class="fa-regular fa-house"></i></a>
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> Allocation</span>
+            </li>
+        </ul>
+        <div class="page-toolbar">
+            <a href="javascript:void(0)" id="shiftallocation_btn" class="btn icon_transparent_btn tooltips" data-placement="left" data-original-title="Bulk Shift Allocation"><i class="fa-regular fa-upload "></i></a>
+        </div>
+    }
+    else
+    {
+        <ul class="page-breadcrumb">
+            <li>
+                <a href="/Dashboard/EmployeeDashboard"><i class="fa-regular fa-house"></i></a>
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> Shift Allocation</span>
+            </li>
+        </ul>
+        <div class="page-toolbar">
+            <a href="javascript:void(0)" id="shiftallocation_btn" class="btn icon_btn tooltips" data-placement="left" data-original-title="Bulk Shift Allocation"><i class="fa-regular fa-upload "></i></a>
+        </div>
+    }
+
+
+</div>
+
+@if (obj.CanView)
+{
+    <script type="text/javascript">
+    var DeptIdlst = "";
+    var token = '@_tokan';
+    var webapiurl = '@_webapiurl';
+    var isDateFormat = '@_isdateformat';
+    var interval = "";
+    var compcode = '@_compcode';
+    var cmpid = '@_cmpid';
+    var branchid = '@_branchid';
+    var emprole = '@_RoleId';
+    var empid = '@_empid';
+    var userid = '@_UserId';
+    var delay = 2000;
+    let CompanyDropdown = null;
+    let BranchDropdown = null;
+    let selectedEmpIds = new Set();
+    $(document).ready(function () {
+        //   $("#tblShiftAllocation").dataTable();
+        @*$("#shiftFromDate").datepicker({
+        }).on("change", function () {
+            $('.datepicker').hide();
+
+            var curr = new Date(this.value); // get current date for week start
+            var Tcurr = new Date(this.value); // get current date for week end
+            var TempCurr = new Date(this.value); // get current date for month
+            var first = curr.getDate() - curr.getDay(); // First day is the day of the month - the day of the week
+            var last = first + 6; // last day is the first day + 6
+            var wfirstday = new Date(curr.setDate(first));
+            var wlastday = new Date(Tcurr.setDate(last));
+            var mfirstDay = new Date(TempCurr.getFullYear(), TempCurr.getMonth(), 1);
+            var mlastDay = new Date(TempCurr.getFullYear(), TempCurr.getMonth() + 1, 0);
+           // SetShiftTable(wfirstday, wlastday, "wd");
+           // fillShiftAllocationTable(wfirstday, wlastday, "wd");
+           // SetShiftTable(mfirstDay, mlastDay, "md");
+           // fillShiftAllocationTable(mfirstDay, mlastDay, "md");
+        });
+
+        var sdate = '@ViewBag.weekStart';
+        var edate = '@ViewBag.weekEnd';
+        var baseDate = '@ViewBag.baseDate';
+        $("#shiftFromDate").datepicker();
+        $("#shiftFromDate").datepicker('setDate', baseDate);*@
+
+
+        //   SetShiftTable(sdate, edate, "wd");
+        //fillShiftAllocationTable(sdate, edate, "wd");
+
+
+        //$("#frmpopup").dialog({
+        //    autoOpen: false,
+        //    modal: true,
+        //    resizable: false,
+        //    title: 'Shift Allocation',
+        //    width: "550px",
+
+        //    show: {
+        //        //effect: "blind",
+        //        duration: "1000"
+        //    },
+        //    hide: {
+        //        //effect: "explode",
+        //        duration: "1000"
+        //    }
+        //});
+        //var $select = $("#DeptIds").multiselect({
+        //    selectAllValue: 'multiselect-all',
+        //    enableCaseInsensitiveFiltering: true,
+        //    includeSelectAllOption: true,
+        //    allSelectedText: 'All Select',
+        //    enableFiltering: true,
+        //    maxHeight: '300',
+        //    buttonWidth: '100%',
+        //    enableClickableOptGroups: true,
+        //    nonSelectedText: 'Select Department',
+        //});
+
+
+        var $select = new ServerVirtualDropdown({
+                apiUrl: '@_webapiurl' + "DataDropDownOptimize/GetDepartmentSimpleDropDownData",
+                tokan: '@_tokan',
+                chunkSize : Number('@_ChunkSize'),
+                dropdownId: "DeptIds",
+                selectAll:true,
+                dataKey: "DepartmentId",
+                labelKey: "DepartmentName",
+        });
+
+        $(window).on("load", function () {
+            fillCompany();
+
+             BranchDropdown = new Select2Dropdown({
+                    dropdownId: "ddlBranch", // ID of the dropdown
+                    apiUrl: '@_webapiurl' + 'DataDropDownOptimize/GetBranchDropDownPaginated', // API URL for fetching data
+                    dataKey: "Id", // Key for value
+                    labelKey: "Name", // Key for text
+                    token: '@_tokan', // Optional auth token
+                    chunkSize : Number('@_ChunkSize')
+            });
+        });
+        // Popup code
+        var navListItems = $('div.setup-panel div a'),
+                allWells = $('.setup-content'),
+                allNextBtn = $('.nextBtn');
+        allPrevBtb = $('.prevbtn');
+        allWells.hide();
+        navListItems.click(function (e) {
+            e.preventDefault();
+            var $target = $($(this).attr('href')),
+                    $item = $(this);
+            if (!$item.hasClass('disabled')) {
+                navListItems.removeClass('btn-primary').addClass('btn-default');
+                $item.addClass('btn-primary');
+                allWells.hide();
+                $target.show();
+            }
+        });
+
+        //allNextBtn.click(function () {
+
+        //    getEmp();
+
+        //    var curStep = $(this).closest(".setup-content"),
+        //        curStepBtn = curStep.attr("id"),
+        //        nextStepWizard = $('div.setup-panel div a[href="#' + curStepBtn + '"]').parent().next().children("a"),
+        //        curInputs = curStep.find("input[type='text'],input[type='url']"),
+        //        isValid = true;
+
+        //    $(".form-group").removeClass("has-error");
+        //    for (var i = 0; i < curInputs.length; i++) {
+        //        if (!curInputs[i].validity.valid) {
+        //            isValid = false;
+        //            $(curInputs[i]).closest(".form-group").addClass("has-error");
+        //        }
+        //    }
+
+        //    if (isValid)
+        //        nextStepWizard.removeAttr('disabled').trigger('click');
+        //});
+
+        $("#s1").click(function (event) {
+            Step1ShowHide();
+        });
+
+        $("#frstnext, #s2").click(function (event)
+        {
+
+            const intervalId = setInterval(function () {
+                const table = $('.dataTables_wrapper > table');
+
+                if (table.length && !table.parent().hasClass('table-scrollable')) {
+                    table.wrap('<div class="table-scrollable"></div>');
+
+                    clearInterval(intervalId);
+                }
+            }, 1000);
+
+            var ShiftCode = $("#ddlShift").val();
+            var FromDate = $("#txtFromDate").val();
+            var ToDate = $("#txtToDate").val();
+
+            if (ShiftCode == "0") {
+                $("#ddlShift").addClass('field_error');
+                event.preventDefault();
+                return false;
+            }
+            if (FromDate.trim() == "") {
+                $("#txtFromDate").addClass('field_error');
+                event.preventDefault();
+                return false;
+            }
+            if (ToDate.trim() == "") {
+                $("#txtToDate").addClass('field_error');
+                event.preventDefault();
+                return false;
+            }
+            var dep = $("#DeptIds").val();
+            if (dep == null) {
+                toastr.remove();
+                toastr.error("Please select at least one department.");
+                return false;
+            }
+            //var allVals = [];
+            //$("#tblDept .ClsChkDept").each(function () {
+            //    if ($(this).is(':checked') == true) {
+            //        allVals.push($(this).attr("id"));
+            //    }
+            //});
+            //if (allVals.length == 0) {
+            //    $(".popMsg").text("Please select at least one Department").show();
+            //    event.preventDefault();
+            //    return false;
+            //}
+            $(".popMsg").hide();
+            selectedEmpIds.clear();
+            fetchedEmpIds.clear();
+            getEmp_load();
+            //var nextStepWizard = $('#frmpopup div.setup-panel div a[href="#step-2"]').parent().children("a");
+            //nextStepWizard.removeAttr('disabled').trigger('click');
+            Step2ShowHide();
+        });
+        //allPrevBtb.click(function () {
+        //    var curStep = $(this).closest(".setup-content"),
+        //        curStepBtn = curStep.attr("id"),
+        //        nextStepWizard = $('div.setup-panel div a[href="#' + curStepBtn + '"]').parent().prev().children("a"),
+        //        isValid = true;
+        //    if (isValid)
+        //        nextStepWizard.removeAttr('disabled').trigger('click');
+        //});
+
+
+
+        $("#Secondprev").click(function () {
+            Step1ShowHide();
+            $("#s2").removeClass("disabled");
+        });
+        $('div.setup-panel div a.btn-primary').trigger('click');
+        //over
+        GetAllShiftAllocation();
+        generateShiftgriddata(userid)
+        generateprogressdata();
+        $("#ddlShift").change(function () {
+            $("#ddlShift").removeClass('field_error');
+        });
+
+        $("#shiftallocation_btn").click(function () {
+            $("#shiftallocationdata").toggle();
+        });
+
+        $("#txtToDate").change(function () {
+            $("#txtToDate").removeClass('field_error');
+        });
+
+        $("#btnImport").click(function (e) {
+            checkSession();
+            e.preventDefault();
+            if ($("#FileUpload").val() != null) {
+                var validExts = new Array(".xlsx", ".xls", ".csv");
+                var fileExt = $("#FileUpload").val();
+                if (fileExt != "") {
+                    fileExt = fileExt.substring(fileExt.lastIndexOf('.'));
+                    if (validExts.indexOf(fileExt) < 0) {
+                        toastr.remove();
+                        toastr.error("Invalid file selected, valid files are of " + validExts.toString() + " types.");
+                        $("#FileUpload").val("");
+                        return false;
+                    }
+                }
+            }
+            var formData = new FormData();
+            var fileInput = $("#FileUpload")[0].files[0];
+            var compcode = '@_compcode';
+            var roleid = '@_RoleId';
+            var Companyid = '@_cmpid';
+            var branchid = '@_branchid';
+            var empid = '@_empid';
+            if (!fileInput) {
+                toastr.remove();
+                toastr.error("Please select a file!");
+                return;
+            }
+            formData.append("FileUpload", fileInput);
+            formData.append("compcode", compcode);
+            formData.append("roleid", roleid);
+            formData.append("Companyid", Companyid);
+            formData.append("branchid", branchid);
+            formData.append("empid", empid);
+            $.ajax({
+                url: "/Transactions/ShiftAllocationUpload",
+                type: "POST",
+                data: formData,
+                contentType: false,
+                processData: false,
+                success: function (response) {
+                    setTimeout(function () {
+                        toastr.remove("");
+                        toastr.success(response.message);
+                        location.reload();
+                    },delay);
+                    $("#FileUpload").val("");
+                    $(".fileinput-filename").text("");
+                },
+                error: function () {
+                    setTimeout(function () {
+                        toastr.remove("");
+                        toastr.error(response.message);
+                    }, delay);
+                }
+            });
+
+        });
+        $("#txtFromDate").change(function () {
+            $("#txtFromDate").removeClass('field_error');
+            $("#txtToDate").val("");
+            if (isDateFormat == 'dd-mm-yyyy') {
+                var fromDate = $("#txtFromDate").val().split("-");
+                var newdate = new Date(fromDate[2], fromDate[1] - 1, fromDate[0]);
+            }
+            else if (isDateFormat == 'mm-dd-yyyy') {
+                var fromDate = moment($('#txtFromDate').val(), 'MM-DD-YYYY');
+                var newdate = new Date(fromDate);
+            }
+            else if(isDateFormat == "yyyy-M-dd")
+            {
+                var fromDate = moment($('#txtFromDate').val(), 'YYYY-MMM-DD');
+                var newdate = new Date(fromDate);
+            }
+            else if(isDateFormat == "M-dd-yyyy")
+            {
+                var fromDate = moment($('#txtFromDate').val(), 'MMM-DD-YYYY');
+                var newdate = new Date(fromDate);
+            }
+            else if("@_isdateformat" == "dd-M-yyyy")
+            {
+                var fromDate = moment($('#txtFromDate').val(), 'DD-MMM-YYYY');
+                var newdate = new Date(fromDate);
+            }
+            else {
+                var fromDate = $("#txtFromDate").val();
+                var newdate = new Date(fromDate);
+            }
+            $('#txtToDate').datepicker("remove");
+            $("#txtToDate").datepicker({
+                startDate: newdate,
+                autoclose: true,
+                format: isDateFormat
+            }).on('changeDate', function (ev) {
+            }).data('datepicker');
+        });
+        $(document).on("change", ".ClsChkEmp", function () {
+            const empId = $(this).attr("id");
+            if ($(this).is(":checked")) {
+                selectedEmpIds.add(empId);
+            } else {
+                selectedEmpIds.delete(empId);
+            }
+            let count = 0;
+            $("#tblEmp .ClsChkEmp").each(function () {
+                if ($(this).is(':checked') == true) {
+                    count++;
+                }
+            });
+            if ($('#tblEmp').DataTable().data().count() == count) {
+                isSelectAllChecked == true;
+                $('.ClsChkAllDept').prop('checked', true);
+            }
+            else {
+                isSelectAllChecked == false;
+                $('.ClsChkAllDept').prop('checked', false);
+            }
+        });
+        $("#FilterFromDate").change(function () {
+            $("#FilterFromDate").removeClass('field_error');
+            $("#FilterToDate").val("");
+            var fromDate = $("#FilterFromDate").val();
+            var newdate = new Date(fromDate);
+            //to get the dynamic date format.
+            if (isDateFormat == 'dd-mm-yyyy') {
+                var fromDate = $("#FilterFromDate").val().split("-");
+                var newdate = new Date(fromDate[2], fromDate[1] - 1, fromDate[0]);
+            }
+            else if(isDateFormat == 'mm-dd-yyyy')
+            {
+                var fromDate = moment($('#FilterFromDate').val(), 'MM-DD-YYYY');
+                var newdate = new Date(fromDate);
+            }
+            else if(isDateFormat == "yyyy-M-dd")
+            {
+                var fromDate = moment($('#FilterFromDate').val(), 'YYYY-MMM-DD');
+                var newdate = new Date(fromDate);
+            }
+            else if(isDateFormat == "M-dd-yyyy")
+            {
+                var fromDate = moment($('#FilterFromDate').val(), 'MMM-DD-YYYY');
+                var newdate = new Date(fromDate);
+            }
+            else if(isDateFormat == "dd-M-yyyy")
+            {
+                var fromDate = moment($('#FilterFromDate').val(), 'DD-MMM-YYYY');
+                var newdate = new Date(fromDate);
+            }
+            else {
+                var fromDate = $("#FilterFromDate").val();
+                var newdate = new Date(fromDate);
+            }
+            $('#FilterToDate').datepicker("remove");
+            $("#FilterToDate").datepicker({
+                startDate: newdate,
+                autoclose: true,
+                format: isDateFormat
+            }).on('changeDate', function (ev) {
+                GetAllShiftAllocation();
+            }).data('datepicker');
+        });
+
+
+
+
+        $("#btnSave").click(function () {
+            save();
+        });
+        //$("#btnViewShift").click(function () {
+        //    var fromDate = $("#FromDate").val();
+        //    var toDate = $("#ToDate").val();
+        //    alert(fromDate + " " + toDate);
+        //    var url = "/Transactions/DatewiseShiftAllocation";
+        //    $.post(url, { fromDate: fromDate, toDate: toDate }, function (data) {
+        //        alert("hi");
+        //    });
+
+        //});
+        $(".alert").hide();
+        if ("@_Message" != "") {
+            toastr.remove();
+            toastr.success("@_Message");
+        }
+        if ('@_error' != "") {
+            toastr.remove();
+            toastr.error("@_error");
+        }
+        $('#btnAllocateShift').attr("disabled", "disabled");
+        $("#btnAllocateShift").unbind("click");
+        $('#btnAllocateShift').click(function () {
+            Step1ShowHide();
+            selectedEmpIds.clear();
+            fetchedEmpIds.clear();
+        })
+        $("#ddlCompany").change(function () {
+            $('#btnAllocateShift').attr("disabled", "disabled");
+            $("#btnAllocateShift").unbind("click");
+            $("#ddlBranch").val(null).trigger("change");
+            BranchDropdown.extraParams = { CompanyID: $("#ddlCompany").val(), BranchID: '@_branchid', RoleId: '@_RoleId', EmpId: '@_empid' };
+            $("#ddlBranch").select2('close');
+            $("#ddlBranch").trigger('change');
+        });
+        $('#tblEmp').on('draw.dt', function () {
+            restoreSelectedCheckboxes();
+        });
+        $("#ddlBranch").change(function () {
+            if ($("#ddlBranch").val() == "0" || $("#ddlBranch").val() == null) {
+                $('#btnAllocateShift').attr("disabled", "disabled");
+                $("#btnAllocateShift").unbind("click");
+            }
+            else{
+                $("#btnAllocateShift").removeAttr("disabled");
+                $("#btnAllocateShift").click(function () {
+                    Step1ShowHide();
+                    $("#btnAllocateShift").attr("data-toggle", "modal");
+                    $("#btnAllocateShift").attr("data-target", "#frmpopup");
+                    $('.test').trigger('click');
+                    $("#ddlShift").val("0");
+                    $("#txtFromDate").val("");
+                    $("#txtToDate").val("");
+                    $(".alert-danger").hide();
+                    $(".alert-success").hide();
+                    $("#tblEmp").empty();
+                    $(".ClsChkAllDept").prop('checked', false);
+                    $(".ClsChkAllEmp").prop('checked', false);
+                    $(".ClsChkDept").prop('checked', false);
+                    selectedEmpIds.clear();
+                    fetchedEmpIds.clear();
+                });
+
+            }
+            $("#DeptIds").empty();
+            $select.data = { BranchID: $("#ddlBranch").val() };
+            $select.loadInitialData();
+            $(document.body).on('change', '#DeptIds', function () {
+            $(".popMsg").hide();
+                var deptid = $('#DeptIds option:selected');
+                var DeptArray = [];
+                if ($("#DeptIdsContainer li").hasClass("multiselect-item multiselect-all active")) {
+                    DeptIdlst = "";
+                }
+                else {
+
+                    var ArrDept = $("#DeptIds").val();
+                    if (ArrDept != null)
+                        DeptIdlst = ArrDept.join(",");
+                    else
+                        DeptIdlst = null;
+                }
+                //getEmp();
+                getEmp_load();
+            });
+            //$("#tblDept").empty();
+            //$.ajax({
+            //    type: "POST",
+            //    url: "/Transactions/GetDeptbyBranch?BranchId=" + $("#ddlBranch").val(),
+            //    contentType: "application/json; charset=utf-8",
+            //    datatype: "json",
+            //    async: "false",
+            //    success: function (response) {
+            //        var table = "";
+            //        if (response != null) {
+            //            for (var i = 0; i < response.length; i++) {
+            //                var tbl = "<tr class='odd gradeX'>";
+            //                //tbl = tbl + "<td id='did' hidden>" + response[i].Value;
+            //                //tbl = tbl + "</td>";
+            //                tbl = tbl + "<td id='dnm'>" + response[i].Text;
+            //                tbl = tbl + "</td>";
+            //                tbl = tbl + "<td id=''><input type='checkbox' onchange='checkedDept(this)' class='ClsChkDept' id='" + response[i].Value + "'/>";
+            //                //tbl = tbl + "<td id=''><input type='checkbox' class='ClsChkDept' id='" + response[i].Value + "'/>";
+            //                tbl = tbl + "</td>";
+            //                tbl = tbl + "</tr>";
+
+            //                table += tbl;
+            //            }
+            //        }
+            //        $("#tblDept").destroy;
+            //        $('#tblDept').append(table);
+            //        $('#tblDept').dataTable({
+            //            // "data": data.d,
+            //            "destroy": true,
+            //            "bInfo": false,
+            //            "bPaginate": false,
+            //            "bLengthChange": false,
+            //            "bFilter": false,
+            //            "columns": [
+            //                //{ "title": "Dept ID" },
+            //                { "title": "Department Name" },
+            //                { "title": "<input type='checkbox' class='ClsChkAllDept' onchange='AllCheckedDept(this)' />" }
+            //            ]
+            //        });
+            //        $(".loading").hide();
+            //    },
+            //    beforeSend: function () {
+            //        $(".loading").show();
+            //    },
+            //    error: function () {
+            //        $(".loading").hide();
+            //    }
+            //});
+
+
+            //$.ajax({
+            //    type: "POST",
+            //    url: "/Transactions/GetDeptbyBranch?BranchId=" + $("#ddlBranch").val(),
+            //    contentType: "application/json; charset=utf-8",
+            //    datatype: "json",
+            //    async: "false",
+            //    success: function (response) {
+            //        if (response.isRedirect) {
+            //            window.location.href = response.redirectUrl;
+            //        }
+            //        if (response != null) {
+            //            response.sort(function (a, b) {
+            //                return a.Text.localeCompare(b.Text);
+            //            });
+            //            for (var i = 0; i < response.length; i++) {
+            //                $('#DeptIds').append('<option value="' + response[i].Value + '">' + response[i].Text + '</option>');
+            //            }
+            //            $select.multiselect('rebuild');
+            //            $(document.body).on('change', '#DeptIds', function () {
+            //                $(".popMsg").hide();
+            //                var deptid = $('#DeptIds option:selected');
+            //                var DeptArray = [];
+            //                $(deptid).each(function (index, deptid) {
+            //                    DeptArray.push([$(this).val()]);
+            //                });
+            //                if (DeptArray == "") {
+            //                    $("#txt2").val(0);
+            //                }
+            //                else {
+            //                    $("#txt2").val(DeptArray);
+            //                }
+            //                var ArrDept = $("#txt2").val();
+            //                DeptIdlst = ArrDept;
+            //                //getEmp();
+            //                //getEmp_load();
+            //            });
+            //        }
+            //        $(".loading").hide();
+            //    },
+            //    beforeSend: function () {
+            //        $(".loading").show();
+            //    },
+            //    error: function () {
+            //        $(".loading").hide();
+            //    }
+            //});
+
+
+            GetAllShiftAllocation();
+
+        });
+
+        //$("#weekTable").on('click', '.empdetails', function () {
+        //    $("#ename").html("");
+        //    $("#emobile").html("");
+        //    $("#eEmail").html("");
+        //    $("#eDesignationName").html("");
+        //    var id = $(this).parent('td').parent('tr').children(1)[1].innerText;
+        //    $.ajax({
+        //        type: 'GET',
+        //        async: false,
+        //        url: "/PayTime/EmployeebyID",
+        //        data: { id: id },
+        //        contentType: "application/json; charset=utf-8",
+        //        dataType: "json",
+        //        success: function (result) {
+        //            var obj = JSON.parse(result);
+        //            $("#ename").html(obj[0].EmpName);
+        //            $("#emobile").html(obj[0].EmpMNo);
+        //            $("#eEmail").html(obj[0].Email);
+        //            $("#eDesignationName").html(obj[0].DesignationName);
+        //            var pathname = obj[0].EmpPhoto;
+        //            if (pathname != "") {
+        //                $("#EmpPhoto").val(pathname);
+        //                $("#employeeimg").attr("src", "/UploadEmpPhoto/" + pathname);
+        //            }
+        //            else {
+        //                $("#employeeimg").attr("src", "/assets/images/avtar.png");
+        //            }
+
+        //        },
+        //        error: function (xhr, ajaxOptions, thrownError) {
+        //            alert("error");
+        //            alert(xhr.status);
+        //            alert(thrownError);
+        //        }
+        //    });
+        //});
+
+        //$("#monthtable").on('click', '.empdetailsmd', function () {
+        //    $("#ename").html("");
+        //    $("#emobile").html("");
+        //    $("#eEmail").html("");
+        //    $("#eDesignationName").html("");
+        //    var id = $(this).parent('td').parent('tr').children(1)[1].innerText;
+        //    $.ajax({
+        //        type: 'GET',
+        //        async: false,
+        //        url: "/PayTime/EmployeebyID",
+        //        data: { id: id },
+        //        contentType: "application/json; charset=utf-8",
+        //        dataType: "json",
+        //        success: function (result) {
+        //            var obj = JSON.parse(result);
+        //            $("#ename").html(obj[0].EmpName);
+        //            $("#emobile").html(obj[0].EmpMNo);
+        //            $("#eEmail").html(obj[0].Email);
+        //            $("#eDesignationName").html(obj[0].DesignationName);
+        //            var pathname = obj[0].EmpPhoto;
+        //            if (pathname != "") {
+        //                $("#EmpPhoto").val(pathname);
+        //                $("#employeeimg").attr("src", "/UploadEmpPhoto/" + pathname);
+        //            }
+        //            else {
+        //                $("#employeeimg").attr("src", "/assets/images/avtar.png");
+        //            }
+        //        },
+        //        error: function (xhr, ajaxOptions, thrownError) {
+        //            alert("error");
+        //            alert(xhr.status);
+        //            alert(thrownError);
+        //        }
+        //    });
+        //});
+
+
+        function save() {
+            if (valid()) {
+                var allVals = [];
+                //$("#tblEmp .ClsChkEmp").each(function ()
+                //{
+                //    if ($(this).is(':checked') == true) {
+                //        allVals.push($(this).attr("id"));
+                //    }
+                //});
+
+                var bID = $("#ddlBranch").val();
+                var CID = $("#ddlCompany").val();
+                var _chkselectallflage = isSelectAllChecked ? 1 : 0;
+                allVals = Array.from(selectedEmpIds);
+                if (_chkselectallflage == 1)
+                {
+                    allVals = null; // Use null instead of an empty string
+                }
+                let isSelectedAll = $("#DeptIdsContainer li").hasClass("multiselect-item multiselect-all active") == true ? 1 : 0;
+                let searchTerm = "";
+                if ($("#DeptIdsContainer li input").hasClass("multiselect-search")) {
+                    searchTerm = $("#DeptIdsContainer li .multiselect-search").val().trim();
+                }
+                var ShiftAlloc = {
+                    "ShiftID": parseInt($("#ddlShift").val()),
+                    "FromDt": $("#txtFromDate").val(),
+                    "ToDt": $("#txtToDate").val(),
+                    "SelectAllFlage": _chkselectallflage,
+                    "SelectAllSearchTerm": $('#tblEmp').DataTable().search(),
+                    "EmpArr": allVals,
+                    "CompanyID": CID,
+                    "BranchID": bID,
+                    "DepartmentID": DeptIdlst,
+                    "SelectAllDept": isSelectedAll,
+                    "SelectAllSearchTermDept": searchTerm
+                };
+                $.ajax({
+                    type: "POST",
+                    url: "/Transactions/ShiftAllocation?ShiftAlloc=" + JSON.stringify(ShiftAlloc),
+                    contentType: "application/json; charset=utf-8",
+                    datatype: "json",
+                    async: "false",
+                    success: function (response) {
+                        if (response.isRedirect) {
+                            window.location.href = response.redirectUrl;
+                        }
+                        if (response != null) {
+                            if (response == "OK") {
+                                Clear();
+                                $('#frmpopup').modal('toggle');
+                                toastr.remove();
+                                toastr.success("Shift allocated sucessfully.");
+                                GetAllShiftAllocation();
+                                $("#shiftFromDate").trigger('change');
+                            }
+                            else {
+                                toastr.remove();
+                                toastr.error(response);
+                            }
+                        }
+                        $(".loading").hide();
+                    },
+                    beforeSend: function () {
+                        $(".loading").show();
+                    },
+                    error: function () {
+                        $(".loading").hide();
+                    }
+                });
+            }
+        }
+        function GetAllShiftAllocation()
+        {
+            if ("@_isdateformat" == "dd-mm-yyyy")
+            {
+                var fromDate = $("#FilterFromDate").val().split("-");
+                var fromdt = fromDate[2] + "-" + fromDate[1] + "-" + fromDate[0];
+                var toDate = $("#FilterToDate").val().split("-");
+                var todt = toDate[2] + "-" + toDate[1] + "-" + toDate[0];
+                if (fromdt == 'undefined-undefined-')
+                {
+                    fromdt = "";
+                }
+                if (todt == 'undefined-undefined-')
+                {
+                    todt = "";
+                }
+            }
+            else if ("@_isdateformat" == "mm-dd-yyyy") {
+                var fromDate = $("#FilterFromDate").val().split("-");
+                var fromdt = fromDate[2] + "-" + fromDate[0] + "-" + fromDate[1];
+                var toDate = $("#FilterToDate").val().split("-");
+                var todt = toDate[2] + "-" + toDate[0] + "-" + toDate[1];
+                if (fromdt == 'undefined--undefined') {
+                    fromdt = "";
+                }
+                if (todt == 'undefined--undefined') {
+                    todt = "";
+                }
+            }
+            else if ("@_isdateformat" == "yyyy-mm-dd") {
+                var fromDate = $("#FilterFromDate").val().split("-");
+                var fromdt = fromDate[0] + "-" + fromDate[1] + "-" + fromDate[2];
+                var toDate = $("#FilterToDate").val().split("-");
+                var todt = toDate[0] + "-" + toDate[1] + "-" + toDate[2];
+                if (fromdt == '-undefined-undefined') {
+                    fromdt = "";
+                }
+                if (todt == '-undefined-undefined') {
+                    todt = "";
+                }
+            }
+            else if ("@_isdateformat" == "yyyy-M-dd") {
+                var _fromDate = $("#FilterFromDate").val().split("-");
+                var getMonth = _fromDate[1];
+                if ($("#FilterFromDate").val() != "")
+                {
+                    var fromdt = _fromDate[0] + "-" + (GetMonthNumber(getMonth).toString().length > 1 ? GetMonthNumber(getMonth) : "0" + GetMonthNumber(getMonth)) + "-" + _fromDate[2];
+                }
+                else {
+                    var fromdt = '-undefined-undefined';
+                }
+                var _toDate = $("#FilterToDate").val().split("-");
+                var getMonth = _toDate[1];
+                if ($("#FilterToDate").val() != "")
+                {
+                    var todt = _toDate[0] + "-" + (GetMonthNumber(getMonth).toString().length > 1 ? GetMonthNumber(getMonth) : "0" + GetMonthNumber(getMonth)) + "-" + _toDate[2];
+                }
+                else {
+                    var todt = '-undefined-undefined';
+                }
+                if (fromdt == '-undefined-undefined') {
+                    fromdt = "";
+                }
+                if (todt == '-undefined-undefined') {
+                    todt = "";
+                }
+            }
+            else if ("@_isdateformat" == "M-dd-yyyy") {
+                var _fromDate = $("#FilterFromDate").val().split("-");
+                var getMonth = _fromDate[0];
+                if ($("#FilterFromDate").val() != "") {
+                    var fromdt = _fromDate[2] + "-" + (GetMonthNumber(getMonth).toString().length > 1 ? GetMonthNumber(getMonth) : "0" + GetMonthNumber(getMonth)) + "-" + _fromDate[1];
+                }
+                else {
+                    var fromdt = 'undefined--undefined';
+                }
+                var _toDate = $("#FilterToDate").val().split("-");
+                var getMonth = _toDate[0];
+                if ($("#FilterToDate").val() != "") {
+                    var todt = _toDate[2] + "-" + (GetMonthNumber(getMonth).toString().length > 1 ? GetMonthNumber(getMonth) : "0" + GetMonthNumber(getMonth)) + "-" + _toDate[1];
+                }
+                else {
+                    var todt = 'undefined--undefined';
+                }
+                if (fromdt == 'undefined--undefined') {
+                    fromdt = "";
+                }
+                if (todt == 'undefined--undefined') {
+                    todt = "";
+                }
+            }
+            else if ("@_isdateformat" == "dd-M-yyyy") {
+                var _fromDate = $("#FilterFromDate").val().split("-");
+                var getMonth = _fromDate[1];
+                if ($("#FilterFromDate").val() != "") {
+                    var fromdt = _fromDate[2] + "-" + (GetMonthNumber(getMonth).toString().length > 1 ? GetMonthNumber(getMonth) : "0" + GetMonthNumber(getMonth)) + "-" + _fromDate[0];
+                }
+                else {
+                    var fromdt = 'undefined-undefined-';
+                }
+                var _toDate = $("#FilterToDate").val().split("-");
+                var getMonth = _toDate[1];
+                if ($("#FilterToDate").val() != "") {
+                    var todt = _toDate[2] + "-" + (GetMonthNumber(getMonth).toString().length > 1 ? GetMonthNumber(getMonth) : "0" + GetMonthNumber(getMonth)) + "-" + _toDate[0];
+                }
+                else {
+                    var todt = 'undefined-undefined-';
+                }
+                if (fromdt == 'undefined-undefined-') {
+                    fromdt = "";
+                }
+                if (todt == 'undefined-undefined-') {
+                    todt = "";
+                }
+            }
+            $("#tblShiftAllocation").empty();
+            var bID = $("#ddlBranch").val();
+            if (bID == null) {
+                bID = 0;
+            }
+            $("#dataTables_tbl_header").remove();
+            $("#tblShiftAllocation").DataTable({
+                dom: _domCommon,
+                language: _languageCommon,
+                "serverSide": true,
+                "destroy": true,
+                "pageLength": 10,
+                "ajax": {
+                    "url": "/Transactions/GetAllShiftAllocation",
+                    "type": "POST",
+                    "contentType": "application/json; charset=utf-8",
+                    "data": function (d) {
+                        d.BranchID = parseInt(bID);
+                        d.fromdt = fromdt;
+                        d.todt = todt;
+                        d.searchValue = d.search.value;
+                        return JSON.stringify(d);
+                    }
+                },
+                "columns": [
+                    { "data": "EmpName", "title": "Employee Name" },
+                    { "data": "EmpPunchId", "title": "Emp PunchId" },
+                    {
+                        "data": "ShiftName",
+                        "title": "Shift Name",
+                        "render": function (data) {
+                            if (data === "Week Off") {
+                                return `<span class='label label-sm label-danger'>${data}</span>`;
+                            } else if (data === "Holiday") {
+                                return `<span class='label label-sm label-success' style='background-color: #ed6b75;'>${data}</span>`;
+                            } else if (!data) {
+                                return `<span class='label label-sm label-success' style='background-color: #ed6b75;'>NA</span>`;
+                            } else {
+                                return `<span class='label label-sm label-info'>${data}</span>`;
+                            }
+                        }
+                    },
+                    { "data": "ShiftDateStr", "title": "Shift Date" }
+                ],
+                "lengthMenu": [10, 100, 500, 1000],
+                initComplete: function () {
+                    if ($('#export-button').length) {
+                        $('#export-button').remove();
+                    }
+                },
+            });
+
+            setTimeout(function () {
+                $("#" + "tblShiftAllocation" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+                $('.tooltips').tooltip();
+            }, 100);
+
+            $(".loading").hide();
+            $('.tooltips').tooltip();
+        }
+
+
+
+    });
+
+
+    //***********************************frmattndpopup Model Steps Show/Hide with BtnTab for Fixed Footer***********************************//
+    function Step1ShowHide() {
+
+        //*****show/Hide setup-content perticular step*****//
+        $("#step-1").css("display", "block");
+        $("#step-2").css("display", "none");
+
+        //For Highlight pericualr stepwizard-step
+        $("#s1").addClass("btn-primary");
+        $("#s2").removeClass("btn-primary");
+
+        //For click perticular stepwizard-step
+        $("#s1").removeClass("disabled");
+        $("#s2").addClass("disabled");
+
+        //*****Show/Hide Step perticular step Btntab*****//
+        $("#FrstTabBtnDiv").css("display", "block");
+        $("#SecondTabBtnDiv").css("display", "none");
+    }
+
+    function Step2ShowHide() {
+
+        //*****show/Hide setup-content perticular step*****//
+        $("#step-2").css("display", "block");
+        $("#step-1").css("display", "none");
+
+        //For Highlight pericualr stepwizard-step
+        $("#s2").addClass("btn-primary");
+        $("#s1").removeClass("btn-primary");
+
+        //For click perticular stepwizard-step
+        $("#s2").removeClass("disabled");
+        $("#s1").removeClass("disabled");
+
+        //*****Show/Hide Step perticular step Btntab*****//
+        $("#SecondTabBtnDiv").css("display", "block");
+        $("#FrstTabBtnDiv").css("display", "none");
+    }
+    //******************************END********************************//
+
+    //function SetShiftTable(sdate, edate, id) {
+    //    var days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    //    var shortdays = ["S", "M", "T", "W", "Th", "F", "Sa"];
+    //    s = new Date(sdate);
+    //    e = new Date(edate);
+    //    temp = s.getDay();
+    //    startDay = days[temp];
+    //    var timeDiff = Math.abs(e.getTime() - s.getTime());
+    //    var diffDays = Math.ceil(timeDiff / (1000 * 3600 * 24));
+
+    //    for (var i = 1; i <= diffDays + 1; i++) {
+    //        sdate = s.getMonth() + 1 + "/" + s.getDate() + "/" + s.getFullYear();
+    //        if (id == 'wd') {
+    //            $("#" + id + i).html("<b>" + days[s.getDay()] + "</b> <br>" + sdate + "");
+    //        }
+    //        else if (id == 'md') {
+    //            $("#" + id + i).html(" " + shortdays[s.getDay()] + "<br>" + s.getDate() + "");
+
+    //        }
+    //        s.setDate(s.getDate() + 1);
+    //        if (diffDays == 30) {
+    //            $("#md31").show();
+    //        }
+    //        else {
+    //            $("#md31").hide();
+    //        }
+    //    }
+
+    //}
+
+    //function fillShiftAllocationTable(sdate, edate, id) {
+    //    var s = new Date(sdate);
+    //    var e = new Date(edate);
+    //    var smonth = s.getMonth() + 1;
+    //    var fromdateParameter = s.getFullYear() + "-" + smonth + "-" + s.getDate();
+    //    var emonth = e.getMonth() + 1;
+    //    var TodateParameter = e.getFullYear() + "-" + emonth + "-" + e.getDate();
+    //    $.ajax({
+    //        type: 'POST',
+    //        url: "GetShiftAllocationDateWice?fromDate=" + fromdateParameter + "&toDate=" + TodateParameter,
+    //        // data: '{"CompanyID":"' + CompanyID + '", "CompanyName":"' + CompanyName + '", "CompanyAddress":"' + CompanyAddress + '", "CompanyContact":"' + CompanyContact + '", "CompanyUrl":"' + CompanyUrl + '", "CompanyEmail":"' + CompanyEmail + '"}',
+    //        contentType: "application/json",
+    //        dataType: 'json',
+    //        async: false,
+    //        cache: false,
+    //        timeout: 30000,
+    //        beforeSend: function (xhr) {
+    //            xhr.setRequestHeader("Authorization", token);
+    //        },
+    //        success: function (data) {
+    //            filltablebody(data, id, s, e);
+    //            $(".loading").hide();
+
+    //        },
+    //        beforeSend: function () {
+
+    //            $(".loading").show();
+    //        },
+    //        error: function () {
+    //            $(".loading").hide();
+    //        }
+    //    });
+    //}
+
+    //function filltablebody(data, id, s, e) {
+    //    var tableString = "";
+
+    //    //somewhere in your code
+    //   // console.log(strArrayOne);
+    //    //alert(strArrayOne);
+
+    //    if (id == "wd") {
+    //        data.forEach(function (obj) {
+    //            tdate = new Date(s);
+    //            var leaveDates = new Array();
+    //            var holidayDates = new Array();
+    //            k = 12; // index start variable for leave dates
+    //            var mfirstDate = new Date(s.getFullYear(), s.getMonth(), 1);
+    //            var mlastDate = new Date(s.getFullYear(), s.getMonth() + 1, 0);
+    //            var lastdayn = mlastDate.getDate();
+
+    //            var holidayIndex = 100;
+    //            var shiftallocIndex = 100;
+
+
+    //            var weekoffDates = new Array();
+    //            var shiftallocDates = new Array();
+    //            var shiftallocNames = new Array();
+    //            var wo1 = obj[7] - 1;
+    //            var wo2 = obj[8] - 1;
+    //            var worule = obj[9];
+    //            var sworDays = JSON.parse("[" + worule + "]");
+    //            var shiftallocCount = 0;
+
+    //            //switch (worule) {
+    //            //    case "1":
+    //            //        sworDays[0] = 1;
+    //            //        sworDays[1] = 2;
+    //            //        sworDays[2] = 3;
+    //            //        sworDays[3] = 4;
+    //            //        sworDays[3] = 5;
+    //            //    case "2":
+    //            //        sworDays[0] = 2;
+    //            //        sworDays[1] = 4;
+    //            //        break;
+    //            //    case "3":
+    //            //        sworDays[0] = 1;
+    //            //        sworDays[1] = 3;
+    //            //        sworDays[2] = 5;
+    //            //        break;
+
+    //            //    case "4":
+    //            //        sworDays[0] = 1;
+    //            //        sworDays[1] = 3;
+
+    //            //    case "5":
+    //            //        sworDays[0] = 2;
+    //            //        sworDays[1] = 3;
+    //            //}
+    //            var weekoffCount = 1;
+    //            for (var a = 1; a <= lastdayn; a++) {
+
+    //                if (mfirstDate.getDay() == wo2) {
+    //                    if ($.inArray(weekoffCount, sworDays) != -1) {
+    //                        var dsmonth = mfirstDate.getMonth() + 1;
+    //                        var dsdate = mfirstDate.getDate();
+    //                        var dstring = mfirstDate.getFullYear() + "-" + dsmonth + "-" + dsdate;
+    //                        var newWODate = new Date(dstring);
+    //                        newWODate.setHours(0, 0, 0, 0);
+    //                        weekoffDates.push(newWODate);
+    //                    }
+    //                    weekoffCount++;
+    //                }
+
+
+    //                mfirstDate.setDate(mfirstDate.getDate() + 1);
+
+    //            }
+    //            for (var hi = 0; hi < obj.length; hi++) {
+    //                if (obj[hi] == "Holidays") {
+    //                    holidayIndex = hi;
+    //                }
+    //                if (obj[hi] == "ShiftAllocation") {
+    //                    shiftallocIndex = hi;
+    //                }
+    //            }
+
+    //            if (obj.length >= 13 ) {
+    //                var max = holidayIndex < obj.length  ? holidayIndex : obj.length;
+    //                for (var z = 12; z < max; z++) {
+    //                   var leavetimeDiff = Math.abs(new Date(obj[z]).getTime() - new Date(obj[z+1]).getTime());
+    //                   var leavediffDays = Math.ceil(leavetimeDiff / (1000 * 3600 * 24));
+
+    //                    var leaveDate = new Date(obj[z]);
+    //                    leaveDate.setHours(0, 0, 0, 0);
+    //                    leaveDates.push(leaveDate);
+    //                    z++;
+    //                    for (var y = 1; y <= leavediffDays; y++) {
+    //                        var dsmonth = leaveDate.getMonth() + 1;
+    //                        var dsdate = leaveDate.getDate() + y;
+    //                        var dstring = leaveDate.getFullYear() + "-" + dsmonth  + "-" +  dsdate;
+    //                        var newleaveDate = new Date(dstring);
+    //                       newleaveDate.setHours(0, 0, 0, 0);
+    //                       leaveDates.push(newleaveDate);
+
+    //                    }
+    //                }
+    //            }
+
+    //            if (holidayIndex != 100) {
+    //                var max = shiftallocIndex < obj.length ? shiftallocIndex : obj.length;
+    //                for (var z = holidayIndex+1; z < max; z++) {
+    //                    var hDate = new Date(obj[z]);
+    //                    hDate.setHours(0, 0, 0, 0);
+    //                    holidayDates.push(hDate);
+    //                }
+    //            }
+
+    //            if (shiftallocIndex != 100) {
+    //                var max = obj.length;
+    //                for (var z = shiftallocIndex + 1; z < max; z++) {
+    //                    var saDate = new Date(obj[z]);
+    //                    saDate.setHours(0, 0, 0, 0);
+    //                    shiftallocDates.push(saDate);
+    //                    z++;
+    //                    shiftallocNames.push(obj[z]);
+
+    //                }
+    //            }
+
+    //            if (obj[2] == "") {
+    //                obj[2] = "avtar.png";
+    //            }
+    //            tableString += '<tr><td style="width: 20%;"><a href="#small" data-toggle="modal"  class="empdetails"><span class="photo" >' +
+    //                           '<img src="/UploadEmpPhoto/' + obj[2] + '" class="img-circle" alt="" style="width : inherit">' +
+    //                           '</span><span class="subject"><span class="from"><b>' + obj[1] + '</b> </span><span class="from">' +
+    //                           '</span></span></a></td><td id="empids" hidden>' + obj[0] + '</td>';
+    //            //<a class="btn blue btn-outline sbold" data-toggle="modal" href="#small"> View Demo </a>
+    //            var timeDiff = Math.abs(e.getTime() - tdate.getTime());
+    //            var diffDays = Math.ceil(timeDiff / (1000 * 3600 * 24));
+    //            //var keys = Object.keys(obj);
+
+    //            var weekoff = obj[7] - 1;
+    //            var weekoff2 = obj[8] - 1;
+
+
+    //            var d = 0;
+    //            //while (obj[k] !== 'undefined') {
+    //            //    var leaveDate = new Date(obj[k]);
+    //            //    if (leaveDate >= tdate) {
+    //            //        leaveDates[d++] = obj[k];
+    //            //    }
+    //            //    k++
+    //            //}
+
+
+    //            for (var i = 1; i <= diffDays + 1; i++) {
+    //                // var shiftDate = new Date(keys[k]);
+    //                var leaveFlag = false;
+    //                var holidayFlag = false;
+    //                var weekoffCount = 1;
+    //                var weekoffFlag = false;
+    //                var shiftallocFlag = false;
+
+
+    //                leaveDates.forEach(function (leave) {
+    //                    if (leave.toString() == tdate.toString()) {
+    //                        leaveFlag = true;
+    //                    }
+    //                });
+
+    //                holidayDates.forEach(function (holiday) {
+    //                    if (holiday.toString() == tdate.toString()) {
+    //                        holidayFlag = true;
+    //                    }
+    //                });
+
+    //                weekoffDates.forEach(function (weekoffdate) {
+    //                    if (weekoffdate.toString() == tdate.toString()) {
+    //                        weekoffFlag = true;
+    //                    }
+    //                });
+
+    //                shiftallocDates.forEach(function (sadate) {
+    //                    if (sadate.toString() == tdate.toString()) {
+    //                        shiftallocFlag = true;
+    //                    }
+    //                });
+
+    //                if (shiftallocFlag == false) {
+    //                    if (holidayFlag == false) {
+    //                        if (leaveFlag == false) {
+    //                            if (weekoffFlag == false) {
+    //                                if (tdate.getDay() != weekoff) {
+    //                                    if (obj[3] != "0" || obj[4] != "") {
+    //                                        tableString += '<td>' + obj[4] + '</td>';
+    //                                        // k++
+    //                                    } else {
+    //                                        tableString += '<td>' + obj[6] + '</td>';
+    //                                    }
+    //                                } else {
+
+    //                                    tableString += '<td style="color: red;">Off</td>';
+    //                                }
+    //                            } else {
+    //                                tableString += '<td style="color: red;">Off</td>';
+    //                            }
+    //                        } else {
+    //                            tableString += '<td style="color: red;">Leave</td>';
+    //                        }
+    //                    } else {
+    //                        tableString += '<td style="color: red;">Holiday</td>';
+    //                    }
+    //                } else {
+    //                    tableString += '<td>' + shiftallocNames[shiftallocCount] + '</td>';
+    //                    shiftallocCount++;
+    //                }
+
+    //                tdate.setDate(tdate.getDate() + 1);
+    //            }
+
+    //        });
+
+    //        $("#wtbody").html("").html(tableString);
+    //        $('#weekTable').dataTable();
+    //    } else if (id == "md") {
+    //        var tableString = "";
+    //        data.forEach(function (obj) {
+    //            tdate = new Date(s);
+    //            var shiftNoteArr = [];
+    //            var leaveDates = new Array();
+    //            var holidayDates = new Array();
+    //            k = 12; // index start variable for leave dates
+    //            var mfirstDate = new Date(s.getFullYear(), s.getMonth(), 1);
+    //            var mlastDate = new Date(s.getFullYear(), s.getMonth() + 1, 0);
+    //            var lastdayn = mlastDate.getDate();
+
+    //            var holidayIndex = 100;
+    //            var shiftallocIndex = 100;
+
+    //            var weekoffDates = new Array();
+    //            var shiftallocDates = new Array();
+    //            var shiftallocNames = new Array();
+    //            var wo1 = obj[7] - 1;
+    //            var wo2 = obj[8] - 1;
+    //            var worule = obj[9];
+    //            var sworDays = JSON.parse("[" + worule + "]");
+    //            var shiftallocCount = 0;
+
+    //            //switch (worule) {
+    //            //    case "1":
+    //            //        sworDays[0] = 1;
+    //            //        sworDays[1] = 2;
+    //            //        sworDays[2] = 3;
+    //            //        sworDays[3] = 4;
+    //            //        sworDays[3] = 5;
+    //            //    case "2":
+    //            //        sworDays[0] = 2;
+    //            //        sworDays[1] = 4;
+    //            //        break;
+    //            //    case "3":
+    //            //        sworDays[0] = 1;
+    //            //        sworDays[1] = 3;
+    //            //        sworDays[2] = 5;
+    //            //        break;
+
+    //            //    case "4":
+    //            //        sworDays[0] = 1;
+    //            //        sworDays[1] = 3;
+
+    //            //    case "5":
+    //            //        sworDays[0] = 2;
+    //            //        sworDays[1] = 3;
+    //            //}
+    //            var weekoffCount = 1;
+    //            for (var a = 1; a <= lastdayn; a++) {
+
+    //                if (mfirstDate.getDay() == wo2) {
+    //                    if ($.inArray(weekoffCount, sworDays) != -1) {
+    //                        var dsmonth = mfirstDate.getMonth() + 1;
+    //                        var dsdate = mfirstDate.getDate();
+    //                        var dstring = mfirstDate.getFullYear() + "-" + dsmonth + "-" + dsdate;
+    //                        var newWODate = new Date(dstring);
+    //                        newWODate.setHours(0, 0, 0, 0);
+    //                        weekoffDates.push(newWODate);
+    //                    }
+    //                    weekoffCount++;
+    //                }
+
+
+    //                mfirstDate.setDate(mfirstDate.getDate() + 1);
+
+    //            }
+    //            for (var hi = 0; hi < obj.length; hi++) {
+    //                if (obj[hi] == "Holidays") {
+    //                    holidayIndex = hi;
+    //                }
+    //                if (obj[hi] == "ShiftAllocation") {
+    //                    shiftallocIndex = hi;
+    //                }
+    //            }
+    //            if (obj.length >= 13) {
+    //                var max = holidayIndex < obj.length ? holidayIndex : obj.length;
+    //                for (var z = 12; z < max; z++) {
+    //                    var leavetimeDiff = Math.abs(new Date(obj[z]).getTime() - new Date(obj[z + 1]).getTime());
+    //                    var leavediffDays = Math.ceil(leavetimeDiff / (1000 * 3600 * 24));
+
+    //                    var leaveDate = new Date(obj[z]);
+    //                    leaveDate.setHours(0, 0, 0, 0);
+    //                    leaveDates.push(leaveDate);
+    //                    z++;
+    //                    for (var y = 1; y <= leavediffDays; y++) {
+    //                        var dsmonth = leaveDate.getMonth() + 1;
+    //                        var dsdate = leaveDate.getDate() + y;
+    //                        var dstring = leaveDate.getFullYear() + "-" + dsmonth + "-" + dsdate;
+    //                        var newleaveDate = new Date(dstring);
+    //                        newleaveDate.setHours(0, 0, 0, 0);
+    //                        leaveDates.push(newleaveDate);
+
+    //                    }
+    //                }
+    //            }
+
+    //            if (holidayIndex != 100) {
+    //                var max = shiftallocIndex < obj.length ? shiftallocIndex : obj.length;
+    //                for (var z = holidayIndex + 1; z < max; z++) {
+    //                    var hDate = new Date(obj[z]);
+    //                    hDate.setHours(0, 0, 0, 0);
+    //                    holidayDates.push(hDate);
+    //                }
+    //            }
+
+    //            if (shiftallocIndex != 100) {
+    //                var max = obj.length;
+    //                for (var z = shiftallocIndex + 1; z < max; z++) {
+    //                    var saDate = new Date(obj[z]);
+    //                    saDate.setHours(0, 0, 0, 0);
+    //                    shiftallocDates.push(saDate);
+    //                    z++;
+    //                    shiftallocNames.push(obj[z]);
+
+    //                }
+    //            }
+
+
+
+    //            //alert(obj.EmpName);
+    //            if (obj[2] == "") {
+    //                obj[2] = "avtar.png";
+    //            }
+    //            tableString += '<tr><td style="width: 20%;"><a href="#small" data-toggle="modal"  class="empdetailsmd"><span class="photo">' +
+    //                           '<img src="/UploadEmpPhoto/' + obj[2] + '" class="img-circle" alt="" style="width : inherit">' +
+    //                           '</span><span class="subject"><span class="from"><b>' + obj[1] + '</b> </span><span class="from">' +
+    //                           '</span></span></a></td><td id="empidmd" hidden>' + obj[0] + '</td>';
+
+    //            var timeDiff = Math.abs(e.getTime() - tdate.getTime());
+    //            var diffDays = Math.ceil(timeDiff / (1000 * 3600 * 24));
+    //            var weekoff = obj[7] - 1;
+    //            var weekoff2 = obj[8] - 1;
+    //            //var keys = Object.keys(obj);
+    //            //k = 3; // index start variable for dates
+    //            for (var i = 1; i <= diffDays + 1; i++) {
+    //                //  var shiftDate = new Date(keys[k]);
+    //                var leaveFlag = false;
+    //                var holidayFlag = false;
+    //                var weekoffFlag = false;
+    //                var shiftallocFlag = false;
+
+
+
+    //                leaveDates.forEach(function (leave) {
+    //                    if (leave.toString() == tdate.toString()) {
+    //                        leaveFlag = true;
+    //                    }
+    //                });
+
+    //                holidayDates.forEach(function (holiday) {
+    //                    if (holiday.toString() == tdate.toString()) {
+    //                        holidayFlag = true;
+    //                    }
+    //                });
+    //                weekoffDates.forEach(function (weekoffdate) {
+    //                    if (weekoffdate.toString() == tdate.toString()) {
+    //                        weekoffFlag = true;
+    //                    }
+    //                });
+
+    //                shiftallocDates.forEach(function (sadate) {
+    //                    if (sadate.toString() == tdate.toString()) {
+    //                        shiftallocFlag = true;
+    //                    }
+    //                });
+
+    //                if (shiftallocFlag == false) {
+    //                    if (holidayFlag == false) {
+    //                        if (leaveFlag == false) {
+    //                            if (weekoffFlag == false) {
+    //                                if (tdate.getDay() != weekoff) {
+    //                                    if (obj[3] != "0" || obj[4] != "") {
+    //                                        tableString += '<td>' + obj[4].substring(0, 1) + '</td>';
+    //                                        // k++
+    //                                    } else {
+    //                                        tableString += '<td>' + obj[6].substring(0, 1) + '</td>';
+    //                                    }
+    //                                } else {
+
+    //                                    tableString += '<td style="color: red;">W</td>';
+    //                                }
+    //                            } else {
+    //                                tableString += '<td style="color: red;">W</td>';
+    //                            }
+    //                        } else {
+    //                            tableString += '<td style="color: red;">L</td>';
+    //                        }
+    //                    } else {
+    //                        tableString += '<td style="color: red;">H</td>';
+    //                    }
+    //                } else {
+    //                    tableString += '<td>' + shiftallocNames[shiftallocCount].substring(0,1) + '</td>';
+    //                    shiftallocCount++;
+    //                }
+
+
+    //                tdate.setDate(tdate.getDate() + 1);
+    //            }
+
+    //        });
+    //        var noteString = "";
+    //        $("#shiftNotes").html("").html(noteString);
+    //        $("#mtbody").html("").html(tableString);
+    //       // $('#monthtable').dataTable();
+    //    }
+    //}
+    function getEmp() {
+        $("#tblEmp").empty();
+        var allVals = [];
+
+        $("#tblDept .ClsChkDept").each(function () {
+            if ($(this).is(':checked') == true) {
+                allVals.push($(this).attr("id"));
+            }
+        });
+        var bID = $("#ddlBranch").val();
+        $.ajax({
+            type: "POST",
+            url: "/Transactions/GetEmpByDept?empArr=" + DeptIdlst + ";" + bID,
+            contentType: "application/json; charset=utf-8",
+            datatype: "json",
+            async: "false",
+            success: function (response) {
+                if (response.isRedirect) {
+                    window.location.href = response.redirectUrl;
+                }
+                var table = "";
+                if (response != null) {
+                    for (var i = 0; i < response.length; i++) {
+
+                        var tbl = "<tr class='odd gradeX'>";
+                        tbl = tbl + "<td id='eid' hidden>" + response[i].EmpId;
+                        tbl = tbl + "</td>";
+                        tbl = tbl + "<td id='ecode'>" + response[i].Empcode;
+                        tbl = tbl + "</td>";
+                        tbl = tbl + "<td id='enm'>" + response[i].EmpName;
+                        tbl = tbl + "</td>";
+                        tbl = tbl + "<td id='epid'>" + response[i].EmpPunchID;
+                        tbl = tbl + "</td>";
+                        tbl = tbl + "<td id=''><input type='checkbox' onchange='checkedDept(this)' class='ClsChkEmp' id='" + response[i].EmpId + "'/>";
+                        tbl = tbl + "</td>";
+                        tbl = tbl + "</tr>";
+                        table += tbl;
+                    }
+                }
+                $("#tblEmp").destroy;
+                $('#tblEmp').append(table);
+                $('#tblEmp').dataTable({
+                    "columnDefs": [
+                                    {
+                                        "targets": [0],
+                                        "visible": false,
+                                        "searchable": false,
+                                    }
+
+                    ],
+                    "destroy": true,
+                    "bInfo": false,
+                    "bPaginate": false,
+                    "bLengthChange": false,
+                    "columns": [
+                        { "title": "Employee ID" },
+                        { "title": "Code" },
+                        { "title": "Employee Name" },
+                        { "title": "Punch ID" },
+                        { "title": "<input type='checkbox' class='ClsChkAllDept' onchange='AllCheckedEmp(this)' />" }
+                    ],
+                    "order": [[2, 'asc']]
+                });
+                $(".loading").hide();
+            },
+            beforeSend: function () {
+                $(".loading").show();
+            },
+            error: function () {
+                $(".loading").hide();
+            }
+        });
+    }
+
+    function fillCompany() {
+        CompanyDropdown = new Select2Dropdown({
+                    dropdownId: "ddlCompany", // ID of the dropdown
+                    apiUrl: '@_webapiurl' + 'DataDropDownOptimize/GetCompanyDropDownPaginated', // API URL for fetching data
+                    dataKey: "Id", // Key for value
+                    labelKey: "Name", // Key for text
+                    token: '@_tokan', // Optional auth token
+                    chunkSize : Number('@_ChunkSize'),
+                    extraParams: { RoleId: '@_RoleId', CompanyID: '@_cmpid' }
+        });
+
+    }
+
+    function valid() {
+
+        if (Array.isArray(selectedEmpIds) && selectedEmpIds.length == 0) {
+            toastr.remove();
+            toastr.error("Please select employee.");
+            return false;
+        }
+        return true;
+    }
+        function Clear() {
+        totalLoadedRecords = 0;
+        startIndex = 0;
+        selectedEmpIds.clear();
+        fetchedEmpIds.clear();
+        isSelectAllChecked = false;
+        $("#ddlShift").val("0");
+        $("#ddlShift").removeClass('field_error');
+        $("#txtFromDate").val("");
+        $("#txtFromDate").removeClass('field_error');
+        $("#txtToDate").val("");
+        $("#txtToDate").removeClass('field_error');
+        $("#ddlCompany").val(null).trigger("change");
+        $("#ddlBranch").val(null).trigger("change");
+        $("#ddlBranch").empty().trigger('change.select2');;
+
+        $("#FilterFromDate").val("");
+        $("#FilterToDate").val("");
+        $(".alert-danger").hide();
+        $(".alert-success").hide();
+        $("#tblEmp").empty();
+
+        /*$("#DeptIds option:selected").prop("selected", false);*/
+        //$("#tblDept tbody").empty();
+        $(".ClsChkAllDept").prop('checked', false);
+        $(".ClsChkAllEmp").prop('checked', false);
+        $('#btnAllocateShift').attr("disabled", "disabled");
+        $("#btnAllocateShift").unbind("click");
+    }
+    function AllCheckedDept(ths) {
+        $(".popMsg").hide();
+        if ($(ths).prop('checked') == true) {
+            $(".ClsChkDept").prop('checked', true);
+
+        }
+        else {
+            $(".ClsChkDept").prop('checked', false);
+        }
+
+    }
+
+    function AllCheckedEmp(checkbox) {
+        isSelectAllChecked = checkbox.checked;
+        if (!isSelectAllChecked) selectedEmpIds.clear();
+        selectedEmpIds.clear()
+        $('.ClsChkEmp').each(function () {
+            const empId = $(this).attr("id");
+            $(this).prop("checked", isSelectAllChecked);
+
+            if (isSelectAllChecked) {
+                selectedEmpIds.add(empId); // assuming selectedEmpIds is a Set
+            }
+
+            checkedDept(this); // Trigger associated logic
+        });
+
+        $("#chkselectallflage").val(0);
+    }
+
+    function restoreSelectedCheckboxes() {
+        $('.ClsChkEmp').each(function () {
+            if (selectedEmpIds.has(this.id)) {
+                this.checked = true;
+            }
+        });
+    }
+    function checkedDept(ths)
+    {
+        $(".popMsg").hide();
+    }
+
+    function generateShiftgriddata(userid) {
+    $.ajax({
+        url: '@_webapiurl' + "Transaction/GetExcelShiftAllocationGridData?userid=" + userid,
+        type: "GET",
+        headers: { 'Authorization': '@_tokan' },
+        contentType: "application/json; charset=utf-8",
+        datatype: "json",
+        success: function (response) {
+            if (response && response.length > 0) {
+                $("#tblshiftAllocationBulkUpload").show();
+                if ($.fn.dataTable.isDataTable('#tblshiftAllocationBulkUpload')) {
+                    $('#tblshiftAllocationBulkUpload').DataTable().clear().destroy();
+                }
+                var tableData = [];
+                for (var i = 0; i < response.length; i++) {
+                    var row = [];
+                    row.push(i + 1);
+                    row.push(response[i].Startdate);
+                    if (response[i].Status === "Success") {
+                        row.push("<div id = 'row_" + i +"' style='display: flex;'> <span class='green_font'>" + response[i].Status + "</span></div>");
+                    } else if (response[i].Status === "Pending") {
+                        row.push(
+                            "<div id ='row_" + i +"' style='display: flex;'>"+
+                            "<div class='orange_font' id='statusShift_" + i +"'>" + response[i].Status + "</div>" +
+                            "<div class='loading1' style='width: 100px; margin: 0 8px;'>" +
+                            "<div class='progress' style='margin-bottom: 0;'>" +
+                            "<div class='progress-bar'  id='progress_Shift_bar_" + i + "' role='progressbar' style='width: 0%;' aria-valuenow='0' aria-valuemin='0' aria-valuemax='100'></div>" +
+                            "</div>" +
+                            "</div>" +
+                            "<span class='progress-value' id='progress_Shift_val_" + i + "'>0%&nbsp;</span>" +
+                            "</div>"
+                        );
+                    }
+                    else {
+                        row.push(response[i].Status);
+                    }
+                    row.push(response[i].CreatedDtFlag);
+                    row.push(response[i].Err);
+                    if (response[i].Err == 1 && response[i].Status == "Success") {
+                        row.push(
+                            "<a class='btnDownloadErrorList btn btn-xs seagreen_btnnew' " +
+                            "onclick='generateShiftExcelFile(" + response[i].CreatedDtFlag + ")'>" +
+                            "<i class='fa-regular fa-file-excel'></i></a>"
+                        );
+                    }
+                    else if (response[i].Status == "Success")
+                    {
+                        row.push("");
+                    }
+                    else {
+                        row.push(
+                            "<button class='btn btn-xs seagreen_btnnew' style='display:none;' id='regenerate_" + i + "' " +
+                            "onclick='regenerateEntryShift(\"" + response[i].CreatedDtFlag + "\", \"" + compcode + "\",this, " + i + "," + emprole + ", " + cmpid + ", " + branchid +","+ empid +")'>" +
+                            "<i class='fa-light fa-rotate'></i></button>"
+                        );
+                    }
+                    tableData.push(row);
+                }
+                $('#tblshiftAllocationBulkUpload').DataTable({
+                    //dom: _domCommon,
+                    //language: _languageCommon,
+                    data: tableData,
+                    columns: [
+                        { title: "Sr No." , visible:false},
+                        { title: "StartDate" },
+                        { title: "Status" },
+                        { title: "CreatedDtFlag", visible: false },
+                        { title: "Err", visible: false },
+                        { title: "View Error File" }
+                    ],
+
+                    info: false,
+                    paging: false,
+                    ordering: false,
+                    searching: false
+                });
+
+                //setTimeout(function () {
+                //    $("#" + "tblshiftAllocationBulkUpload" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+                //    $('.tooltips').tooltip();
+                //}, 100);
+
+                $("#ajax_loader").hide();
+            }
+        },
+        error: function (xhr, ajaxOptions, thrownError) {
+            $("#ajax_loader").hide();
+        },
+        complete: function () {
+            $("#ajax_loader").hide();
+        }
+    });
+        }
+    function generateprogressdata() {
+            $(".loading1").show();
+            if (interval) {
+                clearInterval(interval);
+                interval = "";
+            }
+            interval = setInterval(() => {
+                $.ajax({
+                    url: '@_webapiurl' + "Transaction/GetProgressShiftAllocationData?compcode=" + compcode,
+                    type: "GET",
+                    headers: { 'Authorization': '@_tokan' },
+                    contentType: "application/json; charset=utf-8",
+                    datatype: "json",
+                    success: function (data) {
+                        if (Array.isArray(data) && data.length > 0 && data[0].Progress !== undefined && data[0].Error !== undefined) {
+                               var progressValue = data[0].Progress;
+                                var responseCompcode = data[0].compcode;
+                                var responseerror = data[0].Error;
+                                if (responseCompcode === compcode) {
+                                    $("#tblshiftAllocationBulkUpload tbody tr").each(function (index) {
+                                      var rowDiv = $(this).find("div[id^='row_']");
+                                      if (rowDiv.length) {
+                                          var rowId = rowDiv.attr("id").replace("row_", "");
+                                          var progressBar = $("#progress_Shift_bar_" + rowId);
+                                          var progressText = $("#progress_Shift_val_" + rowId);
+                                          if (responseerror == 101) {
+                                              //$("#statusShift_" + rowId).text("Failed");
+                                              //$("#regenerate_" + rowId).show();
+                                              GetExcelFailedStatusShiftGridData();
+                                          }
+                                          if (progressBar.length && progressText.length) {
+                                              progressBar.css("width", progressValue + "%").attr("aria-valuenow", progressValue);
+                                              progressText.text(progressValue + "%");
+                                          }
+                                      }
+                                  });
+                                 if (progressValue >= 100) {
+                                     clearInterval(interval);
+                                     $(".loading1").hide();
+                                     generateShiftgriddata(userid);
+                                 }
+                                }
+                            }
+                    },
+                    error: function (jqXHR, ajaxOptions, thrownError) {
+                        if (jqXHR.status === 500) {
+                            toastr.error("Internal Server Error.");
+                        } else if (jqXHR.status === 400) {
+                            toastr.error("Bad Request.");
+                        } else if (jqXHR.status === 401) {
+                            window.location.href = "/PayTime/LoginPage";
+                        }
+                        clearInterval(interval); // Stop interval on error
+                        $(".loading1").hide(); // Hide loading indicator on error
+                    }
+                });
+            }, 3000);
+        }
+    function GetExcelFailedStatusShiftGridData() {
+          $.ajax({
+              url: '@_webapiurl' + "Transaction/GetExcelFailedStatusShiftGridData",
+                      type: "GET",
+                      headers: { 'Authorization': '@_tokan' },
+                      contentType: "application/json; charset=utf-8",
+                      dataType: "json",
+                      success: function (data) {
+                          if (data.length > 0) {
+                              data.forEach(function (item) {
+                                  if (data[0].PendingCount > 0) {
+                                      $("#tblshiftAllocationBulkUpload tbody tr").each(function () {
+                                          var insertedCount = item.InsertedCount;
+                                          var DuplicateCount = item.DuplicateCount;
+                                          var PendingCount = item.PendingCount;
+                                          var totalCount = insertedCount + DuplicateCount + PendingCount;
+                                          var inscount = insertedCount + DuplicateCount;
+                                          var progressValue = Math.round((inscount / totalCount) * 100);
+                                          var rowDiv = $(this).find("div[id^='row_']");
+                                          var rowId = rowDiv.attr("id").replace("row_", "");
+                                          $("#statusShift_" + rowId).text("Pending");
+                                          $("#regenerate_" + rowId).show();
+                                          var progressBar = $("#progress_Shift_bar_" + rowId);
+                                          var progressText = $("#progress_Shift_val_" + rowId);
+                                          if (progressBar.length && progressText.length) {
+                                              progressBar.css("width", progressValue + "%").attr("aria-valuenow", progressValue);
+                                              progressText.text(progressValue + "%");
+                                          }
+                                      });
+                                  }
+                              });
+                          }
+                      },
+                      error: function (jqXHR, ajaxOptions, thrownError) {
+                          if (jqXHR.status === 500) {
+                              toastr.error("Internal Server Error");
+                          } else if (jqXHR.status === 400) {
+                              toastr.error("Bad Request");
+                          } else if (jqXHR.status === 401) {
+                              window.location.href = "/PayTime/LoginPage";
+                          }
+                      }
+                  });
+      }
+    function regenerateEntryShift(_Date, compcode, buttonElement, index, roleid, companyid, branchid,empid) {
+        $(buttonElement).prop('disabled', true);
+        $.ajax({
+            url: '@_webapiurl' + 'Transaction/RegenerateShiftProgress?DtFlag=' + encodeURIComponent(_Date) + "&compcode=" + encodeURIComponent(compcode) + "&roleid=" + encodeURIComponent(roleid) + "&companyid=" + encodeURIComponent(companyid) + "&branchid=" + encodeURIComponent(branchid) + "&loginempid=" + encodeURIComponent(empid),
+            type: 'POST',
+            headers: { 'Authorization': '@_tokan' },
+            dataType: 'json',
+            contentType: "application/json; charset=utf-8",
+            success: function (response) {
+                if (response) {
+                   // toastr.success("Regeneration process started successfully.");
+                } else {
+                   // toastr.warning("No data found for regeneration.");
+                }
+            },
+            error: function (jqXHR, ajaxOptions, thrownError) {
+                if (jqXHR.status === 500) {
+                    toastr.error("Internal Server Error");
+                } else if (jqXHR.status === 400) {
+                    toastr.error("Bad Request");
+                } else if (jqXHR.status === 401) {
+                    window.location.href = "/PayTime/LoginPage";
+                } else {
+                    toastr.error("An unexpected error occurred: " + thrownError);
+                }
+                $(buttonElement).prop('disabled', false);
+            }
+        });
+      }
+    function generateShiftExcelFile(_Date, classMasterValue) {
+    checkSession();
+    var DtFlag = _Date
+    $.ajax({
+        url: "/Transactions/DownloadShiftAllocationErrList",
+        type: "GET",
+        headers: { 'Authorization': '@_tokan' },
+        data: { DtFlag: _Date },
+        contentType: "application/json; charset=utf-8",
+        datatype: "json",
+        success: function (data) {
+            if (typeof data === "string") {
+                try {
+                    data = JSON.parse(data);
+                } catch (error) {
+                    toastr.error("Failed to parse data.");
+                    $("#btnDownloadErrorList").prop('disabled', false);
+                    return;
+                }
+            }
+            if (!Array.isArray(data)) {
+                toastr.error("Unexpected data format received.");
+                $("#btnDownloadErrorList").prop('disabled', false);
+                return;
+            }
+            if (data.length === 0) {
+                toastr.error("No entry found in excel.");
+            } else if (data.isRedirect) {
+                window.location.href = data.redirectUrl;
+
+            } else {
+                try {
+                    function stripHtmlTags(input) {
+                        if (typeof input === 'string') {
+                            return input.replace(/<[^>]+>/g, '').trim();
+                        }
+                        return input;
+                    }
+                     const formattedData = data.map(item => ({
+                         EmpCode: item.EmpCode,
+                         ShiftName: item.ShiftName,
+                         Fromdate: item.Fromdate,
+                         Todate: item.Todate,
+                         Reason: item.Reason
+                     }));
+
+                    var worksheet = XLSX.utils.json_to_sheet(formattedData);
+                    var workbook = XLSX.utils.book_new();
+                    XLSX.utils.book_append_sheet(workbook, worksheet,"ShiftAllocation");
+
+                    // Apply styles to the header row
+                    const range = XLSX.utils.decode_range(worksheet['!ref']);
+                    const headerRow = range.s.r;
+
+                    for (let col = range.s.c; col <= range.e.c; col++) {
+                        const cellAddress = XLSX.utils.encode_cell({ r: headerRow, c: col });
+                        if (!worksheet[cellAddress]) continue;
+
+                        // Add styling properties to the header cells
+                        worksheet[cellAddress].s = {
+                            font: { bold: true, color: { rgb: "FFFFFF" } },
+                            fill: { fgColor: { rgb: "4CAF50" } },
+                            alignment: { horizontal: "center" }
+                        };
+                    }
+
+                    // Optional: Set column widths for better readability
+                    worksheet['!cols'] = [
+                        { wch: 15 },
+                        { wch: 25 },
+                        { wch: 20 },
+                        { wch: 20 },
+                        { wch: 100  }
+                    ];
+
+                    XLSX.writeFile(workbook, 'ShiftAllocation.xlsx');
+                    $("#btnDownloadErrorList").prop('disabled', false);
+
+                } catch (error) {
+                    $("#btnDownloadErrorList").prop('disabled', false);
+
+                }
+            }
+        },
+        error: function (jqXHR, ajaxOptions, thrownError) {
+            if (jqXHR.status == 500) { //InternalServerError = 500,
+                toastr.error("InternalServerError");
+            } else if (jqXHR.status == 400) { //BadRequest = 400,
+                toastr.error("BadRequest");
+            } else if (jqXHR.status == 401) {
+                window.location.href = "/PayTime/LoginPage";
+            }
+        }
+    });
+}
+    function checkSession()
+        {
+      $.ajax({
+          type: "GET",
+          async: false,
+          url: "/ESS/checkSession",
+          contentType: "application/json; charset=utf-8",
+          success: function (data) {
+
+              if (data.isRedirect) {
+                  window.location.href = data.redirectUrl;
+              }
+          },
+          error: function (data) {
+              window.location.href = data;
+          }
+      });
+    }
+
+        $(document).on('input', '.dataTables_filter input', function () {
+            let searchText = $(this).val();
+            if (_isServerSide) {
+                if (searchText.length >= 3) {
+                    totalLoadedRecords = 0;
+                    startIndex = 0;
+                    fetchedEmpIds.clear();
+                    fetchNextRecords(0, 1, function (records, requestId) {
+                        tableInstance.clear().rows.add(records).draw();
+                        totalLoadedRecords = records.length;
+                        startIndex = records.length;
+                        records.forEach(row => fetchedEmpIds.add(row.EmpId));
+                    }, searchText);
+                    $('.ClsChkEmp').each(function () {
+                        if (selectedEmpIds.has(this.id)) {
+                            this.checked = true;
+                        }
+                    });
+                    $('.ClsChkAllDept').prop('checked', false);
+                    if (isSelectAllChecked) {
+                        selectedEmpIds.clear();
+                        isSelectAllChecked = false;
+                    }
+                }
+                else {
+                    if (searchText.length == "") {
+                        totalLoadedRecords = 0;
+                        startIndex = 0;
+                        fetchedEmpIds.clear();
+                        fetchNextRecords(0, 1, function (records, requestId) {
+                            tableInstance.clear().rows.add(records).draw();
+                            totalLoadedRecords = records.length;
+                            startIndex = records.length;
+                            records.forEach(row => fetchedEmpIds.add(row.EmpId));
+                        }, ""); // Send empty search param
+                        $('.ClsChkEmp').each(function () {
+                            if (selectedEmpIds.has(this.id)) {
+                                this.checked = true;
+                            }
+                        });
+                        $('.ClsChkAllDept').prop('checked', false);
+                        if (isSelectAllChecked) {
+                            selectedEmpIds.clear();
+                            isSelectAllChecked = false;
+                        }
+                    }
+                }
+            }
+            else {
+                tableInstance.search(searchText).draw();
+            }
+        });
+         var startIndex = 0;
+        var isFetching = false;
+        var fetchedEmpIds = new Set(); // Store fetched EmpIds to prevent duplicates
+        var debounceTimer;
+        var lastScrollTop = 0; // Track last scroll position
+        var latestRequestId = 0; // Track the latest request
+        var totalLoadedRecords = 0; // Track total records loaded
+        var tableInstance;
+        var _isServerSide = false;
+        var isSelectAllChecked = false;
+
+        function getEmp_load()
+        {
+            isSelectAllChecked = false;
+            selectedEmpIds.clear();
+            fetchedEmpIds.clear();
+            var commonConfig = {};
+            var bID = $("#ddlBranch").val();
+            var pageSize = 50;
+            let isSelectedAll = $("#DeptIdsContainer li").hasClass("multiselect-item multiselect-all active") == true ? 1 : 0;
+            let searchTerm = "";
+            if ($("#DeptIdsContainer li input").hasClass("multiselect-search")) {
+                searchTerm = $("#DeptIdsContainer li .multiselect-search").val().trim();
+            }
+
+           var mainObj =
+            {
+                "RoleId": "@_RoleId",
+                "CompanyIds": $("#ddlCompany").val(),
+                "BranchId": bID,
+               "DepartmentId": DeptIdlst,
+                "DataGridValues":"@_DatagridEmpListThsold",
+                "pageSize": pageSize,
+                "page": "1",
+                "sortColumn": "1",
+                "sortOrder": "1",
+                "LoginEmpId": 0,
+                "SelectAll": isSelectedAll,
+                "SelectAllSearchTerm": searchTerm
+         };
+
+        $.ajax({
+            type: "POST",
+            headers: { 'Authorization': '@_tokan' },
+            url: webapiurl + 'DataGridOptimize/EmployeeGetDataWithLazyLoading',
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            data: JSON.stringify(mainObj),
+            beforeSend: function () {
+                $("#loader_tblEmployee").show();
+            },
+             success: function (response) {
+            if (response && response.Data.length > 0)
+            {
+                $("#loader_tblEmployee").hide();
+                var totalRecordCount = response.TotalRecords;
+                var data = response.Data;
+                _isServerSide = totalRecordCount > mainObj.DataGridValues;
+                data.forEach(row => fetchedEmpIds.add(row.EmpId));
+                totalLoadedRecords = data.length;
+                startIndex = totalLoadedRecords;
+
+                commonConfig =
+                {
+                    "processing": false,
+                    "searching": false,
+                    "ordering": true,
+                    "paging": false,
+                    "info": false,
+                    "lengthChange": true,
+                    "destroy": true,
+                    "deferRender": true,
+                    "order": [[2, 'asc']],
+                   /* "columnDefs": [{ "targets": [0], "visible": false, "searchable": false }], */
+                    "columns": [
+                        { "title": "Code", "data": "Empcode" },
+                        { "title": "Employee Name", "data": "EmpName" },
+                        { "title": "Punch ID", "data": "EmpPunchID" },
+                        {
+                            "title": "<input type='checkbox' class='ClsChkAllDept' onchange='AllCheckedEmp(this)' />",
+                            "data": null,
+                            "orderable": false,  // Prevents sorting on the checkbox column
+                            "className": "text-center",  // Aligns checkbox to center
+                            "render": function (data, type, row) {
+                                return `<div class='text-center'>
+                            <input type='checkbox' class='ClsChkEmp' id='${row.EmpId}' onchange='checkedDept(this)'/>
+                             </div>`;
+                            }
+                        }
+                    ]
+                };
+
+                if (_isServerSide)
+                {
+                    commonConfig.serverSide = false;
+                    commonConfig.searching = true,
+                    commonConfig.ordering = true,
+                    commonConfig.processing = true;
+                    commonConfig.data = data;
+                }
+                else
+                {
+                    commonConfig.serverSide = false; // Disable server-side processing
+                    commonConfig.ajax = null; // Use the initial data provided
+                    commonConfig.data = data;
+                    commonConfig.searching = true,
+                    commonConfig.deferRender = true; // For performance with large data
+                }
+            }
+
+            tableInstance = $('#tblEmp').DataTable(commonConfig);
+
+            function debounce(func, wait) {
+                var timeout;
+                return function () {
+                    var context = this;
+                    var args = arguments;
+                    if (timeout) {
+                        clearTimeout(timeout);
+                    }
+                    timeout = setTimeout(function () {
+                        timeout = null;
+                        func.apply(context, args);
+                    }, wait);
+                };
+            }
+            const handleScroll = debounce(function ()
+            {
+                var $this = $(this);
+                var scrollTop = $this.scrollTop();
+                var scrollHeight = this.scrollHeight;
+                var clientHeight = this.clientHeight;
+                var isScrollingDown = scrollTop > lastScrollTop;
+
+                if (_isServerSide && isScrollingDown &&
+                    scrollTop + clientHeight >= scrollHeight - 50 &&
+                    !isFetching &&
+                    startIndex < totalRecordCount)
+                {
+                    if (startIndex < 50) return;
+                    isFetching = true;
+                    latestRequestId++;
+                    const currentRequestId = latestRequestId;
+                    fetchNextRecords(startIndex, currentRequestId, function (newData, requestId)
+                    {
+                        if (requestId !== latestRequestId)
+                        {
+                            isFetching = false;
+                            return;
+                        }
+
+                        if (newData.length > 0)
+                        {
+                            const uniqueNewData = newData.filter(row =>
+                            {
+                                const isDuplicate = fetchedEmpIds.has(row.EmpId);
+                                if (isDuplicate)
+                                {
+
+                                }
+                                return !isDuplicate;
+                            });
+
+                            if (newData.length > 0)
+                            {
+
+                                const uniqueNewData = newData.filter(row => !fetchedEmpIds.has(row.EmpId));
+                                const empIdArrayToCheck = [];
+                                uniqueNewData.forEach(row => {
+                                    fetchedEmpIds.add(row.EmpId);
+                                    empIdArrayToCheck.push(row.EmpId);
+                                    // Add row to the DataTable
+                                    const newRow = tableInstance.row.add(row).node();
+
+                                    // Auto-check the checkbox if EmpId is in our Set
+                                    const checkbox = $(newRow).find('.ClsChkEmp');
+                                    checkbox.prop('checked', true);
+                                    checkedDept(checkbox[0]); // Trigger additional logic
+                                });
+
+                                // Redraw the table once after adding all rows
+                                tableInstance.draw(false);
+
+                                // Update counters
+                                totalLoadedRecords += uniqueNewData.length;
+                                startIndex = totalLoadedRecords;
+
+                                // Optionally, call checkEmpCheckboxesByIds to ensure any existing rows are checked
+                                checkEmpCheckboxesByIds(empIdArrayToCheck);
+                                //totalLoadedRecords += newData.length;
+                                //startIndex = totalLoadedRecords;
+                            }
+                        }
+                        isFetching = false;
+                    });
+                }
+                else if (!isScrollingDown)
+                {
+
+                }
+                lastScrollTop = scrollTop;
+            }, 300);
+
+                 if (_isServerSide) {
+                     const intervalId = setInterval(() => {
+                         const $scrollContainer = $('#tblEmp_wrapper .table-scrollable');
+                         const container = $scrollContainer[0];
+
+                         if (container && container.scrollHeight > container.clientHeight) {
+                             $scrollContainer.off('scroll').on('scroll', handleScroll);
+                             clearInterval(intervalId);
+                         }
+                     }, 1000);
+                 }
+                 else {
+                     $('#tblEmp_wrapper .table-scrollable').off('scroll'); // Ensure no scroll event for client-side
+                 }
+
+            //if (_isServerSide)
+            //{
+            //    $('#tblEmp_wrapper .table-scrollable').off('scroll').on('scroll', handleScroll);
+            //}
+            //else
+            //{
+            //    $('#tblEmp_wrapper .table-scrollable').off('scroll'); // Ensure no scroll event for client-side
+            //}
+        },
+        error: function (jqXHR, textStatus, errorThrown)
+        {
+            console.error('AJAX Error:', textStatus, errorThrown);
+        },
+        complete: function ()
+            {
+                $(".loading").hide();
+            }
+            });
+    }
+
+    function checkEmpCheckboxesByIds(empIdArray)
+    {
+        if (!Array.isArray(empIdArray) || empIdArray.length === 0) {
+            console.warn('Invalid or empty EmpId array provided.');
+            return;
+        }
+        if (isSelectAllChecked) {
+            // Iterate through each EmpId in the array
+            empIdArray.forEach(empId => {
+                // Find the checkbox with the matching EmpId
+                const checkbox = $(`#tblEmp .ClsChkEmp[id="${empId}"]`);
+                if (checkbox.length > 0) {
+                    selectedEmpIds.add(empId);
+                    checkbox.prop('checked', true);
+                    checkedDept(checkbox[0]); // Trigger associated logic
+                } else {
+                    console.warn(`Checkbox for EmpId ${empId} not found in the table.`);
+                }
+            });
+        }
+    }
+        function checkSelectedIds() {
+            if (selectedEmpIds.size() > 0) {
+                for (let id in selectedEmpIds) {
+                    const checkbox = $(`#tblEmp .ClsChkEmp[id="${id}"]`);
+                    if (checkbox.length > 0) {
+                        selectedEmpIds.add(empId);
+                        checkbox.prop('checked', true);
+                        checkedDept(checkbox[0]); // Trigger associated logic
+                    } else {
+                        console.warn(`Checkbox for EmpId ${empId} not found in the table.`);
+                    }
+                }
+            }
+        }
+        function fetchNextRecords(startIndex, requestId, callback, searchValue) {
+            let isSelectedAll = $("#DeptIdsContainer li").hasClass("multiselect-item multiselect-all active") == true ? 1 : 0;
+            let searchTerm = "";
+            if ($("#DeptIdsContainer li input").hasClass("multiselect-search")) {
+                searchTerm = $("#DeptIdsContainer li .multiselect-search").val().trim();
+            }
+        $.ajax({
+            type: "POST",
+            headers: { 'Authorization': '@_tokan' },
+            url: '/DataGridOptimize/GetLazyLoadingGetEmployee',
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            data: JSON.stringify({
+                start: startIndex,
+                length: 50,
+                RoleId: "@_RoleId",
+                CompanyIds: $("#ddlCompany").val(),
+                BranchId: $("#ddlBranch").val(),
+                DepartmentId: DeptIdlst,
+                DatagridThresold:"@_DatagridEmpListThsold",
+                search: {
+                    value: $("#tblEmp_filter input").val().trim() || ''
+                },
+                SelectAllDept: isSelectedAll,
+                SelectAllSearchTermDept: searchTerm
+                
+            }),
+            beforeSend: function ()
+            {
+                $("#loader_tblEmployee").show();
+            },
+            success: function (response) {
+                if (response && response.data && response.data.length > 0)
+                {
+                    callback(response.data, requestId);
+                }
+                else
+                {
+                    callback([], requestId);
+                }
+            },
+            error: function (jqXHR, textStatus, errorThrown)
+            {
+                console.error('Error fetching records for request ID:', requestId, textStatus, errorThrown);
+                callback([], requestId);
+            },
+            complete: function () {
+                $("#loader_tblEmployee").hide();
+            }
+        });
+    }
+        function syncSelectAllState() {
+            $('.ClsChkAllDept').prop('checked', false);
+            isSelectAllChecked = false;
+        }
+    </script>
+    <div class="modal_bg loading" aria-hidden="true">
+        <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading" />
+    </div>
+
+    <div class="portlet margin-bottom-25" id="shiftallocationdata" style="display: none">
+        <div class="row">
+            <div class="col-lg-12">
+                <form id="uploadForm" enctype="multipart/form-data">
+                    <div class="row">
+                        <div class="col-lg-12">
+                            <div class="sample_sheet_box margin-bottom-10">
+                                <h4 style="font-size: 16px; font-weight: 500; color: #555555; margin-top: 0;">Bulk Shift Allocation</h4>
+                            </div>
+                            <div class="row">
+                                <div class="col-lg-6 margin-bottom-5">
+                                    <div class="form-group margin-0">
+                                        <label>Select File<span class="required" aria-required="true"> * </span></label>
+                                        <div class="fileinput fileinput-new" data-provides="fileinput">
+                                            <div class="input-group">
+                                                <div class="form-control uneditable-input input-fixed input" data-trigger="fileinput">
+                                                    <i class="fa-light fa-file-excel"></i>&nbsp;
+                                                    <span class="fileinput-filename"> </span>
+                                                </div>
+                                                <span class="input-group-addon btn blue btn-file">
+                                                    <span class="fileinput-new"> Select File </span>
+                                                    <span class="fileinput-exists"> Change </span>
+                                                    <input type="file" name="FileUpload" id="FileUpload">
+                                                </span>
+                                                <a href="javascript:;" class="input-group-addon btn red fileinput-exists" data-dismiss="fileinput"> Remove </a>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-lg-6 text-right" style="margin-top: 23px;">
+                                    <div class="align-items-center d-flex justify-content-between text-right">
+                                        <a class="btn green-dark save_btn" href="~/SampleXlFile/ShiftAllocationSample.xls" download>Download Sample</a>
+                                        <button type="submit" id="btnImport" class="btn save_btn"><i class="fa-regular fa-upload"></i> Import</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-lg-12 margin-top-10">
+                            @*<div class="shiftbulk_responsive table-responsive" id="tableResponsive">*@
+                            <table id="tblshiftAllocationBulkUpload" class="table table-striped table-bordered table-hover order-column dataTable no-footer" style="text-align:center;" cellspacing="0" width="80%">
+                                <thead>
+                                    <tr>
+                                        <th style="text-align:left;" hidden>Sr No.</th>
+                                        <th style="text-align:left; min-width: 120px;">Start Date</th>
+                                        <th style="text-align: left; min-width: 140px;">Status</th>
+                                        <th hidden>CreatedDtFlag</th>
+                                        <th hidden>Err</th>
+                                        <th style="text-align: left; min-width: 100px;">View Error File</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                </tbody>
+                            </table>
+                            @*</div>*@
+                        </div>
+
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-4 col-md-4 col-sm-12 col-xs-12">
+            <div class="portlet">
+                <div class="portlet-body">
+                    <div class="row">
+                        <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                            <div class="form-group">
+                                <label>Select Company</label>
+                                <select class="form-control input-sm  select2" id="ddlCompany" name="ddlCompany">
+                                    @*<option value="0" selected>Select Company </option>
+                                        @foreach (var item in ViewBag.CompanyList as IEnumerable<SelectListItem>)
+                                        {
+                                              <option value="@item.Value">@item.Text</option>
+                                        }*@
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                            <div class="form-group">
+                                <label>Select Branch</label>
+                                <select class="form-control input-sm select2" id="ddlBranch" name="ddlBranch">
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                            <div class="form-group data_picker_box">
+                                <label>From Date</label>
+                                <div class="input-group date date-picker" data-date-format="@_isdateformat" data-date-viewmode="years">
+                                    @if (@_isdateformat == "dd-M-yyyy" || @_isdateformat == "M-dd-yyyy" || @_isdateformat == "yyyy-M-dd")
+                                    {
+                                        <input type="text" placeholder="@_isdateformat.Replace("M","MMM")" id="FilterFromDate" class="form-control input-sm" autocomplete="off">
+                                    }
+                                    else
+                                    {
+                                        <input type="text" placeholder="@_isdateformat" id="FilterFromDate" class="form-control input-sm" autocomplete="off">
+                                    }
+                                    <span class="input-group-btn">
+                                        <button class="btn default btn-sm" type="button">
+                                            <i class="fa-light fa-calendar-days"></i>
+                                        </button>
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                            <div class="form-group data_picker_box">
+                                <label>To Date</label>
+                                <div class="input-group date date-picker" data-date-format="@_isdateformat" data-date-viewmode="years">
+                                    @if (@_isdateformat == "dd-M-yyyy" || @_isdateformat == "M-dd-yyyy" || @_isdateformat == "yyyy-M-dd")
+                                    {
+                                        <input type="text" placeholder="@_isdateformat.Replace("M","MMM")" id="FilterToDate" class="form-control input-sm" autocomplete="off">
+                                    }
+                                    else
+                                    {
+                                        <input type="text" placeholder="@_isdateformat" id="FilterToDate" class="form-control input-sm" autocomplete="off">
+                                    }
+                                    <span class="input-group-btn">
+                                        <button class="btn default btn-sm" type="button">
+                                            <i class="fa-light fa-calendar-days"></i>
+                                        </button>
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                        @*<div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                                <ul class="nav week-month">
+                                    <li class="active ">
+                                        <a href="#portlet_tab1" data-toggle="tab" aria-expanded="false"> Week </a>
+                                    </li>
+                                    <li class="">
+                                        <a href="#portlet_tab2" data-toggle="tab" aria-expanded="false"> Month </a>
+                                    </li>
+
+                                </ul>
+                            </div>*@
+                        <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                            @if (obj.CanAdd)
+                            {
+                                <a href="javascript:void(0)" id="btnAllocateShift" class="btn save_btn" data-toggle="modal"><i class="fa-solid fa-plus"></i> Allocate Shift</a>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-8 col-md-8 col-sm-12 col-xs-12">
+            <div class="portlet">
+                <div class="portlet-body">
+                    <div class="row">
+                        <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                            <div class="important_note">
+                                <b>Important Note :</b>
+                                <span class="label label-sm label-danger">Week Off</span>
+                                <span class="label label-sm label-success">Holidays</span>
+                                <span class="label label-sm label-info">Shifts</span>
+                            </div>
+                        </div>
+                        <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 clsTable">
+                            <div class="shift_responsive table-responsive" id="tableResponsive">
+                                <table class="table new_datatbl new_datatbl table-striped table-bordered table-hover order-column" id="tblShiftAllocation">
+                                    <tr>
+                                        <th>Employee Name</th>
+                                        <th>Emp PunchId</th>
+                                        <th>Shift Name</th>
+                                        <th>Shift Date</th>
+                                    </tr>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @*<div class="portlet">
+            <div class="portlet-body">
+                <div class="tab-content">
+                    <div class="tab-pane active sticky-wrap " id="portlet_tab1">
+                        <div class="table-responsive">
+                            <table id="weekTable" class="table  table-bordered table-full-width table table-hover text-center table-striped table-condensed">
+                                <thead style="vertical-align:middle; background:#eee; color:#000;">
+                                    <tr id="shiftAllocationTableHead">
+                                        <td width="20%"><b>Employees</b></td>
+                                        <td hidden>IDS</td>
+                                        <td>	<span id="wd1">	    </span>	</td>
+                                        <td>	<span id="wd2">	 	</span>	</td>
+                                        <td>	<span id="wd3">		</span>	</td>
+                                        <td>	<span id="wd4"> 	</span>	</td>
+                                        <td>	<span id="wd5">		</span>	</td>
+                                        <td>	<span id="wd6">		</span>	</td>
+                                        <td>	<span id="wd7">	 	</span>	</td>
+                                    </tr>
+                                </thead>
+                                <tbody id="wtbody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="tab-pane" id="portlet_tab2">
+                        <div class="table-responsive">
+                            <table id="monthtable" class="table  table-bordered table-full-width table table-hover text-center table-striped table-condensed">
+                                <thead style="vertical-align:middle; background:#eee; color:#000;">
+                                    <tr>
+                                        <td style="width: 20% !important;"><b>Employees</b> </td>
+                                        <td hidden>IDS</td>
+                                        <td id="md1">	<span>		</span>	</td>
+                                        <td id="md2">	<span>		</span>	</td>
+                                        <td id="md3">	<span>	    </span>	</td>
+                                        <td id="md4">	<span>		</span>	</td>
+                                        <td id="md5">	<span>	    </span>	</td>
+                                        <td id="md6">	<span>		</span>	</td>
+                                        <td id="md7">	<span>		</span>	</td>
+                                        <td id="md8">	<span>		</span>	</td>
+                                        <td id="md9">	<span>  	</span>	</td>
+                                        <td id="md10">	<span>		</span>	</td>
+                                        <td id="md11">	<span>		</span>	</td>
+                                        <td id="md12">	<span>		</span>	</td>
+                                        <td id="md13">	<span>		</span>	</td>
+                                        <td id="md14">	<span>		</span>	</td>
+                                        <td id="md15">	<span>		</span>	</td>
+                                        <td id="md16">	<span>		</span>	</td>
+                                        <td id="md17">	<span>		</span>	</td>
+                                        <td id="md18">	<span>		</span>	</td>
+                                        <td id="md19">	<span>		</span>	</td>
+                                        <td id="md20">	<span>		</span>	</td>
+                                        <td id="md21">	<span>		</span>	</td>
+                                        <td id="md22">	<span>		</span>	</td>
+                                        <td id="md23">	<span>		</span>	</td>
+                                        <td id="md24">	<span>		</span>	</td>
+                                        <td id="md25">	<span>		</span>	</td>
+                                        <td id="md26">	<span>		</span>	</td>
+                                        <td id="md27">	<span>		</span>	</td>
+                                        <td id="md28">	<span>		</span>	</td>
+                                        <td id="md29">	<span>		</span>	</td>
+                                        <td id="md30">	<span>		</span>	</td>
+                                        <td id="md31">	<span>		</span>	</td>
+                                    </tr>
+                                </thead>
+                                <tbody id="mtbody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>*@
+    <div id="frmpopup" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    <h4 class="modal-title">Shift Allocation</h4>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-danger popMsg" hidden>
+                        <a href="#" class="close" data-dismiss="alert">&times;</a>
+                        <strong id="strstg">Error ! </strong> @_error
+                    </div>
+                    <div class="stepwizard">
+                        <div class="stepwizard-row setup-panel">
+                            <div class="stepwizard-step">
+                                <a href="#step-1" id="s1" type="button" class="btn btn-primary btn-circle test disabled"><i class="fa-regular fa-sitemap"></i> Select Department</a>
+                            </div>
+                            <div class="stepwizard-step">
+                                <a href="#step-2" id="s2" type="button" class="btn btn-default btn-circle test1 disabled"><i class="fa-regular fa-user"></i> Select Employee</a>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="setup-content" id="step-1">
+                        <div class="modal-card">
+                            <fieldset>
+                                <div class="row">
+                                    <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                        <div class="form-group">
+                                            <label>Shift <span class="required" aria-required="true"> * </span></label>
+                                            <select class="form-control input-sm" id="ddlShift" name="ddlShift">
+                                                <option value="0" selected> Select Allocation Type </option>
+                                                @foreach (var item in ViewBag.ShiftList as IEnumerable<SelectListItem>)
+                                                {
+                                                    <option value="@item.Value">@item.Text</option>
+                                                }
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                        <div class="form-group" id="DeptIdsContainer">
+                                            <label class="control-label">Department <span class="required" aria-required="true"> * </span></label>
+                                            <input type="text" id="txt2" value="0" hidden />
+                                            <select id="DeptIds" class="mt-multiselect btn blue btn-outline" multiple="multiple" data-width="100%"></select>
+                                        </div>
+                                    </div>
+                                    <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                        <div class="form-group data_picker_box">
+                                            <label>From Date <span class="required" aria-required="true"> * </span></label>
+                                            <div class="input-group  date date-picker" data-date-format="@_isdateformat" data-date-viewmode="years">
+                                                @if (_isdateformat == "dd-M-yyyy" || _isdateformat == "M-dd-yyyy" || _isdateformat == "yyyy-M-dd")
+                                                {
+                                                    <input type="text" placeholder="@_isdateformat.Replace("M","MMM")" id="txtFromDate" class="form-control input-sm" value="@DateTime.Today" autocomplete="off">
+                                                }
+                                                else
+                                                {
+                                                    <input type="text" placeholder="@_isdateformat" id="txtFromDate" class="form-control input-sm" value="@DateTime.Today" autocomplete="off">
+                                                }
+                                                <span class="input-group-btn">
+                                                    <button class="btn default btn-sm" type="button">
+                                                        <i class="fa-light fa-calendar-days"></i>
+                                                    </button>
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                        <div class="form-group data_picker_box">
+                                            <label>To Date <span class="required" aria-required="true"> * </span></label>
+                                            <div class="input-group  date date-picker" data-date-format="@_isdateformat" data-date-viewmode="years">
+                                                @if (_isdateformat == "dd-M-yyyy" || _isdateformat == "M-dd-yyyy" || _isdateformat == "yyyy-M-dd")
+                                                {
+                                                    <input type="text" placeholder="@_isdateformat.Replace("M","MMM")" id="txtToDate" class="form-control input-sm" autocomplete="off">
+                                                }
+                                                else
+                                                {
+                                                    <input type="text" placeholder="@_isdateformat" id="txtToDate" class="form-control input-sm" autocomplete="off">
+                                                }
+                                                <span class="input-group-btn">
+                                                    <button class="btn default btn-sm" type="button">
+                                                        <i class="fa-light fa-calendar-days"></i>
+                                                    </button>
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        @*<div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                                            <label>Department <span class="required" aria-required="true"> * </span></label>
+                                            <div class="divDept">
+                                                <table class="table table-striped table-bordered table-hover table-checkable order-column" id="tblDept"></table>
+                                            </div>
+                                                    </div>*@
+                                        @*<div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                                                <hr class="save_hr_line" />
+                                                <button class="btn nextBtn next_btn" type="button" id="frstnext"> Next <i class="fa-light fa-angle-right"></i></button>
+                                            </div>*@
+                                    </div>
+                            </fieldset>
+                        </div>
+                    </div>
+                    <div class="setup-content" id="step-2">
+                        <fieldset>
+                            <div class="row">
+                                <div id="loader_tblEmployee" class="modal_bg loading" style="display:none;">
+                                    <img src="~/LandingAssets/images/loading.gif" style="width: 60px; top: 40%; position: relative;" alt="loading" title="loading" />
+                                </div>
+                                <input type="hidden" id="chkselectallflage" value="0" />
+                                <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                                    <div class="divEmp">
+                                        <label class="lbl_emp">Employee</label>
+                                        <table class="table table-striped table-bordered table-hover table-checkable order-column" id="tblEmp"></table>
+                                    </div>
+                                </div>
+                            </div>
+                        </fieldset>
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+
+                    <!-- First Tab Button -->
+                    <div class="row" id="FrstTabBtnDiv" style="display:none;">
+                        <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                            <button class="btn nextBtn next_btn" type="button" id="frstnext"> Next <i class="fa-light fa-angle-right"></i></button>
+                        </div>
+                    </div>
+
+                    <!-- Second Tab Button -->
+                    <div class="row" id="SecondTabBtnDiv" style="display:none;">
+                        <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                            <button class="btn prevbtn prev_btn" type="button" id="Secondprev"> <i class="fa-regular fa-angle-left"></i> Prev</button>
+                            <button class="btn save_btn" type="submit" id="btnSave"><i class="fa-light fa-floppy-disk"></i> Save</button>
+                        </div>
+                    </div>
+
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="small" role="dialog" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    <h4 class="modal-title">Employee Details</h4>
+                </div>
+                <div class="modal-body">
+                    <div class="form-body">
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="profile-userpic">
+                                    <img src="" class="img-responsive" alt="" id="employeeimg">
+                                </div>
+                            </div>
+                            <div class="col-md-2">
+                                <div class="form-group">
+                                    <label class="control-label"><b>Name</b></label>
+                                </div>
+                                <div class="form-group">
+                                    <label class="control-label"><b>Mobile</b></label>
+                                </div>
+                                <div class="form-group">
+                                    <label class="control-label"><b>Email</b></label>
+                                </div>
+                                <div class="form-group">
+                                    <label class="control-label"><b>Designation</b></label>
+                                </div>
+                            </div>
+                            <div class="col-md-5">
+                                <div class="form-group">
+                                    <label class="control-label" id="ename"></label>
+                                </div>
+                                <div class="form-group">
+                                    <label class="control-label" id="emobile"></label>
+                                </div>
+                                <div class="form-group">
+                                    <label class="control-label" id="eEmail"></label>
+                                </div>
+                                <div class="form-group">
+                                    <label class="control-label" id="eDesignationName"></label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        @*<button type="button" class="btn dark btn-outline" data-dismiss="modal">Close</button>
+                            <button type="button" class="btn green">Save changes</button>*@
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+}
+else
+{
+    <span style="color:red">Unauthorized Access.</span>
+}
+
+<script>
+    $('.overlay').fadeIn('fast').delay(5000).fadeOut('slow');
+</script>
+
+

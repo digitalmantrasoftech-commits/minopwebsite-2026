@@ -1,0 +1,433 @@
+﻿@model PayTimeWebClient.Models.reqDailyInOutReport
+@using System.Configuration;
+@{
+    ViewBag.Title = "Report Dashboard";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    //string _ReportName = HttpContext.Current.Request.["name"].ToString();
+    //string selectedOption = ViewBag.SelectedOption;
+}
+<script src="~/AssetsNew/js/CommonValidation.js"></script>
+<script>
+    var selectedEmpArray = new Array();
+   
+    $(document).ready(function () {
+
+        var dtc = $.datepicker.formatDate('yy-mm-dd', new Date());
+
+        //$('#ReportName').val('selectedOption');
+        $('#FromDate').val(dtc);
+        $('#Todate').val(dtc);
+        $('#CompanyID').change(function () {
+            var s = $('#CompanyID').val();
+            $('#CompanyName').val($('#CompanyID :selected').text());
+            fillBranchbycompnyid(s, "");
+        });
+        $('#BranchId').change(function () {
+            var s = $('#BranchId').val();
+            $('#BranchName').val($('#BranchId :selected').text());
+            fillDeptTable(s, "");
+        });
+        function fillBranchbycompnyid(companyid, selectbranch) {
+            $('#BranchId').empty();
+            $.ajax(
+             {
+                 type: "GET",
+                 url: "/MasterData/GetBranchbycomapny",
+                 data: { comapanyid: companyid },
+                 contentType: "application/json; charset=utf-8",
+                 dataType: "json",
+
+                 success: function (data) {
+                     //alert(data[0].BranchId);
+                     if (data.isRedirect) {
+                         window.location.href = data.redirectUrl;
+                     }
+                     var markup = '';
+
+                     for (var x = 0; x < data.length; x++) {
+                         markup += "<option value=" + data[x].BranchId + ">" + data[x].BranchName + "</option>";
+                     }
+                     var newOption = '<option selected="selected"  value="">Select Branch</option>';
+
+                     $('#BranchId').html(newOption);
+                     $('#BranchId').append(markup);
+                     $('#BranchId').val(selectbranch);
+                 },
+                 error: function (jqXHR, ajaxOptions, thrownError) {
+                     $('.loading').hide();
+
+                     if (jqXHR.status == 500) { //InternalServerError = 500,
+                         toastr.error("InternalServerError");
+                     } else if (jqXHR.status == 400) { //BadRequest = 400,
+                         toastr.error("BadRequest");
+                     } else if (jqXHR.status == 401) {
+                         window.location.href = "/PayTime/LoginPage";
+                     }
+                 },
+             });
+        }
+        function fillDeptTable(BranchId, selectedDept) {
+            $('#DepartmentIdTbl').empty();
+            $.ajax(
+             {
+                 type: "GET",
+                 url: "/MasterData/GetDeptbyBranch",
+                 data: { BranchId: BranchId },
+                 contentType: "application/json; charset=utf-8",
+                 dataType: "json",
+                 success: function (data) {
+                     if (data.isRedirect) {
+                         window.location.href = data.redirectUrl;
+                     }
+                     var n = 1;
+                     var markup = '';
+
+                     for (var x = 0; x < data.length; x++) {
+                         //  markup += "<option value=" + data[x].Value + ">" + data[x].Text + "</option>";
+                         markup += " <tr> <td>" + data[x].Text + "</td> "
+                         markup += "<td id=Col_" + data[x].Value + "><input type=checkbox value='" + data[x].Value + "' id='ChkDept' onchange=fillEmpTable('" + data[x].Value + "',checked); /></td></tr>"
+                         n++;
+
+                     }
+                     //var newOption = '<option selected="selected"  value="">Select Branch</option>';
+
+                     //$('#DepartmentId').html(newOption);
+                     $('#DepartmentIdTbl').append(markup);
+
+
+
+                     // $('#DepartmentId').val(selectedDept);
+
+
+
+                 },
+                 error: function (jqXHR, ajaxOptions, thrownError) {
+                     $('.loading').hide();
+
+                     if (jqXHR.status == 500) { //InternalServerError = 500,
+                         toastr.error("InternalServerError");
+                     } else if (jqXHR.status == 400) { //BadRequest = 400,
+                         toastr.error("BadRequest");
+                     } else if (jqXHR.status == 401) {
+                         window.location.href = "/PayTime/LoginPage";
+                     }
+                 },
+             });
+        }
+        $('#ChkAll').click(function (e) {
+            $('#EmpIdTbl tr').remove();
+            var table = $(e.target).closest('table');
+            $('td input:checkbox', table).prop('checked', this.checked);
+            for (i = 0; i < $('td input:checkbox', table).length; i++) {
+
+                if ($('td input:checkbox', table)[i].checked == true) {
+                    var DeptCode = $('td input:checkbox', table)[i].value;
+                    fillEmpTable(DeptCode, true)
+                }
+                else {
+                    $('#EmpIdTbl tr').remove();
+                }
+            }
+        });
+        $('#ChkAllEmp').click(function (e) {
+            var table = $(e.target).closest('table');
+            $('td input:checkbox', table).prop('checked', this.checked);
+            for (i = 0; i < $('td input:checkbox', table).length; i++) {
+                if ($('td input:checkbox', table)[i].checked == true) {
+                    var EmpCode = $('td input:checkbox', table)[i].value;
+                    EmpIdArray(EmpCode, true)
+                }
+            }
+        });
+        function fillAllTable() {
+            var obj = { FromDate: $("#fromdt").val(), Todate: $("#todt").val(), EmpID: selectedEmpArray };
+            $.ajax(
+             {
+                 type: "Post",
+                 url: "/Report/GetDailyInOutReport",
+                 //data: {'FromDate : '+  $("#fromdt").val() + ', Todate:' + $("#todt").val() + ', EmpID : ' +  JSON.stringify(selectedEmpArray) },
+                 // data: obj,//{ 'FromDate': $("#fromdt").val(), 'Todate': $("#todt").val(), 'EmpID': JSON.stringify(selectedEmpArray) },
+                 //url: "/Report/GetDailyInOutReport",
+                 dataType: "json",
+                 data: { 'reqobj': obj },
+                 contentType: "application/json; charset=utf-8",
+                 //dataType: "json",
+                 success: function (data) {
+                     //alert(data);
+                     if (data.isRedirect) {
+                         window.location.href = data.redirectUrl;
+                     }
+
+                     //var markup = '';
+                     //if (data != null) {
+                     //    for (var x = 0; x < data.length; x++) {
+                     //        if (data[x] != null) {
+                     //            markup += " <tr> <td>" + data[x].EmpID + "</td> "
+                     //            markup += "<td>" + data[x].Name + "</td> "
+                     //            markup += "<td>" + data[x].EmpName + "</td> "
+                     //            markup += "<td>" + data[x].TotHour + "</td> "
+                     //            markup += "<td>" + data[x].CardNo + "</td> "
+                     //            markup += "<td>" + data[x].Attn_dt + "</td> "
+                     //            markup += "<td>" + data[x].DepartmentName + "</td> "
+                     //            markup += "<td>" + data[x].DesignationName + "</td> "
+                     //            markup += "<td>" + data[x].ShiftName + "</td> "
+                     //            markup += "<td>" + data[x].FinalStatus + "</td> "
+                     //            markup += "<td>" + data[x].LessHr + "</td> "
+                     //            markup += "<td>" + data[x].LateHr + "</td> "
+                     //            markup += "<td>" + data[x].EarlyHr + "</td> "
+                     //            markup += "<td>" + data[x].OTHr + "</td> "
+                     //            markup += "<td>" + data[x].ShiftStartTime + "</td> "
+                     //            markup += "<td>" + data[x].BranchName + "</td> "
+                     //            markup += "<td>" + data[x].CompanyName + "</td> "
+                     //            markup += "<td>" + data[x].InTimeFull + "</td> "
+                     //            markup += "<td>" + data[x].InTime + "</td> "
+                     //            markup += "<td>" + data[x].OutTime + "</td> "
+                     //            markup += "<td>" + data[x].EarlyIN + "</td> "
+                     //            markup += "<td>" + data[x].LateOUT + "</td> "
+                     //            markup += "<td>" + data[x].HalfLeavePresent + "</td></tr> "
+                     //        }
+                     //    }
+                     //}
+                     //$('#TblMainAllBody').append(markup);
+                 },
+                 error: function (jqXHR, ajaxOptions, thrownError) {
+                     $('.loading').hide();
+
+                     if (jqXHR.status == 500) { //InternalServerError = 500,
+                         toastr.error("InternalServerError");
+                     } else if (jqXHR.status == 400) { //BadRequest = 400,
+                         toastr.error("BadRequest");
+                     } else if (jqXHR.status == 401) {
+                         window.location.href = "/PayTime/LoginPage";
+                     }
+                 },
+             });
+        };
+
+
+
+
+    });
+    function fillEmpTable(DepartmentId, selectedEmp) {
+        if (DepartmentId != 0 && selectedEmp != false) {
+            $.ajax(
+             {
+                 type: "GET",
+                 url: "/MasterData/GetEmpByDept",
+                 data: { DepartmentId: DepartmentId },
+                 contentType: "application/json; charset=utf-8",
+                 dataType: "json",
+                 success: function (data) {
+                     if (data.isRedirect) {
+                         window.location.href = data.redirectUrl;
+                     }
+                     var markup = '';
+                     var tmpDepartmentId;
+
+
+                     $('#EmpIdTbl tr').each(function () {
+                         var customerId = $(this).find(".PunchID").html();
+                     });
+
+
+                     for (var x = 0; x < data.length; x++) {
+                         markup += " <tr class='row_" + data[x].DepartmentId + "' > <td>" + data[x].EmpName + "</td> "
+                         markup += " <td class=PunchID>" + data[x].EmpPunchID + "</td> "
+                         markup += "<td id=Col_" + data[x].EmpId + "><input type='checkbox' onchange=EmpIdArray('" + data[x].EmpId + "',checked);   value='" + data[x].DepartmentId + "' id='ChkEmp' /></td></tr>"
+                         tmpDepartmentId = data[x].DepartmentId;
+                     }
+
+                     if (selectedEmp == true) {
+
+                         $('#EmpIdTbl').append(markup);
+
+
+                     }
+                     if (selectedEmp == false) {
+                         var CheckBoxChkEmp = $("input[name=ChkEmp]");
+                         for (var i = 0; i < CheckBoxChkEmp.length; i++) {
+                             var vv = CheckBoxChkEmp[i].value;
+                             if (vv == tmpDepartmentId) {
+                                 CheckBoxChkEmp[i].closest('tr').remove();
+                             }
+                         }
+                     }
+                 },
+                 error: function (jqXHR, ajaxOptions, thrownError) {
+                     $('.loading').hide();
+
+                     if (jqXHR.status == 500) { //InternalServerError = 500,
+                         toastr.error("InternalServerError");
+                     } else if (jqXHR.status == 400) { //BadRequest = 400,
+                         toastr.error("BadRequest");
+                     } else if (jqXHR.status == 401) {
+                         window.location.href = "/PayTime/LoginPage";
+                     }
+                 },
+             });
+        }
+        else {
+            $('#EmpIdTbl .row_' + DepartmentId + '').remove();
+        }
+    };
+    function EmpIdArray(selectedEmpId, selection) {
+        if (selection == true) {
+            selectedEmpArray.push(selectedEmpId)
+        }
+        if (selection == false) {
+            selectedEmpArray = jQuery.grep(selectedEmpArray, function (value) {
+                return value != selectedEmpId;
+            });
+
+        }
+
+        $("#EmpID").val(JSON.stringify(selectedEmpArray));
+        //alert($("#EmpID").val());
+    };
+</script>
+<div class="row">
+    <div class="col-md-8">
+        <h1 class="page-title">
+            Report
+        </h1>
+    </div>
+    <div class="col-md-4 text-right">
+        <div class="dropdown dropdown-quick-sidebar-toggler">
+            <a href="javascript:;" class="dropdown-toggle btn green">
+                <i class="fa-light fa-filter"></i> Filter
+            </a>
+        </div>
+    </div>
+</div>
+
+
+<div class="row">
+
+    <div class="col-md-12">
+
+
+    </div>
+
+</div>
+<div class="page-quick-sidebar-wrapper" data-close-on-body-click="false">
+    <div class="page-quick-sidebar">
+
+        <div class="col-md-12 margin-top-40">
+            @using (Html.BeginForm("PayTimeWebReports", "Report", FormMethod.Post))
+            {
+
+                <div class="portlet light portlet-fit">
+
+                    <div class="portlet-body ">
+                        <div class="row ">
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label class="control-label">Company</label>
+                                    @if (ViewBag.Companyslist != null)
+                                    {
+                                        @Html.DropDownList("CompanyID", new SelectList(ViewBag.Companyslist, "CompanyID", "CompanyName"), "Select Company", new { @class = "form-control" })
+                                    }
+                                    else
+                                    {
+                                        @Html.DropDownList("CompanyID", new SelectList(new[] { "" }), "Select Company", new { @class = "form-control" })
+                                    }
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label class="control-label">Branch</label>
+                                    @Html.DropDownList("BranchId", new SelectList(new[] { "" }), "Select Branch", new { @class = "form-control" })
+                                </div>
+                            </div>
+                            <div class="col-md-6" hidden>
+                                <div class="form-group">
+                                    <label class="control-label">Report Type</label>
+                                    @Html.HiddenFor(x => x.ReportName);
+                                    @Html.HiddenFor(x => x.RptID);
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label class="control-label">From</label>
+                                    <div class="input-group  date date-picker" data-date-format="yyyy-mm-dd" data-date-viewmode="years">
+                                        <span class="input-group-btn">
+                                            <button class="btn default btn-sm" type="button">
+                                                <i class="fa-light fa-calendar-days"></i>
+                                            </button>
+                                        </span>
+                                        @Html.TextBoxFor(model => model.FromDate, new { @class = "form-control input-sm" })
+                                        @*<input type="text" id="FromDate" class="form-control input-sm">*@
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label class="control-label">To</label>
+                                    <div class="input-group  date date-picker" data-date-format="yyyy-mm-dd" data-date-viewmode="years">
+                                        <span class="input-group-btn ">
+                                            <button class="btn default btn-sm" type="button">
+                                                <i class="fa-light fa-calendar-days"></i>
+                                            </button>
+                                        </span>
+                                        @Html.TextBoxFor(model => model.Todate, new { @class = "form-control input-sm" })
+                                        @*<input type="text" id="Todate" class="form-control input-sm">*@
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 ">
+                                <div class="portlet">
+                                    <div class="row">
+                                        <div class="col-md-4">
+                                            <label class="control-label">Department</label>
+                                            <div class="table-scroll">
+                                                <table id="tbldept" class="table table-striped table-bordered table-hover table-scrollable table-checkable order-column ">
+                                                    <thead class="ui-state-default">
+                                                        <tr>
+                                                            <th>Name</th>
+                                                            <th width="40px"><input type="checkbox" id="ChkAll" /></th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody id="DepartmentIdTbl"></tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-8">
+
+                                            <label class="control-label">Employee</label>
+                                            @Html.HiddenFor(model => model.EmpID)
+                                            @Html.HiddenFor(model => model.CompanyName)
+                                            @Html.HiddenFor(model => model.BranchName)
+                                            <div class="table-scroll">
+                                                <table id="tblemp" class="table-scrollable table table-striped table-bordered table-hover table-checkable order-column ">
+                                                    <thead class="ui-state-default">
+                                                        <tr>
+                                                            <th>Employee Name</th>
+                                                            <th width="100px">Punch Id</th>
+                                                            <th width="40px"><input type="checkbox" id="ChkAllEmp" /></th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody id="EmpIdTbl"></tbody>
+                                                </table>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-12 margin-top-20">
+                                            <div class="form-actions text-center">
+                                                <button type="submit" id="BtnSave" class="btn blue">Show Report</button>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+
+
+    </div>
+</div>

@@ -1,0 +1,766 @@
+@using System.Configuration;
+@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@using System.Data;
+@{
+    ViewBag.Title = "PMS Dashboard";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    int _UserId = Convert.ToInt32(HttpContext.Current.Session["UserId"]);
+    int _cmpid = Convert.ToInt32(HttpContext.Current.Session["CompanyId"]);
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    string _UserImg = HttpContext.Current.Session["photo"].ToString();
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+    string _companyid = "0";
+    string _empid = "0";
+    string _empName = "0";
+    int DepartmentId = Convert.ToInt32(HttpContext.Current.Session["DepartmentId"]);
+    if (_RoleId != 1 && _RoleId != 6805 && _RoleId != 6806)
+    {
+        _empid = HttpContext.Current.Session["EmpId"].ToString();
+        _empName = HttpContext.Current.Session["EmpName"].ToString();
+    }
+    string _branchid = "0";
+    if (_RoleId == 6805)
+    {
+        _companyid = HttpContext.Current.Session["ClientCompanyId"].ToString();
+    }
+    if (_RoleId == 6806)
+    {
+        _companyid = HttpContext.Current.Session["ClientCompanyId"].ToString();
+        _branchid = HttpContext.Current.Session["BranchId"].ToString();
+    }
+    string _isdateformat = HttpContext.Current.Session["IsDateFormat"].ToString();
+    string _CountryCode = HttpContext.Current.Session["CountryCode"].ToString();
+    string _AreaCode = HttpContext.Current.Session["AreaCode"].ToString();
+    string _dbName = HttpContext.Current.Session["DbName"].ToString();
+    string _isPlanId = HttpContext.Current.Session["planId"].ToString();
+    string isClientDBMatchFlag = HttpContext.Current.Session["IsClientDBMatch"] != null
+        ? HttpContext.Current.Session["IsClientDBMatch"].ToString()
+        : "false";
+}
+
+<style>
+    .highcharts-figure,
+    .highcharts-data-table table {
+        max-width: 100%;
+        margin: 10px auto;
+    }
+</style>
+
+<script>
+    $(document).ready(function () {
+        var _UID = '@_UserId';
+        var _ComID = '@_companyid';
+        var _BranchID = '@_branchid';
+        var _DepID = '@DepartmentId';
+        var _empIdnew = '@_empid';
+        var _RoleIDnew = '@_RoleId';
+        var _Token = '@_tokan';
+
+        // Load dashboard data
+        loadPerformanceMonitor();
+        loadPerformanceOverview();
+        loadRecentReviews();
+        loadPendingAppraisals();
+
+        $("#PerformanceMonitorFilter").change(function () {
+            loadPerformanceMonitor();
+        });
+
+        $("#pmsMonth").change(function () {
+            loadRecentReviews();
+        });
+
+        $("#pmsMonths, #pmsDepartment").change(function () {
+            loadPendingAppraisals();
+        });
+
+        function loadPerformanceMonitor() {
+            var filterType = parseInt($("#PerformanceMonitorFilter").val());
+            var request = {
+                empId: parseInt(_empIdnew),
+                roleId: parseInt(_RoleIDnew),
+                companyId: _ComID,
+                branchId: _BranchID,
+                departmentId: _DepID,
+                filterType: filterType
+            };
+            $.ajax({
+                url: '@_webapiurl' + 'PMS/GetPerformanceMonitor',
+                type: "POST",
+                contentType: "application/json",
+                headers: {
+                    "Authorization": "Bearer " + _Token
+                },
+                data: JSON.stringify(request),
+                success: function (res) {
+                    $("#TotalEmployeesCount").text(res.totalEmployees || 0);
+                    $("#ReviewsCompletedCount").text(res.reviewsCompleted || 0);
+                    $("#PendingReviewsCount").text(res.pendingReviews || 0);
+                    $("#AvgRatingCount").text((res.avgRating || 0).toFixed(1));
+                    $("#GoalsAchievedCount").text(res.goalsAchieved || 0);
+                    $("#FeedbackPendingCount").text(res.feedbackPending || 0);
+                },
+                error: function (xhr) {
+                    console.error("Performance Monitor API Error", xhr.status, xhr.responseText);
+                }
+            });
+        }
+
+        function loadPerformanceOverview() {
+            var request = {
+                empId: parseInt(_empIdnew),
+                roleId: parseInt(_RoleIDnew),
+                companyId: _ComID,
+                branchId: _BranchID,
+                departmentId: _DepID
+            };
+            $.ajax({
+                url: '@_webapiurl' + 'PMS/GetPerformanceOverview',
+                type: "POST",
+                contentType: "application/json",
+                headers: {
+                    "Authorization": "Bearer " + _Token
+                },
+                data: JSON.stringify(request),
+                success: function (res) {
+                    if (res && res.performanceItems && res.performanceItems.length > 0) {
+                        $("#Performance_Overview").show();
+                        $("#Performance_Empty").hide();
+                        preparePerformanceOverview(res.performanceItems);
+                    } else {
+                        $("#Performance_Overview").hide();
+                        $("#Performance_Empty").show();
+                    }
+                },
+                error: function () {
+                    $("#Performance_Overview").hide();
+                    $("#Performance_Empty").show();
+                }
+            });
+        }
+
+        function preparePerformanceOverview(data) {
+            var categories = [];
+            var ratings = [];
+            data.forEach(function (item) {
+                categories.push(item.departmentName);
+                ratings.push(Number(item.avgRating));
+            });
+            drawPerformanceChart(categories, ratings);
+        }
+
+        function drawPerformanceChart(categories, ratings) {
+            Highcharts.chart('PerformanceOverviewChart', {
+                chart: {
+                    type: 'bar'
+                },
+                title: {
+                    text: ''
+                },
+                legend: {
+                    enabled: false
+                },
+                xAxis: {
+                    categories: categories
+                },
+                yAxis: {
+                    min: 0,
+                    max: 5,
+                    title: {
+                        text: 'Average Rating'
+                    }
+                },
+                tooltip: {
+                    useHTML: true,
+                    formatter: function () {
+                        return `
+                            <b>${this.x}</b><br/>
+                            Avg Rating: <b>${this.y.toFixed(1)}</b>
+                        `;
+                    }
+                },
+                plotOptions: {
+                    bar: {
+                        pointPadding: 0.2,
+                        borderWidth: 0,
+                        color: '#8B5CF6'
+                    }
+                },
+                series: [{
+                    name: 'Rating',
+                    data: ratings
+                }],
+                credits: { enabled: false }
+            });
+        }
+
+        function loadRecentReviews() {
+            var request = {
+                empId: parseInt(_empIdnew),
+                roleId: parseInt(_RoleIDnew),
+                companyId: _ComID,
+                branchId: _BranchID,
+                month: parseInt($("#pmsMonth").val())
+            };
+            $.ajax({
+                url: '@_webapiurl' + 'PMS/GetRecentReviews',
+                type: "POST",
+                contentType: "application/json",
+                headers: {
+                    "Authorization": "Bearer " + _Token
+                },
+                data: JSON.stringify(request),
+                success: function (res) {
+                    $("#RecentReviews_Empty").hide();
+                    $("#RecentReviews_List").hide();
+                    if (!res || !res.reviews || res.reviews.length === 0) {
+                        $("#RecentReviews_Empty").show();
+                        return;
+                    }
+                    $("#RecentReviews_List").show();
+                    bindRecentReviews(res.reviews);
+                },
+                error: function () {
+                    $("#RecentReviews_Empty").show();
+                    $("#RecentReviews_List").hide();
+                }
+            });
+        }
+
+        function bindRecentReviews(reviews) {
+            var container = $("#recentReviewsContainer");
+            var html = '';
+            $.each(reviews, function (i, item) {
+                var ratingStars = getRatingStars(item.rating);
+                html += `
+                <div class="myrequest_trip_block d-flex justify-content-between margin-bottom-10">
+                    <div class="tripdetail_main">
+                        <div class="tripdetail_title">
+                            <img src="${item.photo || '/assets/images/icons/icon_profile.svg'}" alt="" style="width:35px; height:35px; border-radius:50%; margin-right:10px;">
+                            <span>${item.employeeName}</span>
+                        </div>
+                        <div class="tripdetail">
+                            <span class="margin-right-15">${ratingStars}</span>
+                            <span class="margin-right-15"><i class="fa fa-calendar"></i> ${formatDate(item.reviewDate)}</span>
+                        </div>
+                    </div>
+                    <div class="tripactionbtn">
+                        <a href="javascript:;" class="btn blue_btnnew" onclick="viewReview(${item.reviewId})">
+                            <i class="fa-solid fa-eye"></i>
+                        </a>
+                    </div>
+                </div>`;
+            });
+            container.html(html);
+        }
+
+        function getRatingStars(rating) {
+            var stars = '';
+            var fullStars = Math.floor(rating);
+            var halfStar = rating % 1 >= 0.5;
+            for (var i = 0; i < fullStars; i++) {
+                stars += '<i class="fa fa-star" style="color: #F59E0B;"></i>';
+            }
+            if (halfStar) {
+                stars += '<i class="fa fa-star-half-alt" style="color: #F59E0B;"></i>';
+            }
+            for (var j = fullStars + (halfStar ? 1 : 0); j < 5; j++) {
+                stars += '<i class="fa fa-star" style="color: #E5E7EB;"></i>';
+            }
+            return stars;
+        }
+
+        function loadPendingAppraisals() {
+            var request = {
+                empId: parseInt(_empIdnew),
+                roleId: parseInt(_RoleIDnew),
+                companyId: _ComID,
+                branchId: _BranchID,
+                departmentId: parseInt($("#pmsDepartment").val()),
+                month: parseInt($("#pmsMonths").val())
+            };
+            $("#PendingAppraisals_List").hide();
+            $("#PendingAppraisals_Empty").hide();
+            $("#pendingAppraisalsContainer").empty();
+            $.ajax({
+                url: '@_webapiurl' + 'PMS/GetPendingAppraisals',
+                type: "POST",
+                contentType: "application/json",
+                headers: {
+                    "Authorization": "Bearer " + _Token
+                },
+                data: JSON.stringify(request),
+                success: function (res) {
+                    if (!res || !Array.isArray(res.appraisals) || res.appraisals.length === 0) {
+                        $("#PendingAppraisals_List").hide();
+                        $("#PendingAppraisals_Empty").show();
+                        return;
+                    }
+                    $("#PendingAppraisals_Empty").hide();
+                    $("#PendingAppraisals_List").show();
+                    renderPendingAppraisals(res.appraisals);
+                },
+                error: function () {
+                    $("#PendingAppraisals_List").hide();
+                    $("#PendingAppraisals_Empty").show();
+                }
+            });
+        }
+
+        function renderPendingAppraisals(items) {
+            var html = '';
+            $.each(items, function (i, item) {
+                html += `
+                <div class="pending_request_block d-flex justify-content-between margin-bottom-10">
+                    <div class="tripdetail_main">
+                        <div class="reqby">Employee: <span>${item.employeeName}</span></div>
+                        <div class="tripdetail">${item.appraisalType}</div>
+                        <div class="text-muted small">Due: ${formatDate(item.dueDate)}</div>
+                    </div>
+                    <div class="tripactionbtn">
+                        <a href="javascript:;" class="btn green_btnnew approve"
+                           onclick="startReview(${item.appraisalId})"><i class="fa-solid fa-play"></i></a>
+                        <a href="javascript:;" class="btn blue_btnnew"
+                           onclick="viewAppraisal(${item.appraisalId})"><i class="fa-solid fa-eye"></i></a>
+                    </div>
+                </div>`;
+            });
+            $("#pendingAppraisalsContainer").html(html);
+        }
+
+        function formatDate(dateStr) {
+            if (!dateStr) return '';
+            var date = new Date(dateStr);
+            return date.toLocaleDateString('en-GB');
+        }
+
+        window.viewReview = function (reviewId) {
+            window.open('/PMS/ViewReview?id=' + reviewId, '_blank');
+        };
+
+        window.startReview = function (appraisalId) {
+            window.location.href = '/PMS/StartReview?id=' + appraisalId;
+        };
+
+        window.viewAppraisal = function (appraisalId) {
+            window.open('/PMS/ViewAppraisal?id=' + appraisalId, '_blank');
+        };
+
+        // Fill department dropdown
+        fillDepartment();
+        function fillDepartment() {
+            $.ajax({
+                url: '@_webapiurl' + "/Master/DepartmentGetAll",
+                method: "GET",
+                contentType: "application/json; charset=utf-8",
+                headers: {
+                    "Authorization": "Bearer " + _Token
+                },
+                success: function (data) {
+                    var $deptDropdown = $("#pmsDepartment");
+                    $deptDropdown.empty();
+                    $deptDropdown.append('<option value="0">All Departments</option>');
+                    $.each(data, function (i, dept) {
+                        $deptDropdown.append('<option value="' + dept.DepartmentId + '">' + dept.DepartmentName + '</option>');
+                    });
+                },
+                error: function (err) {
+                    console.error("Error loading departments", err);
+                }
+            });
+        }
+
+        // Custom widget save
+        $("#widgetSave").on("click", function () {
+            $(".widget-checkbox").each(function () {
+                var widgetKey = $(this).data("widget");
+                var $dashboardWidget = $(
+                    ".row[data-widget='" + widgetKey + "'], " +
+                    ".col-lg-6[data-widget='" + widgetKey + "']"
+                ).not("#customwidget_modal *");
+                if ($(this).is(":checked")) {
+                    $dashboardWidget.show();
+                } else {
+                    $dashboardWidget.hide();
+                }
+            });
+            $("#customwidget_modal").modal("hide");
+        });
+
+        // Update product display
+        if ($('#currentProductDisplay').length) {
+            $('#currentProductDisplay').text('PMS');
+        }
+    });
+</script>
+
+@if (obj.CanView)
+{
+    <div class="page-bar">
+        <ul class="page-breadcrumb">
+            <li>
+                <a href="/MinopProduct/PMSDashboard"><i class="fa-regular fa-house"></i></a>
+            </li>
+            <li>
+                <span> <i class="fa fa-angle-right"> </i> Performance Management Dashboard</span>
+            </li>
+        </ul>
+        <div class="filter_search pull-right">
+            <button id="customwidget_btn" class="btn icon_transparent_btn tooltips margin-right-5" type="button" data-toggle="modal" data-target="#customwidget_modal" data-placement="left" data-original-title="Custom Widget"><i class="fa-light fa-objects-column"></i></button>
+            <button id="Filter_search" class="btn icon_transparent_btn tooltips" type="button" data-placement="bottom" data-original-title="Filter"><i class="fa-light fa-filter"></i></button>
+        </div>
+    </div>
+
+    <div class="body_section">
+
+        <div class="row" data-widget="performanceMonitor">
+            <!-- Performance Monitor Block : Begin -->
+            <div class="col-lg-12">
+                <div class="card_box margin-bottom-20">
+                    <div class="card_header">
+                        <div class="d-flex align-items-center">
+                            <img class="margin-right-8" src="~/assets/images/icons/icon_activitymonitor.svg" alt="" width="25" height="24">
+                            <p class="card-title margin-right-10">Performance Monitor</p>
+                            <img class="tooltips" src="/assets/images/icons/icon_info.svg" alt="" width="12" height="12" data-placement="right" data-original-title="Track performance metrics">
+                            <div class="dropdown_box margin-left-15">
+                                <div class="form-group margin-bottom-0">
+                                    <select id="PerformanceMonitorFilter" class="btn blue btn-outline select2" data-width="100%">
+                                        <option value="1">This Quarter</option>
+                                        <option value="2">Last Quarter</option>
+                                        <option value="3">This Year</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card_summarylist">
+                        <div class="row">
+                            <div class="col-lg-2 col-sm-4 col-xs-6">
+                                <div class="activity_block">
+                                    <a href="javascript:;">
+                                        <img src="~/assets/images/icons/icon_team.svg" alt="" width="48" height="48">
+                                        <div>
+                                            <p>Total Employees</p>
+                                            <div class="activity_count" id="TotalEmployeesCount">0</div>
+                                        </div>
+                                    </a>
+                                </div>
+                            </div>
+                            <div class="col-lg-2 col-sm-4 col-xs-6">
+                                <div class="activity_block">
+                                    <a href="javascript:;">
+                                        <img src="~/assets/images/icons/icon_approvedrequest.svg" alt="" width="48" height="48">
+                                        <div>
+                                            <p>Reviews Completed</p>
+                                            <div class="activity_count" id="ReviewsCompletedCount">0</div>
+                                        </div>
+                                    </a>
+                                </div>
+                            </div>
+                            <div class="col-lg-2 col-sm-4 col-xs-6">
+                                <div class="activity_block">
+                                    <a href="javascript:;">
+                                        <img src="~/assets/images/icons/icon_pendingrequest.svg" alt="" width="48" height="48">
+                                        <div>
+                                            <p>Pending Reviews</p>
+                                            <div class="activity_count" id="PendingReviewsCount">0</div>
+                                        </div>
+                                    </a>
+                                </div>
+                            </div>
+                            <div class="col-lg-2 col-sm-4 col-xs-6">
+                                <div class="activity_block">
+                                    <a href="javascript:;">
+                                        <img src="~/assets/images/icons/icon_checkin.svg" alt="" width="48" height="48">
+                                        <div>
+                                            <p>Avg Rating</p>
+                                            <div class="activity_count" id="AvgRatingCount">0</div>
+                                        </div>
+                                    </a>
+                                </div>
+                            </div>
+                            <div class="col-lg-2 col-sm-4 col-xs-6">
+                                <div class="activity_block">
+                                    <a href="javascript:;">
+                                        <img src="~/assets/images/icons/icon_profile.svg" alt="" width="48" height="48">
+                                        <div>
+                                            <p>Goals Achieved</p>
+                                            <div class="activity_count" id="GoalsAchievedCount">0</div>
+                                        </div>
+                                    </a>
+                                </div>
+                            </div>
+                            <div class="col-lg-2 col-sm-4 col-xs-6">
+                                <div class="activity_block">
+                                    <a href="javascript:;">
+                                        <img src="~/assets/images/icons/icon_pendingrequests.svg" alt="" width="48" height="48">
+                                        <div>
+                                            <p>Feedback Pending</p>
+                                            <div class="activity_count" id="FeedbackPendingCount">0</div>
+                                        </div>
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Performance Monitor Block : End -->
+        </div>
+
+        <div class="row">
+            <!-- Performance Overview Block : Begin -->
+            <div class="col-lg-6" data-widget="performanceOverview">
+                <div class="card_box margin-bottom-20 h-380">
+                    <div class="card_header d-flex align-items-center justify-content-between">
+                        <div class="d-flex align-items-center">
+                            <img class="margin-right-8" src="/assets/images/icons/icon_attoverview.svg" alt="" width="22" height="22">
+                            <p class="card-title margin-right-10">Department Performance</p>
+                            <img class="tooltips" src="/assets/images/icons/icon_info.svg" alt="" width="12" height="12" data-placement="right" data-original-title="Average ratings by department">
+                        </div>
+                    </div>
+                    <div class="card_summarylist">
+                        <div id="Performance_Overview">
+                            <figure class="highcharts-figure">
+                                <div id="PerformanceOverviewChart" style="height: 320px;"></div>
+                            </figure>
+                        </div>
+                        <div id="Performance_Empty" style="display:none">
+                            <div class="empty_block no_record">
+                                <img src="~/assets/images/emptyscreen_3.png" height="122" width="230" alt="No Records Found">
+                                <p>No records found.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Performance Overview Block : End -->
+
+            <!-- Recent Reviews Block : Begin -->
+            <div class="col-lg-6" data-widget="recentReviews">
+                <div class="card_box margin-bottom-20 h-380">
+                    <div class="card_header d-flex align-items-center justify-content-between">
+                        <div class="d-flex align-items-center">
+                            <img class="margin-right-8" src="/assets/images/icons/icon_myattendance.svg" alt="" width="22" height="22">
+                            <p class="card-title margin-right-10">Recent Reviews</p>
+                            <img class="tooltips" src="/assets/images/icons/icon_info.svg" alt="" width="12" height="12" data-placement="right" data-original-title="Recently completed reviews">
+                        </div>
+                        <div class="dropdown_box">
+                            <div class="form-group margin-bottom-0">
+                                <select id="pmsMonth" class="btn blue btn-outline select2" data-width="100%">
+                                    <option value="1">January</option>
+                                    <option value="2">February</option>
+                                    <option value="3">March</option>
+                                    <option value="4">April</option>
+                                    <option value="5">May</option>
+                                    <option value="6">June</option>
+                                    <option value="7">July</option>
+                                    <option value="8">August</option>
+                                    <option value="9">September</option>
+                                    <option value="10">October</option>
+                                    <option value="11">November</option>
+                                    <option value="12">December</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card_summarylist myscrollbar" style="max-height: 310px; overflow-y: auto;">
+                        <div id="RecentReviews_List">
+                            <div id="recentReviewsContainer"></div>
+                        </div>
+                        <div id="RecentReviews_Empty" style="display:none">
+                            <div class="empty_block no_record">
+                                <img src="~/assets/images/emptyscreen_3.png" height="122" width="230" alt="No Records Found">
+                                <p>No reviews found.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Recent Reviews Block : End -->
+        </div>
+
+        <div class="row">
+            <!-- Pending Appraisals Block : Begin -->
+            <div class="col-lg-6" data-widget="pendingAppraisals">
+                <div class="card_box margin-bottom-20 h-380">
+                    <div class="card_header d-flex align-items-center justify-content-between">
+                        <div class="d-flex align-items-center">
+                            <img class="margin-right-8" src="/assets/images/icons/icon_pendingrequests.svg" alt="" width="22" height="22">
+                            <p class="card-title margin-right-10">Pending Appraisals</p>
+                            <img class="tooltips" src="/assets/images/icons/icon_info.svg" alt="" width="12" height="12" data-placement="right" data-original-title="Appraisals awaiting completion">
+                        </div>
+                        <div class="dropdown_box">
+                            <div class="form-group margin-bottom-0 d-flex">
+                                <select id="pmsMonths" class="btn blue btn-outline select2 margin-right-5" data-width="100%">
+                                    <option value="0">All</option>
+                                    <option value="1">January</option>
+                                    <option value="2">February</option>
+                                    <option value="3">March</option>
+                                    <option value="4">April</option>
+                                    <option value="5">May</option>
+                                    <option value="6">June</option>
+                                    <option value="7">July</option>
+                                    <option value="8">August</option>
+                                    <option value="9">September</option>
+                                    <option value="10">October</option>
+                                    <option value="11">November</option>
+                                    <option value="12">December</option>
+                                </select>
+                                <select id="pmsDepartment" class="btn blue btn-outline select2" data-width="100%">
+                                    <option value="0">All Departments</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card_summarylist myscrollbar" style="max-height: 310px; overflow-y: auto;">
+                        <div id="PendingAppraisals_List">
+                            <div id="pendingAppraisalsContainer"></div>
+                        </div>
+                        <div id="PendingAppraisals_Empty" style="display:none">
+                            <div class="empty_block no_record">
+                                <img src="~/assets/images/emptyscreen_3.png" height="122" width="230" alt="No Records Found">
+                                <p>No pending appraisals found.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Pending Appraisals Block : End -->
+
+            <!-- Quick Actions Block : Begin -->
+            <div class="col-lg-6" data-widget="quickActions">
+                <div class="card_box margin-bottom-20 h-380">
+                    <div class="card_header d-flex align-items-center justify-content-between">
+                        <div class="d-flex align-items-center">
+                            <img class="margin-right-8" src="/assets/images/icons/icon_add.svg" alt="" width="22" height="22">
+                            <p class="card-title margin-right-10">Quick Actions</p>
+                        </div>
+                    </div>
+                    <div class="card_summarylist">
+                        <div class="row">
+                            <div class="col-lg-4 col-sm-6 col-xs-6 margin-bottom-15">
+                                <a href="/PMS/StartReview" class="quick_action_btn">
+                                    <img src="/assets/images/icons/icon_checkin.svg" alt="" width="40" height="40">
+                                    <span>Start Review</span>
+                                </a>
+                            </div>
+                            <div class="col-lg-4 col-sm-6 col-xs-6 margin-bottom-15">
+                                <a href="/PMS/SetGoals" class="quick_action_btn">
+                                    <img src="/assets/images/icons/icon_pendingrequest.svg" alt="" width="40" height="40">
+                                    <span>Set Goals</span>
+                                </a>
+                            </div>
+                            <div class="col-lg-4 col-sm-6 col-xs-6 margin-bottom-15">
+                                <a href="/PMS/GiveFeedback" class="quick_action_btn">
+                                    <img src="/assets/images/icons/icon_myattendance.svg" alt="" width="40" height="40">
+                                    <span>Give Feedback</span>
+                                </a>
+                            </div>
+                            <div class="col-lg-4 col-sm-6 col-xs-6 margin-bottom-15">
+                                <a href="/PMS/ViewFeedback" class="quick_action_btn">
+                                    <img src="/assets/images/icons/icon_approvedrequest.svg" alt="" width="40" height="40">
+                                    <span>View Feedback</span>
+                                </a>
+                            </div>
+                            <div class="col-lg-4 col-sm-6 col-xs-6 margin-bottom-15">
+                                <a href="/PMS/Reports" class="quick_action_btn">
+                                    <img src="/assets/images/icons/icon_attoverview.svg" alt="" width="40" height="40">
+                                    <span>Performance Reports</span>
+                                </a>
+                            </div>
+                            <div class="col-lg-4 col-sm-6 col-xs-6 margin-bottom-15">
+                                <a href="/PMS/Settings" class="quick_action_btn">
+                                    <img src="/assets/images/icons/icon_team.svg" alt="" width="40" height="40">
+                                    <span>PMS Settings</span>
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Quick Actions Block : End -->
+        </div>
+
+    </div>
+
+    <!-- Custom Widget Modal : Begin -->
+    <div class="modal fade" id="customwidget_modal" tabindex="-1" role="dialog" aria-labelledby="customwidget_modal_title" aria-hidden="true">
+        <div class="modal-dialog modal-md" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="customwidget_modal_title">Custom Widget</h5>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-lg-6">
+                            <div class="form-group">
+                                <label class="custom-checkbox">
+                                    <input type="checkbox" class="widget-checkbox" data-widget="performanceMonitor" checked>
+                                    <span class="checkmark"></span> Performance Monitor
+                                </label>
+                            </div>
+                        </div>
+                        <div class="col-lg-6">
+                            <div class="form-group">
+                                <label class="custom-checkbox">
+                                    <input type="checkbox" class="widget-checkbox" data-widget="performanceOverview" checked>
+                                    <span class="checkmark"></span> Performance Overview
+                                </label>
+                            </div>
+                        </div>
+                        <div class="col-lg-6">
+                            <div class="form-group">
+                                <label class="custom-checkbox">
+                                    <input type="checkbox" class="widget-checkbox" data-widget="recentReviews" checked>
+                                    <span class="checkmark"></span> Recent Reviews
+                                </label>
+                            </div>
+                        </div>
+                        <div class="col-lg-6">
+                            <div class="form-group">
+                                <label class="custom-checkbox">
+                                    <input type="checkbox" class="widget-checkbox" data-widget="pendingAppraisals" checked>
+                                    <span class="checkmark"></span> Pending Appraisals
+                                </label>
+                            </div>
+                        </div>
+                        <div class="col-lg-6">
+                            <div class="form-group">
+                                <label class="custom-checkbox">
+                                    <input type="checkbox" class="widget-checkbox" data-widget="quickActions" checked>
+                                    <span class="checkmark"></span> Quick Actions
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" id="widgetSave">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Custom Widget Modal : End -->
+}
+else
+{
+    <span style="color:red">@PayTimeWebClient.Resource.Resource.UnauthorizedAccess .</span>
+}

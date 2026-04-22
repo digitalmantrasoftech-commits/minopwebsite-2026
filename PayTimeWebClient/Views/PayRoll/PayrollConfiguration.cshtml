@@ -1,0 +1,227 @@
+﻿@model PayTimeWebClient.Models.RoleRightsMapping
+@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@using System.Configuration;
+@{
+    ViewBag.Title = "Payroll Configuration";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiurlpayroll = ConfigurationManager.AppSettings["webapipaytimePayroll"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+    string _isdateformat = HttpContext.Current.Session["IsDateFormat"].ToString();
+
+}
+<script>
+
+    $(document).ready(function () {
+        checkSession();
+        $.ajax({
+            type: "GET",
+            url: '@_webapiurlpayroll' + 'PayrollConfiguration/PayrollConfigurationdataget',
+            headers: { 'Authorization': '@_tokan' },
+            contentType: "application/json; charset=utf-8",
+            datatype: "json",
+            async: "false",
+            success: function (response) {
+                var res = JSON.parse(response);
+                if (res != null && res.length > 0) {
+                    $("#HR").val(res[0].Hr_payroll);
+                    $('#HR').trigger('change.select2');
+                    $("#Account").val(res[0].Account_payroll);
+                    $('#Account').trigger('change.select2');
+                    $("#Finalauthority").val(res[0].Final_authority_payroll);
+                    $('#Finalauthority').trigger('change.select2');
+                }
+            },
+            complete: function () {
+                $("#ajax_loader").hide();
+            }
+        });
+        $("#Btn_Save").click(function () {
+            var IS_flag = 0;
+            if ($("#HR").val() == "") {
+                toastr.remove();
+                toastr.error("Please select hr role");
+                IS_flag = 1;
+                 return false;
+            }
+            if ($("#Account").val() == "") {
+                toastr.remove();
+                toastr.error("Please select account role");
+                IS_flag = 1;
+                return false;
+            }
+            if ($("#Finalauthority").val() == "") {
+                toastr.remove();
+                toastr.error("Please select final authority role");
+                IS_flag = 1;
+                return false;
+            }
+
+            if ($("#HR").val() == $("#Account").val()) {
+                toastr.remove();
+                toastr.error("HR and Account roles must be different.");
+                IS_flag = 1;
+                return false;
+            } else if ($("#HR").val() == $("#Finalauthority").val()) {
+                toastr.remove();
+                toastr.error("HR and Finalauthority roles must be different.");
+                IS_flag = 1;
+                return false;
+            } else if ($("#Account").val() == $("#Finalauthority").val()) {
+                toastr.remove();
+                toastr.error("Account and Finalauthority roles must be different.");
+                IS_flag = 1;
+                return false;
+            }
+
+            if (IS_flag == 0) {
+                var obj = {
+                    payroll_configuration_id : 1,
+                    Hr_payroll: $("#HR").val(),
+                    Account_payroll: $("#Account").val(),
+                    Final_authority_payroll: $("#Finalauthority").val()
+                }
+                checkSession();
+                $.ajax({
+                    type: "POST",
+                    headers: { 'Authorization': '@_tokan' },
+                    url: '@_webapiurlpayroll' + 'PayrollConfiguration/UpdatePayrollConfiguration',
+                    data: JSON.stringify(obj),
+                    contentType: "application/json; charset=utf-8",
+                    dataType: "json",
+                    beforeSend: function () {
+                        $("#ajax_loader").show();
+                    },
+                    success: function (response) {
+                        if (response.success == true) {
+                            toastr.remove();
+                            toastr.success(response.message);
+                            datatablebind();
+                        } else if (response.success == false) {
+                            toastr.remove();
+                            toastr.error(response.message);
+                        }
+                    },
+                    complete: function () {
+                        $("#ajax_loader").hide();
+                    }
+                });
+            }
+        });
+    });
+    function checkSession() {
+
+        $.ajax({
+            type: "GET",
+            async: false,
+            url: "/ESS/checkSession",
+            contentType: "application/json; charset=utf-8",
+            success: function (data) {
+                if (data.isRedirect) {
+                    window.location.href = data.redirectUrl;
+                }
+            },
+            error: function (data) {
+                window.location.href = data;
+            }
+        });
+    }
+</script>
+
+<div class="page-bar">
+    @if (_RoleId == 1 || _RoleId == 6805 || _RoleId == 6806)
+    {
+        <ul class="page-breadcrumb">
+            @if (Convert.ToInt32(Session["IsSchool"]) == 1)
+            {
+                <li>
+                    <a href="/School/AdminDashboard">Home</a>
+                    <i class="fa fa-circle"></i>
+                </li>
+            }
+            else
+            {
+                <li>
+                    <a href="/PayTime/AdminDashboard">Home</a>
+                    <i class="fa fa-circle"></i>
+                </li>
+            }
+            <li>
+                <span>Payroll Configuration</span>
+            </li>
+        </ul>
+    }
+</div>
+
+
+
+
+<div class="portlet">
+    <div class="portlet-body">
+        <div class="row">
+            <div class="col-lg-3 col-md-4 col-sm-6 col-xs-12">
+                <div class="form-group margin-0">
+                    <label>HR Role </label><span class="required" aria-required="true"> * </span>
+                    @if (ViewBag.RoleList != null)
+                    {
+                        @Html.DropDownListFor(model => model.RoleId, new SelectList(ViewBag.RoleList, "RoleId", "RoleName"), "Select Hr Role", new { @class = "form-control input-sm select2", @id = "HR" })
+                    }
+                    else
+                    {
+                        @Html.DropDownList("RoleId", new SelectList(new[] { "" }), "Select Hr Role", new { @class = "form-control input-sm select2" })
+                    }
+                </div>
+            </div>
+            <div class="col-lg-3 col-md-4 col-sm-6 col-xs-12">
+                <div class="form-group margin-0">
+                    <label>Account Role </label><span class="required" aria-required="true"> * </span>
+                    @if (ViewBag.RoleList != null)
+                    {
+                        @Html.DropDownListFor(model => model.RoleId, new SelectList(ViewBag.RoleList, "RoleId", "RoleName"), "Select Account Role", new { @class = "form-control input-sm select2", @id = "Account" })
+                    }
+                    else
+                    {
+                        @Html.DropDownList("RoleId", new SelectList(new[] { "" }), "Select Account Role", new { @class = "form-control input-sm select2" })
+                    }
+                </div>
+            </div>
+            <div class="col-lg-3 col-md-4 col-sm-6 col-xs-12">
+                <div class="form-group margin-0">
+                    <label>Final Authority Role </label><span class="required" aria-required="true"> * </span>
+                    @if (ViewBag.RoleList != null)
+                    {
+                        @Html.DropDownListFor(model => model.RoleId, new SelectList(ViewBag.RoleList, "RoleId", "RoleName"), "Select Final Authority Role", new { @class = "form-control input-sm select2", @id = "Finalauthority" })
+                    }
+                    else
+                    {
+                        @Html.DropDownList("RoleId", new SelectList(new[] { "" }), "Select Final Authority Role", new { @class = "form-control input-sm select2" })
+                    }
+                </div>
+            </div>
+            <div class="col-lg-3 col-md-4 col-sm-6 col-xs-12">
+                <div class="form-group margin-0">
+                    <label></label>
+                    <button type="button" class="btn save_btn" id="Btn_Save" style="margin-top:24px;"> Save</button>
+
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+

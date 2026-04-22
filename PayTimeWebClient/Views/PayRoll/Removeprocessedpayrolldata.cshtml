@@ -1,0 +1,232 @@
+﻿@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@using System.Configuration;
+@{
+    ViewBag.Title = "Removeprocessedpayrolldata";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    string _webapiurlpayroll = ConfigurationManager.AppSettings["webapipaytimePayroll"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+    string _isdateformat = HttpContext.Current.Session["IsDateFormat"].ToString();
+    string _CheckCustomClientDBName = ConfigurationManager.AppSettings["CheckCustomClientDBName"].ToString();
+    string _dbName = HttpContext.Current.Session["DbName"].ToString();
+    int _CheckFastrackdb = 0;
+    if (_CheckCustomClientDBName.Contains(_dbName))
+    {
+        _CheckFastrackdb = 1;
+    }
+}
+
+
+<script>
+    var Employeelst = "";
+    var EmployeeArray = [];
+
+    $(document).ready(function () {
+        var $EmployeeList = $("#EmployeeList").multiselect({
+            selectAllValue: 'multiselect-all',
+            enableCaseInsensitiveFiltering: true,
+            includeSelectAllOption: true,
+            allSelectedText: 'All Select',
+            enableFiltering: true,
+            maxHeight: '300',
+            buttonWidth: '100%',
+            enableClickableOptGroups: true,
+            nonSelectedText: 'Select Employee'
+        });
+
+        GetAllEmployee();
+
+        function GetAllEmployee() {
+            $.ajax({
+                type: "GET",
+                url: "@_webapiurlpayroll" + "SalaryslipExport/PayrollFinalizedEmployeeList",
+                headers: { 'Authorization': '@_tokan' },
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                beforeSend: function () {
+                    $("#ajax_loader").show();
+                },
+                success: function (data) {
+                    var markup = '';
+                    if (data.length > 0 && data != null) {
+                        //markup = "<option value='0'> Select Employee </option>"
+                        for (var x = 0; x < data.length; x++) {
+                            data.sort(function (a, b) {
+                                return a.employeeList.localeCompare(b.employeeList);
+                            });
+                            markup += "<option value=" + data[x].employeeId + ">" + data[x].employeeList + " (" + data[x].empCode + ")" + "</option>";
+                        }
+
+                        $('#EmployeeList').append(markup);
+                        $EmployeeList.multiselect('rebuild');
+
+                        $(document.body).on('change', '#EmployeeList', function () {
+                            $("#spvalidation").hide();
+                            var deptid = $('#EmployeeList option:selected');
+                            EmployeeArray = [];
+                            $(deptid).each(function (index, deptid) {
+                                EmployeeArray.push([$(this).val()]);
+                            });
+                            if (EmployeeArray == "") {
+                                $("#txt2").val(0);
+                            }
+                            else {
+                                $("#txt2").val(EmployeeArray);
+                                $("#spValidation").hide();
+                            }
+                            var ShiftDept = $("#txt2").val();
+                            Employeelst = ShiftDept;
+                        });
+                    }
+                },
+                error: function (xhr, ajaxOptions, thrownError) {
+                    if (xhr.status == 404) { //NotFound = 404
+                        toastr.error(thrownError);
+                    } else if (xhr.status == 500) { //InternalServerError = 500,
+                        toastr.error("InternalServerError");
+                    } else if (xhr.status == 400) { //BadRequest = 400,
+                        toastr.error("BadRequest");
+                    } else if (xhr.status == 419) {
+                        window.location.href = "/PayTime/LoginPage";
+                    } else {
+                        toastr.error(thrownError);
+                    }
+                },
+                complete: function () {
+                    $("#ajax_loader").hide();
+                },
+            });
+        }
+        //$('#EmployeeList').change(function () {
+        //    var s = $('#EmployeeList').val();
+        //    $('#BranchName').val($('#EmployeeList :selected').text());
+        //});
+        $('#Monthforfinalizedata').each(function () {
+            var months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sept', 'Oct', 'Nov', 'Dec'];
+            for (var i = 0; i < 12; i++) {
+                var monthValue = i + 1;
+                $(this).append('<option value="' + monthValue + '">' + months[i] + '</option>');
+            }
+        });
+        var currentYear = new Date().getFullYear();
+        var currentMonth = new Date().getMonth();
+
+        for (var i = currentYear - 10; i <= currentYear; i++) {
+            $("#Yearforfinalizedata").append("<option value='" + i + "'>" + i + "</option>");
+        }
+        $("#Yearforfinalizedata").val(currentYear);
+        $("#Monthforfinalizedata").val(currentMonth + 1);
+
+        $("#Delete_btn").click(function () {
+
+            if ($("#EmployeeList").val() == "0") {
+                toastr.remove();
+                toastr.error("Please select Employee.");
+                $("#EmployeeList").addClass('field_error');
+                event.preventDefault();
+                return false;
+            } else {
+                $("#EmployeeList").removeClass('field_error');
+
+                var obj = {
+                    month: parseInt($("#Monthforfinalizedata").val()),
+                    year: parseInt($("#Yearforfinalizedata").val()),
+                    EmpIds: $("#txt2").val()
+                };
+
+                $.ajax({
+                    type: "POST",
+                    headers: { 'Authorization': '@_tokan' },
+                    url: "@_webapiurlpayroll" + "HRAttendanceFinalize/DeletePayrolldatabyempcodemonthyear",
+                    contentType: "application/json; charset=utf-8",
+                    data: JSON.stringify(obj),
+                    dataType: "json",
+                    beforeSend: function () {
+                        $("#ajax_loader").show();
+                    },
+                    success: function (response) {
+                        if (response != null) {
+                            if (response.Success == true && response.ResponseCode == 200) {
+                                toastr.remove();
+                                toastr.success(response.Message);
+                            } else {
+                                toastr.remove();
+                                toastr.error(response.Message);
+                            }
+                        }
+                    },
+                    error: function (xhr, ajaxOptions, thrownError) {
+                        if (xhr.status == 404) { //NotFound = 404
+                            toastr.error(thrownError);
+                        } else if (xhr.status == 500) { //InternalServerError = 500,
+                            toastr.error("InternalServerError");
+                        } else if (xhr.status == 400) { //BadRequest = 400,
+                            toastr.error("BadRequest");
+                        } else if (xhr.status == 419) {
+                            window.location.href = "/PayTime/LoginPage";
+                        } else {
+                            toastr.error(thrownError);
+                        }
+                    },
+                    complete: function () {
+                        $("#ajax_loader").hide();
+                    },
+                });
+            }
+
+
+        });
+        
+    });
+
+</script>
+
+<div class="portlet">
+    <div class="portlet-body">
+        <div class="row">
+            <div class="col-lg-10">
+                <div class="row">
+                    <div class="col-lg-4">
+                        <div class="form-group">
+                            <label>Employee <span class="required" aria-required="true"> * </span></label>
+                            <input type="text" id="txt2" value="0" hidden />
+                            <select id="EmployeeList" class="mt-multiselect btn blue btn-outline" multiple="multiple" data-width="100%"></select>
+                        </div>
+                    </div>
+                    <div class="col-lg-3">
+                        <div class="form-group">
+                            <label>Month <span class="required" aria-required="true"> * </span></label>
+                            <select class="form-control input-sm select2" id="Monthforfinalizedata" name=""></select>
+                        </div>
+                    </div>
+                    <div class="col-lg-3">
+                        <div class="form-group">
+                            <label>Year <span class="required" aria-required="true"> * </span></label>
+                            <select class="form-control input-sm select2" id="Yearforfinalizedata" name=""></select>
+                        </div>
+                    </div>
+                    <div class="col-lg-2">
+                        <a href="#" id="Delete_btn" class="btn add_btn" style="margin-top: 22px;"><i class="fa-regular fa-trash-can" aria-hidden="true"></i> Delete attendance data</a>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+

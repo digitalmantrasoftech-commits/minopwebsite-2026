@@ -1,0 +1,1299 @@
+@{
+    if (HttpContext.Current.Session["tokan"] == null || string.IsNullOrEmpty(HttpContext.Current.Session["tokan"].ToString()))
+    {
+        Response.Redirect("~/Account/Logoff");
+        return;
+    }
+    ViewBag.Title = "Visitors";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    string _isdateformat = HttpContext.Current.Session["IsDateFormat"].ToString();
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+}
+
+@*<link href="/Newlayout/css/payrollstructure.css" rel="stylesheet">*@
+
+<script>
+    // ==================== VMS BASE URL ====================
+    // Change this to your VMS_Frontend project URL
+    var _vmsBaseUrl = "https://localhost:44369";
+    // ======================================================
+
+    var visitorTable;
+    var allVisitors = [];
+
+    $(document).ready(function () {
+
+        // DataTable initialisation (empty, will be loaded via AJAX)
+        $("#tblbuwise tfoot th").each(function () {
+            var title = $(this).text();
+            $(this).html('<input type="text" class="search_input" placeholder="Search" /><i class="clm-search" id=""></i>');
+        });
+
+        visitorTable = $("#tblbuwise").DataTable({
+            dom: _domCommon,
+            language: _languageCommon,
+            ordering: true,
+            columnDefs: [
+                { orderable: false, targets: [8] }
+            ],
+        });
+        setTimeout(function () {
+            $("#" + "tblbuwise" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+            $('.tooltips').tooltip();
+        }, 100);
+
+        // Apply the column Search
+        $("#tblbuwise thead").on("keyup", "input", function () {
+            visitorTable.column($(this).parent().index())
+                .search(this.value)
+                .draw();
+        });
+
+        // Load visitors on page load
+        loadVisitors();
+
+        // Filter Click Open Modal Code =========================
+        $("#AddVisitor_btn").on('click', function () {
+            clearAddVisitorForm();
+            $("#AddVisitor_btn").attr("data-toggle", "modal");
+            $("#AddVisitor_btn").attr("data-target", "#AddVisitor_btn_modal");
+        });
+
+        $(".RescheduleBtn").on('click', function () {
+            $(".RescheduleBtn").attr("data-toggle", "modal");
+            $(".RescheduleBtn").attr("data-target", "#RescheduleBtn_modal");
+        });
+
+        $(".CheckIn").on('click', function () {
+            $(".CheckIn").attr("data-toggle", "modal");
+            $(".CheckIn").attr("data-target", "#CheckIn_modal");
+        });
+
+        $(".RePrint").on('click', function () {
+            $(".RePrint").attr("data-toggle", "modal");
+            $(".RePrint").attr("data-target", "#RePrint_modal");
+        });
+
+        //  Dropdown Multiselect code
+        var $Floorselect = $("#FloorID").multiselect({
+            selectAllValue: 'multiselect-all',
+            enableCaseInsensitiveFiltering: true,
+            includeSelectAllOption: true,
+            allSelectedText: 'All Select',
+            enableFiltering: true,
+            maxHeight: '300',
+            buttonWidth: '100%',
+            enableClickableOptGroups: true,
+            nonSelectedText: 'Select Floor'
+        });
+
+        // Check In Modal Step Navigation ========================
+        $(document).on('click', '#NextBtn', function () {
+            var $stepper = $("#CheckIn_modal .checkin-stepper");
+            $stepper.find(".stepper-circle").addClass("completed");
+            $stepper.find(".stepper-circle:last").html('<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M13.3334 4L6.00008 11.3333L2.66675 8" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>');
+            $stepper.find(".stepper-line").addClass("completed");
+            $stepper.find(".stepper-label").removeClass("active");
+            $stepper.find(".stepper-label:last").addClass("active");
+            $("#CheckIn_modal .checkin-section").hide();
+            $("#CheckIn_modal .checkin-step-2").show();
+            $(".checkin-footer-step1").hide();
+            $(".checkin-footer-step2").show();
+        });
+
+        $(document).on('click', '#PrevBtn', function () {
+            var $stepper = $("#CheckIn_modal .checkin-stepper");
+            $stepper.find(".stepper-circle:last").removeClass("completed").html("");
+            $stepper.find(".stepper-line").addClass("completed");
+            $stepper.find(".stepper-label").removeClass("active");
+            $stepper.find(".stepper-label:first").addClass("active");
+            $("#CheckIn_modal .checkin-section").show();
+            $("#CheckIn_modal .checkin-step-2").hide();
+            $(".checkin-footer-step1").show();
+            $(".checkin-footer-step2").hide();
+        });
+
+        // Authorization Type Radio Toggle
+        $(document).on('change', 'input[name="authType"]', function () {
+            if ($(this).val() === 'assign_floor') {
+                $(".authorize-assign-floor").show();
+                $(".authorize-admit-card").hide();
+            } else {
+                $(".authorize-assign-floor").hide();
+                $(".authorize-admit-card").show();
+            }
+        });
+
+        // Browse Photo - trigger file input
+        $(document).on('click', '#btnBrowsePhoto', function () {
+            $('#fileAdmitPhoto').click();
+        });
+
+        // File selected - show file name
+        $(document).on('change', '#fileAdmitPhoto', function () {
+            var file = this.files[0];
+            if (file) {
+                $('#fileName').text(file.name);
+                $('#fileInfo').show();
+            }
+        });
+
+        // Remove file
+        $(document).on('click', '#btnRemoveFile', function () {
+            $('#fileAdmitPhoto').val('');
+            $('#fileName').text('');
+            $('#fileInfo').hide();
+        });
+
+        // Select All Devices checkbox
+        $(document).on('change', '#chkAllDevices', function () {
+            $('.chkDevice').prop('checked', $(this).prop('checked'));
+        });
+        $(document).on('change', '.chkDevice', function () {
+            var total = $('.chkDevice').length;
+            var checked = $('.chkDevice:checked').length;
+            $('#chkAllDevices').prop('checked', total === checked);
+        });
+
+        // Reset modal on close
+        $("#CheckIn_modal").on('hidden.bs.modal', function () {
+            var $stepper = $(this).find(".checkin-stepper");
+            $stepper.find(".stepper-circle:last").removeClass("completed").html("");
+            $stepper.find(".stepper-label").removeClass("active");
+            $stepper.find(".stepper-label:first").addClass("active");
+            $(this).find(".checkin-section").show();
+            $(this).find(".checkin-step-2").hide();
+            $(".checkin-footer-step1").show();
+            $(".checkin-footer-step2").hide();
+            $('input[name="authType"][value="assign_floor"]').prop('checked', true);
+            $(".authorize-assign-floor").show();
+            $(".authorize-admit-card").hide();
+        });
+
+        // ==================== FORM SUBMIT HANDLERS ====================
+
+        // Register Visitor Submit
+        $("#SubmitVisitor").on('click', function () {
+            var visitorData = {
+                VisitorName: $("#txtVisitorName").val(),
+                VisitorEmail: $("#txtVisitorEmail").val(),
+                VisitorCompany: $("#txtVisitorCompany").val(),
+                HostEmployee: $("#ddlHostEmployee").val(),
+                VisitDate: $("#txtVisitDate").val(),
+                VisiteTime: $("#txtVisitTime").val(),
+                Purpose: $("#txtPurposeOfVisit").val(),
+                PhoneNumber: $("#txtVisitorPhone").val(),
+                VisitorType: $("#ddlVisitorType option:selected").val(),
+                Location: $("#ddlVisitLocation option:selected").val(),
+                NoOfVisitor: $("#txtNoOfVisitors").val(),
+                Gender: $("#ddlGender option:selected").val(),
+                CreateBy :"555"
+            };
+
+            if (!visitorData.VisitorName || !visitorData.VisitorEmail || !visitorData.VisitDate || !visitorData.VisitorCompany)
+            {
+                toastr.error("Please fill in all required fields.");
+                return;
+            }
+
+            createVisitor(visitorData);
+        });
+
+        // Reschedule Submit
+        $("#SubmitRescheduleBtn").on('click', function () {
+            var visitorId = $("#hdnRescheduleVisitorId").val();
+            var newDate = $("#txtRescheduleDate").val();
+            var newTime = $("#txtRescheduleTime").val();
+
+            if (!newDate) {
+                toastr.error("Please select a visit date.");
+                return;
+            }
+
+            rescheduleVisitor(visitorId, newDate, newTime);
+        });
+
+        // Check In Submit
+        $(document).on('click', '#CheckInBtn', function () {
+            var visitorId = $("#hdnCheckInVisitorId").val();
+            checkInVisitor(visitorId);
+        });
+
+        // Clear Add Visitor Form
+        $("#ClearVisitorBtn").on('click', function () {
+            clearAddVisitorForm();
+        });
+
+        // Clear Reschedule Form
+        $("#ClearRescheduleBtn").on('click', function () {
+            $("#txtRescheduleDate").val('');
+            $("#txtRescheduleTime").val('');
+        });
+    });
+
+    // ==================== AJAX FUNCTIONS ====================
+
+    // Load all visitors
+    function loadVisitors() {
+        showLoader();        
+        $.ajax({
+            url: _vmsBaseUrl + "/Visitor/GetAll",
+            type: "GET",
+            dataType: "json",
+            success: function (response) {
+                hideLoader();                
+                if (response.Success && response.Data) {
+
+                    allVisitors = response.Data;
+                    bindVisitorTable(allVisitors);
+                    updateSummary(allVisitors);
+                    $("#NotificationGrid-empty").hide();
+                    $("#tableResponsive").show();
+                } else {
+                    allVisitors = [];
+                    bindVisitorTable([]);
+                    updateSummary([]);
+                    $("#NotificationGrid-empty").show();
+                    $("#tableResponsive").hide();
+                }
+            },
+            error: function (xhr, status, error) {
+                hideLoader();
+                toastr.error("Failed to load visitors. Please try again.");
+                console.error("Load Visitors Error:", error);
+                $("#NotificationGrid-empty").show();
+                $("#tableResponsive").hide();
+            }
+        });
+    }
+
+    // Bind visitor data to DataTable
+    function bindVisitorTable(visitors) {
+        visitorTable.clear();
+
+        $.each(visitors, function (index, v) {
+            
+            var checkIn = v.CheckIn ? formatDateTime(v.CheckIn) : "--:--:--";
+            var checkOut = v.CheckOut ? formatDateTime(v.CheckOut) : "--:--:--";
+            var statusClass = getStatusClass(v.Status);
+            var statusText = v.Status || "Pending";
+            var visitDate = v.VisitDate ? formatDate(v.VisitDate) : "2026-03-02";
+            var visitorType = v.VisitorType || "";
+            var noOfVisitors = v.NoOfVisitor || "";
+
+            var actionBtns = getActionButtons(v);
+
+            visitorTable.row.add([
+                v.VisitorName || "",
+                v.HostEmployee || "",
+                visitDate,
+                v.Purpose || "",
+                '<span>' + checkIn + '</span> / <span>' + checkOut + '</span>',
+                visitorType,
+                '<span class="' + statusClass + '">' + statusText + '</span>',
+                v.CreateBy || "",
+                actionBtns
+            ]);
+        });
+
+        visitorTable.draw();
+
+        // Re-bind tooltips after draw
+        setTimeout(function () {
+            $('.tooltips').tooltip();
+        }, 100);
+    }
+
+    // Get action buttons based on status
+    function getActionButtons(visitor) {
+        var btns = '';
+        var id = visitor.Id;
+
+        if (visitor.Status === "Pending" || visitor.Status === "Approved") {
+            btns += '<a class="btn blue_btnnew tooltips btnReschedule" data-placement="left" data-original-title="Reschedule" data-id="' + id + '" onclick="openRescheduleModal(' + id + ')"><i class="fa-regular fa-timer"></i></a> ';
+            btns += '<a class="btn blue_btnnew tooltips btnCheckIn" data-placement="left" data-original-title="Check In" data-id="' + id + '" onclick="openCheckInModal(' + id + ')"><i class="fa-solid fa-check"></i></a> ';
+        }
+
+        if (visitor.Status === "CheckedIn") {
+            btns += '<a class="btn blue_btnnew tooltips btnRePrint" data-placement="left" data-original-title="Re-Print" data-id="' + id + '" onclick="openRePrintModal(' + id + ')"><i class="fa-regular fa-print"></i></a> ';
+            btns += '<a class="btn blue_btnnew tooltips btnCheckOut" data-placement="left" data-original-title="Check Out" data-id="' + id + '" onclick="checkOutVisitor(' + id + ')"><i class="fa-solid fa-xmark"></i></a> ';
+        }
+
+        if (visitor.Status === "CheckedOut") {
+            btns += '<a class="btn blue_btnnew tooltips btnRePrint" data-placement="left" data-original-title="Re-Print" data-id="' + id + '" onclick="openRePrintModal(' + id + ')"><i class="fa-regular fa-print"></i></a> ';
+        }
+
+        if (visitor.Status === "Rejected") {
+            btns += '<a class="btn blue_btnnew tooltips btnRePrint" data-placement="left" data-original-title="Re-Print" data-id="' + id + '" onclick="openRePrintModal(' + id + ')"><i class="fa-regular fa-print"></i></a> ';
+        }
+
+        return btns;
+    }
+
+    // Update summary counts
+    function updateSummary(visitors) {
+        var total = visitors.length;
+        var activeToday = 0;
+        var pending = 0;
+        var completed = 0;
+        var today = new Date().toDateString();
+
+        $.each(visitors, function (i, v) {
+            if (v.Status === "Pending") pending++;
+            if (v.Status === "CheckedOut") completed++;
+            if (v.Status === "CheckedIn") {
+                activeToday++;
+            }
+            if (v.Status === "Approved") {
+                var visitDate = new Date(v.VisitDate).toDateString();
+                if (visitDate === today) activeToday++;
+            }
+        });
+
+        $("#spnTotalRecords").text(total);
+        $("#spnActiveToday").text(activeToday);
+        $("#spnPending").text(pending);
+        $("#spnCompleted").text(completed);
+    }
+
+    // Create new visitor
+    function createVisitor(visitorData) {
+        showLoader();        
+        $.ajax({
+            url: _vmsBaseUrl + "/Visitor/Create",
+            type: "POST",
+            data: visitorData,
+            dataType: "json",            
+            success: function (response) {
+                hideLoader();
+                if (response.Success) {
+                    toastr.success("Visitor registered successfully.");
+                    $("#AddVisitor_btn_modal").modal('hide');
+                    clearAddVisitorForm();
+                    loadVisitors();
+                } else {
+                    toastr.error(response.Message || "Failed to register visitor.");
+                }
+            },
+            error: function (xhr, status, error) {
+                hideLoader();
+                toastr.error("Failed to register visitor. Please try again.");
+                console.error("Create Visitor Error:", error);
+            }
+        });
+    }
+
+    // Reschedule visitor
+    function rescheduleVisitor(visitorId, newDate, newTime) {
+        showLoader();
+        $.ajax({
+            url: _vmsBaseUrl + "/Visitor/Edit",
+            type: "POST",
+            data: {
+                Id: visitorId,
+                VisitDate: newDate
+            },
+            dataType: "json",
+            success: function (response) {
+                hideLoader();
+                if (response.Success) {
+                    toastr.success("Visitor rescheduled successfully.");
+                    $("#RescheduleBtn_modal").modal('hide');
+                    loadVisitors();
+                } else {
+                    toastr.error(response.Message || "Failed to reschedule visitor.");
+                }
+            },
+            error: function (xhr, status, error) {
+                hideLoader();
+                toastr.error("Failed to reschedule visitor. Please try again.");
+                console.error("Reschedule Visitor Error:", error);
+            }
+        });
+    }
+
+    // Check in visitor
+    function checkInVisitor(visitorId) {
+        showLoader();
+        $.ajax({
+            url: _vmsBaseUrl + "/Visitor/CheckIn",
+            type: "POST",
+            data: { id: visitorId },
+            dataType: "json",
+            success: function (response) {
+                hideLoader();
+                if (response.Success) {
+                    toastr.success("Visitor checked in successfully.");
+                    $("#CheckIn_modal").modal('hide');
+                    loadVisitors();
+                } else {
+                    toastr.error(response.Message || "Failed to check in visitor.");
+                }
+            },
+            error: function (xhr, status, error) {
+                hideLoader();
+                toastr.error("Failed to check in visitor. Please try again.");
+                console.error("Check In Error:", error);
+            }
+        });
+    }
+
+    // Check out visitor
+    function checkOutVisitor(visitorId) {
+        if (!confirm("Are you sure you want to check out this visitor?")) return;
+
+        showLoader();
+        $.ajax({
+            url: _vmsBaseUrl + "/Visitor/CheckOut",
+            type: "POST",
+            data: { id: visitorId },
+            dataType: "json",
+            success: function (response) {
+                hideLoader();
+                if (response.Success) {
+                    toastr.success("Visitor checked out successfully.");
+                    loadVisitors();
+                } else {
+                    toastr.error(response.Message || "Failed to check out visitor.");
+                }
+            },
+            error: function (xhr, status, error) {
+                hideLoader();
+                toastr.error("Failed to check out visitor. Please try again.");
+                console.error("Check Out Error:", error);
+            }
+        });
+    }
+
+    // Get visitor by ID
+    function getVisitorById(visitorId, callback) {
+        showLoader();
+        $.ajax({
+            url: _vmsBaseUrl + "/Visitor/GetById/" + visitorId,
+            type: "GET",
+            dataType: "json",
+            success: function (response) {
+                hideLoader();
+                if (response.Success && response.Data) {
+                    callback(response.Data);
+                } else {
+                    toastr.error("Visitor details not found.");
+                }
+            },
+            error: function (xhr, status, error) {
+                hideLoader();
+                toastr.error("Failed to load visitor details.");
+                console.error("GetById Error:", error);
+            }
+        });
+    }
+
+    // ==================== MODAL OPEN FUNCTIONS ====================
+
+    // Open Reschedule Modal with visitor data
+    function openRescheduleModal(visitorId) {
+        $("#hdnRescheduleVisitorId").val(visitorId);
+        $("#txtRescheduleDate").val('');
+        $("#txtRescheduleTime").val('');
+        $("#RescheduleBtn_modal").modal('show');
+    }
+
+    // Open Check In Modal with visitor details
+    function openCheckInModal(visitorId) {
+        $("#hdnCheckInVisitorId").val(visitorId);
+        getVisitorById(visitorId, function (visitor) {
+            // Populate Visitor Details
+            $("#ciVisitorName").text(visitor.VisitorName || "-");
+            $("#ciAssignedDate").text(visitor.CreatedDate ? getTimeAgo(visitor.CreatedDate) : "-");
+            $("#ciCreatedBy").text(visitor.CreateBy || "-");
+            $("#ciStatus").text(visitor.Status || "Pending");
+            $("#ciFromDate").text(visitor.VisitDate ? formatDate(visitor.VisitDate) : "-");
+            $("#ciToDate").text(visitor.VisitDate ? formatDate(visitor.VisitDate) : "-");
+
+            var noOfVisitors = visitor.NoOfVisitor || "-";
+            $("#ciNoOfVisitors").text(noOfVisitors);
+            $("#ciPurpose").text(visitor.Purpose || "-");
+
+            // Populate Host Details
+            $("#ciHostName").text(visitor.HostEmployee || "-");
+            $("#ciHostRole").text(visitor.Department || "-");
+            $("#ciHostDept").text(visitor.Department || "-");
+
+            $("#CheckIn_modal").modal('show');
+        });
+    }
+
+    // Open Re-Print Modal with visitor details
+    function openRePrintModal(visitorId) {
+        getVisitorById(visitorId, function (visitor) {
+            // Populate Visitor Details
+            $("#rpVisitorName").text(visitor.VisitorName || "-");
+            $("#rpAssignedDate").text(visitor.CreatedDate ? getTimeAgo(visitor.CreatedDate) : "-");
+            $("#rpCreatedBy").text(visitor.CreateBy || "-");
+            $("#rpStatus").text(visitor.Status || "Pending");
+            $("#rpFromDate").text(visitor.VisitDate ? formatDate(visitor.VisitDate) : "-");
+            $("#rpToDate").text(visitor.VisitDate ? formatDate(visitor.VisitDate) : "-");
+
+            var noOfVisitors = visitor.NoOfVisitor || "-";
+            $("#rpNoOfVisitors").text(noOfVisitors);
+            $("#rpPurpose").text(visitor.Purpose || "-");
+
+            // Populate Host Details
+            $("#rpHostName").text(visitor.HostEmployee || "-");
+            $("#rpHostRole").text(visitor.Department || "-");
+            $("#rpHostDept").text(visitor.Department || "-");
+
+            // Set photo if available
+            if (visitor.PhotoPath) {
+                $("#rpVisitorPhoto").attr("src", visitor.PhotoPath);
+            }
+
+            $("#RePrint_modal").modal('show');
+        });
+    }
+
+    // ==================== HELPER FUNCTIONS ====================
+
+    function formatDate(dateStr) {
+        debugger;
+        if (!dateStr) return "";
+        var d = new Date(dateStr);
+        var day = ("0" + d.getDate()).slice(-2);
+        var month = ("0" + (d.getMonth() + 1)).slice(-2);
+        var year = d.getFullYear();
+        return day + "-" + month + "-" + year;
+    }
+
+    function formatDateTime(dateStr) {
+        debugger;
+        if (!dateStr) return "--:--:--";
+        var d = new Date(dateStr);
+        var hours = ("0" + d.getHours()).slice(-2);
+        var minutes = ("0" + d.getMinutes()).slice(-2);
+        var seconds = ("0" + d.getSeconds()).slice(-2);
+        return hours + ":" + minutes + ":" + seconds;
+    }
+
+    function getTimeAgo(dateStr) {
+        var d = new Date(dateStr);
+        var now = new Date();
+        var diffMs = now - d;
+        var diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+        if (diffDays === 0) return "Today";
+        if (diffDays === 1) return "1 Day Ago";
+        return diffDays + " Days Ago";
+    }
+
+    function getStatusClass(status) {
+        switch (status) {
+            case "Approved": return "green_font";
+            case "Rejected": return "red_font";
+            case "Pending": return "orange_font";
+            case "CheckedIn": return "blue_font";
+            case "CheckedOut": return "green_font";
+            default: return "";
+        }
+    }
+
+    function clearAddVisitorForm() {
+        $("#txtVisitorName").val('');
+        $("#txtVisitorEmail").val('');
+        $("#ddlVisitorType").val('1');
+        $("#ddlVisitLocation").val('1');
+        $("#txtNoOfVisitors").val('');
+        $("#ddlGender").val('1');
+        $("#txtVisitorCompany").val('');
+        $("#ddlHostEmployee").val('1');
+        $("#txtVisitDate").val('');
+        $("#txtVisitTime").val('');
+        $("#txtPurposeOfVisit").val('');
+        $("#txtVisitorPhone").val('');
+    }
+
+    function showLoader() {
+        $("#ajax_loader").show();
+    }
+
+    function hideLoader() {
+        $("#ajax_loader").hide();
+    }
+</script>
+
+<!-- Page Bar : Begin -->
+<div class="page-bar">
+    <ul class="page-breadcrumb">
+        <li>
+            <a href="/Admin/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+        </li>
+        <li>
+            <span><i class="fa-light fa-angle-right"></i> BU</span>
+        </li>
+    </ul>
+    <div class="page-toolbar">
+        <a href="javascript:;" class="btn icon_transparent_btn tooltips" id="AddVisitor_btn" data-placement="left" data-original-title="Add Visitor"><i class="fa-solid fa-plus"></i></a>
+    </div>
+</div>
+<!-- Page Bar : End -->
+<!-- Ajax Loader : Begin -->
+<div id='ajax_loader' class="modal_bg loading" aria-hidden="true" style="display:none;">
+    <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" />
+</div>
+<!-- Ajax Loader : End -->
+<!-- Body Block : Begin -->
+<div class="payrollfilter_height">
+    <div class="portlet margin-bottom-10" style="padding: 5px 12px;" id="">
+        <div class="list-content summary_list">
+            <div class="accordian-header" id="list_six" style="border-top:0;">
+                <div>
+                    <a class="caption-subject font-dark bold" href="#listsix" data-toggle="collapse" aria-expanded="false" aria-controls="listsix"><span class="assign_emp_ctn">All Visitor Summary</span><i class="fa-solid fa-chevron-down arrow_down"></i></a>
+                </div>
+            </div>
+            <div class="collapse in" id="listsix" aria-expanded="true">
+                <div class="portlet-body form">
+                    <div class="row">
+                        <div class="col-lg-12">
+                            <div class="row">
+                                <div class="col-sm-3 col-xs-6">
+                                    <div class="final_summary_list">
+                                        <div class="">Total Records</div>
+                                        <p id="spnTotalRecords">0</p>
+                                    </div>
+                                </div>
+                                <div class="col-sm-3 col-xs-6">
+                                    <div class="final_summary_list blue_font">
+                                        <div class="">Active Today</div>
+                                        <p id="spnActiveToday">0</p>
+                                    </div>
+                                </div>
+                                <div class="col-sm-3 col-xs-6">
+                                    <div class="final_summary_list orange_font">
+                                        <div class="">Pending</div>
+                                        <p id="spnPending">0</p>
+                                    </div>
+                                </div>
+                                <div class="col-sm-3 col-xs-6">
+                                    <div class="final_summary_list green_font">
+                                        <div class="">Completed</div>
+                                        <p id="spnCompleted">0</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="portlet">
+        <div class="portlet-body">
+            <div class="table-responsive" id="tableResponsive">
+                <table id="tblbuwise" class="new_datatbl table table-striped table-bordered table-hover order-column serch_datatable">
+                    <thead>
+                        <tr>
+                            <th style="min-width: 120px;">Visitor Name</th>
+                            <th style="min-width: 80px;">Host</th>
+                            <th>Visit Date</th>
+                            <th>Purpose</th>
+                            <th>Check in / Check out</th>
+                            <th>Visitor Type</th>
+                            <th>Status</th>
+                            <th>Created By</th>
+                            <th style="min-width: 70px;">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Data will be loaded dynamically via AJAX -->
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- NoDataFound Block : Begin -->
+            <div id="NotificationGrid-empty" style="display: none;">
+                <div class="datanotfound">
+                    <img src="~/assets/images/emptyscreen_1.png" height="148" width="280" alt="Nodata Found Icon">
+                    <p class="datanotfound_title">No data found</p>
+                    <p class="">No entries found. Please add a record to get started.</p>
+                </div>
+            </div>
+            <!-- NoDataFound Block : End -->
+
+        </div>
+    </div>
+</div>
+<!-- Body Block : End -->
+<!-- Add Visitor Modal : Begin -->
+<div id="AddVisitor_btn_modal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal">&times;</button>
+                <h4 class="modal-title">Add Visitor</h4>
+            </div>
+            <div class="modal-body">
+                <div class="modal-card">
+                    <div class="row">
+                        <div class="col-sm-6 col-xs-12">
+                            <div class="form-group">
+                                <label class="control-label">Full Name <span class="required" aria-required="true">*</span></label>
+                                <input type="text" id="txtVisitorName" placeholder="Please Enter" class="form-control" name="VisitorName" />
+                            </div>
+                        </div>
+                        <div class="col-sm-6 col-xs-12">
+                            <div class="form-group">
+                                <label class="control-label">Visitor's Email <span class="required" aria-required="true">*</span></label>
+                                <input type="text" id="txtVisitorEmail" placeholder="Please Enter" class="form-control" name="Email" />
+                            </div>
+                        </div>
+                        <div class="col-sm-6 col-xs-12">
+                            <div class="form-group">
+                                <label class="control-label">Phone Number <span class="required" aria-required="true">*</span></label>
+                                <input type="text" id="txtVisitorPhone" placeholder="Please Enter" class="form-control" name="PhoneNumber" />
+                            </div>
+                        </div>
+                        <div class="col-sm-6 col-xs-12">
+                            <div class="form-group">
+                                <label class="control-label">Visitor's Type </label>
+                                <select class="form-control input-sm select2" id="ddlVisitorType">
+                                    <option value="0">Please Select</option>
+                                    <option value="1">Vip</option>
+                                    <option value="2">Vendor</option>
+                                    <option value="3">Technician</option>
+                                    <option value="4">Government official</option>
+                                    <option value="5">Auditor</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-sm-6 col-xs-12">
+                            <div class="form-group">
+                                <label class="control-label">Visit Location </label>
+                                <select class="form-control input-sm select2" id="ddlVisitLocation">
+                                    <option value="0">Please Select</option>
+                                    <option value="1">Office 1</option>
+                                    <option value="2">Office 2</option>
+                                    <option value="3">Office 3</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-sm-6 col-xs-12">
+                            <div class="form-group">
+                                <label class="control-label">No. of Visitors <span class="required" aria-required="true">*</span></label>
+                                <input type="text" id="txtNoOfVisitors" placeholder="Please Enter" class="form-control" name="NoOfVisitors" />
+                            </div>
+                        </div>
+                        <div class="col-sm-6 col-xs-12">
+                            <div class="form-group">
+                                <label class="control-label">Gender </label>
+                                <select class="form-control input-sm select2" id="ddlGender">
+                                    <option value="0">Please Select</option>
+                                    <option value="1">Male</option>
+                                    <option value="2">Female</option>
+                                    <option value="3">Transgender</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-sm-6 col-xs-12">
+                            <div class="form-group">
+                                <label class="control-label">Visitor's Company (optional)</label>
+                                <input type="text" id="txtVisitorCompany" placeholder="Please Enter" class="form-control" name="CompanyName" />
+                            </div>
+                        </div>
+                        <div class="col-sm-6 col-xs-12">
+                            <div class="form-group">
+                                <label class="control-label">Host Employee </label>
+                                <select class="form-control input-sm select2" id="ddlHostEmployee">
+                                    <option value="0">Please Select</option>
+                                    <option value="1">Self</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-sm-12">
+                            <div class="row">
+                                <div class="col-sm-6 col-xs-12">
+                                    <div class="form-group data_picker_box">
+                                        <label class="control-label">Visit Date<span class="required" aria-required="true">*</span></label>
+                                        <div class="input-group input-group-sm date date-picker" data-date="@DateTime.Now" data-date-format="@_isdateformat" data-date-viewmode="years">
+                                            <span class="input-group-btn">
+                                                <button class="btn default" type="button">
+                                                    <i class="fa-light fa-calendar-days"></i>
+                                                </button>
+                                            </span>
+                                            <input type="text" class="form-control" id="txtVisitDate" value="" data-date-format="@_isdateformat" placeholder="" autocomplete="off">
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-sm-6 col-xs-12">
+                                    <div class="form-group data_picker_box">
+                                        <label>Visit Time</label>
+                                        <div class="input-group input-group-sm" id="OutDiv">
+                                            <span class="input-group-btn">
+                                                <button class="btn default" type="button" id="btnouttime">
+                                                    <i class="fa-regular fa-clock"></i>
+                                                </button>
+                                            </span>
+                                            <input type="text" class="form-control timepicker timepicker-24" data-minute-step="1" id="txtVisitTime" name="VisitTime" placeholder="00:00">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-xs-12">
+                            <div class="form-group margin-bottom-0">
+                                <label class="control-label">Purpose of visit</label>
+                                <textarea class="form-control" rows="3" id="txtPurposeOfVisit" name="PurposeOfVisit" placeholder="Reason for visit"></textarea>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <div class="row">
+                    <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                        <button type="button" class="btn clear_btn" id="ClearVisitorBtn"><i class="fa-regular fa-xmark"></i> Clear</button>
+                        <button type="button" class="btn save_btn" id="SubmitVisitor"><i class="fa-regular fa-check"></i> Register Visitor</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Reschedule Modal : Begin -->
+<div id="RescheduleBtn_modal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+    <div class="modal-dialog w-500">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal">&times;</button>
+                <h4 class="modal-title">Reschedule Visitor</h4>
+            </div>
+            <div class="modal-body">
+                <div class="modal-card">
+                    <input type="hidden" id="hdnRescheduleVisitorId" value="" />
+                    <div class="row">
+                        <div class="col-sm-12">
+                            <div class="form-group data_picker_box">
+                                <label class="control-label">Visit Date<span class="required" aria-required="true">*</span></label>
+                                <div class="input-group input-group-sm date date-picker" data-date="@DateTime.Now" data-date-format="@_isdateformat" data-date-viewmode="years">
+                                    <span class="input-group-btn">
+                                        <button class="btn default" type="button">
+                                            <i class="fa-light fa-calendar-days"></i>
+                                        </button>
+                                    </span>
+                                    <input type="text" class="form-control" id="txtRescheduleDate" value="" data-date-format="@_isdateformat" placeholder="" autocomplete="off">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-sm-12">
+                            <div class="form-group data_picker_box">
+                                <label>Visit Time</label>
+                                <div class="input-group input-group-sm">
+                                    <span class="input-group-btn">
+                                        <button class="btn default" type="button">
+                                            <i class="fa-regular fa-clock"></i>
+                                        </button>
+                                    </span>
+                                    <input type="text" class="form-control timepicker timepicker-24" data-minute-step="1" id="txtRescheduleTime" name="RescheduleTime" placeholder="00:00">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <div class="row">
+                    <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                        <button type="button" class="btn clear_btn" id="ClearRescheduleBtn"><i class="fa-regular fa-xmark"></i> Clear</button>
+                        <button type="button" class="btn save_btn" id="SubmitRescheduleBtn"><i class="fa-regular fa-check"></i> Reschedule</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Check In Modal : Begin -->
+<div id="CheckIn_modal" class="modal fade checkin-modal" role="dialog" data-keyboard="false" data-backdrop="static">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal">&times;</button>
+                <h4 class="modal-title">Check In Visitor</h4>
+            </div>
+            <div class="modal-body">
+                <div class="checkin-modal-card">
+                    <input type="hidden" id="hdnCheckInVisitorId" value="" />
+                    <!-- Stepper : Begin -->
+                    <div class="checkin-stepper">
+                        <div class="stepper-wrapper">
+                            <div class="stepper-item">
+                                <div class="stepper-circle completed">
+                                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                        <path d="M13.3334 4L6.00008 11.3333L2.66675 8" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                                    </svg>
+                                </div>
+                                <div class="stepper-line completed"></div>
+                            </div>
+                            <div class="stepper-item">
+                                <div class="stepper-circle"></div>
+                            </div>
+                        </div>
+                        <div class="stepper-labels">
+                            <span class="stepper-label active">Verify Visitor Details</span>
+                            <span class="stepper-label">Authorize Visitor</span>
+                        </div>
+                    </div>
+                    <!-- Stepper : End -->
+                    <!-- Visitor Details Section : Begin -->
+                    <div class="checkin-section">
+                        <p class="checkin-section-title">Visitor Details</p>
+                        <div class="checkin-visitor-wrapper">
+                            <div class="checkin-detail-card">
+                                <!-- Row 1: Name, Assigned date, Created by | Status -->
+                                <div class="checkin-fields-row checkin-fields-between">
+                                    <div class="checkin-fields-group">
+                                        <div class="checkin-field">
+                                            <span class="checkin-field-label">Name</span>
+                                            <span class="checkin-field-value" id="ciVisitorName">-</span>
+                                        </div>
+                                        <div class="checkin-field">
+                                            <span class="checkin-field-label">Assigned date</span>
+                                            <span class="checkin-field-value" id="ciAssignedDate">-</span>
+                                        </div>
+                                        <div class="checkin-field">
+                                            <span class="checkin-field-label">Created by</span>
+                                            <span class="checkin-field-value" id="ciCreatedBy">-</span>
+                                        </div>
+                                    </div>
+                                    <div class="checkin-field">
+                                        <span class="checkin-field-label">Status</span>
+                                        <span class="checkin-status-badge" id="ciStatus">-</span>
+                                    </div>
+                                </div>
+                                <!-- Row 2: From, To, No. of Visitors -->
+                                <div class="checkin-fields-row">
+                                    <div class="checkin-fields-group">
+                                        <div class="checkin-field">
+                                            <span class="checkin-field-label">From</span>
+                                            <span class="checkin-field-value" id="ciFromDate">-</span>
+                                        </div>
+                                        <div class="checkin-field">
+                                            <span class="checkin-field-label">To</span>
+                                            <span class="checkin-field-value" id="ciToDate">-</span>
+                                        </div>
+                                        <div class="checkin-field">
+                                            <span class="checkin-field-label">No. of Visitors</span>
+                                            <span class="checkin-field-value" id="ciNoOfVisitors">-</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <!-- Row 3: Purpose of visit -->
+                                <div class="checkin-fields-row">
+                                    <div class="checkin-field checkin-field-full">
+                                        <span class="checkin-field-label">Purpose of visit</span>
+                                        <span class="checkin-field-value" id="ciPurpose">-</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="checkin-qr-block">
+                                <div class="checkin-qr-code">
+                                    <img src="~/assets/images/QRcode.svg" alt="QR Code" />
+                                </div>
+                                <p class="checkin-qr-text">Scan to validate</p>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Visitor Details Section : End -->
+                    <!-- Host Details Section : Begin -->
+                    <div class="checkin-section">
+                        <p class="checkin-section-title">Host Details</p>
+                        <div class="checkin-detail-card checkin-host-wrapper">
+                            <!-- Left: Image -->
+                            <div class="checkin-host-left">
+                                <div class="checkin-field">
+                                    <span class="checkin-field-label">Image</span>
+                                    <div class="checkin-host-image">
+                                        <img src="~/assets/images/avtar.png" alt="Host Image" />
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Right: Name, Role, Department -->
+                            <div class="checkin-host-right">
+                                <div class="checkin-fields-group">
+                                    <div class="checkin-field">
+                                        <span class="checkin-field-label">Name</span>
+                                        <span class="checkin-field-value" id="ciHostName">-</span>
+                                    </div>
+                                    <div class="checkin-field">
+                                        <span class="checkin-field-label">Role</span>
+                                        <span class="checkin-field-value" id="ciHostRole">-</span>
+                                    </div>
+                                    <div class="checkin-field">
+                                        <span class="checkin-field-label">Department</span>
+                                        <span class="checkin-field-value" id="ciHostDept">-</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Host Details Section : End -->
+                    <!-- Step 2: Authorize Visitor (hidden by default) : Begin -->
+                    <div class="checkin-step-2" style="display:none;">
+                        <!-- Authorization Type -->
+                        <div class="authorize-section">
+                            <p class="authorize-label">Authorization type</p>
+                            <div class="authorize-radio-group">
+                                <label class="authorize-radio">
+                                    <input type="radio" name="authType" value="assign_floor" checked />
+                                    <span class="authorize-radio-text">Assign floor</span>
+                                </label>
+                                <label class="authorize-radio">
+                                    <input type="radio" name="authType" value="admit_card" />
+                                    <span class="authorize-radio-text">Admit Card</span>
+                                </label>
+                            </div>
+                        </div>
+                        <!-- Assign Floor Content -->
+                        <div class="authorize-assign-floor">
+                            <!-- Floor Dropdown -->
+                            <div class="row">
+                                <div class="col-sm-12 col-xs-12">
+                                    <div class="form-group">
+                                        <label class="control-label">Floor</label>
+                                        <select id="FloorID" class="mt-multiselect btn blue btn-outline" multiple="multiple" data-width="100%">
+                                            <option value="0">Selct Floor</option>
+                                            <option value="1">Floor 1</option>
+                                            <option value="2">Floor 2</option>
+                                            <option value="3">Floor 3</option>
+                                            <option value="4">Floor 4</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Devices Table -->
+                            <div class="authorize-section">
+                                <p class="authorize-label">Devices</p>
+                                <div class="authorize-table-wrapper">
+                                    <table class="authorize-device-table">
+                                        <thead>
+                                            <tr>
+                                                <th class="authorize-th-check"><input type="checkbox" id="chkAllDevices" /></th>
+                                                <th class="authorize-th-floor">Floor</th>
+                                                <th>Device Name</th>
+                                                <th>Device Sr No</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="tbodyDevices">
+                                            <!-- Devices will be loaded dynamically if needed -->
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- End Assign Floor Content -->
+                        <!-- Admit Card Content (hidden by default) -->
+                        <div class="authorize-admit-card" style="display:none;">
+                            <div class="authorize-section">
+                                <p class="authorize-section-title">Capture Photo</p>
+                                <div class="authorize-capture-wrapper">
+                                    <!-- Left: Camera Capture -->
+                                    <div class="authorize-capture-left">
+                                        <div class="authorize-capture-area" id="captureArea">
+                                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                                <path d="M3 4V1H5V4H8V6H5V9H3V6H0V4H3ZM6 10V7H9V4H16L17.83 6H21C22.1 6 23 6.9 23 8V20C23 21.1 22.1 22 21 22H5C3.9 22 3 21.1 3 20V10H6ZM13 19C15.76 19 18 16.76 18 14C18 11.24 15.76 9 13 9C10.24 9 8 11.24 8 14C8 16.76 10.24 19 13 19ZM9.8 14C9.8 15.77 11.23 17.2 13 17.2C14.77 17.2 16.2 15.77 16.2 14C16.2 12.23 14.77 10.8 13 10.8C11.23 10.8 9.8 12.23 9.8 14Z" fill="#252525" />
+                                            </svg>
+                                            <p class="authorize-capture-text">Capture Image</p>
+                                        </div>
+                                        <div class="authorize-capture-buttons">
+                                            <button type="button" class="btn trans_btnnew w-100" id="btnCaptureAgain">Capture Again</button>
+                                            <button type="button" class="btn save_btn w-100" id="btnSaveCapture">Save</button>
+                                        </div>
+                                    </div>
+                                    <!-- Divider -->
+                                    <div class="authorize-capture-divider">or</div>
+                                    <!-- Right: Browse Upload -->
+                                    <div class="authorize-capture-right">
+                                        <div class="authorize-upload-area" id="uploadArea">
+                                            <input type="file" id="fileAdmitPhoto" accept=".jpg,.jpeg,.png" style="display:none;" />
+                                            <button type="button" class="btn authorize-btn-primary" id="btnBrowsePhoto">Browse</button>
+                                            <p class="authorize-upload-hint">Max size: 50 KB | File formats: PNG, JPEG</p>
+                                        </div>
+                                        <div class="authorize-file-info" id="fileInfo" style="display:none;">
+                                            <span class="authorize-file-name" id="fileName"></span>
+                                            <span class="authorize-file-remove" id="btnRemoveFile">
+                                                <i class="fa-solid fa-xmark "></i>
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- End Admit Card Content -->
+                    </div>
+                    <!-- Step 2: Authorize Visitor : End -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <div class="row">
+                    <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                        <!-- Step 1 Footer -->
+                        <div class="checkin-footer-step1">
+                            <button type="button" class="btn save_btn" id="RescheduleCheckInBtn"><i class="fa-regular fa-timer"></i> Reschedule</button>
+                            <button type="button" class="btn save_btn" id="NextBtn">Next <i class="fa-light fa-angle-right"></i></button>
+                        </div>
+                        <!-- Step 2 Footer -->
+                        <div class="checkin-footer-step2" style="display:none;">
+                            <button type="button" class="btn prev_btn prevbtn" id="PrevBtn"><i class="fa-light fa-angle-left"></i> Previous</button>
+                            <button type="button" class="btn save_btn" id="RescheduleCheckInBtn"><i class="fa-regular fa-timer"></i> Reschedule</button>
+                            <button type="button" class="btn save_btn" id="CheckInBtn"><i class="fa-regular fa-check"></i> Check In</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- RePrint Modal : Begin -->
+<div id="RePrint_modal" class="modal fade checkin-modal" role="dialog" data-keyboard="false" data-backdrop="static">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal">&times;</button>
+                <h4 class="modal-title">Admit Card</h4>
+            </div>
+            <div class="modal-body">
+                <div class="checkin-modal-card">
+                    <!-- Visitor Details Section : Begin -->
+                    <div class="checkin-section" style="margin-top: 0;">
+                        <p class="checkin-section-title">Visitor Details</p>
+                        <div class="checkin-visitor-wrapper">
+                            <div class="checkin-detail-card">
+                                <!-- Row 0: Photo -->
+                                <div class="checkin-fields-row checkin-fields-between">
+                                    <div class="checkin-fields-group">
+                                        <div class="checkin-field">
+                                            <span class="checkin-field-label">Photo</span>
+                                            <div class="checkin-host-image">
+                                                <img src="/assets/images/avtar.png" alt="Host Image" id="rpVisitorPhoto">
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <!-- Row 1: Name, Assigned date, Created by | Status -->
+                                <div class="checkin-fields-row checkin-fields-between">
+                                    <div class="checkin-fields-group">
+                                        <div class="checkin-field">
+                                            <span class="checkin-field-label">Name</span>
+                                            <span class="checkin-field-value" id="rpVisitorName">-</span>
+                                        </div>
+                                        <div class="checkin-field">
+                                            <span class="checkin-field-label">Assigned date</span>
+                                            <span class="checkin-field-value" id="rpAssignedDate">-</span>
+                                        </div>
+                                        <div class="checkin-field">
+                                            <span class="checkin-field-label">Created by</span>
+                                            <span class="checkin-field-value" id="rpCreatedBy">-</span>
+                                        </div>
+                                    </div>
+                                    <div class="checkin-field">
+                                        <span class="checkin-field-label">Status</span>
+                                        <span class="checkin-status-badge" id="rpStatus">-</span>
+                                    </div>
+                                </div>
+                                <!-- Row 2: From, To, No. of Visitors -->
+                                <div class="checkin-fields-row">
+                                    <div class="checkin-fields-group">
+                                        <div class="checkin-field">
+                                            <span class="checkin-field-label">From</span>
+                                            <span class="checkin-field-value" id="rpFromDate">-</span>
+                                        </div>
+                                        <div class="checkin-field">
+                                            <span class="checkin-field-label">To</span>
+                                            <span class="checkin-field-value" id="rpToDate">-</span>
+                                        </div>
+                                        <div class="checkin-field">
+                                            <span class="checkin-field-label">No. of Visitors</span>
+                                            <span class="checkin-field-value" id="rpNoOfVisitors">-</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <!-- Row 3: Purpose of visit -->
+                                <div class="checkin-fields-row">
+                                    <div class="checkin-field checkin-field-full">
+                                        <span class="checkin-field-label">Purpose of visit</span>
+                                        <span class="checkin-field-value" id="rpPurpose">-</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="checkin-qr-block">
+                                <div class="checkin-qr-code">
+                                    <img src="~/assets/images/QRcode.svg" alt="QR Code" />
+                                </div>
+                                <p class="checkin-qr-text">Scan to validate</p>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Visitor Details Section : End -->
+                    <!-- Host Details Section : Begin -->
+                    <div class="checkin-section">
+                        <p class="checkin-section-title">Host Details</p>
+                        <div class="checkin-detail-card checkin-host-wrapper">
+                            <!-- Left: Image -->
+                            <div class="checkin-host-left">
+                                <div class="checkin-field">
+                                    <span class="checkin-field-label">Image</span>
+                                    <div class="checkin-host-image">
+                                        <img src="~/assets/images/avtar.png" alt="Host Image" />
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Right: Name, Role, Department -->
+                            <div class="checkin-host-right">
+                                <div class="checkin-fields-group">
+                                    <div class="checkin-field">
+                                        <span class="checkin-field-label">Name</span>
+                                        <span class="checkin-field-value" id="rpHostName">-</span>
+                                    </div>
+                                    <div class="checkin-field">
+                                        <span class="checkin-field-label">Role</span>
+                                        <span class="checkin-field-value" id="rpHostRole">-</span>
+                                    </div>
+                                    <div class="checkin-field">
+                                        <span class="checkin-field-label">Department</span>
+                                        <span class="checkin-field-value" id="rpHostDept">-</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Host Details Section : End -->
+                    <!-- Signature Section : Begin -->
+                    <div class="checkin-section">
+                        <div class="checkin-detail-card checkin-host-wrapper">
+                            <div class="checkin-signature">
+                                <div class="checkin-sign-block">
+                                    <p></p>
+                                    <div class="checkin-signtype">Security Signature</div>
+                                </div>
+                                <div class="checkin-sign-block">
+                                    <p></p>
+                                    <div class="checkin-signtype">Visitor Signature</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Signature Section : End -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <div class="row">
+                    <div class="col-lg-12 text-right">
+                        <div class="checkin-footer-step1">
+                            <button type="button" class="btn save_btn" id="btnPrint"><i class="fa-regular fa-print"></i> Print</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

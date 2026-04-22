@@ -1,0 +1,690 @@
+﻿@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@using System.Configuration;
+@{
+    ViewBag.Title = "ESIC Master";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiurlpayroll = ConfigurationManager.AppSettings["webapipaytimePayroll"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+    string _isdateformat = HttpContext.Current.Session["IsDateFormat"].ToString();
+
+}
+<link href="/Newlayout/css/payrollstructure.css" rel="stylesheet">
+<script>
+    //Clear Form
+    function formClear() {
+        //$("#effective_date").val('');
+        $("#employee_count").val('');
+        $("#employer_count").val('');
+        $("#MaxAmount").val('');
+        $("#esiccheckbox").prop("checked", false);
+        $("#esic_id").val('');
+
+    }
+    $(document).ready(function () {
+        //Add New Click
+        $("#newesic").on('click', function () {
+            $("#Btn_Save").html("Save");
+            formClear();
+            $("#newesic").attr("data-toggle", "modal");
+            $("#newesic").attr("data-target", "#emp_esic_modal");
+
+        });
+
+
+        $('#MaxAmount').keydown(function (e) {
+            
+            if (e.keyCode === 13 || e.keyCode === 9) {
+                if ($("#MaxAmount").val() != "") {
+                    //var regexpSalary = /^\d{0,9}(\.\d{0,3})?$/;
+                    var regexpSalary = /^(\d{1,3}(,\d{3})*|\d{0,9})(\.\d{0,3})?$/;
+                    if (!regexpSalary.test($("#MaxAmount").val())) {
+                        toastr.remove();
+                        toastr.error("Please enter valid amount");
+                        $("#MaxAmount").val('');
+                        e.preventDefault();
+                        return false;
+                    }
+                } else {
+                    $("#MaxAmount").val('');
+                }
+            }
+        });
+        $("#MaxAmount").keypress(function (e) {
+            
+            $("#MaxAmount").removeClass('field_error');
+            if ((e.which != 46) && (e.which < 48 || e.which > 57)) {
+                return false;
+            }
+            else {
+                return true;
+            }
+        });
+
+        $(".number").keypress(function (e) {
+            
+
+            var charCode = e.which || e.keyCode;
+            var userInput = $(this).val() + String.fromCharCode(charCode);
+            var errorMessage = $('.error-message');
+
+            //var hundred = /^(100|[1-9]?\d(\.\d{1,2})?)$/.test(userInput);
+            //var format = /^[1-9](\d{0,1}(\.\d{0,2})?)?$/.test(userInput);
+            var CheckFormat = /^(100|[1-9]?\d(\.\d{0,2})?|[1-9](\.\d{0,2})?)$/.test(userInput)
+
+
+
+
+            // Check if the input is a valid number
+            if (!(CheckFormat)) {
+                e.preventDefault();
+            }
+        });
+
+
+        //Edite Button Click
+        $('body').on('click', '.grade_clm', function () {
+            $(".grade_clm").attr("data-toggle", "modal");
+            $(".grade_clm").attr("data-target", "#emp_esic_modal");
+            
+            var row = $(this).closest('tr')
+            var esicID = row.find('.esic_id').text();
+            var effectivedate = row.find('.effective_date').text();
+            var employerCount = row.find('.Employer_count').text().replace(/₹/g, '').trim();
+            var employeeCount = row.find('.Employee_count').text().replace(/₹/g, '').trim();
+            var maxAmount = row.find('.max_amount').text().replace(/₹/g, '').trim();
+            var status = row.find("#esic").text();
+
+            $("#esic_id").val(esicID);
+            $("#effective_date").val(effectivedate);
+            $("#employee_count").val(parseFloat(employeeCount));
+            $("#employer_count").val(parseFloat(employerCount));
+            $("#MaxAmount").val(maxAmount);
+            if (status == "Active") { $("#esiccheckbox").prop("checked", true); }
+            else { $("#esiccheckbox").prop("checked", false); }
+
+            $("#Btn_Save").html("Update");
+
+        });
+
+
+        //Activ/Inactive Status
+        $('body').on('click', '.action_btn', function () {
+
+            $('.action_btn_data').not(this).hide();
+            $(this).find('.action_btn_data').toggle();
+
+        });
+
+        $('.page-content').click(function () {
+            $(this).find('.action_btn_data').hide();
+        });
+
+        datatablebind();
+
+
+        //Active/Inactive button click
+        $('body').on('click', '.inactive_grd', function () {
+            
+            var row = $(this).closest('tr')
+            esicID = row.find('.esic_id').text();
+            var status = row.find('.status').text();
+            if (status = "In Processing") {
+                swal({
+                    title: "Confirmation!",
+                    text: "Are you sure you want to inactivate?",
+                    cancelButtonText: "Back",
+                    showCancelButton: true,
+                    confirmButtonText: "Yes",
+                    closeOnConfirm: true,
+
+                },
+                function (isConfirm) {
+                    if (isConfirm) {
+                        checkSession();
+                        $.ajax({
+                            type: "GET",
+                            headers: { 'Authorization': '@_tokan' },
+                            url: '@_webapiurlpayroll' + 'ESICMaster/UpdateEsicStatus?id=' + esicID + "&Status=0",
+                            contentType: "application/json; charset=utf-8",
+                            dataType: "json",
+                            beforeSend: function () {
+                                $("#ajax_loader").show();
+                            },
+                            success: function (response) {
+                                if (response.success == true) {
+                                    toastr.remove();
+                                    $('.action_btn_data').hide();
+                                    toastr.success("Inactivated successfully");
+                                    datatablebind();
+                                    //loan_tbl.ajax.reload();
+                                    //window.location.reload();
+
+                                } else {
+                                    toastr.remove();
+                                    toastr.error(response.message);
+                                }
+                            },
+                            complete: function () {
+                                $("#ajax_loader").hide();
+                            }
+                        });
+                    }
+                });
+            }
+        });
+
+        $('body').on('click', '.active_grd', function () {
+
+            var row = $(this).closest('tr');
+            esicID = row.find('.esic_id').text();
+            checkSession();
+            $.ajax({
+                type: "GET",
+                headers: { 'Authorization': '@_tokan' },
+                url: '@_webapiurlpayroll' + 'ESICMaster/UpdateEsicStatus?id=' + esicID + "&Status=1",
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                beforeSend: function () {
+                    $("#ajax_loader").show();
+                },
+                success: function (response) {
+                    if (response.success == true) {
+                        toastr.remove();
+                        $('.action_btn_data').hide();
+                        toastr.success("Activated successfully");
+                        datatablebind();
+                        //window.location.reload();
+                        //$('#loan_tbl').DataTable().ajax.reload();
+
+                    } else {
+                        toastr.remove();
+                        toastr.error(response.message);
+                    }
+                },
+                complete: function () {
+                    $("#ajax_loader").hide();
+                }
+            });
+        });
+
+
+        $("body").on('blur', '.inp', function () {
+            
+            var inputValue = $(this).val();
+
+            var decimalRegex = /^\d*\.?\d+$/; numericRegex = /^[0-9]+$/;
+            if (numericRegex.test(inputValue) || decimalRegex.test(inputValue)) {
+                if (parseInt(inputValue) > 100 || parseFloat(inputValue) > 100) {
+                    toastr.remove();
+                    toastr.error("Please enter value between 1 to 100")
+                    $(this).val("");
+                } else {
+
+                }
+            } else {
+                if (inputValue == '') {
+
+                }
+                else {
+                    toastr.remove();
+                    toastr.error("Enter only number")
+                    $(this).val("");
+                }
+            }
+        });
+
+        //DataTable
+        function datatablebind() {
+            var table = "";
+            var esic_tbl = $('#esic_tbl').DataTable();
+            esic_tbl.destroy();
+            //Datatable call
+            checkSession();
+            $.ajax({
+                type: "GET",
+                headers: { 'Authorization': '@_tokan' },
+                url: '@_webapiurlpayroll' + 'ESICMaster/GetEsicDetails',
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                beforeSend: function () {
+                    $("#ajax_loader").show();
+                },
+                success: function (response) {
+                    
+                    var emp_count = 0;
+                    if (response.length > 0) {
+                        for (var i = 0; i < response.length; i++) {
+                            var tbl = "<tr>";
+
+                            //tbl = tbl + "<td class='effective_date'>" + response[i].effective_date;
+                            //tbl = tbl + "</td>";
+
+                            tbl = tbl + "<td class='Employer_count'>" + response[i].Employer_count + "<span>&#37;</span>";
+                            tbl = tbl + "</td>";
+
+                            tbl = tbl + "<td class='Employee_count'>" + response[i].Employee_count + "<span>&#37;</span>";
+                            tbl = tbl + "</td>";
+
+                            tbl = tbl + "<td class='max_amount'> <span>&#8377;</span>" + response[i].max_amount;
+                            tbl = tbl + "</td>";
+
+                            //if (response[i].esic_status == true) {
+                            //    tbl = tbl + "<td class='status'>" + "Active";
+                            //} else {
+                            //    tbl = tbl + "<td class='status'>" + "Inactive";
+                            //}
+                            if ("True" == 'True') {
+                                if (response[i].esic_status == true) {
+                                    tbl = tbl + "<td>" + '<a href="javascript:;" class="green_font tooltips" title="Active" id="esic" data-toggle="modal" data-target="#assign_emp_modal">Active</a><span  class="esic_id" style="display:none">' + response[i].esic_id + '</span><div class="action_btn" id="action_dot"><i class="fa-regular fa-ellipsis-vertical"></i><ul class="action_btn_data" style="display:none;"><li class="blue_font grade_clm">Edit </li><li class="red_font inactive_grd">Inactivate </li></ul></div>';
+
+                                }
+                                else {
+                                    tbl = tbl + "<td>" + '<a href="javascript:;" class="red_font tooltips" title="Inactive" id="esic" data-toggle="modal" data-target="#assign_emp_modal">Inactive</a><span  class="esic_id" style="display:none">' + response[i].esic_id + '</span><div class="action_btn" id="action_dot"><i class="fa-regular fa-ellipsis-vertical"></i><ul class="action_btn_data" style="display:none;"><li class="blue_font grade_clm">Edit </li><li class="green_font active_grd">Activate  </li></ul></div>';
+
+                                }
+                            }
+                            else {
+                                tbl = tbl + "<td>";
+                            }
+
+                            tbl = tbl + "</td>";
+
+                            tbl = tbl + "</tr>";
+                            table += tbl;
+                        }
+
+                        $("#esic_tbl tbody").empty();
+                        $("#esic_tbl tbody").append(table);
+                        $('#esic_tbl').destroy;
+                        // Create search inputs in footer
+                        $("#esic_tbl tfoot th").each(function () {
+                            var title = $(this).text();
+                            $(this).html('<input type="text" class="search_input" placeholder="Search" /><i class="clm-search" id=""></i>');
+                        });
+
+                        // DataTable initialisation
+                        esic_tbl = $("#esic_tbl").DataTable({
+                            dom: "<'row'<'col-lg-3 col-sm-5 col-xs-12 recordbtn_end'<'record_btn_main'l,><'dt-buttons'Bf>><'col-lg-9 col-sm-7 col-xs-12 mb_margin_bottom_15'<'selected_emp_main'<'tbl_text'>>>>" +
+                                  "<'row'<'col-sm-12 margin-bottom-10'<'customforms_table'tr'>>>" +
+                                  "<'row'<'col-md-5 col-sm-5'i><'col-md-7 col-sm-7'p>>",
+                            paging: true,
+                            autoWidth: true,
+                            ordering: true,
+                            buttons: [
+                                "excelHtml5",
+                                {
+                                    "className": "buttons-columns btnColumnvisibility",
+                                },
+                            ],
+                            //columnDefs: [
+                            //    { targets: 1, searchable: true }, // Disable searching for the first column (index 0)
+                            //],
+                            initComplete: function (settings, json) {
+                                var footer = $("#esic_tbl tfoot tr");
+                                $("#esic_tbl thead").append(footer);
+                            }
+                        });
+
+                        //$('div.tbl_text').html('<div class="dft_view">Default View</div>');
+                        // Apply the Search
+                        $("#esic_tbl thead").on("keyup", "input", function () {
+
+                            esic_tbl.column($(this).parent().index())
+                            .search(this.value)
+                            .draw();
+                        });
+                    } else {
+                        // Create search inputs in footer
+                        $("#esic_tbl tfoot th").each(function () {
+                            var title = $(this).text();
+                            $(this).html('<input type="text" class="search_input" placeholder="Search" /><i class="clm-search" id=""></i>');
+                        });
+                        // DataTable initialisation
+                        esic_tbl = $("#esic_tbl").DataTable({
+                            dom: "<'row'<'col-lg-3 col-sm-5 col-xs-12 recordbtn_end'<'record_btn_main'l,><'dt-buttons'Bf>><'col-lg-9 col-sm-7 col-xs-12 mb_margin_bottom_15'<'selected_emp_main'<'tbl_text'>>>>" +
+                                  "<'row'<'col-sm-12 margin-bottom-10'<'customforms_table'tr'>>>" +
+                                  "<'row'<'col-md-5 col-sm-5'i><'col-md-7 col-sm-7'p>>",
+                            paging: true,
+                            autoWidth: true,
+                            ordering: true,
+                            buttons: [
+                                "excelHtml5",
+                                {
+                                    "className": "buttons-columns btnColumnvisibility",
+                                },
+                            ],
+                            //columnDefs: [
+                            //    { targets: 0, searchable: true }, // Disable searching for the first column (index 0)
+                            //],
+                            //initComplete: function (settings, json) {
+                            //    var footer = $("#esic_tbl tfoot tr");
+                            //    $("#esic_tbl thead").append(footer);
+                            //}
+                        });
+                    }
+                },
+                complete: function () {
+                    $("#ajax_loader").hide();
+                }
+            });
+        }
+
+
+        $("#Btn_Save").on('click', function () {
+            var validFlag = 1;
+            var employerCount = $("#employer_count").val().trim();
+            var employeeCount = $("#employee_count").val().trim();
+            var maxAmount = $("#MaxAmount").val().replace(/,/g, '').trim();
+
+            if (employeeCount == '') {
+                validFlag = 0;
+                $("#employee_count").addClass('field_error');
+                toastr.remove();
+                toastr.error("Enter employee contribution.");
+                return false;
+            } else { $("#employee_count").removeClass('field_error') }
+
+
+            if (employerCount == '') {
+                validFlag = 0;
+                $("#employer_count").addClass('field_error');
+                toastr.remove();
+                toastr.error("Enter employer contribution.");
+                return false;
+            } else { $("#employer_count").removeClass('field_error') }
+
+
+            if (maxAmount == '') {
+                validFlag = 0;
+                $("#MaxAmount").addClass('field_error');
+                toastr.remove();
+                toastr.error("Enter max amount.");
+                return false;
+            } else { $("#MaxAmount").removeClass('field_error') }
+
+
+            if (validFlag) {
+                toastr.remove();
+
+                var esicId = ($("#esic_id").val());
+                if (esicId == '' || esic_id == null || esic_id == NaN) { esicId = 0 }
+                var obj = {
+
+                    "Esic_id": esicId,
+                    //"effectiveDate": effectiveDate,
+                    "EmployerCount": parseFloat(employerCount),
+                    "EmployeeCount": parseFloat(employeeCount),
+                    "MaxAmount": parseInt(maxAmount),
+                    "EsicStatus": $("#esiccheckbox").is(":checked") ? 1 : 0,
+
+                }
+                var delay = 2250;
+                if (validFlag) {
+                    checkSession();
+                    $.ajax({
+                        type: "POST",
+                        headers: { 'Authorization': '@_tokan' },
+                        url: '@_webapiurlpayroll' + 'ESICMaster/Addesicdetails',
+                        data: JSON.stringify(obj),
+                        contentType: "application/json; charset=utf-8",
+                        dataType: "json",
+                        beforeSend: function () {
+                            $("#ajax_loader").show();
+                        },
+                        success: function (response) {
+                            if (response.success == true) {
+                                toastr.remove();
+                                toastr.success("ESIC Added successfully");
+                                $('#emp_esic_modal').modal('toggle');
+                                setTimeout(function () {
+                                    window.location.reload(true);
+                                }, delay);
+                                datatablebind();
+                                
+                            } else if (response.success == false && response.responseCode == '400') {
+                                toastr.remove();
+                                toastr.error(response.message);
+                            }
+                            else if (response.success == false && response.responseCode == '401') {
+                                toastr.remove();
+                                toastr.error(response.validationErrors);
+                            }
+                            else if (response.success == false) {
+                                toastr.remove();
+                                toastr.error(response.message);
+                            }
+                        },
+                        complete: function () {
+                            $("#ajax_loader").hide();
+                        }
+                    });
+                }
+            }
+        });
+
+        function checkSession() {
+
+            $.ajax({
+                type: "GET",
+                async: false,
+                url: "/ESS/checkSession",
+                contentType: "application/json; charset=utf-8",
+                success: function (data) {
+                    if (data.isRedirect) {
+                        window.location.href = data.redirectUrl;
+                    }
+                },
+                error: function (data) {
+                    window.location.href = data;
+                }
+            });
+        }
+    });
+
+
+</script>
+
+
+
+
+@if (true)
+{
+    <div class="page-bar">
+        <ul class="page-breadcrumb" style="float: none">
+            <li>
+                <a href="/Dashboard/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> ESIC Master</span>
+            </li>
+        </ul>
+        @if (true)
+        {
+            <div class="emptotalcount">
+                <div class="empcount_title">ESIC Master</div>
+                <div class="page-toolbar">
+                    <div class="emp_btn_block">
+                        <div class="text-right">
+                            <a href="#" class="btn add_btn margin-left-10" id="newesic"><i class="fa-solid fa-plus"></i> Add New</a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+
+
+    <div class="portlet">
+        <div id="ajax_loader" class="modal_bg loading" aria-hidden="true" style="display:none">
+            <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading"/>
+        </div>
+        <div class="portlet-body">
+            <div class="row">
+                <div class="payroll_details_table">
+                    <!-- Datatable : Begin -->
+                    <table id="esic_tbl" class="table table-striped table-bordered tbl_middle table-hover tbl_newdatatbl serch_datatable table-checkable order-column">
+                        <thead>
+                            <tr>
+
+                                @*<th style="min-width: 100px">Effective Date</th>*@
+                                <th style="min-width: 150px">Employer Percentage(%)</th>
+                                <th style="min-width: 80px">Employee Percentage(%)</th>
+                                <th style="min-width: 80px">Max Amount(<span>₹</span>)</th>
+                                <th style="min-width: 80px">Active </th>
+                                @*<th style="min-width: 60px">Months</th>
+                                    <th style="min-width: 80px">Start Date</th>
+                                    <th style="min-width: 80px">End Date</th>
+                                    <th style="min-width: 80px">Status</th>
+                                    <th style="min-width: 75px">Action</th>
+                                    <th style="min-width: 80px; display: none;">Custom Head</th>
+                                    <th style="min-width: 80px; display: none;">Earning</th>
+                                    <th style="min-width: 80px; display: none;">Deduction</th>*@
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                        <tfoot>
+                            <tr>
+
+                                @*<th>Effective Date</th>*@
+                                <th>Employer Count(%)</th>
+                                <th>Employee Count(%)</th>
+                                <th>Max Amount</th>
+                                <th>Active</th>
+                                @*<th>Months</th>
+                                    <th>State Date</th>
+                                    <th>End Date</th>
+                                    <th>status</th>
+                                    <th>Edit</th>
+                                    <th style="display: none;">Custom Head</th>
+                                    <th style="display: none;">Earning</th>
+                                    <th style="display: none;">Deduction</th> *@
+                            </tr>
+                        </tfoot>
+                    </table>
+                    <!-- Datatable : End -->
+                </div>
+            </div>
+
+            <!-- Employee ESIC Modal : Begin -->
+            <div id="emp_esic_modal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+                <div class="modal-dialog modal-dialog-centered">
+
+                    <!-- Modal content -->
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <button type="button" class="close" data-dismiss="modal">&times;</button>
+                            <h4 class="modal-title">ESIC</h4>
+                        </div>
+                        <div class="modal-body">
+                            <fieldset>
+                                <div class="row">
+                                    <div class="col-xs-12">
+                                        <div class="head_box margin-bottom-10">
+                                            <div class="row">
+                                                @*ESIC ID*@
+                                                <input type="text" style="display: none;" class=" form-control input-sm number" id="esic_id" placeholder="Enter ESIC Id">
+                                                @*Effective Date*@
+
+                                                @*<div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                                    <div class="form-group data_picker_box">
+                                                        <label>Effective Date <span class="required" aria-required="true"> * </span></label>
+                                                        <div class="input-group  date date-picker" data-date-format="yyyy-mm-dd" data-date-viewmode="years">
+                                                            <span class="input-group-btn">
+                                                                <button class="btn default btn-sm" type="button">
+                                                                    <i class="fa-light fa-calendar-days"></i>
+                                                                </button>
+                                                            </span>*@
+                                                @*@if (_isdateformat == "dd-M-yyyy" || _isdateformat == "M-dd-yyyy" || _isdateformat == "yyyy-M-dd")
+                                                    {
+                                                        <input type="text" id="effective_date" placeholder="@_isdateformat.Replace("M","MMM")" value="" class="form-control input-sm" readonly="readonly">
+                                                    }
+                                                    else
+                                                    {
+                                                        <input type="text" id="effective_date" placeholder="@_isdateformat" value="" class="form-control input-sm" readonly="readonly">
+                                                    }*@
+                                                @*</div>
+                                                        </div>
+                                                    </div>*@
+
+
+
+                                                @*Emolyee Contribution (in %)*@
+                                                <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                                    <div class="form-group">
+                                                        <label>Empolyee Contribution (in %) <span class="required" aria-required="true"> * </span></label>
+                                                        @*<span class="currency-symbol">&#8377;</span>*@
+                                                        <input type="text" class="form-control input-sm number inp" id="employee_count" placeholder="Enter Percentage%" maxlength="5">
+                                                    </div>
+                                                </div>
+
+
+                                                @*Emolyer Contribution (in %)*@
+                                                <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                                    <div class="form-group">
+                                                        <label>Empolyer Contribution (in %) <span class="required" aria-required="true"> * </span></label>
+                                                        <input type="text" class="form-control input-sm number inp" id="employer_count" placeholder="Enter Percentage%" maxlength="5">
+                                                    </div>
+                                                </div>
+
+
+                                                @*Max Amount Applicable*@
+                                                <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                                    <div class="form-group amount_box">
+                                                        <label>Max Amount Applicable <span class="required" aria-required="true"> * </span></label>
+                                                        <span class="currency-symbol">₹</span>
+                                                        <input type="text" class="form-control input-sm " id="MaxAmount" placeholder="Enter Max Amount" maxlength="8">
+                                                    </div>
+                                                </div>
+
+                                                @*Status*@
+                                                <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                                    <div class="form-group">
+                                                        <label for="esiccheckboxstatus">ESIC Status </label>
+                                                        <input type="checkbox" id="esiccheckbox">
+
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                            </fieldset>
+                        </div>
+                        <div class="modal-footer">
+                            <div class="row">
+                                <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                                    <button type="button" class="btn save_btn" id="Btn_Save"> Save</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Employee ESIC Modal : End -->
+
+        </div>
+    </div>
+
+
+}
+else
+{
+    <span style="color:red">Unauthorized Access.</span>
+}
+

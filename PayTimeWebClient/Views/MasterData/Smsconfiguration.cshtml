@@ -1,0 +1,277 @@
+﻿@using System.Configuration;
+@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@{
+    ViewBag.Title = "SMS Configuration";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    string IsSettingFlag = HttpContext.Current.Session["IsSetting"].ToString();
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+    string _dbName = HttpContext.Current.Session["DbName"].ToString();
+
+    string isClientDBMatchFlag = HttpContext.Current.Session["IsClientDBMatch"] != null
+   ? HttpContext.Current.Session["IsClientDBMatch"].ToString()
+   : "false"; // Default to "false" if the session is null
+
+}
+<script src="~/Scripts/timeme.js"></script>
+<script src="~/AssetsNew/js/CommonValidation.js"></script>
+<script type="text/javascript">
+    var token = '@_tokan';
+    var webapiurl = '@_webapiurl';
+    var count = 0;
+    var form = "SMS Configuration";
+    var operation = "";
+    $(document).ready(function () {
+        /*timeMeInitialize function is  a javascript library which displays a timer to display how long you are actively viewing the current webpage.*/
+        timeMeInitialize();
+        $("#Smssettingid").val(0);
+        FillEventype(3);
+        Checksmssetting();
+        $("#btnSubmit").click(function (event) {
+
+            if ($("#AccountID").val() == "") {
+                toastr.remove();
+                toastr.error("Please enter  accountid.");
+                $("#AccountID").addClass('field_error');
+                event.preventDefault();//or return false
+                return false;
+            }
+            else {
+                $("#AccountID").removeClass('field_error');
+            }
+            if ($("#password").val() == "") {
+                toastr.remove();
+                toastr.error("Please enter password.");
+                $("#password").addClass('field_error');
+                event.preventDefault();//or return false
+                return false;
+            }
+            else {
+                $("#password").removeClass('field_error');
+            }
+
+            //var evenid = $("#ddleventtype").val();
+
+
+            var obj = { "Smssettingid": $("#Smssettingid").val(), "AccountID": $("#AccountID").val(), "password": $("#password").val(), "eventid": $("#ddleventtype").val() }
+
+            $.ajax({
+                type: 'POST',
+                url: webapiurl + "/Master/InsertSmssetting",
+                data: JSON.stringify(obj),
+                contentType: "application/json",
+                dataType: 'json',
+                async: false,
+                cache: false,
+                timeout: 30000,
+                beforeSend: function (xhr) {
+                    xhr.setRequestHeader("Authorization", token);
+                },
+                success: function (data) {
+                    window.location.href = "Smsconfiguration";
+                },
+                error: function (data) {
+                    toastr.remove();
+                    toastr.error(data.responseJSON.Msg);
+                },
+            });
+
+        });
+        $("#AccountID").on('keypress', function (e) {
+            var $that = $(this),
+            maxlength = $that.attr('maxlength')
+            if ($.isNumeric(maxlength)) {
+                if ($that.val().length == maxlength) {
+                    toastr.remove();
+                    toastr.error("Please enter 10 digit account id only.");
+                }
+            };
+        });
+    });
+
+    function FillEventype(eventid) {
+        $.ajax({
+            type: 'GET',
+            url: "FillEventype",
+            contentType: "application/json",
+            success: function (response) {
+                if (response != null) {
+                    $("#ddleventtype").empty();
+                    for (var x = 0; x < response.length; x++) {
+                        $("#ddleventtype").append("<option value=" + response[x].Value + ">" + response[x].Text + "</option>");
+                    }
+                    $("#ddleventtype option[value = '" + eventid + "' ]").prop('selected', true);
+                }
+            }
+        });
+    }
+    function Getsmssettingdetails() {
+        frmclear();
+        $.ajax({
+            type: 'GET',
+            url: webapiurl + "/Master/GetSmssetting",
+            contentType: "application/json",
+            timeout: 30000,
+            beforeSend: function (xhr) {
+                xhr.setRequestHeader("Authorization", token);
+            },
+            success: function (response) {
+                if (response != null) {
+                    $("#divstart").show();
+                    $("#Smssettingid").val(response[0].Smssettingid);
+                    $("#AccountID").val(response[0].AccountID);
+                    $("#password").val(response[0].password);
+                    var selectedevent = response[0].Eventid;
+                    FillEventype(selectedevent);
+                }
+            }
+        });
+        window.onload = function () {
+            timeSpentOnPage();
+        }
+        $(window).on("beforeunload", function () {
+            if (operation == "" || operation == null || operation == '') {
+                operation = "View SMS Configuration";
+            }
+            var url = '@_webapiurl' + '/DashBoard/AddAnalyticsUser';
+            var timeSpent = timeSpentOnPage();
+            analyticsDataUsage(url, '@_dbName', form, '@_tokan', count, operation, timeSpent)
+        })
+
+    }
+
+    function frmclear() {
+        $("#AccountID").val("");
+        $("#password").val("");
+    }
+    function Checksmssetting() {
+        $.ajax({
+            type: 'GET',
+            url: webapiurl + "/Master/Checksmssetting",
+            contentType: "application/json",
+            timeout: 30000,
+            beforeSend: function (xhr) {
+                xhr.setRequestHeader("Authorization", token);
+            },
+            success: function (response) {
+                if (response != null) {
+                    if (response != "NA") {
+                        $("#successmsg").append("<div class='alert alert-success'>" + response + "</div>");
+                        Getsmssettingdetails();
+                    }
+                    else {
+                        $("#successmsg").append("");
+                        $("#smsmsg").hide();
+                    }
+                }
+            }
+        });
+    }
+
+
+
+
+
+</script>
+<style>
+    input[type=number]::-webkit-inner-spin-button,
+    input[type=number]::-webkit-outer-spin-button {
+        -webkit-appearance: none;
+        margin: 0;
+    }
+</style>
+<div class="page-bar">
+    @if (_RoleId == 1 || _RoleId == 6805 || _RoleId == 6806)
+    {
+        <ul class="page-breadcrumb">
+            @if (Convert.ToInt32(Session["IsSchool"]) == 1)
+            {
+                <li>
+                    <a href="/School/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+                </li>
+            }
+            else
+            {
+                <li>
+                    @if (isClientDBMatchFlag == "True")
+                    {
+                        <a href="/Admin/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+                    }
+                    else
+                    {
+                        <a href="/Dashboard/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+                    }
+                </li>
+            }
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> SMS Configuration</span>
+            </li>
+        </ul>
+    }
+    else
+    {
+        <ul class="page-breadcrumb">
+            <li>
+                <a href="/Dashboard/EmployeeDashboard"><i class="fa-regular fa-house"></i></a>
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> SMS Configuration</span>
+            </li>
+        </ul>
+    }
+</div>
+<div>
+    @if (obj.CanView)
+    {
+        <div class="row" id="divstart">
+            <div class="col-md-6">
+                <div class="portlet">
+                    <div class="portlet-body">
+                        <fieldset>
+                            <div class="form-group">
+                                <input type="hidden" id="Smssettingid" name="Smssettingid" />
+                                <label>Account ID</label> <span class="required" aria-required="true"> * </span>
+                                <input type="number" class="form-control" id="AccountID" maxlength="10" placeholder="Enter Account ID">
+                            </div>
+                            <div class="form-group">
+                                <label>Password</label> <span class="required" aria-required="true"> * </span>
+                                <input type="password" class="form-control" id="password" maxlength="50" placeholder="Enter Password">
+                            </div>
+                            <div class="form-group">
+                                <label>Select Event On SMS</label>
+                                <select class="form-control input-sm select2" id="ddleventtype" name="ddleventtype">
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <button type="button" class=" btn btn-sm blue" id="btnSubmit" style="float:right"> <i class="fa-light fa-floppy-disk"></i> Save</button>
+                            </div>
+                        </fieldset>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="row" id="smsmsg">
+            <div class="col-md-6">
+                <div id="successmsg"></div>
+
+            </div>
+        </div>
+    }
+    else
+    {
+        <span style="color:red">Unauthorized Access.</span>
+    }
+</div>

@@ -1,0 +1,308 @@
+﻿@using System.Configuration;
+@{
+    ViewBag.Title = "HSE View";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+}
+
+<style type="text/css">
+    .page-content-white .page-bar {
+        min-height: auto;
+    }
+
+    .fixed-column {
+        width: 80px !important;
+        min-width: 80px !important;
+        right: 0px;
+        position: sticky !important;
+        background-color: #fff !important;
+        box-shadow: -1px 0px 3px 0px rgba(0, 0, 0, 0.20);
+    }
+
+    .stepwizard_vertical .stepwizard_vertical_content_list .stepwizard_content_wrapper {
+        height: auto;
+        padding: 0;
+    }
+</style>
+
+<script>
+    const token = '@_tokan';
+    const webapiurl = '@_webapiurl';
+    $(document).ready(function () {
+        LoadRewardDataForHSE();
+        // Create search inputs in footer
+        $("#tblhseview tfoot th").each(function () {
+            var title = $(this).text();
+            $(this).html('<input type="text" class="search_input" placeholder="Search" /><i class="clm-search" id=""></i>');
+        });
+
+        // DataTable initialisation
+        //var table = $("#tblhseview").DataTable({
+        //    dom: _domCommon,
+        //    language: _languageCommon,
+        //    ordering: true,
+        //    columnDefs: [
+        //        { orderable: false, targets: [10] } // disable ordering on 9th and 10th columns
+        //    ],
+        //});
+        //setTimeout(function () {
+        //    $("#" + "tblhseview" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+        //    $('.tooltips').tooltip();
+        //}, 100);
+
+        // Apply the column Search
+        $("#tblhseview thead").on("keyup", "input", function () {
+            table.column($(this).parent().index())
+                .search(this.value)
+                .draw();
+        });
+
+    });
+    function LoadRewardDataForHSE() {
+        $.ajax({
+            type: 'GET',
+            url: webapiuri + "TPOnboarding/GetRewardDataForHSE",
+            contentType: "application/json; charset=utf-8",
+            headers: {
+                'Authorization': token
+            },
+            dataType: "json",
+            beforeSend: function () {
+                $("#ajax_loader").show();
+            },
+            success: function (res) {
+                console.log(res)
+                loadDatatable(res);
+                if (!res || res.length === 0 || res == 0) {
+                    $("#NotificationGrid-empty").show();
+                    $("#tableResponsive_medical").hide();
+                    $("#dataTables_tbl_header").hide();
+                }
+                else {
+                    $("#NotificationGrid-empty").hide();
+                    loadDatatable(res);
+                }
+            },
+            error: function (error) {
+                toastr.error("Error Occur in Get Data.");
+            },
+            complete: function () {
+                $("#ajax_loader").hide();
+            }
+        })
+    }
+    function loadDatatable(data) {
+        $("#dataTables_tbl_header").remove();
+        var table = $("#tblhseview").DataTable({
+            data: data,
+            dom: _domCommon,
+            language: _languageCommon,
+            ordering: true,
+            destroy: true,
+            columns: [
+                { title: "rewardid", data: "rewardid", visible: false },
+                { title: "Employee", data: "EmpName", createdCell: function (td) { $(td).css("min-width", "120px") } },
+                { title: "Employee Code", data: "Empcode" },
+                {
+                    title: "Month",
+                    data: "month",
+                    render: function (data) {
+                        const months = ["January", "February", "March", "April", "May", "June", "July", "August",
+                            "September", "October", "November", "December"];
+                        return months[data - 1] || data;
+                    }
+                },
+                {
+                    title: "Type",
+                    data: "feedbacktype", createdCell: function (td) { $(td).css("min-width", "120px"); },
+                    render: function (data) {
+                        if (data == 1 || data == "1") return "Safety Observation";
+                        if (data == 0 || data == "0") return "Kaizen / 5S";
+                        return "";
+                    }
+                },
+                {
+                    title: "Type of Observation",
+                    data: "typeofobservation",
+                    render: function (data) {
+                        switch (data) {
+                            case 1:
+                            case "1": return "Unsafe Act";
+                            case 2:
+                            case "2": return "Unsafe Condition";
+                            case 3:
+                            case "3": return "Near Miss";
+                            case 4:
+                            case "4": return "Incident/Injury";
+                            default: return "";
+                        }
+                    }
+                },
+                { title: "Date", data: "Date", createdCell: function (td) { $(td).css("min-width", "120px"); } },
+                { title: "Observation", data: "reason", createdCell: function (td) { $(td).css("min-width", "120px"); } },
+                {
+                    title: "Action taken by reporting manager",
+                    data: "actionbymanager",
+                    render: function (data) {
+                        if (data == 1) return "Yes";
+                        if (data == 0) return "No";
+                        return "";
+                    }
+                },
+                { title: "Suggestions for improvement", data: "suggestion", createdCell: function (td) { $(td).css("min-width", "120px"); } },
+                { title: "Date of completion", data: "CompletionDate" },
+                {
+                    title: "Status",
+                    data: "status", className:"fixed-column",
+                    render: function (data) {
+                        if (data == 0) return '<span class="orange_font">Open</span>';
+                        if (data == 1) return '<span class="green_font">Closed</span>';
+                        if (data == 2) return '<span class="green_font">In Progress</span>';
+                        return "";
+                    }
+                }
+            ],
+            initComplete: function () {
+                const visibleTable = $('table:visible').attr('id');
+                $("#buttons").append(`
+                      <div id="export-button" class="export-button tooltips" data-placement="bottom" data-original-title="Download" data-table-id="${visibleTable}">
+                          <img src="../Newlayout/images/download_icon.svg" alt="Download icon">
+                      </div>
+                `);
+            },
+        });
+        setTimeout(function () {
+            $("#" + "tblhseview" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+            $('.tooltips').tooltip();
+        }, 100);
+    }
+</script>
+
+<!-- Page Bar : Begin -->
+<div class="page-bar">
+    <ul class="page-breadcrumb">
+        <li>
+            <a href="/Admin/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+        </li>
+        <li>
+            <span><i class="fa-light fa-angle-right"></i> Feedbacks</span>
+        </li>
+    </ul>
+</div>
+
+<!-- Ajax Loader : Begin -->
+<div id='ajax_loader' class="modal_bg loading" aria-hidden="true">
+    <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" />
+</div>
+
+<!-- Body Block : Begin -->
+<div class="mysubscription">
+    <ul class="nav nav-tabs nav-tabs-custom" role="tablist">
+        <li class="nav-item active">
+            <a class="nav-link" data-toggle="tab" href="#Rrequest" role="tab" aria-selected="false" id="">
+                <i class="fa-light fa-clipboard-user"></i>
+                <span class="">R&R Requests</span>
+            </a>
+        </li>
+    </ul>
+    <div class="tab-content text-muted tab_content_box">
+        <div class="tab-pane active" id="Rrequest" role="tabpanel">
+            <!-- Datatable Block : Begin -->
+            <div class="row">
+                <div class="col-lg-12">
+                    <div class="portlet">
+                        <div class="portlet-body">
+                            <div class="table-responsive" id="tableResponsive">
+                                <table id="tblhseview" class="new_datatbl table table-striped table-bordered table-hover table-checkable order-column">
+                                    <thead>
+                                        @*<tr>
+                                                <th style="min-width: 120px;">Employee</th>
+                                                <th>Employee Code</th>
+                                                <th>Month</th>
+                                                <th>Feedback</th>
+                                                <th>Type of observation</th>
+                                                <th>Date & Time</th>
+                                                <th style="min-width: 200px;">Observation</th>
+                                                <th>Action taken by reporting manager</th>
+                                                <th style="min-width: 200px;">Suggestions for improvement</th>
+                                                <th>Date of completion</th>
+                                                <th class="fixed-column">Status</th>
+                                            </tr>*@
+                                    </thead>
+                                    <tbody>
+                                        @*<tr>
+                                                <td>Jayeshgiri Goswami</td>
+                                                <td>MAN001</td>
+                                                <td>January</td>
+                                                <td>Safety observation</td>
+                                                <td>Unsafe act</td>
+                                                <td>18 Jan 2026, 7:00:00</td>
+                                                <td>Exposed wiring near the main power distribution panel.</td>
+                                                <td>Yes</td>
+                                                <td>Exposed wiring near the main power distribution panel.</td>
+                                                <td>18 Jan 2026</td>
+                                                <td class="fixed-column green_font">Closed</td>
+                                            </tr>
+                                            <tr>
+                                                <td>Jayeshgiri Goswami</td>
+                                                <td>MAN001</td>
+                                                <td>January</td>
+                                                <td>Safety observation</td>
+                                                <td>Unsafe act</td>
+                                                <td>18 Jan 2026, 7:00:00</td>
+                                                <td>Exposed wiring near the main power distribution panel.</td>
+                                                <td>Yes</td>
+                                                <td>Exposed wiring near the main power distribution panel.</td>
+                                                <td>18 Jan 2026</td>
+                                                <td class="fixed-column green_font">In progress</td>
+                                            </tr>
+                                            <tr>
+                                                <td>Jayeshgiri Goswami</td>
+                                                <td>MAN001</td>
+                                                <td>January</td>
+                                                <td>Safety observation</td>
+                                                <td>Unsafe act</td>
+                                                <td>18 Jan 2026, 7:00:00</td>
+                                                <td>Exposed wiring near the main power distribution panel.</td>
+                                                <td>Yes</td>
+                                                <td>Exposed wiring near the main power distribution panel.</td>
+                                                <td>18 Jan 2026</td>
+                                                <td class="fixed-column orange_font">Open</td>
+                                            </tr>
+                                            <tr>
+                                                <td>Jayeshgiri Goswami</td>
+                                                <td>MAN001</td>
+                                                <td>January</td>
+                                                <td>Safety observation</td>
+                                                <td>Unsafe act</td>
+                                                <td>18 Jan 2026, 7:00:00</td>
+                                                <td>Exposed wiring near the main power distribution panel.</td>
+                                                <td>Yes</td>
+                                                <td>Exposed wiring near the main power distribution panel.</td>
+                                                <td>18 Jan 2026</td>
+                                                <td class="fixed-column green_font">Approved</td>
+                                            </tr>*@
+                                    </tbody>
+                                </table>
+                            </div>
+                            <!-- NoDataFound Block : End -->
+                            <div id="NotificationGrid-empty" style="display: none;">
+                                <div class="datanotfound">
+                                    <img src="~/assets/images/emptyscreen_1.png" height="148" width="280" alt="Nodata Found Icon">
+                                    <p class="datanotfound_title">No data found</p> <!-- titleText -->
+                                    <p class="">No entries found. Please add a record to get started.</p><!-- subText -->
+                                </div>
+                            </div>
+                            <!-- NoDataFound Block : End -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style type="text/css">
+    @@import url("../Newlayout/css/CustomDesign/mysubscription.css");
+</style>

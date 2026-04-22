@@ -1,0 +1,1935 @@
+@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@using System.Configuration;
+@{
+    ViewBag.Title = "Guest Booking";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    int _UserId = Convert.ToInt32(HttpContext.Current.Session["UserId"]);
+    int _cmpid = Convert.ToInt32(HttpContext.Current.Session["CompanyId"]);
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapicms"].ToString();
+    string _webapiurlMain = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    string _ChunkSize = HttpContext.Current.Session["DataDropDownThreShold"] != null
+        ? HttpContext.Current.Session["DataDropDownThreShold"].ToString()
+        : "500";
+
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+
+    string _companyid = "0";
+    if (_RoleId == 6805 || _RoleId == 6806 || _RoleId == 6811)
+    {
+        _companyid = HttpContext.Current.Session["ClientCompanyId"].ToString();
+    }
+
+    string isClientDBMatchFlag = HttpContext.Current.Session["IsClientDBMatch"] != null
+        ? HttpContext.Current.Session["IsClientDBMatch"].ToString()
+        : "false";
+}
+
+<script src="~/Pages_JS/VirtuallScroll/NormalDropDownVirtualClientServer.js"></script>
+
+<script>
+    var _webapiurl = '@_webapiurl';
+    var _tokan = '@_tokan';
+
+    let RoleId = '@_RoleId';
+    let UserId = '@_UserId';
+    let CompanyId = '@_companyid';
+    let isedit = '@obj.CanEdit';
+    let isdelete = '@obj.CanDelete';
+    let canadd = '@obj.CanAdd';
+
+    let guestOrdersTable = null;
+    let mealSlots = [];
+    let guestCart = [];
+    let currentMenuItems = [];
+    let CompanyDropdown = null;
+    let HostEmpDropdown = null;
+    let ModalCompanyDropdown = null;
+
+    // ==================== Utility Functions ====================
+
+    function formatCurrency(amount) {
+        if (amount == null) return '-';
+        return '\u20B9' + parseFloat(amount).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    function getStatusBadge(status, statusDisplay) {
+        var colors = {
+            0: 'orange_font',
+            1: 'green_font',
+            2: 'red_font',
+            3: 'green_font',
+            4: 'red_font'
+        };
+        var cls = colors[status] || 'badge-default';
+        return '<span class="' + cls + '">' + (statusDisplay || 'Unknown') + '</span>';
+    }
+
+    function getStatusLabel(status) {
+        var labels = { 0: 'Pending', 1: 'Accepted', 2: 'Rejected', 3: 'Served', 4: 'Cancelled' };
+        return labels[status] || 'Unknown';
+    }
+
+    function formatDateApi(dt) {
+        var y = dt.getFullYear();
+        var m = ('0' + (dt.getMonth() + 1)).slice(-2);
+        var d = ('0' + dt.getDate()).slice(-2);
+        return y + '-' + m + '-' + d;
+    }
+
+    function formatDateDisplay(dateStr) {
+        if (!dateStr) return '-';
+        var d = new Date(dateStr);
+        var day = ('0' + d.getDate()).slice(-2);
+        var mon = ('0' + (d.getMonth() + 1)).slice(-2);
+        return day + '-' + mon + '-' + d.getFullYear();
+    }
+
+    function formatTime(timeStr) {
+        if (!timeStr) return '-';
+        return timeStr.substring(0, 5);
+    }
+
+    function getDietaryIcon(dietaryType, isJainFriendly) {
+        var icon = '';
+        switch (dietaryType) {
+            case 1:
+                icon = '<span class="dietary-badge dietary-veg" title="Vegetarian"><span class="dietary-badge-dot"></span></span>';
+                break;
+            case 2:
+                icon = '<span class="dietary-badge dietary-nonveg" title="Non-Vegetarian"><span class="dietary-badge-dot"></span></span>';
+                break;
+            case 3:
+                icon = '<span class="dietary-badge dietary-vegan" title="Vegan"><span class="dietary-badge-dot"></span></span>';
+                break;
+            default:
+                return '';
+        }
+        if (isJainFriendly) {
+            icon += '<span class="dietary-badge dietary-jain" title="Jain Friendly"><i class="fa-light fa-leaf"></i></span>';
+        }
+        return icon;
+    }
+
+    function checkSession() {
+        $.ajax({
+            type: "GET",
+            async: false,
+            url: "/ESS/checkSession",
+            contentType: "application/json; charset=utf-8",
+            success: function (data) {
+                if (data.isRedirect) {
+                    window.location.href = data.redirectUrl;
+                }
+            },
+            error: function (data) {
+                window.location.href = data;
+            }
+        });
+    }
+
+    // ==================== Page Initialization ====================
+
+    $(document).ready(function () {
+        initDateFilter();
+        $('#FilterSlotId').html('<option value="">All Slots</option>');
+        loadCanteenDropdown();
+
+        if (RoleId == '1') {
+            setTimeout(function () {
+                initializeCompanyDropdown();
+            }, 100);
+        }
+
+        FillGuestOrdersTable();
+        bindEvents();
+    });
+
+    // ==================== Company Dropdown (SA Only) ====================
+
+    function initializeCompanyDropdown() {
+        CompanyDropdown = new Select2Dropdown({
+            dropdownId: "FilterCompanyId",
+            apiUrl: '@_webapiurlMain' + "DataDropDownOptimize/GetCompanyDropDownPaginated",
+            dataKey: "Id",
+            labelKey: "Name",
+            chunkSize: '@_ChunkSize',
+            token: '@_tokan',
+            extraParams: { RoleId: '@_RoleId', CompanyID: '@_cmpid' }
+        });
+
+        $('#FilterCompanyId').change(function () {
+            FillGuestOrdersTable();
+        });
+    }
+
+    function getSelectedCompanyId() {
+        if (RoleId == '1') {
+            return $('#FilterCompanyId').val() || '';
+        }
+        return CompanyId;
+    }
+
+    // ==================== Event Bindings ====================
+
+    function bindEvents() {
+        // Filter panel toggle
+        $("#Filter_search").click(function () {
+            var wrapper = $(".filter_portlet_wrapper");
+            wrapper.toggleClass("full-width");
+            var screenWidth = $(window).width();
+            if (screenWidth >= 300 && screenWidth <= 600) {
+                $('.filter_portlet_tbl').toggle();
+                $('.filter_portlet_wrapper .filter_boxModal').css('width', '100%');
+            }
+        });
+
+        $(".filterclose_btn").click(function () {
+            var wrapper = $(".filter_portlet_wrapper");
+            wrapper.addClass("full-width");
+            var screenWidth = $(window).width();
+            if (screenWidth >= 300 && screenWidth <= 600) {
+                $(".filter_portlet_tbl").css("display", "block");
+            }
+        });
+
+        $('#FilterCanteenId').change(function () {
+            var canteenId = $(this).val();
+            loadFilterMealSlots(canteenId);
+        });
+
+        $("#Search_OPration").click(function () {
+            FillGuestOrdersTable();
+        });
+
+        $("#Clear_OPration").click(function () {
+            if (CompanyDropdown) CompanyDropdown.clearDropdown();
+            $('#FilterCanteenId').val('');
+            $('#FilterDate').val(formatDateApi(new Date()));
+            $('#FilterSlotId').html('<option value="">All Slots</option>');
+            $('#FilterStatus').val('');
+            FillGuestOrdersTable();
+        });
+
+        // Add Guest Order button
+        $('#AddGuestOrder').click(function () {
+            checkSession();
+            openAddGuestOrderModal();
+        });
+    }
+
+    // ==================== Dropdown Loaders ====================
+
+    function initDateFilter() {
+        $('#FilterDate').val(formatDateApi(new Date()));
+    }
+
+    function loadCanteenDropdown() {
+        $.ajax({
+            url: _webapiurl + 'canteens?pageSize=100&isActive=true',
+            type: 'GET',
+            headers: { 'Authorization': 'Bearer ' + _tokan },
+            success: function (response) {
+                var canteens = response.canteens || [];
+
+                if (canteens.length === 0) {
+                    $('#FilterCanteenId').html('<option value="">No active canteens available</option>');
+                    $('#GuestCanteenId').html('<option value="">No active canteens available</option>');
+                    $('#noActiveCanteenMsg').show();
+                    return;
+                }
+
+                var opts = '<option value="">All Canteens</option>';
+                for (var i = 0; i < canteens.length; i++) {
+                    opts += '<option value="' + canteens[i].canteenId + '">' + canteens[i].canteenName + '</option>';
+                }
+                $('#FilterCanteenId').html(opts);
+
+                // Modal canteen dropdown
+                var modalOpts = '<option value="">-- Select Canteen --</option>';
+                for (var i = 0; i < canteens.length; i++) {
+                    modalOpts += '<option value="' + canteens[i].canteenId + '">' + canteens[i].canteenName + '</option>';
+                }
+                $('#GuestCanteenId').html(modalOpts);
+                $('#noActiveCanteenMsg').hide();
+            },
+            error: function () {
+                toastr.error("Failed to load canteens");
+            }
+        });
+    }
+
+    function loadFilterMealSlots(canteenId) {
+        if (!canteenId) {
+            $('#FilterSlotId').html('<option value="">All Slots</option>');
+            return;
+        }
+        $.ajax({
+            url: _webapiurl + 'mealslots?canteenId=' + canteenId,
+            type: 'GET',
+            headers: { 'Authorization': 'Bearer ' + _tokan },
+            success: function (data) {
+                var slots = data.mealSlots || [];
+                var opts = '<option value="">All Slots</option>';
+                for (var i = 0; i < slots.length; i++) {
+                    if (slots[i].isActive) {
+                        opts += '<option value="' + slots[i].mealSlotId + '">' + slots[i].slotName + '</option>';
+                    }
+                }
+                $('#FilterSlotId').html(opts);
+            },
+            error: function () {
+                toastr.error("Failed to load meal slots");
+            }
+        });
+    }
+
+    function loadCanteenMealSlots(canteenId) {
+        if (!canteenId) {
+            $('#GuestSlotId').html('<option value="">-- Select Slot --</option>');
+            return;
+        }
+        $.ajax({
+            url: _webapiurl + 'mealslots?canteenId=' + canteenId,
+            type: 'GET',
+            headers: { 'Authorization': 'Bearer ' + _tokan },
+            success: function (data) {
+                var slots = data.mealSlots || [];
+                var opts = '<option value="">-- Select Slot --</option>';
+                for (var i = 0; i < slots.length; i++) {
+                    if (slots[i].isActive) {
+                        opts += '<option value="' + slots[i].mealSlotId + '">' + slots[i].slotName + '</option>';
+                    }
+                }
+                $('#GuestSlotId').html(opts);
+            },
+            error: function () {
+                toastr.error("Failed to load meal slots");
+            }
+        });
+    }
+
+    // ==================== DataTable ====================
+
+    var sortColumnMap = {
+        1: 'orderDate',
+        2: 'orderTime',
+        3: 'empName',
+        4: 'canteenName',
+        5: 'slotName',
+        8: 'netAmount',
+        9: 'orderStatus'
+    };
+
+    function FillGuestOrdersTable() {
+        checkSession();
+
+        if (guestOrdersTable) {
+            guestOrdersTable.ajax.reload();
+            return;
+        }
+        $("#ajax_loader").show();
+        guestOrdersTable = $('#tblGuestOrders').DataTable({
+            dom: _domCommon,
+            language: _languageCommon,
+            serverSide: true,
+            searching: true,
+            searchDelay: 500,
+            ordering: true,
+            order: [[1, 'desc']],
+            ajax: {
+                url: _webapiurl + 'orders',
+                type: 'GET',
+                headers: { 'Authorization': 'Bearer ' + _tokan },
+                data: function (d) {
+                    var sortBy = 'orderDate';
+                    var dir = 'desc';
+                    if (d.order && d.order.length > 0) {
+                        var colIdx = d.order[0].column;
+                        if (sortColumnMap[colIdx]) {
+                            sortBy = sortColumnMap[colIdx];
+                        }
+                        dir = d.order[0].dir;
+                    }
+
+                    var params = {
+                        pageNumber: Math.floor(d.start / d.length) + 1,
+                        pageSize: d.length,
+                        sortBy: sortBy,
+                        sortDirection: dir,
+                        orderType: 2
+                    };
+
+                    if (d.search && d.search.value) {
+                        params.search = d.search.value;
+                    }
+
+                    var canteenId = $('#FilterCanteenId').val();
+                    if (canteenId) params.canteenId = canteenId;
+
+                    var filterDate = $('#FilterDate').val();
+                    if (filterDate) params.date = filterDate;
+
+                    var slotId = $('#FilterSlotId').val();
+                    if (slotId) params.mealSlotId = slotId;
+
+                    var status = $('#FilterStatus').val();
+                    if (status !== '') params.status = status;
+
+                    var companyId = getSelectedCompanyId();
+                    if (companyId && companyId != '0') params.companyId = companyId;
+
+                    return params;
+                },
+                dataFilter: function (rawData) {
+                    var json = JSON.parse(rawData);
+                    updateSummaryCards(json.summary);
+
+                    var dtResponse = {
+                        recordsTotal: json.totalCount || 0,
+                        recordsFiltered: json.totalCount || 0,
+                        data: json.orders || []
+                    };
+                    return JSON.stringify(dtResponse);
+                },
+                dataSrc: function (response) {
+                    var orders = response.data || [];
+                    var hasSearch = guestOrdersTable && guestOrdersTable.search();
+                    if (response.recordsTotal === 0 && !hasSearch) {
+                        $('#tblGuestOrdersBlock').hide();
+                        $('#NotificationGrid-empty').show();
+                    } else {
+                        $('#tblGuestOrdersBlock').show();
+                        $('#NotificationGrid-empty').hide();
+                    }
+                    return orders;
+                },
+                complete: function () {
+                    $('#ajax_loader').hide();
+                },
+                error: function (xhr) {
+                    var errorMsg = "Error fetching guest orders";
+                    if (xhr.responseJSON && xhr.responseJSON.detail) {
+                        errorMsg = xhr.responseJSON.detail;
+                    }
+                    toastr.error(errorMsg);
+                    $('#tblGuestOrdersBlock').hide();
+                    $('#NotificationGrid-empty').show();
+                }
+            },
+            initComplete: function () {
+                if ($('#buttons').length) {
+                    $("#buttons").empty();
+                }
+
+                // Custom debounce: unbind default search and add 500ms delay
+                var searchTimer = null;
+                var $searchInput = $('#tblGuestOrders_wrapper .dataTables_filter input');
+                $searchInput.unbind();
+                $searchInput.on('keyup search input paste cut', function () {
+                    var value = this.value;
+                    clearTimeout(searchTimer);
+                    searchTimer = setTimeout(function () {
+                        guestOrdersTable.search(value).draw();
+                    }, 500);
+                });
+                $searchInput.on('keypress', function (e) {
+                    if (e.keyCode === 13) return false;
+                });
+            },
+            columns: [
+                {
+                    title: "Sr No",
+                    data: null,
+                    visible: false,
+                    orderable: false,
+                    render: function (data, type, row, meta) {
+                        return meta.row + 1;
+                    }
+                },
+                {
+                    title: "Order Date",
+                    data: "orderDate",
+                    createdCell: function (td) { $(td).css("min-width", "90px"); },
+                    render: function (data) {
+                        return formatDateDisplay(data);
+                    }
+                },
+                {
+                    title: "Order Code",
+                    data: "orderCode",
+                    render: function (data) {
+                        if (!data) return '-';
+                        return '<span class="orange_font">' + data + '</span>';
+                    }
+                },
+                {
+                    title: "Time",
+                    data: "orderTime",
+                    render: function (data) {
+                        return formatTime(data);
+                    }
+                },
+                {
+                    title: "Guest Name",
+                    data: null,
+                    createdCell: function (td) { $(td).css("min-width", "140px"); },
+                    render: function (data, type, row) {
+                        return row.guestName || '-';
+                    }
+                },
+                {
+                    title: "Host Employee",
+                    data: null,
+                    createdCell: function (td) { $(td).css("min-width", "140px"); },
+                    render: function (data, type, row) {
+                        var name = row.hostEmpName || '-';
+                        var code = row.hostEmpCode ? '<br><small class="text-muted">' + row.hostEmpCode + '</small>' : '';
+                        return name + code;
+                    }
+                },
+                {
+                    title: "Canteen",
+                    data: "canteenName",
+                    orderable: false,
+                    createdCell: function (td) { $(td).css("min-width", "120px"); },
+                    render: function (data) { return data || '-'; }
+                },
+                {
+                    title: "Slot",
+                    data: "slotName"
+                },
+                {
+                    title: "Items",
+                    data: null,
+                    orderable: false,
+                    createdCell: function (td) { $(td).css("min-width", "120px"); },
+                    render: function (data, type, row) {
+                        var summary = row.itemSummary || '';
+                        var count = row.itemCount || 0;
+                        if (summary.length > 30) {
+                            summary = summary.substring(0, 30) + '...';
+                        }
+                        return '<span title="' + (row.itemSummary || '') + '">' + summary + ' (' + count + ')</span>';
+                    }
+                },
+                {
+                    title: "Net Amount",
+                    data: "netAmount",
+                    render: function (data) { return formatCurrency(data); }
+                },
+                {
+                    title: "Status",
+                    data: null,
+                    render: function (data, type, row) {
+                        return getStatusBadge(row.orderStatus, row.orderStatusDisplay);
+                    }
+                },
+                {
+                    title: "Action",
+                    data: null,
+                    orderable: false,
+                    createdCell: function (td) { $(td).css("min-width", "128px"); },
+                    render: function (data, type, row) {
+                        var str = '<a class="btn seagreen_btnnew tooltips" data-placement="top" data-original-title="View Detail" onclick="viewOrderDetail(' + row.orderId + ')"><i class="fa-regular fa-eye"></i></a> ';
+
+                        if (isedit === 'True' && row.orderStatus === 0) {
+                            str += '<a class="btn red_btnnew tooltips" data-placement="top" data-original-title="Cancel" onclick="cancelGuestOrder(' + row.orderId + ')"><i class="fa-regular fa-ban"></i></a> ';
+                        }
+                        return str;
+                    }
+                }
+            ],
+            drawCallback: function () {
+                $('.tooltips').tooltip();
+                setTimeout(function () {
+                    $("#tblGuestOrders_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+                }, 100);
+            }
+        });
+    }
+
+    // ==================== Summary Cards ====================
+
+    function updateSummaryCards(summary) {
+        if (!summary) return;
+        $('#summaryTotal').text(summary.totalOrders || 0);
+        $('#summaryPending').text(summary.pendingCount || 0);
+        $('#summaryAccepted').text(summary.acceptedCount || 0);
+        $('#summaryServed').text(summary.servedCount || 0);
+        $('#summaryRejected').text(summary.rejectedCount || 0);
+        $('#summaryCancelled').text(summary.cancelledCount || 0);
+        $('#summaryGross').text(formatCurrency(summary.totalGross));
+        $('#summaryNet').text(formatCurrency(summary.totalNet));
+    }
+
+    // ==================== Order Detail Modal ====================
+
+    function viewOrderDetail(orderId) {
+        checkSession();
+        $('#orderDetailBody').html('<div style="text-align:center;padding:30px;"><i class="fa-thin fa-spinner fa-spin fa-2x"></i></div>');
+        $('#orderDetailModal').modal('show');
+
+        $.ajax({
+            url: _webapiurl + 'orders/' + orderId,
+            type: 'GET',
+            headers: { 'Authorization': 'Bearer ' + _tokan },
+            success: function (data) {
+                renderOrderDetail(data);
+            },
+            error: function (xhr) {
+                var msg = "Failed to load order detail";
+                if (xhr.responseJSON && xhr.responseJSON.detail) msg = xhr.responseJSON.detail;
+                $('#orderDetailBody').html('<div class="alert alert-danger">' + msg + '</div>');
+            }
+        });
+    }
+
+    function renderOrderDetail(data) {
+        var empLabel = 'Host Employee';
+        var empName = data.hostEmpName || data.empName || '-';
+        var empCode = data.hostEmpCode || data.empCode || '';
+
+        var orderTypeBadge = '<span class="od-badge od-badge-guest">' + (data.orderTypeDisplay || 'Guest') + '</span>';
+
+        var html = '';
+
+        // Order Code & Status Header Strip
+        html += '<div class="od-header-strip">';
+        html += '<div class="od-header-left">';
+        html += '<span class="od-order-code">#' + data.orderId + '</span>';
+        html += orderTypeBadge;
+        html += '</div>';
+        html += '<div class="od-header-right">';
+        html += getStatusBadge(data.orderStatus, data.orderStatusDisplay);
+        html += '</div>';
+        html += '</div>';
+
+        // Info Grid
+        html += '<div class="od-info-grid">';
+
+        if (data.guestName) {
+            html += '<div class="od-info-item">';
+            html += '<div class="od-info-icon"><i class="fa-light fa-user-group"></i></div>';
+            html += '<div class="od-info-content"><span class="od-info-label">Guest Name</span><span class="od-info-value">' + data.guestName + '</span></div>';
+            html += '</div>';
+        }
+
+        html += '<div class="od-info-item">';
+        html += '<div class="od-info-icon"><i class="fa-light fa-user"></i></div>';
+        html += '<div class="od-info-content"><span class="od-info-label">' + empLabel + '</span><span class="od-info-value">' + empName + (empCode ? ' <small class="text-muted">(' + empCode + ')</small>' : '') + '</span></div>';
+        html += '</div>';
+
+        html += '<div class="od-info-item">';
+        html += '<div class="od-info-icon"><i class="fa-light fa-store"></i></div>';
+        html += '<div class="od-info-content"><span class="od-info-label">Canteen</span><span class="od-info-value">' + (data.canteenName || '-') + '</span></div>';
+        html += '</div>';
+
+        html += '<div class="od-info-item">';
+        html += '<div class="od-info-icon"><i class="fa-light fa-building"></i></div>';
+        html += '<div class="od-info-content"><span class="od-info-label">Department</span><span class="od-info-value">' + (data.departmentName || '-') + '</span></div>';
+        html += '</div>';
+
+        html += '<div class="od-info-item">';
+        html += '<div class="od-info-icon"><i class="fa-light fa-calendar"></i></div>';
+        html += '<div class="od-info-content"><span class="od-info-label">Date</span><span class="od-info-value">' + formatDateDisplay(data.orderDate) + '</span></div>';
+        html += '</div>';
+
+        html += '<div class="od-info-item">';
+        html += '<div class="od-info-icon"><i class="fa-light fa-clock"></i></div>';
+        html += '<div class="od-info-content"><span class="od-info-label">Slot</span><span class="od-info-value">' + (data.slotName || '-') + '</span></div>';
+        html += '</div>';
+
+        html += '<div class="od-info-item">';
+        html += '<div class="od-info-icon"><i class="fa-light fa-shield-check"></i></div>';
+        html += '<div class="od-info-content"><span class="od-info-label">Policy</span><span class="od-info-value">' + (data.policyName || '-') + '</span></div>';
+        html += '</div>';
+
+        html += '</div>';
+
+        // Remarks
+        if (data.remarks) {
+            html += '<div class="od-remarks"><i class="fa-light fa-message-lines"></i> ' + data.remarks + '</div>';
+        }
+
+        // Items Section
+        html += '<div class="od-items-section">';
+        html += '<div class="od-section-title"><i class="fa-light fa-utensils"></i> Order Items</div>';
+        var items = data.items || [];
+        for (var i = 0; i < items.length; i++) {
+            var item = items[i];
+            html += '<div class="od-item-row">';
+            var detailImgSrc = item.imageUrl || '/assets/images/icon_food.svg';
+            html += '<div class="od-item-name"><img src="' + detailImgSrc + '" alt="" style="width:30px; height:30px; border-radius:6px !important; object-fit:cover; border:1px solid #e7ecf1;" onerror="this.onerror=null; this.src=\'/assets/images/icon_food.svg\';">' + getDietaryIcon(item.dietaryType, item.isJainFriendly) + ' ' + item.mealName + '</div>';
+            html += '<div class="od-item-meta">';
+            html += '<span class="od-item-qty">x' + item.quantity + '</span>';
+            html += '<span class="od-item-price">' + formatCurrency(item.unitPrice) + '</span>';
+            html += '<span class="od-item-total">' + formatCurrency(item.itemTotal) + '</span>';
+            html += '</div>';
+            html += '</div>';
+        }
+        html += '</div>';
+
+        // Financial Summary
+        html += '<div class="od-summary-section">';
+        html += '<div class="od-summary-row"><span>Gross Total</span><span class="od-summary-value">' + formatCurrency(data.grossAmount) + '</span></div>';
+        html += '<div class="od-summary-row od-summary-subsidy"><span><i class="fa-light fa-badge-percent"></i> Subsidy</span><span class="od-summary-value green_font">' + formatCurrency(data.subsidyAmount) + '</span></div>';
+        html += '<div class="od-summary-row od-summary-net"><span>Net (You Pay)</span><span class="od-summary-value">' + formatCurrency(data.netAmount) + '</span></div>';
+        html += '</div>';
+
+        $('#orderDetailBody').html(html);
+
+        // Action buttons in modal footer
+        var footerHtml = '';
+        if (isedit === 'True' && data.orderStatus === 0 && RoleId !== '6811') {
+            footerHtml += '<button class="btn clear_btn" onclick="cancelGuestOrder(' + data.orderId + '); $(\'#orderDetailModal\').modal(\'hide\');"><i class="fa-regular fa-ban"></i> Cancel Order</button>';
+        }
+    }
+
+    // ==================== Cancel Order ====================
+
+    function cancelGuestOrder(orderId) {
+        checkSession();
+        Swal.fire({
+            html: '<div class="swal_subtitle"><b>Are you sure you want to cancel this order?</b></div>',
+            title: "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_error.svg' alt=''>Cancel Order",
+            input: 'text',
+            inputPlaceholder: 'Reason (optional)',
+            showCloseButton: true,
+            showCancelButton: true,
+            focusConfirm: false,
+            confirmButtonText: 'Cancel Order',
+            cancelButtonText: 'Keep Order',
+            allowOutsideClick: false,
+            allowEscapeKey: false,
+            customClass: {
+                confirmButton: 'swal-confirm-button-class',
+                cancelButton: 'swal-cancel-button-class'
+            }
+        }).then((result) => {
+            if (result.isConfirmed) {
+                $.ajax({
+                    url: _webapiurl + 'orders/' + orderId + '/cancel',
+                    type: 'PUT',
+                    headers: { 'Authorization': 'Bearer ' + _tokan },
+                    contentType: 'application/json',
+                    data: JSON.stringify({ reason: result.value || '' }),
+                    success: function (data) {
+                        Swal.fire({
+                            html: '<div class="swal_subtitle"><b>Order cancelled successfully.</b></div>',
+                            title: "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_success.svg' alt=''>Cancelled!",
+                            showCloseButton: true,
+                            confirmButtonText: 'OK',
+                            allowOutsideClick: false,
+                            allowEscapeKey: false,
+                            customClass: {
+                                confirmButton: 'swal-confirm-button-class'
+                            }
+                        });
+                        $('img[src="/assets/images/icons/swal_icon/icon_success.svg"]').parent().parent().parent().addClass('swal_success');
+                        if (guestOrdersTable) guestOrdersTable.ajax.reload(null, false);
+                    },
+                    error: function (xhr) {
+                        var msg = "Failed to cancel order";
+                        if (xhr.responseJSON && xhr.responseJSON.detail) msg = xhr.responseJSON.detail;
+                        Swal.fire({
+                            html: '<div class="swal_subtitle"><b>' + msg + '</b></div>',
+                            title: "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_error.svg' alt=''>Error!",
+                            showCloseButton: true,
+                            confirmButtonText: 'OK',
+                            allowOutsideClick: false,
+                            allowEscapeKey: false,
+                            customClass: {
+                                confirmButton: 'swal-confirm-button-class'
+                            }
+                        });
+                        $('img[src="/assets/images/icons/swal_icon/icon_error.svg"]').parent().parent().parent().addClass('swal_error');
+                    }
+                });
+            }
+        });
+        $('img[src="/assets/images/icons/swal_icon/icon_error.svg"]').parent().parent().parent().addClass('swal_error');
+    }
+
+    // ==================== Add Guest Order Modal ====================
+
+    function openAddGuestOrderModal() {
+        // Reset form
+        $('#GuestName').val('');
+        $('#GuestCanteenId').val('');
+        $('#GuestSlotId').html('<option value="">-- Select Slot --</option>');
+        var today = formatDateApi(new Date());
+        $('#GuestOrderDate').val(today).attr('min', today);
+        $('#GuestRemarks').val('');
+        guestCart = [];
+        currentMenuItems = [];
+        removeFieldErrors();
+
+        // Reset steps
+        $('#guestStep1').show();
+        $('#guestStep2').hide();
+        $('#btnLoadMenu').show();
+        $('#btnPlaceGuestOrder').hide();
+        $('#btnBackToSetup').hide();
+
+        // Hide company dropdown for all roles - not needed for guest order
+        $('#modalCompanyGroup').hide();
+        @if (_RoleId == 1)
+        {
+            <text>
+            // SA: load all employees across companies
+            initHostEmpDropdown('@_cmpid');
+            </text>
+        }
+        else
+        {
+            <text>
+            initHostEmpDropdown(CompanyId);
+            </text>
+        }
+
+        $('#addGuestOrderModal').modal('show');
+    }
+
+    function initHostEmpDropdown(companyId) {
+        if (!companyId) {
+            return;
+        }
+
+        if (HostEmpDropdown) {
+            HostEmpDropdown.clearDropdown();
+            HostEmpDropdown = null;
+        }
+
+        HostEmpDropdown = new Select2Dropdown({
+            dropdownId: "HostEmpId",
+            apiUrl: '@_webapiurlMain' + "DataDropDownOptimize/GetEmployeeCmpBranchPaginatDropDown",
+            dataKey: "Id",
+            labelKey: "Name",
+            chunkSize: '@_ChunkSize',
+            token: '@_tokan',
+            extraParams: { CompanyID: companyId, BranchID: '', DepartID: '', IsActive: 1 }
+        });
+    }
+
+    // Canteen change in modal: load meal slots
+    $(document).on('change', '#GuestCanteenId', function () {
+        var canteenId = $(this).val();
+        loadCanteenMealSlots(canteenId);
+        // Reset step 2
+        $('#guestStep2').hide();
+        $('#btnLoadMenu').show();
+        $('#btnPlaceGuestOrder').hide();
+        $('#btnBackToSetup').hide();
+    });
+
+    // Keypress validation for text fields
+    $(document).on('keypress', '#GuestName', function (e) {
+        return validateKeyPress(e.which);
+    });
+    $(document).on('keypress', '#GuestRemarks', function (e) {
+        return validateAddress(e.which);
+    });
+
+    // Load Menu button
+    $(document).on('click', '#btnLoadMenu', function () {
+        var isValid = true;
+        removeFieldErrors();
+
+        var guestName = $('#GuestName').val().trim();
+        var hostEmpId = $('#HostEmpId').val();
+        var canteenId = $('#GuestCanteenId').val();
+        var orderDate = $('#GuestOrderDate').val();
+        var slotId = $('#GuestSlotId').val();
+
+        if (!guestName) { addFieldError('GuestName'); isValid = false; }
+        if (!hostEmpId) { addFieldError('HostEmpId'); isValid = false; }
+        if (!canteenId) { addFieldError('GuestCanteenId'); isValid = false; }
+        if (!orderDate) { addFieldError('GuestOrderDate'); isValid = false; }
+        if (!slotId) { addFieldError('GuestSlotId'); isValid = false; }
+
+        if (!isValid) {
+            toastr.warning("Please fill all required fields");
+            return;
+        }
+
+        // Load menu items
+        loadGuestMenuItems(canteenId, orderDate, slotId);
+    });
+
+    function loadGuestMenuItems(canteenId, orderDate, slotId) {
+        $('#guestMenuItemsSection').html('<div style="text-align:center;padding:30px;"><i class="fa-thin fa-spinner fa-spin fa-2x"></i><p>Loading menu...</p></div>');
+        $('#guestStep1').hide();
+        $('#guestStep2').show();
+        $('#btnLoadMenu').hide();
+        $('#btnPlaceGuestOrder').show();
+        $('#btnBackToSetup').show();
+
+        $.ajax({
+            url: _webapiurl + 'daily-menu/employee-view',
+            type: 'GET',
+            headers: { 'Authorization': 'Bearer ' + _tokan },
+            data: { canteenId: canteenId, date: orderDate, mealSlotId: slotId },
+            success: function (data) {
+                renderGuestMenuItems(data);
+            },
+            error: function (xhr) {
+                var msg = "Failed to load menu";
+                if (xhr.responseJSON && xhr.responseJSON.detail) msg = xhr.responseJSON.detail;
+                $('#guestMenuItemsSection').html('<div class="alert alert-warning">' + msg + '</div>');
+            }
+        });
+    }
+
+    function renderGuestMenuItems(data) {
+        currentMenuItems = data.meals || [];
+        var slot = data.mealSlot || {};
+
+        var html = '';
+
+        // Slot info bar
+        html += '<div class="portlet" style="margin-bottom:10px;">';
+        html += '<div class="d-flex justify-content-between flex-wrap">';
+        html += '<div>';
+        html += '<strong>' + (slot.slotName || '') + '</strong>';
+        html += ' | Serving: ' + (slot.servingTime || '-');
+        html += ' | Cutoff: ' + (slot.orderCutoffTime || '-');
+        html += '</div>';
+        if (!slot.isOrderingOpen) {
+            html += '<span class="text-danger"><span>Ordering Closed</span></span>';
+        } else {
+            html += '<span class="text-success"><span>Ordering Open</span></span>';
+        }
+        html += '</div></div>';
+
+        if (!slot.isOrderingOpen) {
+            html += '<div class="alert alert-danger">Order cutoff time has passed for this slot. You cannot place guest orders.</div>';
+            $('#guestMenuItemsSection').html(html);
+            $('#btnPlaceGuestOrder').prop('disabled', true);
+            return;
+        }
+
+        if (currentMenuItems.length === 0) {
+            html += '<div class="alert alert-info">No items available for this slot today.</div>';
+            $('#guestMenuItemsSection').html(html);
+            $('#btnPlaceGuestOrder').prop('disabled', true);
+            return;
+        }
+
+        // Menu items as cards
+        html += '<div class="row">';
+        for (var i = 0; i < currentMenuItems.length; i++) {
+            var item = currentMenuItems[i];
+            var availText = '';
+            if (item.remainingQty !== null && item.remainingQty !== undefined) {
+                availText = '<small class="text-muted">' + item.remainingQty + ' left</small>';
+            }
+            var disabled = !item.isAvailable || (item.remainingQty !== null && item.remainingQty <= 0);
+            var specialBadge = item.isSpecial ? ' <span class="badge badge-warning">Special</span>' : '';
+
+            var mealImgSrc = item.imageUrl || '/assets/images/icon_food.svg';
+            html += '<div class="col-md-12" style="margin-bottom:10px;">';
+            html += '<div class="portlet" style="margin:0; ' + (disabled ? 'opacity:0.6;' : '') + '">';
+            html += '<div class="portlet-body" style="padding:10px;">';
+            html += '<div style="display:flex; gap:10px; align-items:flex-start;">';
+            html += '<img src="' + mealImgSrc + '" alt="" style="width:60px; height:60px; border-radius:6px !important; object-fit:cover; border:2px solid #e7ecf1; flex-shrink:0;" onerror="this.onerror=null; this.src=\'/assets/images/icon_food.svg\';">';
+            html += '<div style="flex:1;">';
+            html += '<div>' + getDietaryIcon(item.dietaryType, item.isJainFriendly) + ' ' + item.mealName + '</div>' + specialBadge;
+            html += '<span style="font-size:16px; color:#333;"><strong>' + formatCurrency(item.price) + '</strong></span> ' + (item.remainingQty !== null && item.remainingQty !== undefined ? '<small class="orange_font">(' + item.remainingQty + ' left)</small>' : '');
+            if (item.mealDescription) {
+                html += '<br><small class="text-muted">' + item.mealDescription + '</small>';
+            }
+            html += '</div>';
+            html += '<div class="text-right" style="flex-shrink:0;">';
+            if (!disabled) {
+                html += '<div class="input-group input-group-sm" style="width:80px; display:inline-flex;">';
+                html += '<input type="number" class="form-control text-center guest-menu-item-qty" id="gqty_' + item.dailyMenuId + '" value="1" min="1" max="' + (item.remainingQty || 100) + '" style="width:45px;">';
+                html += '</div>';
+                html += '<button class="btn btn-sm save_btn" onclick="addToGuestCart(' + item.dailyMenuId + ')"><i class="fa-solid fa-plus"></i> Add</button>';
+            } else {
+                html += '<span class="text-danger"><small>Unavailable</small></span>';
+            }
+            html += '</div>';
+            html += '</div>';
+            html += '</div></div></div>';
+        }
+        html += '</div>';
+
+
+        // Cart section
+        html += '<hr style="margin:10px 0;">';
+        html += '<h5 style="font-weight: 500;">Cart Itmes</h5>';
+        html += '<div id="guestCartSection">';
+        html += '<div class="portlet">';
+        html += '<div class="text-muted text-center" style="padding:10px;"><div><i class="fa-light fa-cart-circle-xmark" style="font-size: 32px; line-height: 32px; margin-bottom: 8px;"></i></div>No items added yet.</div>';
+        html += '</div></div>';
+
+        // Gross total display and remarks
+        html += '<div class="row" style="margin-top:10px;">';
+        html += '<div class="col-md-6">';
+        html += '<div class="form-group">';
+        html += '<label class="control-label">Remarks</label>';
+        html += '<input type="text" class="form-control input-sm" id="GuestRemarks" placeholder="Any special instructions (optional)" maxlength="500">';
+        html += '</div>';
+        html += '</div>';
+        html += '<div class="col-md-6 text-right" style="padding-top:30px;">';
+        html += '<strong>Gross Total: <span id="guestGrossTotal">0</span></strong>';
+        html += '</div>';
+        html += '</div>';
+
+        $('#guestMenuItemsSection').html(html);
+        $('#btnPlaceGuestOrder').prop('disabled', false);
+    }
+
+    // ==================== Guest Cart ====================
+
+    function addToGuestCart(dailyMenuId) {
+        var item = null;
+        for (var i = 0; i < currentMenuItems.length; i++) {
+            if (currentMenuItems[i].dailyMenuId === dailyMenuId) {
+                item = currentMenuItems[i];
+                break;
+            }
+        }
+        if (!item) return;
+
+        var qty = parseInt($('#gqty_' + dailyMenuId).val()) || 1;
+        var maxQty = item.remainingQty;
+
+        // Check if already in cart
+        var existingIdx = -1;
+        for (var i = 0; i < guestCart.length; i++) {
+            if (guestCart[i].dailyMenuId === dailyMenuId) {
+                existingIdx = i;
+                break;
+            }
+        }
+
+        // Validate against remaining quantity
+        if (maxQty !== null && maxQty !== undefined) {
+            var alreadyInCart = existingIdx >= 0 ? guestCart[existingIdx].quantity : 0;
+            if (alreadyInCart + qty > maxQty) {
+                var allowed = maxQty - alreadyInCart;
+                if (allowed <= 0) {
+                    toastr.warning("Only " + maxQty + " available for '" + item.mealName + "'. Already " + alreadyInCart + " in cart.");
+                    return;
+                }
+                qty = allowed;
+                toastr.info("Only " + allowed + " more available. Adjusted quantity.");
+            }
+        }
+
+        if (existingIdx >= 0) {
+            guestCart[existingIdx].quantity += qty;
+        } else {
+            guestCart.push({
+                dailyMenuId: item.dailyMenuId,
+                mealId: item.mealId,
+                mealName: item.mealName,
+                dietaryType: item.dietaryType,
+                isJainFriendly: item.isJainFriendly || false,
+                imageUrl: item.imageUrl || '',
+                unitPrice: item.price,
+                quantity: qty,
+                remainingQty: maxQty
+            });
+        }
+
+        renderGuestCart();
+        toastr.success(item.mealName + ' added to cart');
+    }
+
+    function removeFromGuestCart(index) {
+        guestCart.splice(index, 1);
+        renderGuestCart();
+    }
+
+    function updateGuestCartQty(index, newQty) {
+        if (newQty <= 0) {
+            removeFromGuestCart(index);
+            return;
+        }
+        var maxQty = guestCart[index].remainingQty;
+        if (maxQty !== null && maxQty !== undefined && newQty > maxQty) {
+            toastr.warning("Only " + maxQty + " available for '" + guestCart[index].mealName + "'.");
+            newQty = maxQty;
+        }
+        guestCart[index].quantity = newQty;
+        renderGuestCart();
+    }
+
+    function renderGuestCart() {
+        if (guestCart.length === 0) {
+            $('#guestCartSection').html('<div class="portlet"><div class="text-muted text-center" style="padding:10px;"><div><i class="fa-light fa-cart-circle-xmark" style="font-size: 32px; line-height: 32px; margin-bottom: 8px;"></i></div>No items added yet.</div></div>');
+            $('#guestGrossTotal').text('-');
+            return;
+        }
+
+        var html = '<div class="portlet">';
+        html += '<div class="table-responsive" style="height:auto;">';
+        html += '<table class="table table-condensed table-bordered" style="margin-bottom:5px;">';
+        html += '<thead><tr><th>Item</th><th style="width:80px;">Qty</th><th style="width:100px;">Price</th><th style="width:100px;">Total</th><th style="width:45px;">Action</th></tr></thead>';
+        html += '<tbody>';
+        html += '</div>';
+
+        var grossTotal = 0;
+        for (var i = 0; i < guestCart.length; i++) {
+            var c = guestCart[i];
+            var itemTotal = c.unitPrice * c.quantity;
+            grossTotal += itemTotal;
+
+            html += '<tr>';
+            var cartImgSrc = c.imageUrl || '/assets/images/icon_food.svg';
+            html += '<td><div style="display:flex; align-items:center; gap:6px;"><img src="' + cartImgSrc + '" alt="" style="width:30px; height:30px; border-radius:6px !important; object-fit:cover; border:1px solid #e7ecf1;" onerror="this.onerror=null; this.src=\'/assets/images/icon_food.svg\';">' + getDietaryIcon(c.dietaryType, c.isJainFriendly) + ' ' + c.mealName + '</div></td>';
+            html += '<td><input type="number" class="form-control input-sm text-center" value="' + c.quantity + '" min="1" max="' + (c.remainingQty || 100) + '" onchange="updateGuestCartQty(' + i + ', parseInt(this.value))" style="width:60px;"></td>';
+            html += '<td>' + formatCurrency(c.unitPrice) + '</td>';
+            html += '<td>' + formatCurrency(itemTotal) + '</td>';
+            html += '<td><a class="btn red_btnnew tooltips" data-placement="top" data-original-title="Remove" onclick="removeFromGuestCart(' + i + ')"><i class="fa-solid fa-xmark"></i></a></td>';
+            html += '</tr>';
+        }
+
+        html += '</tbody>';
+        html += '</table>';
+        html += '</div>';
+
+        $('#guestCartSection').html(html);
+        $('#guestGrossTotal').text(formatCurrency(grossTotal));
+        $('.tooltips').tooltip();
+    }
+
+    // ==================== Place Guest Order ====================
+
+    $(document).on('click', '#btnPlaceGuestOrder', function () {
+        placeGuestOrder();
+    });
+
+    function placeGuestOrder() {
+        checkSession();
+
+        if (guestCart.length === 0) {
+            toastr.warning("Please add at least one item to the order");
+            return;
+        }
+
+        var canteenId = parseInt($('#GuestCanteenId').val());
+        var slotId = parseInt($('#GuestSlotId').val());
+        var orderDate = $('#GuestOrderDate').val();
+        var guestName = $('#GuestName').val().trim();
+        var hostEmpId = parseInt($('#HostEmpId').val());
+        var remarks = $('#GuestRemarks').val() ? $('#GuestRemarks').val().trim() : null;
+
+        if (!canteenId || !slotId || !orderDate || !guestName || !hostEmpId) {
+            toastr.warning("Please fill all required fields");
+            return;
+        }
+
+        var items = [];
+        for (var i = 0; i < guestCart.length; i++) {
+            items.push({
+                dailyMenuId: guestCart[i].dailyMenuId,
+                quantity: guestCart[i].quantity
+            });
+        }
+
+        var payload = {
+            canteenId: canteenId,
+            mealSlotId: slotId,
+            orderDate: orderDate,
+            guestName: guestName,
+            hostEmpId: hostEmpId,
+            items: items,
+            remarks: remarks
+        };
+
+        // Hide modal first so Swal is not behind it
+        $('#addGuestOrderModal').modal('hide');
+
+        $('#addGuestOrderModal').one('hidden.bs.modal', function () {
+            Swal.fire({
+                html: '<div class="swal_subtitle"><b>Place guest order for ' + guestName + '?</b></div>',
+                title: "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_success.svg' alt=''>Confirm Order",
+                showCloseButton: true,
+                showCancelButton: true,
+                focusConfirm: false,
+                confirmButtonText: 'Place Order',
+                cancelButtonText: 'Cancel',
+                allowOutsideClick: false,
+                allowEscapeKey: false,
+                customClass: {
+                    confirmButton: 'swal-confirm-button-class',
+                    cancelButton: 'swal-cancel-button-class'
+                }
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    submitGuestOrder(payload);
+                } else {
+                    // Re-open modal if user cancels
+                    $('#addGuestOrderModal').modal('show');
+                }
+            });
+            $('img[src="/assets/images/icons/swal_icon/icon_success.svg"]').parent().parent().parent().addClass('swal_success');
+        });
+    }
+
+    function submitGuestOrder(payload) {
+        $('#btnPlaceGuestOrder').prop('disabled', true).html('<i class="fa-thin fa-spinner fa-spin"></i> Placing Order...');
+
+        $.ajax({
+            url: _webapiurl + 'orders/guest',
+            type: 'POST',
+            headers: { 'Authorization': 'Bearer ' + _tokan },
+            contentType: 'application/json',
+            data: JSON.stringify(payload),
+            success: function (data) {
+                $('#addGuestOrderModal').modal('hide');
+
+                Swal.fire({
+                    html: '<div class="swal_subtitle"><b>' + (data.message || 'Guest order placed successfully!') + '</b></div>',
+                    title: "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_success.svg' alt=''>Success!",
+                    showCloseButton: true,
+                    confirmButtonText: 'OK',
+                    allowOutsideClick: false,
+                    allowEscapeKey: false,
+                    customClass: {
+                        confirmButton: 'swal-confirm-button-class'
+                    }
+                }).then((result) => {
+                    // Show order detail if orderId returned
+                    if (data.orderId) {
+                        viewOrderDetail(data.orderId);
+                    }
+                });
+                $('img[src="/assets/images/icons/swal_icon/icon_success.svg"]').parent().parent().parent().addClass('swal_success');
+
+                // Reset cart and reload table
+                guestCart = [];
+                currentMenuItems = [];
+                if (guestOrdersTable) guestOrdersTable.ajax.reload(null, false);
+            },
+            error: function (xhr) {
+                var msg = "Failed to place guest order";
+                if (xhr.responseJSON && xhr.responseJSON.detail) msg = xhr.responseJSON.detail;
+
+                // 409: duplicate order, stock exceeded, limit exceeded
+                var swalTitle = xhr.status === 409
+                    ? "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_error.svg' alt=''>Cannot Place Order"
+                    : "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_error.svg' alt=''>Error!";
+
+                Swal.fire({
+                    html: '<div class="swal_subtitle"><b>' + msg + '</b></div>',
+                    title: swalTitle,
+                    showCloseButton: true,
+                    confirmButtonText: 'OK',
+                    allowOutsideClick: false,
+                    allowEscapeKey: false,
+                    customClass: {
+                        confirmButton: 'swal-confirm-button-class'
+                    }
+                }).then(function () {
+                    // Re-open modal so user can adjust cart
+                    $('#addGuestOrderModal').modal('show');
+                });
+                $('img[src="/assets/images/icons/swal_icon/icon_error.svg"]').parent().parent().parent().addClass('swal_error');
+            },
+            complete: function () {
+                $('#btnPlaceGuestOrder').prop('disabled', false).html('<i class="fa-light fa-cart-shopping"></i> Place Guest Order');
+            }
+        });
+    }
+
+    // Back to step 1
+    $(document).on('click', '#btnBackToSetup', function () {
+        guestCart = [];
+        currentMenuItems = [];
+        $('#guestStep2').hide();
+        $('#guestStep1').show();
+        $('#btnLoadMenu').show();
+        $('#btnPlaceGuestOrder').hide();
+        $('#btnBackToSetup').hide();
+    });
+
+    // ==================== Field Validation Helpers ====================
+
+    function addFieldError(fieldId) {
+        $('#' + fieldId).addClass('field_error');
+    }
+
+    function removeFieldErrors() {
+        $('.field_error').removeClass('field_error');
+    }
+</script>
+
+<!-- ==================== PAGE BAR ==================== -->
+<div class="page-bar">
+    <ul class="page-breadcrumb">
+        <li>
+            <a href="@(isClientDBMatchFlag == "True" ? "/Admin/AdminDashboard" : "/Dashboard/AdminDashboard")"><i class="fa-regular fa-house"></i></a>
+        </li>
+        <li>
+            <span><i class="fa-light fa-angle-right"></i> Canteen Management</span>
+        </li>
+        <li>
+            <span><i class="fa-light fa-angle-right"></i> Guest Booking</span>
+        </li>
+    </ul>
+    @if (obj.CanView)
+    {
+        <div class="page-toolbar text-right">
+            <a href="javascript:;" class="btn icon_transparent_btn tooltips" id="Filter_search" data-placement="left" data-original-title="Filter"><i class="fa-light fa-filter"></i></a>
+            @if (_RoleId == 1 && obj.CanAdd)
+            {
+                <a id="AddGuestOrder" class="btn icon_transparent_btn tooltips" data-placement="left" data-original-title="Add Guest Order"><i class="fa-solid fa-plus"></i></a>
+            }
+        </div>
+    }
+</div>
+
+@if (obj.CanView)
+{
+    <!-- ==================== GUEST BOOKING VIEW ==================== -->
+
+    <!-- DataTable + Filter -->
+    <div class="filter_portlet_wrapper full-width payrollfilter_height">
+
+        <div class="filter_portlet_tbl">
+
+            <div class="portlet margin-bottom-10" style="padding: 8px 12px;">
+                <div class="list-content summary_list">
+                    <div class="accordian-header" id="list_one">
+                        <div>
+                            <a class="caption-subject font-dark bold" href="#listone" data-toggle="collapse" aria-expanded="false" aria-controls="listone">
+                                <span class="assign_emp_ctn">Guest Orders Summary</span>
+                                <i class="fa-solid fa-chevron-down arrow_down"></i>
+                            </a>
+                        </div>
+                    </div>
+                    <div class="collapse in" id="listone" aria-expanded="true">
+                        <div class="portlet-body">
+
+                            <!-- Summary Cards -->
+                            <div class="row" style="margin-top:5px;">
+                                <div class="col-md-2 col-sm-4 col-xs-6">
+                                    <div class="order_summary">
+                                        <div class="summary_count darkgrey_font" id="summaryTotal">0</div>
+                                        <small class="text-muted">Total Orders</small>
+                                    </div>
+                                </div>
+                                <div class="col-md-2 col-sm-4 col-xs-6">
+                                    <div class="order_summary">
+                                        <div class="summary_count orange_font" id="summaryPending">0</div>
+                                        <small class="text-muted">Pending</small>
+                                    </div>
+                                </div>
+                                <div class="col-md-2 col-sm-4 col-xs-6">
+                                    <div class="order_summary">
+                                        <div class="summary_count navyblue_font" id="summaryAccepted">0</div>
+                                        <small class="text-muted">Accepted</small>
+                                    </div>
+                                </div>
+                                <div class="col-md-2 col-sm-4 col-xs-6">
+                                    <div class="order_summary">
+                                        <div class="summary_count green_font" id="summaryServed">0</div>
+                                        <small class="text-muted">Served</small>
+                                    </div>
+                                </div>
+                                <div class="col-md-2 col-sm-4 col-xs-6">
+                                    <div class="order_summary">
+                                        <div class="summary_count red_font" id="summaryRejected">0</div>
+                                        <small class="text-muted">Rejected</small>
+                                    </div>
+                                </div>
+                                <div class="col-md-2 col-sm-4 col-xs-6">
+                                    <div class="order_summary">
+                                        <div class="summary_count grey_font" id="summaryCancelled">0</div>
+                                        <small class="text-muted">Cancelled</small>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Financial Summary -->
+                            <div class="row">
+                                <div class="col-md-6 col-sm-6">
+                                    <div class="order_summary">
+                                        <div class="summary_count darkgrey_font" id="summaryGross">-</div>
+                                        <small class="text-muted">Gross</small>
+                                    </div>
+                                </div>
+                                <div class="col-md-6 col-sm-6">
+                                    <div class="order_summary">
+                                        <div class="summary_count red_font" id="summaryNet">-</div>
+                                        <small class="text-muted">Net Amount</small>
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- DataTable Block -->
+            <div class="portlet">
+                <div class="portlet-body">
+                    <div class="row">
+                        <div class="col-lg-12">
+                            <div id="divtblGuestOrders" class="table-scrollable">
+                                <div id="tblGuestOrdersBlock" style="display:none;">
+                                    <div class="table-responsive" id="tableResponsive">
+                                        <table id="tblGuestOrders" class="new_datatbl table table-striped table-bordered table-hover table-checkable order-column"></table>
+                                    </div>
+                                </div>
+                                <div id="NotificationGrid-empty" style="display: none">
+                                    <div class="datanotfound">
+                                        <img src="~/assets/images/emptyscreen_3.png" height="148" width="280" alt="No Data Found Icon">
+                                        <p class="datanotfound_title">No data found</p>
+                                        <p>No guest orders found for the selected filters.</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Filter Sidebar -->
+        <div class="portlet filter_boxModal">
+            <div class="filterbox_header">
+                <div class="d-flex align-items-center justify-content-between">
+                    <h4 class="filter-title">Filters</h4>
+                    <button type="button" class="filterclose_btn"><i class="fa-light fa-xmark"></i></button>
+                </div>
+            </div>
+            <div class="filterbox_body">
+                @if (_RoleId == 1)
+                {
+                    <div class="col-lg-12">
+                        <div class="form-group">
+                            <label>Company</label>
+                            <select class="form-control" id="FilterCompanyId"></select>
+                        </div>
+                    </div>
+                    <div class="col-lg-12" id="guestFilterNote">
+                        <div class="alert alert-info" style="padding:8px 12px; margin-bottom:10px; font-size:12px;">
+                            <i class="fa-light fa-circle-info"></i> <strong>Note:</strong> In case of guest orders, company filters will be applied based on the <strong>Host Employee</strong>.
+                        </div>
+                    </div>
+                }
+                <div class="col-lg-12">
+                    <div class="form-group">
+                        <label>Canteen</label>
+                        <select class="form-control input-sm" id="FilterCanteenId"></select>
+                        <div id="noActiveCanteenMsg" class="alert alert-warning" style="display:none; margin-top:5px; padding:6px 10px; font-size:12px;">
+                            <i class="fa fa-exclamation-triangle"></i> No active canteens available. Please contact your administrator.
+                        </div>
+                    </div>
+                </div>
+                <div class="col-lg-12">
+                    <div class="form-group">
+                        <label>Date</label>
+                        <input type="date" class="form-control input-sm" id="FilterDate">
+                    </div>
+                </div>
+                <div class="col-lg-12">
+                    <div class="form-group">
+                        <label>Meal Slot</label>
+                        <select class="form-control input-sm" id="FilterSlotId"></select>
+                    </div>
+                </div>
+                <div class="col-lg-12">
+                    <div class="form-group">
+                        <label>Status</label>
+                        <select class="form-control input-sm" id="FilterStatus">
+                            <option value="">All</option>
+                            <option value="0">Pending</option>
+                            <option value="1">Accepted</option>
+                            <option value="2">Rejected</option>
+                            <option value="3">Served</option>
+                            <option value="4">Cancelled</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="filterbox_footer">
+                <div class="text-right">
+                    <button type="button" id="Clear_OPration" class="btn clear_btn margin-left-5 tooltips" data-placement="top" data-original-title="Clear filters"><i class="fa-regular fa-eraser"></i></button>
+                    <button type="button" id="Search_OPration" class="btn icon_btn margin-left-5 tooltips" data-placement="top" data-original-title="Search"><i class="fa-solid fa-magnifying-glass"></i></button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <div class="col-lg-12">
+        <div id="ajax_loader" class="modal_bg loading">
+            <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading" />
+        </div>
+    </div>
+
+    <!-- ==================== Add Guest Order Modal ==================== -->
+    <div id="addGuestOrderModal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog w-500">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    <h4 class="modal-title">Add Guest Order</h4>
+                </div>
+                <div class="modal-body">
+                    <div class="modal-card">
+                        <!-- Step 1: Order Setup -->
+                        <div id="guestStep1">
+                            <fieldset>
+                                <div class="row">
+                                    <div class="col-lg-12" id="modalCompanyGroup" style="display:none;">
+                                        <div class="form-group">
+                                            <label class="control-label">Company <span class="required" aria-required="true">*</span></label>
+                                            <select class="form-control" id="ModalCompanyId"></select>
+                                        </div>
+                                    </div>
+                                    <div class="col-lg-12">
+                                        <div class="form-group">
+                                            <label class="control-label">Guest Name <span class="required" aria-required="true">*</span></label>
+                                            <input type="text" class="form-control input-sm" id="GuestName" placeholder="Enter guest name" maxlength="100">
+                                        </div>
+                                    </div>
+                                    <div class="col-lg-12">
+                                        <div class="form-group">
+                                            <label class="control-label">Host Employee <span class="required" aria-required="true">*</span></label>
+                                            <select class="form-control" id="HostEmpId">
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="col-lg-12">
+                                        <div class="form-group">
+                                            <label class="control-label">Canteen <span class="required" aria-required="true">*</span></label>
+                                            <select class="form-control input-sm" id="GuestCanteenId">
+                                                <option value="">-- Select Canteen --</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="col-lg-12">
+                                        <div class="form-group">
+                                            <label class="control-label">Date <span class="required" aria-required="true">*</span></label>
+                                            <input type="date" class="form-control input-sm" id="GuestOrderDate">
+                                        </div>
+                                    </div>
+                                    <div class="col-lg-12">
+                                        <div class="form-group">
+                                            <label class="control-label">Meal Slot <span class="required" aria-required="true">*</span></label>
+                                            <select class="form-control input-sm" id="GuestSlotId">
+                                                <option value="">-- Select Slot --</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                            </fieldset>
+                        </div>
+
+                        <!-- Step 2: Menu Items & Cart -->
+                        <div id="guestStep2" style="display:none;">
+                            <div id="guestMenuItemsSection">
+                                <div class="text-muted text-center" style="padding:30px;">Loading menu items...</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <div class="row">
+                        <div class="col-lg-12 text-right">
+                            <button type="button" class="btn clear_btn" id="btnBackToSetup" style="display:none;"><i class="fa-light fa-arrow-left"></i> Back</button>
+                            <button type="button" class="btn save_btn" id="btnLoadMenu"><i class="fa-light fa-utensils"></i> Load Menu</button>
+                            <button type="button" class="btn save_btn" id="btnPlaceGuestOrder" style="display:none;"><i class="fa-light fa-cart-shopping"></i> Place Guest Order</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ==================== Order Detail Modal ==================== -->
+    <div id="orderDetailModal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog modal-md">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    <h4 class="modal-title">Guest Order Detail</h4>
+                </div>
+                <div class="modal-body nomodalfooter">
+                    <div class="modal-card" id="orderDetailBody" style="padding:0;">
+                    </div>
+                </div>                
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    <div class="alert alert-danger">Unauthorized Access</div>
+}
+
+<style>
+    /* Dietary badges */
+    .dietary-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 18px;
+        height: 18px;
+        border-radius: 6px;
+        vertical-align: middle;
+        border: 1.5px solid;
+    }
+    .dietary-badge-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+    }
+    .dietary-veg {
+        background: #e8f5e9;
+        border-color: #2e7d32;
+    }
+    .dietary-veg .dietary-badge-dot { background: #2e7d32; }
+    .dietary-nonveg {
+        background: #fbe9e7;
+        border-color: #c62828;
+    }
+    .dietary-nonveg .dietary-badge-dot { background: #c62828; }
+    .dietary-vegan {
+        background: #e0f2f1;
+        border-color: #00695c;
+    }
+    .dietary-vegan .dietary-badge-dot { background: #00695c; }
+    .dietary-jain {
+        background: #fff8e1;
+        border-color: #f9a825;
+        color: #f57f17;
+        margin-left: 3px;
+        font-size: 10px;
+    }
+
+    /* Summary cards */
+    .summary_count {
+        font-size: 16px;
+        font-weight: 500;
+    }
+
+    .order_summary {
+        background: #fff;
+        padding: 2px;
+        border-radius: 6px !important;
+        text-align: center;
+        border: 1px solid #e3e3e3;
+        margin: 8px 0;
+    }
+
+    .field_error {
+        border-color: #dc3545 !important;
+    }
+
+    .list-content .accordian-header {
+        position: relative;
+        padding-left: 25px;
+    }
+
+    .list-content a i.arrow_down {
+        text-align: right;
+        position: absolute;
+        top: 12px;
+        left: 10px;
+        transition: 0.5s;
+        font-size: 12px;
+        color: #252525;
+    }
+
+    .list-content .accordian-header a {
+        color: #252525;
+        display: block;
+    }
+
+        .list-content .accordian-header a:focus {
+            text-decoration: none;
+        }
+
+    .list-content a[aria-expanded="true"] i {
+        transform: rotate(180deg);
+    }
+
+    .summary_list a i.arrow_down {
+        top: 2px;
+        left: 0px;
+    }
+
+    /* ===== Order Detail Modal - Modern Design ===== */
+    .od-header-strip {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 14px 20px;
+        background: #f8f9fb;
+        border-bottom: 1px solid #e8ecf1;
+        border-radius: 6px 6px 0 0 !important;
+    }
+
+    .od-header-left {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .od-order-code {
+        font-size: 16px;
+        font-weight: 600;
+        color: #1e293b;
+    }
+
+    .od-badge {
+        display: inline-block;
+        font-size: 11px;
+        font-weight: 500;
+        padding: 2px 10px;
+        border-radius: 20px !important;
+    }
+
+    .od-badge-employee {
+        background: #ecfdf5;
+        color: #059669;
+    }
+
+    .od-badge-guest {
+        background: #fff7ed;
+        color: #d97706;
+    }
+
+    .od-header-right {
+        font-weight: 500;
+    }
+
+    .od-info-grid {
+        background-color: #fff;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0;
+        padding: 6px 20px;
+    }
+
+    .od-info-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 0;
+        border-bottom: 1px solid #f1f5f9;
+    }
+
+        .od-info-item:nth-last-child(-n+2) {
+            border-bottom: none;
+        }
+
+    .od-info-icon {
+        width: 32px;
+        height: 32px;
+        background: #f0f5ff;
+        color: #1a73e8;
+        border-radius: 8px !important;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+        flex-shrink: 0;
+    }
+
+    .od-info-content {
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+        min-width: 0;
+    }
+
+    .od-info-label {
+        font-size: 11px;
+        color: #666666;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+    }
+
+    .od-info-value {
+        font-weight: 500;
+        color: #334155;
+    }
+
+    .od-remarks {
+        margin: 0 20px;
+        padding: 10px 14px;
+        background: #eff6ff;
+        border-radius: 6px !important;
+        color: #1e40af;
+        border-left: 3px solid #3b82f6;
+    }
+
+        .od-remarks i {
+            margin-right: 6px;
+        }
+
+    .od-items-section {
+        padding: 16px 20px 8px;
+    }
+
+    .od-section-title {
+        font-weight: 600;
+        color: #475569;
+        margin-bottom: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+    }
+
+        .od-section-title i {
+            margin-right: 6px;
+            color: #94a3b8;
+        }
+
+    .od-item-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 14px;
+        background: #fff;
+        border: 1px solid #e8ecf1;
+        border-radius: 8px !important;
+        margin-bottom: 6px;
+        transition: border-color 0.15s;
+    }
+
+        .od-item-row:hover {
+            border-color: #cbd5e1;
+        }
+
+    .od-item-name {
+        font-weight: 500;
+        color: #334155;
+        flex: 1;
+        min-width: 0;
+    }
+
+    .od-item-meta {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        flex-shrink: 0;
+    }
+
+    .od-item-qty {
+        font-size: 12px;
+        font-weight: 500;
+        color: #64748b;
+        background: #f1f5f9;
+        padding: 2px 8px;
+        border-radius: 4px !important;
+    }
+
+    .od-item-price {
+        font-size: 12px;
+        color: #666666;
+        min-width: 70px;
+        text-align: right;
+    }
+
+    .od-item-total {
+        font-weight: 600;
+        color: #334155;
+        min-width: 80px;
+        text-align: right;
+    }
+
+    .od-summary-section {
+        margin: 0px 20px 16px;
+        background: #f8f9fb;
+        border-radius: 10px !important;
+        padding: 4px 0;
+        overflow: hidden;
+    }
+
+    .od-summary-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 16px;
+        color: #475569;
+    }
+
+        .od-summary-row i {
+            margin-right: 4px;
+        }
+
+    .od-summary-value {
+        font-weight: 600;
+    }
+
+    .od-summary-subsidy {
+        border-top: 1px dashed #e2e8f0;
+    }
+
+    .od-summary-net {
+        background: #1e293b;
+        color: #fff;
+        border-radius: 0 0 10px 10px !important;
+        padding: 12px 16px;
+        font-size: 14px;
+        font-weight: 600;
+    }
+
+        .od-summary-net .od-summary-value {
+            font-size: 16px;
+            color: #fff;
+        }
+
+    @@media (max-width: 767px) {
+        .od-info-grid {
+            grid-template-columns: 1fr;
+            padding: 6px 16px;
+        }
+
+        .od-info-item:last-child {
+            border-bottom: none;
+        }
+
+        .od-info-item:nth-last-child(2) {
+            border-bottom: 1px solid #f1f5f9;
+        }
+
+        .od-header-strip {
+            padding: 12px 16px;
+        }
+
+        .od-items-section {
+            padding: 12px 16px 8px;
+        }
+
+        .od-summary-section {
+            margin: 12px 16px 16px;
+        }
+
+        .od-item-row {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 6px;
+        }
+
+        .od-item-meta {
+            width: 100%;
+            justify-content: flex-end;
+        }
+    }
+</style>

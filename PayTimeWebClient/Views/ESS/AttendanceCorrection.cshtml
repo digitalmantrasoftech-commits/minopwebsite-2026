@@ -1,0 +1,833 @@
+﻿@model PayTimeWebClient.Models.AttendanceCorrection
+@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@using System.Configuration;
+@{
+    ViewBag.Title = "Attendance";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    string _Message = ViewBag.msg;
+    string _error = ViewBag.error;
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+    string strsuccess = "";
+    string strerror = "";
+    if (ViewBag.msg != null)
+    {
+        strsuccess = ViewBag.msg.ToString();
+    }
+    if (ViewBag.error != null)
+    {
+        strerror = ViewBag.error.ToString();
+    }
+    int _cmpid = 0;
+    int _branchid = 0;
+
+    if (_RoleId == 6805)
+    {
+        _cmpid = Convert.ToInt32(HttpContext.Current.Session["ClientCompanyId"]);
+    }
+    if (_RoleId == 6806)
+    {
+        _cmpid = Convert.ToInt32(HttpContext.Current.Session["ClientCompanyId"]);
+        _branchid = Convert.ToInt32(HttpContext.Current.Session["BranchId"]);
+    }
+    int empid = Convert.ToInt32(HttpContext.Current.Session["EmpId"]);
+    string _isdateformat = ViewBag.Getsystemsettingdateformatupdated[0].ISDateFormat;
+    string _lockAttendanceDay = HttpContext.Current.Session["lockAttendanceDay"].ToString();
+    int _PlanId = Convert.ToInt32(HttpContext.Current.Session["PlanId"]);
+    //int _lockAttendance_Day = Convert.ToInt32(HttpContext.Current.Session["lockAttendanceDay"]);
+
+}
+<script src="~/Scripts/timeme.js"></script>
+<script src="~/AssetsNew/js/CommonValidation.js"></script>
+<style>
+    .disabledPopup {
+        pointer-events: none;
+        opacity: 0.4;
+    }
+</style>
+@if (obj.CanView)
+{
+    var _EmpName = "";
+
+<script>
+    var isDateFormat = '@_isdateformat';
+    $(document).ready(function ()
+    {
+        _EmpName = "@Session["EmpName"].ToString()";
+
+        $(function () {
+            $("#fromdate").datepicker({ format: isDateFormat });
+            $("#fromdate").datepicker({ 'setEndDate': new Date() });
+        });
+        $(function () {
+            var _date = new Date();
+            _date.setDate(_date.getDate());
+            var prevMonthFirstDate = new Date(_date.getFullYear() - (_date.getMonth() > 0 ? 0 : 1), (_date.getMonth() - 1 + 12) % 12, 1);
+            $("#fromdate").datepicker({ format: isDateFormat });
+            $("#fromdate").datepicker('setEndDate', new Date());
+            $("#fromdate").datepicker('setStartDate', prevMonthFirstDate);
+        });
+        if ("@strsuccess" != "") {
+            toastr.remove();
+            //toastr.success("@strsuccess");
+        }
+        if ('@strerror' != "") {
+            toastr.remove();
+            //toastr.error("@strerror");
+        }
+        var id = '@Convert.ToInt32(Session["EmpId"])';
+        $("#btnAddAttndCorr").click(function () {
+            $("#btnAddAttndCorr").attr("data-toggle", "modal");
+            $("#btnAddAttndCorr").attr("data-target", "#frmpopup");
+        });
+        $(".alert").hide();
+        $("#btnSave").click(function (event) {
+            checkSession();
+            if ($("#fromdate").val() == "") {
+                $("#fromdate").addClass('field_error');
+                $("#fromdate").focus();
+                event.preventDefault();
+                return false;
+            }
+            if (id == 0) {
+                toastr.remove();
+                toastr.error("Employee not found.");
+                event.preventDefault();
+                return false;
+            }
+                @*else if ($("#fromdate").val() != "" && '@_lockAttendanceDay' != "" && '@_PlanId' == '6') {
+                var _data = $("#fromdate").val();
+                var date = _data.split('-');
+                if ("@_isdateformat" == "dd-mm-yyyy") {
+                    var firstValue = date[2] + "-" + date[1] + "-" + date[0] //yyyy-mm-dd
+                }
+                else if ("@_isdateformat" == "yyyy-mm-dd") {
+                    var firstValue = date[0] + "-" + date[1] + "-" + date[2] //yyyy-mm-dd
+                }
+                else if ("@_isdateformat" == "mm-dd-yyyy") {
+                    var firstValue = date[2] + "-" + date[1] + "-" + date[0] //yyyy-mm-dd
+                }
+                else if ("@_isdateformat" == "yyyy-M-dd") {
+                    var _date = new Date(date[2] + " " + date[1] + " " + date[0]);
+                    var locale = "en-us";
+                    var month = _date.toLocaleString(locale, { month: "numeric" });
+                    var firstValue = date[0] + "-" + month + "-" + date[2] //yyyy-mm-dd
+                }
+                else if ("@_isdateformat" == "M-dd-yyyy") {
+                    var _date = new Date(date[1] + " " + date[0] + " " + date[2]);
+                    var locale = "en-us";
+                    var month = _date.toLocaleString(locale, { month: "numeric" });
+                    var firstValue = date[2] + "-" + month + "-" + date[1] //yyyy-mm-dd
+                }
+                else if ("@_isdateformat" == "dd-M-yyyy") {
+                    var _date = new Date(date[0] + " " + date[1] + " " + date[2]);
+                    var locale = "en-us";
+                    var month = _date.toLocaleString(locale, { month: "numeric" });
+                    var firstValue = date[2] + "-" + month + "-" + date[0] //yyyy-mm-dd
+                }
+                firstValue = firstValue.split('-');
+                var s_date = new Date();
+                var secondValue = (s_date.getFullYear() + "-" + (s_date.getMonth() + 1) + "-" + '@_lockAttendanceDay').split('-');
+                var firstDate = new Date();
+                firstDate.setFullYear(firstValue[0], (firstValue[1] - 1), firstValue[2]);
+                var secondDate = new Date();
+                secondDate.setFullYear(secondValue[0], (secondValue[1] - 1), 1);
+                var secondDate_pev_month = new Date();
+                secondDate_pev_month.setFullYear(secondValue[0], (secondValue[1] - 2), 1);
+                var Current_date = new Date();
+                var _Current_date = new Date(firstDate.getFullYear(), firstDate.getMonth(), 1);
+                var Lock_date_day = new Date();
+                var _lockAttendance_Day = '@_lockAttendance_Day';
+
+                if (_lockAttendance_Day >= 25) {
+                    Lock_date_day.setFullYear(secondValue[0], firstDate.getMonth(), _lockAttendance_Day);
+                    if (firstDate < secondDate) {
+                        if (firstDate >= _Current_date && firstDate <= Lock_date_day) {
+                            toastr.remove();
+                            toastr.error("Please change the date because your attendance is locked on this date");
+                            event.preventDefault();
+                            $("#fromdate").addClass('field_error');
+                            return false;
+                        } else {
+                            $("#fromdate").removeClass('field_error');
+                        }
+                    }
+                    else {
+                        $("#fromdate").removeClass('field_error');
+                    }
+
+                }
+                else {
+                    Lock_date_day.setFullYear(secondValue[0], (secondValue[1] - 1), '@_lockAttendanceDay');
+                    if (firstDate < secondDate) {
+                        if (firstDate >= secondDate_pev_month && Current_date <= Lock_date_day) {
+                            $("#fromdate").removeClass('field_error');
+                        } else {
+                            toastr.remove();
+                            toastr.error("Please change the date because your attendance is locked on this date");
+                            event.preventDefault();
+                            $("#fromdate").addClass('field_error');
+                            return false;
+                        }
+                    }
+                }
+            }*@
+            else if ($("#fromdate").val() != "" && '@_lockAttendanceDay' != "" && ('@_PlanId' == '6' || '@_PlanId' == '5' || '@_PlanId' == '3')) {
+                var _data = $("#fromdate").val();
+                var date = _data.split('-');
+                if ("@_isdateformat" == "dd-mm-yyyy") {
+                    var firstValue = date[2] + "-" + date[1] + "-" + date[0] //yyyy-mm-dd
+                }
+                else if ("@_isdateformat" == "yyyy-mm-dd") {
+                    var firstValue = date[0] + "-" + date[1] + "-" + date[2] //yyyy-mm-dd
+                }
+                else if ("@_isdateformat" == "mm-dd-yyyy") {
+                    var firstValue = date[2] + "-" + date[1] + "-" + date[0] //yyyy-mm-dd
+                }
+                else if ("@_isdateformat" == "yyyy-M-dd") {
+                    var _date = new Date(date[2] + " " + date[1] + " " + date[0]);
+                    var locale = "en-us";
+                    var month = _date.toLocaleString(locale, { month: "numeric" });
+                    var firstValue = date[0] + "-" + month + "-" + date[2] //yyyy-mm-dd
+                }
+                else if ("@_isdateformat" == "M-dd-yyyy") {
+                    var _date = new Date(date[1] + " " + date[0] + " " + date[2]);
+                    var locale = "en-us";
+                    var month = _date.toLocaleString(locale, { month: "numeric" });
+                    var firstValue = date[2] + "-" + month + "-" + date[1] //yyyy-mm-dd
+                }
+                else if ("@_isdateformat" == "dd-M-yyyy") {
+                    var _date = new Date(date[0] + " " + date[1] + " " + date[2]);
+                    var locale = "en-us";
+                    var month = _date.toLocaleString(locale, { month: "numeric" });
+                    var firstValue = date[2] + "-" + month + "-" + date[0] //yyyy-mm-dd
+                }
+                firstValue = firstValue.split('-');
+                var s_date = new Date();
+                var secondValue = (s_date.getFullYear() + "-" + (s_date.getMonth() + 1) + "-" + '@_lockAttendanceDay').split('-');
+                var firstDate = new Date();
+                firstDate.setFullYear(firstValue[0], (firstValue[1] - 1), firstValue[2]);
+                var secondDate = new Date();
+                secondDate.setFullYear(secondValue[0], (secondValue[1] - 1), 1);
+                var secondDate_pev_month = new Date();
+                secondDate_pev_month.setFullYear(secondValue[0], (secondValue[1] - 2), 1);
+                var Current_date = new Date();
+                var Lock_date_day = new Date();
+                Lock_date_day.setFullYear(secondValue[0], (secondValue[1] - 1), '@_lockAttendanceDay');
+                if (firstDate < secondDate) {
+                    if (firstDate >= secondDate_pev_month && Current_date <= Lock_date_day) {
+                        $("#fromdate").removeClass('field_error');
+                    } else {
+                        toastr.remove();
+                        toastr.error("Please change the date because your attendance is locked on this date.");
+                        event.preventDefault();
+                        $("#fromdate").addClass('field_error');
+                        return false;
+                    }
+                }
+            } else {
+                $("#fromdate").removeClass('field_error');
+            }
+            if ($("#InPunchTime").val() == "") {
+                $("#InPunchTime").addClass('field_error');
+                $("#InPunchTime").focus();
+                event.preventDefault();
+                return false;
+            }
+            else {
+                $("#InPunchTime").removeClass('field_error');
+            }
+            if ($("#OutPunchTime").val() == "") {
+                $("#OutPunchTime").addClass('field_error');
+                $("#OutPunchTime").focus();
+                event.preventDefault();
+                return false;
+            }
+            else {
+                $("#OutPunchTime").removeClass('field_error');
+            }
+            if ("@_isdateformat" == "dd-mm-yyyy") {
+                var _inpunchdate = $("#fromdate").val().split("-");
+                var inpunchdates = _inpunchdate[2] + "-" + _inpunchdate[1] + "-" + _inpunchdate[0];
+                var Inpunchdate = inpunchdates + " " + $("#InPunchTime").val();
+                var Outpunchdate = inpunchdates + " " + $("#OutPunchTime").val();
+            }
+            else if ("@_isdateformat" == "mm-dd-yyyy") {
+                var _inpunchdate = $("#fromdate").val().split("-");
+                var inpunchdates = _inpunchdate[2] + "-" + _inpunchdate[0] + "-" + _inpunchdate[1];
+                var Inpunchdate = inpunchdates + " " + $("#InPunchTime").val();
+                var Outpunchdate = inpunchdates + " " + $("#OutPunchTime").val();
+            }
+            else if ("@_isdateformat" == "yyyy-mm-dd") {
+                var _inpunchdate = $("#fromdate").val().split("-");
+                var inpunchdates = _inpunchdate[0] + "-" + _inpunchdate[1] + "-" + _inpunchdate[2];
+                var Inpunchdate = inpunchdates + " " + $("#InPunchTime").val();
+                var Outpunchdate = inpunchdates + " " + $("#OutPunchTime").val();
+            }
+            else if ("@_isdateformat" == "yyyy-M-dd") {
+                var _inpunchdate = $("#fromdate").val().split("-");
+                var inpunchdates = _inpunchdate[0] + "-" + _inpunchdate[1] + "-" + _inpunchdate[2];
+                var Inpunchdate = inpunchdates + " " + $("#InPunchTime").val();
+                var Outpunchdate = inpunchdates + " " + $("#OutPunchTime").val();
+            }
+            else if ("@_isdateformat" == "M-dd-yyyy") {
+                var _inpunchdate = $("#fromdate").val().split("-");
+                var inpunchdates = _inpunchdate[2] + "-" + _inpunchdate[0] + "-" + _inpunchdate[1];
+                var Inpunchdate = inpunchdates + " " + $("#InPunchTime").val();
+                var Outpunchdate = inpunchdates + " " + $("#OutPunchTime").val();
+            }
+            else if ("@_isdateformat" == "dd-M-yyyy") {
+                var _inpunchdate = $("#fromdate").val().split("-");
+                var inpunchdates = _inpunchdate[2] + "-" + _inpunchdate[1] + "-" + _inpunchdate[0];
+                var Inpunchdate = inpunchdates + " " + $("#InPunchTime").val();
+                var Outpunchdate = inpunchdates + " " + $("#OutPunchTime").val();
+            }
+            var CorrectionDetails =
+            {
+                "AttendanceId": $("#AttCorrectionId").val(),
+                "EmpId": id,
+                "InPunchTime": Inpunchdate,
+                "OutPunchTime": Outpunchdate,
+                "ApplyReason": $("#ApplyReason").val(),
+                "Status": 3
+            }
+            var notificationParams =
+            {
+                EmpId: id,
+                InPunchTime: Inpunchdate,
+                OutPunchTime: Outpunchdate,
+                ApplyReason: $("#ApplyReason").val(),
+                EventId: 5,
+                CorectionType: 'Miss Punch',
+                EmployeeName: '@_EmpName'
+            };
+
+            debugger
+            $.post("/ESS/AttendanceCorrectionAdd?CorrectionDetails=" + JSON.stringify(CorrectionDetails), function (response)
+            {
+                //var response = JSON.parse(response);
+                if (response != null)
+                {
+                    var message = response.message;
+                    var OnCorrectionID = response.OnCorrectionID;
+                    var _Meg = response.Meg;
+
+                    if (_Meg == "Un Authorized Access") {
+                        window.setTimeout(function () {
+                            toastr.remove();
+                            toastr.error("No entry! This is a restricted area, even for ninjas like you.");
+                            window.setTimeout(function () {
+                                window.location.href = "/PayTime/LoginPage";
+                            }, 2000);
+                            return false;
+                        }, 1000);
+                    }
+                    else if (response != null)
+                    {
+                        if (response.isRedirect)
+                        {
+                            window.location.href = response.redirectUrl;
+                        }
+                        if (message == "ok")
+                        {
+                            $('#frmpopup').modal('hide');
+                            toastr.remove();
+                            toastr.success(_Meg);
+
+                            if (OnCorrectionID != 0)
+                            {
+                                notificationParams.AttCorrectionID = OnCorrectionID;
+                            }
+                            // 📤 Send notification in background (non-blocking)
+                            sendAttedanceRequestNotification(notificationParams);
+                        }
+                        else
+                        {
+                            $('#frmpopup').modal('hide');
+                            toastr.remove();
+                            toastr.error(_Meg);
+                        }
+                        setTimeout(function ()
+                        {
+                            var url = '@Url.Action("AttendanceCorrection", "ESS")';
+                            window.location.href = url;
+                        }, 1000);
+                    }
+                    else
+                    {
+                        $('#frmpopup').modal('hide');
+                        toastr.remove();
+                        toastr.error(_Meg);
+                    }
+                }
+            });
+
+        });
+        $("#fromdate").change(function () {
+            $("#fromdate").removeClass('field_error');
+        });
+        $("#InPunchTime").change(function () {
+            $("#InPunchTime").removeClass('field_error');
+        });
+        $("#OutPunchTime").change(function () {
+            $("#OutPunchTime").removeClass('field_error');
+        });
+        $("#ApplyReason").blur(function () {
+            var applyReason = removeTags($("#ApplyReason").val());
+            $("#ApplyReason").val(applyReason);
+        });
+        $(".editclass").click(function () {
+            $(".editclass").attr("data-toggle", "modal");
+            $(".editclass").attr("data-target", "#frmpopupEdit");
+        });
+        $('#ApplyReason').on('paste', function (e) {
+            e.preventDefault();
+        });
+        var currentTime = new Date();
+        var currentHour = ('0' + currentTime.getHours()).slice(-2);
+        var currentMinute = ('0' + currentTime.getMinutes()).slice(-2);
+        var currentFormattedTime = currentHour + ':' + currentMinute;
+
+        $("#btnAddAttndCorr").click(function () {
+            frmClear();
+            $("#fromdate").prop("disabled", false);
+            $('#InPunchTime').timepicker('setTime', currentFormattedTime);
+            $('#OutPunchTime').timepicker('setTime', currentFormattedTime);
+            $("#ApplyReason").show();
+            $("#lblreason").show();
+        });
+
+        $("#tblAttendancecorrection").on('click', '.editclass', function () {
+            $("#AttCorrectionId").val($(this).parent('td').parent('tr').children(1)[1].innerText);
+            $("#fromdate").val($(this).parent('td').parent('tr').children(1)[3].innerText);
+            $("#fromdate").prop("disabled", true);
+            $("#InPunchTime").val($(this).parent('td').parent('tr').children(1)[4].innerText);
+            $("#OutPunchTime").val($(this).parent('td').parent('tr').children(1)[5].innerText);
+            $("#ApplyReason").val('');
+            $("#ApplyReason").hide();
+            $("#lblreason").hide();
+            $(".editclass").attr("data-toggle", "modal");
+            $(".editclass").attr("data-target", "#frmpopup");
+        });
+
+        $("#tblAttendancecorrection").on('click', '.cancel_btn', function () {
+            var AttCorrectionId = $(this).parent('td').parent('tr').children(1)[1].innerText;
+            $.ajax({
+                type : "GET",
+                url: '@_webapiurl' + "Transaction/CancelAttendacecorration?AttCorrectionId=" + AttCorrectionId+"&EmpId="+@empid,
+                headers: { 'Authorization': '@_tokan' },
+                success: function (res) {
+                    if (res) {
+                        toastr.remove();
+                        toastr.success("Attendance Correction Canceld Successfully.")
+                        setTimeout(function () {
+                            window.location.href = window.location.href;
+                        }, 1000);
+                    }
+                },
+                error: function () {
+                    toastr.error("something wrong occures.");
+                }
+            });
+        });
+
+        $('#tblAttendancecorrection').DataTable({
+            dom: _domCommon,
+            language: _languageCommon,
+        });
+        setTimeout(function () {
+            $("#" + "tblAttendancecorrection" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+            $('.tooltips').tooltip();
+        }, 100);
+
+        function frmClear() {
+            $("#AttCorrectionId").val(0);
+            $("#fromdate").val("");
+            $("#ApplyReason").val('');
+        }
+        function checkSession() {
+            $.ajax({
+                type: "GET",
+                async: false,
+                url: "/ESS/checkSession",
+                contentType: "application/json; charset=utf-8",
+                success: function (data) {
+                    if (data.isRedirect) {
+                        window.location.href = data.redirectUrl;
+                    }
+                },
+                error: function (data) {
+                    window.location.href = data;
+                }
+            });
+        }
+       // Function to send attendance reminder notification
+        function sendReminderNotification(params, successCallback, errorCallback) {
+            debugger
+            const requestData = {
+                EmpId: params.EmpId,
+                AttCorrectionID: params.AttCorrectionID
+            };
+
+            $.ajax({
+                url: '@_webapiurl' + "NotificationRuleDetails/Remindernotificationattendence",
+                type: 'POST',
+                headers: { 'Authorization': '@_tokan' },
+                contentType: "application/json; charset=utf-8",
+                data: JSON.stringify(requestData),
+                success: function (response) {
+                    console.log("Notification sent successfully:", response);
+
+                    if (typeof successCallback === 'function') {
+                        successCallback(response);
+                    }
+                },
+                error: function (xhr, status, error) {
+                    console.error("Notification sending failed:", error);
+                    console.warn("Response:", xhr.responseText);
+
+                    if (typeof errorCallback === 'function') {
+                        errorCallback(xhr, status, error);
+                    }
+                }
+            });
+        }
+
+        // Use event delegation with class selector (not ID)
+        $(document).on('click', '.btnnotification', function () {
+            debugger
+            var $row = $(this).closest('tr');
+            var AttCorrectionId = $row.find('td:eq(1)').text().trim();
+
+            Swal.fire({
+                title: `<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_info.svg' alt=''> Notification`,
+                html: `
+            <div class="swal_subtitle">
+                <b>Are you sure you want to send this notification?</b>
+                <p>Once sent, the selected user will immediately receive this notification.</p>
+                <p><b>Note:</b> This action cannot be undone.</p>
+            </div>
+        `,
+                showCloseButton: true,
+                showCancelButton: true,
+                focusConfirm: false,
+                cancelButtonText: 'No, Cancel',
+                confirmButtonText: 'Yes, Send Notification',
+                allowOutsideClick: false,
+                allowEscapeKey: false,
+                customClass: {
+                    confirmButton: 'swal-confirm-button-class',
+                    cancelButton: 'swal-cancel-button-class'
+                }
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    const $btn = $(this); 
+                    $btn.prop('disabled', true);
+
+                    const notifyParams = {
+                        EmpId: id, 
+                        AttCorrectionID: AttCorrectionId
+                    };
+
+                    // Send the notification
+                    sendReminderNotification(
+                        notifyParams,
+                        function (response) {
+                            toastr.remove();
+                            if (response.status === "Success") {
+                                toastr.success("Reminder notification sent successfully.");
+                            }
+                            else if (response.status === "Already") {
+                                toastr.info("Reminder already sent today.");
+                            }
+                            else if (response.status === "Fail") {
+                                toastr.error("Failed to send reminder notification.");
+                            }
+                            else {
+                                toastr.warning("Something went wrong. Please try again.");
+                            }
+
+                        },
+                        function (xhr, status, error) {
+                            toastr.error("Failed to send notification");
+                        }
+                    );
+
+
+                    setTimeout(() => $btn.prop('disabled', false), 2000);
+                }
+            });
+        });
+
+        function sendAttedanceRequestNotification(params, successCallback, errorCallback)
+        {
+            //?? Call to send notification (Backend API call)
+            $.ajax({
+                url: '@_webapiurl' + "NotificationRuleDetails/AttedanceCorrectionRequestNotification",
+                type: 'POST',
+                headers: { 'Authorization': '@_tokan' },
+                dataType: "json",
+                data: {
+                    EmpId: params.EmpId,
+                    InPunchTime: params.InPunchTime,
+                    OutPunchTime: params.OutPunchTime,
+                    ApplyReason: params.ApplyReason,
+                    CorectionType: params.CorectionType,
+                    EmployeeName: params.EmployeeName,
+                    EventId: params.EventId,
+                    AttCorrectionID: params.AttCorrectionID,
+                },
+                success: function (response)
+                {
+                    console.log("Notification sent successfully:", response);
+                    if (typeof successCallback === 'function')
+                    {
+                        successCallback(response);
+                    }
+                },
+                error: function (xhr, status, error)
+                {
+                    console.warn("Notification sending failed:", error);
+                    if (typeof errorCallback === 'function')
+                    {
+                        errorCallback(xhr, status, error);
+                    }
+                }
+            });
+        }
+    });
+</script>
+
+    <div class="page-bar">
+        @if (_RoleId == 1 || _RoleId == 6805 || _RoleId == 6806)
+        {
+            <ul class="page-breadcrumb">
+                <li>
+                    <a href="/Dashboard/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+                </li>
+                <li>
+                    <span><i class="fa-light fa-angle-right"></i> Attendance Correction Request</span>
+                </li>
+            </ul>
+        }
+        else
+        {
+            <ul class="page-breadcrumb">
+                <li>
+                    <a href="/Dashboard/EmployeeDashboard"><i class="fa-regular fa-house"></i></a>
+                </li>
+                <li>
+                    <span><i class="fa-light fa-angle-right"></i> Attendance Correction Request</span>
+                </li>
+            </ul>
+        }
+
+        @if (obj.CanAdd)
+        {
+            <div class="page-toolbar">
+                <div class="">
+                    <a href="#" id="btnAddAttndCorr" class="btn icon_transparent_btn  tooltips" data-placement="left" data-original-title="Attendance Correction" style="float:right"> <i class="fa-solid fa-plus"></i></a>
+                </div>
+            </div>
+        }
+    </div>
+    <div class="row">
+        @*<div id='ajax_loader' class="loading" style="display: none;">
+                <img src="~/LandingAssets/images/loading.gif" style="margin-top: 8%; cursor: auto; width: 30%; vertical-align: text-bottom;" />
+            </div>*@
+        <div class="col-md-12">
+            <div class="portlet">
+
+                <div class="portlet-body">
+                    @if (ViewBag.getallappliedattnd.Count > 0)
+                    {
+                        <div class="table-responsive" id="tableResponsive">
+                            <table id="tblAttendancecorrection" class="table new_datatbl table-striped table-bordered table-hover table-checkable order-column ">
+                                <thead>
+                                    <tr>
+                                        <th style="display:none;">Sr. No</th>
+                                        <th hidden>AttendanceCorrectionID</th>
+                                        <th>Employee</th>
+                                        <th>Punch Date <i class='fa-regular fa-circle-info tooltips' data-placement='bottom' title='Date format is : @_isdateformat.ToUpper()' style='color: #295097;'></i></th>
+                                        <th>In Punch</th>
+                                        <th>Out Punch</th>
+                                        <th>Apply Reason</th>
+                                        <th>Approve Reason</th>
+                                        <th>Status</th>
+                                        <th>Action</th>
+                                    </tr>
+                                </thead>
+                                @{
+                                    int n = 1;
+                                }
+                                <tbody>
+                                    @if (ViewBag.getallappliedattnd != null)
+                                    {
+                                        foreach (var item in ViewBag.getallappliedattnd)
+                                        {
+                                            <tr>
+                                                <td hidden>@n</td>
+                                                <td hidden>@item.AttCorrectionId</td>
+                                                <td>@item.empname</td>
+                                                <td>@item.PunchDate</td>
+                                                <td>@item.InPunchTime</td>
+                                                <td>@item.OutPunchTime</td>
+                                                <td>@item.ApplyReason</td>
+                                                <td>@item.ApprovalReason</td>
+                                                <td>@item.StatusName</td>
+                                                <td id="Col_@item.AttCorrectionId">
+                                                    @if (_RoleId == 1 && item.Status == 3)
+                                                    {
+                                                        <a href="javascript:;" class="btn red_btnnew tooltips btnnotification"data-bs-toggle="tooltip" data-bs-placement="top" title="Notification" data-id="@item.AttCorrectionId"> <i class="fa-light fa-bell"></i> </a>
+                                                        <a href="javascript:;" class="btn blue_btnnew tooltips editclass" data-bs-toggle="tooltip" data-bs-placement="top" title="Edit"><i class="fa-regular fa-pen-to-square"></i> </a>
+                                                    }
+                                                    else if (_RoleId > 1 && obj.CanEdit && _RoleId != 6805 && _RoleId != 6806 && item.Status == 3)
+                                                    {
+                                                        <a href="javascript:;" class="btn red_btnnew tooltips btnnotification" data-bs-toggle="tooltip" data-bs-placement="top" title="Notification" data-id="@item.AttCorrectionId"> <i class="fa-light fa-bell"></i> </a>
+                                                        <a href="javascript:;" class="btn blue_btnnew tooltips editclass" data-bs-toggle="tooltip" data-bs-placement="top" title="Edit"> <i class="fa-regular fa-pen-to-square"></i> </a>
+                                                        <a href="javascript:;" class="btn red_btnnew tooltips cancel_btn"  data-bs-toggle="tooltip" data-bs-placement="top" title="Cancel">  <i class="fa-solid fa-xmark"></i> </a>
+                                                    }
+                                                </td>
+                                            </tr>
+                                            n++;
+                                        }
+                                    }
+                                </tbody>
+
+                            </table>
+                        </div>
+                    }
+                    else
+                    {
+                        <div id="NotificationGrid-empty">
+                            <div class="datanotfound">
+                                <img src="~/assets/images/emptyscreen_1.png" height="148" width="280" alt="Nodata Found Icon">
+                                <p class="datanotfound_title">No data found</p> <!-- titleText -->
+                                <p class="">No entries found. Please add a record to get started.</p><!-- subText -->
+                            </div>
+                        </div>
+                    }
+                    <div id="frmpopup" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+                        <div class="modal-dialog">
+                            <!-- Modal content-->
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                                    <h4 class="modal-title">Attendance Correction</h4>
+                                </div>
+                                <div class="modal-body">
+                                    <div class="alert alert-danger popMsg" hidden>
+                                        <a href="#" class="close" data-dismiss="alert">&times;</a>
+                                        <strong id="strstg">Error ! </strong> @_error
+                                    </div>
+                                    <div class="modal-card">
+                                        <div class="row setup-content" id="step-1">
+                                            <fieldset>
+                                                <input type="hidden" id="AttCorrectionId">
+                                                <input type="hidden" id="EmpId" value="@Convert.ToInt32(Session["EmpId"])">
+                                                <div class="col-md-12">
+                                                    <div class="row">
+                                                        <div class="col-md-6">
+                                                            <div class="form-group data_picker_box">
+                                                                <label>Select Date<span class="required" aria-required="true"> * </span></label>
+                                                                <div class="input-group input-group-sm  date date-picker" data-date="@DateTime.Now" data-date-end-date="0d" data-date-format="@_isdateformat" data-date-viewmode="years">
+                                                                    <span class="input-group-btn">
+                                                                        <button class="btn default" type="button">
+                                                                            <i class="fa-light fa-calendar-days"></i>
+                                                                        </button>
+                                                                    </span>
+                                                                    @if (_isdateformat == "dd-M-yyyy" || _isdateformat == "M-dd-yyyy" || _isdateformat == "yyyy-M-dd")
+                                                                    {
+                                                                        <input type="text" class="form-control" id="fromdate" name="fromdate" placeholder="@_isdateformat.Replace("M","MMM")" readonly="readonly" autocomplete="off">
+                                                                    }
+                                                                    else
+                                                                    {
+                                                                        <input type="text" class="form-control" id="fromdate" name="fromdate" placeholder="@_isdateformat" readonly="readonly" autocomplete="off">
+                                                                    }
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        <div class="col-md-3">
+                                                            <div class="form-group">
+                                                                <label>IN Time <span class="required" aria-required="true"> *(24 Hr) </span></label>
+                                                                <a class="tooltips" data-placement="bottom" title="Set in time in 24hr format">
+                                                                    <i class="fa-regular fa-circle-info tooltips"></i>
+                                                                </a>
+                                                                <div class="input-group input-group-sm" id="OutDiv">
+                                                                    <input type="text" class="form-control timepicker timepicker-24" data-minute-step="1" id="InPunchTime" name="InPunchTime" placeholder="00:00">
+                                                                    <span class="input-group-btn">
+                                                                        <button class="btn default" type="button" id="btnouttime">
+                                                                            <i class="fa-regular fa-clock tooltips"></i>
+                                                                        </button>
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        <div class="col-md-3">
+                                                            <div class="form-group">
+                                                                <label>OUT Time <span class="required" aria-required="true"> *(24 Hr) </span></label>
+                                                                <a class="tooltips" data-placement="bottom" title="Set out time in 24hr format">
+                                                                    <i class="fa-regular fa-circle-info"></i>
+                                                                </a>
+                                                                <div class="input-group input-group-sm" id="OutDiv">
+                                                                    <input type="text" class="form-control timepicker timepicker-24" data-minute-step="1" id="OutPunchTime" name="OutPunchTime" placeholder="00:00">
+                                                                    <span class="input-group-btn">
+                                                                        <button class="btn default" type="button" id="btnouttime">
+                                                                            <i class="fa-regular fa-clock"></i>
+                                                                        </button>
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+
+
+                                                            @*<div class="form-group">
+                                                                    <label>Out Time<span class="required" aria-required="true"> * </span></label>
+
+                                                                    <input type="time" class="form-control input-sm" id="OutPunchTime" name="OutPunchTime" value="00:00" required="">
+
+                                                                </div>*@
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-12">
+                                                    <div class="form-group">
+                                                        <label id="lblreason">Reason</label>
+                                                        <textarea id="ApplyReason" name="ApplyReason" class="form-control input-sm" maxlength="100"></textarea>
+                                                    </div>
+                                                </div>
+                                            </fieldset>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="modal-footer">
+                                    <div class="row">
+                                        <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 form-actions text-right">
+                                            <button type="button" id="btnSave" class="btn btn-sm blue"><i class="fa-light fa-floppy-disk"></i> Save</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    <span style="color:red">Unauthorized Access.</span>
+}

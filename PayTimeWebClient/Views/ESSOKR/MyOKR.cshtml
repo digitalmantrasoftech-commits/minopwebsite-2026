@@ -1,0 +1,1334 @@
+﻿@using System.Configuration;
+@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@{
+    ViewBag.Title = "MyOKR";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+    string _webapiurlokr = ConfigurationManager.AppSettings["webapiurlokr"].ToString();
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _userid = HttpContext.Current.Session["UserId"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    int _companyid = 0;
+    int _branchid = 0;
+    if (_RoleId == 6805 || _RoleId == 6806)
+    {
+        _companyid = Convert.ToInt32(HttpContext.Current.Session["ClientCompanyId"].ToString());
+        _branchid = Convert.ToInt32(HttpContext.Current.Session["BranchId"].ToString());
+
+    }
+    int empid = 0;
+    if (Convert.ToInt32(HttpContext.Current.Session["EmpId"]) != 0)
+    {
+        empid = Convert.ToInt32(HttpContext.Current.Session["EmpId"].ToString());
+    }
+}
+<script src="/Newlayout/js/uploadfile-script.js"></script>
+<link href="/Newlayout/css/payrollstructure.css" rel="stylesheet">
+<script src="~/Newlayout/js/pako.min.js"></script>
+
+<script type="text/javascript">
+    var emprole = '@_RoleId';
+    var loginempid = '@empid';
+    var targetperiod = ["Please Select"];
+    var roleData = [];
+    var index_OKR = "";
+    var objectiveid_emp = "";
+    var krid_emp = "";
+    var status_name = "";
+    var EmpData = [];
+    $(document).ready(function () {
+        getempname();
+        //pust the value on target period
+
+        targetperiod.push("Quarterly Based", "Monthly Based", "Yearly Based");
+
+        //Get the Employee details.
+        getEmpDetails();
+        // bind the data of the effeted from.
+        bindEffectedFromDropdown();
+
+        getempname(function () {
+            getassignobjectiveKR('@empid', 1);
+        })
+
+        // push the data of the role.
+        rolegetalldrp();
+
+        //get the total score
+        
+
+
+        $("#Effectedfrom").change(function () {
+            Gettotalscore($("#Effectedfrom").val())
+        });
+
+        $(document).on('click', "[id^='notes_btn_']", function () {
+            var $OkRparentelement = $(this).closest(".accordion_box_main");
+            index_OKR = $OkRparentelement.find('[id^="okrreview_"]').attr('id').replace('okrreview_', '');
+
+            frmclearOKRReviewNotes();
+
+            var $objectiveidacc = $(this).closest(".accordion_box_main");
+            var objid = $objectiveidacc.find('[id^="obj_id_"]').attr('id').replace('obj_id_', '');
+            objectiveid_emp = $("#obj_id_" + objid).text();
+            $("#obj_id_notes").text(objectiveid_emp);
+
+
+            var $parentElement = $(this).closest('.okr_acc_body'); // Get the parent element containing all related information
+            var kr_id = $parentElement.find('[id^="KR_id_"]').attr('id').replace('KR_id_', '');
+            krid_emp = $("#KR_id_" + kr_id).text();
+            $("#KR_id_notes").text(krid_emp);
+
+
+
+            var kr_name = $parentElement.find("#Kr_name_" + kr_id).text();
+            $("#Kr_name_out").text(kr_name);
+
+            var kr_weightage = $parentElement.find("#kr_weightage_" + kr_id).text();
+            $("#weightage_out").text(kr_weightage);
+
+            status_name = $parentElement.find("#review_status_" + kr_id).text();
+            $("#status_out").text(status_name);
+            if (status_name === "Reviewed") {
+                $("#btnsave").prop('disabled', true);
+            }
+            else {
+                $("#btnsave").prop('disabled', false);
+            }
+            getreviewnotes(objectiveid_emp, krid_emp, '@empid')
+            .then(function (data) {
+                $("#notes_review").val(data[0].note_text);
+            })
+            .catch(function (error) {
+                // console.error(error); // Handle any errors that occurred during the AJAX request
+            });
+            // Assuming you want to open the modal with ID 'reviewnotes_modal'
+            $("#reviewnotes_modal").modal('show');
+        });
+        $(document).on('click', "[id^='uploaddoc_btn_']", function () {
+            frmClearFiles();
+            var $objectiveidacc = $(this).closest(".accordion_box_main");
+            var objid = $objectiveidacc.find('[id^="obj_id_"]').attr('id').replace('obj_id_', '');
+            objectiveid_emp = $("#obj_id_" + objid).text();
+
+            var $parentElement = $(this).closest('.okr_acc_body'); // Get the parent element containing all related information
+            var kr_id = $parentElement.find('[id^="KR_id_"]').attr('id').replace('KR_id_', '');
+            krid_emp = $("#KR_id_" + kr_id).text();
+
+            var status_name = $parentElement.find("#review_status_" + kr_id).text();
+            $("#status_out").text(status_name);
+            if (status_name === "Reviewed") {
+                $("#btnsave_Upload_doc").prop('disabled', true);
+
+            }
+            Getuploadfilename(objectiveid_emp, krid_emp, '@empid', status_name);
+            $("#uploaddocument_modal").modal('show');
+        });
+        //Effected from change function
+        $("#Effectedfrom").change(function () {
+            var empId = $('#empid').text();
+            var effecteddate = $("#Effectedfrom").val();
+            getempname(function () {
+                GetOKRempwise(empId, effecteddate, 1);
+            });
+        });
+        $(document).on("click", "#btnsave", function () {
+            SaveNotes();
+        });
+        $("#notes_review").on("paste", function (e) {
+            e.preventDefault(); // Prevent the paste action
+        });
+        $("#notes_review").keypress(function (e) {
+            var keyCode = e.which;
+            var response = validateKeyPress(keyCode);
+            if (response == true) {
+            }
+            else { e.preventDefault(); }
+        });
+        $("#notes_review").blur(function () {
+            var obj_note_review = removeTags($("#notes_review").val());
+            $("#notes_review").val(obj_note_review);
+        });
+
+        $('#OKr_Notes_File').on('change', function () {
+            var files = this.files; // Get the selected files
+            var maxSize =  5 * 1024 * 1024; // % MB in bytes upto allow
+            var validExts = [".xls", ".xlsx", ".xlsm", ".xlt", ".xltx", ".xlsb", ".ods", ".ots", ".dif", ".jpg", ".ppt", ".pptx", ".pps", ".ppsx", ".pot", ".potx",".rtf",".odp", ".otp", ".jpeg", ".png", ".pdf", ".csv", ".txt", ".doc", ".docx", ".dot", ".dotx",".odt", ".ott",];
+            var totalFiles = files.length;
+            var $selectedFilesContainer = $('#selectedFilesContainer');
+            var currentFileBlocks = $selectedFilesContainer.find('.delete_block').length;
+            var remainingSlots = 8 - currentFileBlocks; // Calculate remaining slots for files
+            //$selectedFilesContainer.empty(); // Clear previous selected files before displaying new ones
+
+            // Check if the total number of files exceeds 8
+            if (totalFiles > remainingSlots) {
+                toastr.remove();
+                toastr.error("You can upload a maximum of 8 files.");
+                $('#OKr_Notes_File').val(''); // Reset the file input to clear the selected files
+                return false; // Stop further execution
+            }
+
+            for (var i = 0; i < totalFiles; i++) {
+                var file = files[i];
+
+                // File size validation
+                if (file && file.size > maxSize) {
+                    toastr.remove();
+                    toastr.error("File size exceeds 30 MB. Please select a smaller file.");
+                    $('#OKr_Notes_File').val(''); // Reset the file input to clear the selected files
+                    return false; // Stop further execution
+                }
+
+                // File extension validation
+                var fileExt = file.name.substring(file.name.lastIndexOf('.')).toLowerCase(); // Get the file extension in lowercase
+                if (!validExts.includes(fileExt)) {
+                    toastr.remove();
+                    toastr.error("Invalid file selected, valid files are of " + validExts.join(", ") + " types.");
+                    $('#OKr_Notes_File').val(''); // Reset the file input to clear the selected files
+                    return false; // Stop further execution
+                }
+                $(".file-block").css('display', 'block');
+                // Display selected file in the container
+                var file_content = $('<div class="delete_block margin-top-10 text-left"><span class="file-icon">selected file</span><div class="selectedfile_block"> <div class="d-flex align-items-center"> <span class="file-name">' + file.name + '</span> | <span class="file-size">' + file.size + '</span> </div> <img src="/assets/images/delete_icon.svg" class="dltbtn" height="18" width="18" alt="delete icon"> </div></div>');
+                $selectedFilesContainer.append(file_content);
+            }
+        });
+
+
+        $('#selectedFilesContainer').on('click', '.dltbtn', function () {
+            $(this).closest('.delete_block').remove();
+        });
+
+        $("#btnsave_Upload_doc").click(function (e) {
+            saveUploadDoc(e);
+        });
+
+
+        $(document).on('click', "[id^='remove_file_upload_']", function () {
+            var listItem = $(this).closest('li');
+            var fileId = listItem.find('#file_id').text();
+            var isactive = 0;
+            removenotes(fileId, isactive)
+        });
+
+        $(document).on('click', "[id^='remove_file_download_']", function () {
+            var index = $(this).attr('id').replace('remove_file_download_', '');
+            var filename = $("#upload_file_name_" + index).text().trim();
+            var fileURL = '/UploadOKREmpDOC/' + filename;
+            var downloadLink = document.createElement('a');
+            downloadLink.href = fileURL;
+            downloadLink.download = filename;
+
+            document.body.appendChild(downloadLink);
+            downloadLink.click();
+            // Delay removal of the anchor element after a short time (e.g., 100 milliseconds)
+            setTimeout(function () {
+                document.body.removeChild(downloadLink);
+            }, 100);
+        });
+    });
+
+    function bindEffectedFromDropdown() {
+        // Make an AJAX request to get the active transaction year
+        $.ajax({
+            url: '@_webapiurl' + 'Master/GetActiveTransactionYear',  // Replace with your actual API endpoint
+            method: 'GET',
+            headers: { 'Authorization': '@_tokan' },
+            contentType: "application/json; charset=utf-8",
+            dataType: 'json',
+            success: function (response) {
+                if (response && response.length > 0) {
+                    // Parse the FromDate and ToDate from the response
+                    var fromDate = new Date(response[0].FromDate);  // Start date from the transaction year
+                    var toDate = new Date(response[0].ToDate);      // End date from the transaction year
+
+                    // Set initial month and year based on FromDate
+                    var currentMonth = fromDate.getMonth(); // Get the month (0-11)
+                    var currentYear = fromDate.getFullYear(); // Get the year
+
+                    // Populate the dropdown with months from FromDate to ToDate
+                    var lastMonth = toDate.getMonth(); // Get the last month (0-11)
+                    var lastYear = toDate.getFullYear(); // Get the last year
+
+                    // Loop to fill the months between FromDate and ToDate
+                    while (currentYear < lastYear || (currentYear === lastYear && currentMonth <= lastMonth)) {
+                        // Create the formatted date for the first day of the current month
+                        var formattedDate = currentYear + '-' + ('0' + (currentMonth + 1)).slice(-2) + '-01';
+
+                        // Create the option element
+                        var option = $('<option>', {
+                            value: formattedDate, // Set the date as value (first day of the month)
+                            text: GetMonthFullName(currentMonth) + ' ' + currentYear
+                        });
+
+                        // Append the option to the dropdown
+                        $("#Effectedfrom").append(option);
+
+                        // Move to the next month
+                        currentMonth++;
+
+                        // If currentMonth exceeds December (11), move to the next year
+                        if (currentMonth > 11) {
+                            currentMonth = 0;
+                            currentYear++;
+                        }
+                    }
+                    // Set the default value to the current month (if within the range)
+                    var _gmonth = new Date().getMonth() + 1;
+                    if (_gmonth.toString().length == 1) {
+                        $("#Effectedfrom").val(new Date().getFullYear() + "-0" + _gmonth + "-01");
+                    } else {
+                        $("#Effectedfrom").val(new Date().getFullYear() + "-" + _gmonth + "-01");
+                    }
+                    Gettotalscore($("#Effectedfrom").val());
+                } else {
+                    toastr.error("No transaction year data available.");
+                }
+            },
+            error: function (jqXHR, status, error) {
+                // Improved error handling based on response status
+                switch (jqXHR.status) {
+                    case 500: // InternalServerError
+                        toastr.error("Internal Server Error occurred.");
+                        break;
+                    case 400: // BadRequest
+                        toastr.error("Bad Request. Please check the input parameters.");
+                        break;
+                    case 401: // Unauthorized
+                        window.location.href = "/PayTime/LoginPage"; // Redirect to login
+                        break;
+                    default:
+                        toastr.error("An error occurred: " + jqXHR.statusText);
+                        break;
+                }
+            }
+        });
+     }
+    function getEmpDetails() {
+        $.ajax({
+            type: "GET",
+            headers: { 'Authorization': '@_tokan' },
+            url: '@_webapiurl' + 'Master/EmployeeGetById?id=@empid',
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            beforeSend: function () {
+                $("#ajax_loader").show();
+            },
+            success: function (data) {
+                var empphoto = data[0].EmpPhoto ? "/UploadEmpPhoto/" + data[0].EmpPhoto : "/assets/images/avtar.png";
+                $("#empname").text(data[0].EmpName);
+                $("#designationname").text(data[0].DesignationName);
+                $("#usrimg").attr('src', '/UploadEmpPhoto/' + empphoto);
+                $("#empid").text(data[0].EmpId);
+                $("#designationid").text(data[0].DesignationId);
+            },
+            error: function (jqXHR, ajaxOptions, thrownError) {
+                if (jqXHR.status == 500) { //InternalServerError = 500,
+                    toastr.error("InternalServerError");
+                } else if (jqXHR.status == 400) { //BadRequest = 400,
+                    toastr.error("BadRequest");
+                } else if (jqXHR.status == 401) {
+                    window.location.href = "/PayTime/LoginPage";
+                }
+            },
+            complete: function () {
+                $("#ajax_loader").hide();
+            }
+        });
+    }
+    function getassignobjectiveKR(empid, flag) {
+        $.ajax({
+            type: "GET",
+            headers: { 'Authorization': '@_tokan' },
+            url: '@_webapiurlokr' + 'Objectve/GetOKRAssignDetailsEmpwise/' + empid + '/' + flag,
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            beforeSend: function () {
+                $("#ajax_loader").show();
+            },
+            success: function (response) {
+                if (response.Table && response.Table.length > 0) {
+                    $("#NotificationGrid-empty").css('display', 'none');
+                    var accordionContainer = $(".okrreview_main");
+                    accordionContainer.empty();
+                    response.Table.forEach(function (item, index) {
+                        var accordationmain = $('<div class="accordion_box_main"></div>'); // Create accordion box
+                        var accordionHeader = $('<div class="accordian-header okr_acc_header">' +
+                            '<div>' +
+                            '<span id="obj_id_' + index + '" hidden>' + item.objective_id + '</span>' +
+                            '<a href="#okrreview_' + index + '" class="acc_ttl" data-toggle="collapse" aria-expanded="false" aria-controls="okrreview_' + index + '">' +
+                            '<span id="objective_title_' + index + '">' + item.Title + '</span>' +
+                            '<i class="fa-regular fa-angle-down arrow_down"></i>' +
+                            '</a>' +
+                            '</div>' +
+                            '<div class="d-flex align-items-center">' +
+                            //'<span id="target_period_id_' + index + '" hidden>' + item.TragatPeriod + '</span>' +
+                            //'<div class="okr_acc_based">' + getTargetPeriodValue(item.TragatPeriod) + '</div>' +
+                            '<div class="okr_acc_data">' + item.Description + '</div>' +
+                            '<div class="okr_acc_based">Weightage: <span id= "OKR_weighatge_' + index + '">' + item.weightage + '</span></div>' +
+                            '</div>' +
+                            '</div>'
+                        );
+                        var krmain = $('<div class="collapse" id="okrreview_' + index + '" aria-expanded="true"></div>');
+                        if (response.Table1 && response.Table1.length > 0) {
+                            response.Table1.forEach(function (krItem, KrIndex) {
+                                var currentDate = new Date();
+                                var endDate = new Date(krItem.EndDate);
+                                currentDate.setHours(0, 0, 0, 0);
+                                endDate.setHours(0, 0, 0, 0);
+                                if ((item.objective_id === krItem.krObjectiveId)) {
+                                    var totalDisplay = krItem.score !== undefined && krItem.score !== 0 && krItem.score !== null ? (krItem.score + '/' + krItem.krWeightage) : '--';
+                                    var Kr_flat_per = krItem.review_type == 2 ? '%' : '';
+                                    var score = "";
+                                    if (krItem.review_type == 2) {
+                                        score = ((krItem.score / krItem.krWeightage) * 100).toFixed(2);
+                                    }
+                                    else {
+                                        score = krItem.score !== undefined && krItem.score !== 0 && krItem.score !== null ? krItem.score : '--';
+                                    }
+                                    var krContent = $(
+                                        '<div class="no_bd_radius">' +
+                                        '<div class="portlet-body">' +
+                                        '<div class="okr_acc_body">' +
+                                        '<div class="okr_body_ttl">' +
+                                        '<img src="/assets/images/icon_kr.svg" alt="objective icon" width="13" height="14" />' +
+                                        '<span id="KR_id_' + KrIndex + '" hidden>' + krItem.krid + '</span>' +
+                                        '<span id="Kr_name_' + KrIndex + '">' + krItem.krKeyResult + '</span>' +
+                                        '</div>' +
+                                        '<div class="d-flex align-items-center">' +
+                                        '<div class="okr_acc_based_data">Reviewed by ' + getRoleNameByRoleId(krItem.krFieldby, krItem.Krreviewdby) + '</div>' +
+                                        '<div class="okr_acc_based_data">' + krItem.KrDescription + '</div>' +
+                                        '<div class="okr_acc_st">Weightage: <span id="kr_weightage_' + KrIndex + '">' + krItem.krWeightage + '</span></div>' +
+                                       '<div class="okr_acc_st text-center">Score: <span id="kr_score_' + KrIndex + '">' + score + Kr_flat_per + '</span></div>' +
+                                        '<div class="okr_acc_st">Total: <span>' + totalDisplay + '</span></div>' +
+                                        '<div class="okr_acc_st " id="review_status_' + KrIndex + '">' + krItem.review_status + '</div>' +
+                                        '<div class="okr_acc_st">Start Date: <span id = "kr_start_date_' + KrIndex + '">' + krItem.StartDate + '</span></div>' +
+                                        '<div class="okr_acc_st">End Date: <span id = "kr_end_date_' + KrIndex + '">' + krItem.EndDate + '</span></div>' +
+                                        '<span id = "kr_effective_end_date_' + KrIndex + '" hidden>' + krItem.effectiveenddate + '</span>' +
+                                        '<div class="okr_acc_actiondata d-flex">' +
+                                        '<a href="javascript:;" class="btn btn-xs essokr_notes" id="notes_btn_' + KrIndex + '" title="" data-original-title="Edit">' +
+                                        '<i class="fa-regular fa-file-lines margin-right-5"></i>Notes' +
+                                        '</a>' +
+                                        '<a href="javascript:;" class="btn btn-xs essokr_notes blue_font" id="uploaddoc_btn_' + KrIndex + '" title="">' +
+                                        '<i class="fa-regular fa-upload margin-right-5"></i>' +
+                                        '</a>' +
+                                        '</div>' +
+                                        '</div>' +
+                                        '</div>' +
+                                        '</div>' +
+                                        '</div>'
+                                    );
+                                    krmain.append(krContent);
+                                    var notes_btn = krContent.find('#notes_btn_' + KrIndex);
+                                    var upload_btn = krContent.find('#uploaddoc_btn_' + KrIndex);
+                                    // Adjust targetDate based on TragatPeriod
+                                    //switch (item.TragatPeriod) {
+                                    //    case 1:
+                                    //        targetDate.setMonth(targetDate.getMonth() + 3);
+                                    //        break;
+                                    //    case 2:
+                                    //        targetDate.setMonth(targetDate.getMonth() + 1);
+                                    //        break;
+                                    //    case 3:
+                                    //        targetDate.setFullYear(targetDate.getFullYear() + 1);
+                                    //        break;
+                                    //    default:
+                                    //        // Handle unknown TragatPeriod
+                                    //        break;
+                                    //}
+                                    // Add 5 days to the target date
+                                    endDate.setDate(endDate.getDate() + 5);
+
+                                    // Check if the current date is before or equal to the target date
+                                    if (currentDate <= endDate) {
+                                        notes_btn.prop('disabled', false).removeClass('disabled');
+                                        upload_btn.prop('disabled', false).removeClass('disabled');
+                                    } else {
+                                        notes_btn.prop('disabled', true).addClass('disabled');
+                                        upload_btn.prop('disabled', true).addClass('disabled');
+                                    }
+                                    // If the Key Result (KR) meets the specified condition, then the associated objective is displayed
+                                    accordationmain.append(accordionHeader); // Append header to the accordion box
+                                    accordationmain.append(krmain); // Append KR content to the accordion box
+                                    var reviewStatusElement = krContent.find('#review_status_' + KrIndex);
+                                    var reviewupdatenote = krContent.find('#notes_btn_' + KrIndex);
+                                    if (krItem.review_status === 'Reviewed') {
+                                        reviewStatusElement.addClass('green_font '); // Add a class for green color
+                                        reviewupdatenote.addClass('green_font ');
+                                    }
+                                    else if (krItem.review_status === 'InProgress') {
+                                        reviewStatusElement.addClass('grey_font');
+                                        reviewupdatenote.addClass('grey_font ')
+                                    }
+                                    else if (krItem.review_status === 'Pending') {
+                                        reviewStatusElement.addClass('navyblue_font');
+                                        reviewupdatenote.addClass('navyblue_font ')
+                                    }
+
+                                }
+                            });
+                        }
+                        accordionContainer.append(accordationmain); // Append accordion box to the main container
+                    });
+                }
+                else {
+                    $("#NotificationGrid-empty").css('display', 'flex');
+                    var accordionContainer = $(".okrreview_main");
+                    accordionContainer.empty();
+                }
+            },
+            error: function (xhr, ajaxOptions, thrownError) {
+                $("#ajax_loader").hide();
+            },
+            complete: function () {
+                $("#ajax_loader").hide();
+            }
+        });
+    }
+    function getTargetPeriodValue(index) {
+        return targetperiod[index];
+    }
+    function getempname(callback) {
+        $.ajax({
+            type: "GET",
+            url: '/MasterData/EmployeeGetReporting',
+            contentType: "application/json; charset=utf-8",
+            dataType: 'json',
+            beforeSend: function () {
+                $("#ajax_loader").show();
+            },
+            success: function (data) {
+                var compressedData = atob(data);
+                var data = JSON.parse(pako.inflate(compressedData, { to: 'string' }));
+                if (data.isRedirect) {
+                    window.location.href = data.redirectUrl;
+                }
+                $("#ajax_loader").hide();
+                data.sort(function (a, b) {
+                    return a.EmpName.localeCompare(b.EmpName);
+                });
+                for (var x = 0; x < data.length; x++) {
+                    EmpData.push({ EmpID: data[x].EmpId, Empname: data[x].EmpName });
+                }
+                // Call the callback function if provided
+                if (callback && typeof callback === 'function') {
+                    callback();
+                }
+            },
+            error: function (jqXHR, ajaxOptions, thrownError) {
+                $("#ajax_loader").hide();
+                if (jqXHR.status == 500) {
+                    toastr.error("InternalServerError");
+                } else if (jqXHR.status == 400) {
+                    toastr.error("BadRequest");
+                } else if (jqXHR.status == 401) {
+                    window.location.href = "/PayTime/LoginPage";
+                }
+            }
+        });
+    }
+    function getRoleNameByRoleId(roleId, reviewdby) {
+        var roleName = null;
+        if (roleId === 1) {
+            roleName = "HR/Admin";
+        } else if (roleId === 2) {
+            // Assuming EmpData is globally accessible
+            for (var i = 0; i < EmpData.length; i++) {
+                if (EmpData[i].EmpID === reviewdby) {
+                    roleName = EmpData[i].Empname;
+                    break; // Exit the loop when a match is found
+                }
+            }
+        } else if (roleId === 3) {
+            roleName = "Reporting To";
+        }
+        return roleName;
+    }
+    function rolegetalldrp() {
+        $.ajax({
+            type: "GET",
+            url: '@_webapiurl' + 'Master/RoleMasterGetAll',
+            headers: { 'Authorization': '@_tokan' },
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            async: false,
+            beforeSend: function () {
+                $(".loading").show();
+            },
+            success: function (response) {
+                if (response.isRedirect) {
+                    window.location.href = response.redirectUrl;
+                }
+                if (response != null) {
+                    for (var i = 0; i < response.length; i++) {
+                        // Create an object with RoleId and RoleName and push it to the roleData array
+                        roleData.push({ RoleId: response[i].RoleId, RoleName: response[i].RoleName });
+                    }
+                }
+                $(".loading").hide();
+            },
+            error: function () {
+                $(".loading").hide();
+            }
+        });
+    }
+    function GetOKRempwise(empid, effecteddate, flag) {
+        $.ajax({
+            type: "GET",
+            headers: { 'Authorization': '@_tokan' },
+            url: '@_webapiurlokr' + 'Objectve/GetOKRAssignDetailsEmpwiseMonth/' + empid + '/' + effecteddate + '/' + flag,
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            beforeSend: function () {
+                $("#ajax_loader").show();
+            },
+            success: function (response) {
+                var accordionContainer = $(".okrreview_main");
+                accordionContainer.empty();
+                if (response.Table && response.Table.length > 0) {
+                    $("#NotificationGrid-empty").css('display', 'none');
+                    response.Table.forEach(function (item, index) {
+                        var accordationmain = $('<div class="accordion_box_main"></div>'); // Create accordion box
+                        var accordionHeader = $('<div class="accordian-header okr_acc_header">' +
+                            '<div>' +
+                            '<span id="obj_id_' + index + '" hidden>' + item.objective_id + '</span>' +
+                            '<a href="#okrreview_' + index + '" class="acc_ttl" data-toggle="collapse" aria-expanded="false" aria-controls="okrreview_' + index + '">' +
+                            '<span id="objective_title_' + index + '">' + item.Title + '</span>' +
+                            '<i class="fa-regular fa-angle-down arrow_down"></i>' +
+                            '</a>' +
+                            '</div>' +
+                            '<div class="d-flex align-items-center">' +
+                            //'<span id="target_period_id_' + index + '" hidden>' + item.TragatPeriod + '</span>' +
+                            //'<div class="okr_acc_based">' + getTargetPeriodValue(item.TragatPeriod) + '</div>' +
+                            '<div class="okr_acc_data">' + item.Description + '</div>' +
+                            '<div class="okr_acc_based">Weightage: <span id= "OKR_weighatge_' + index + '">' + item.weightage + '</span></div>' +
+                            '</div>' +
+                            '</div>'
+                        );
+                        var krmain = $('<div class="collapse" id="okrreview_' + index + '" aria-expanded="true"></div>');
+                        if (response.Table1 && response.Table1.length > 0) {
+                            response.Table1.forEach(function (krItem, KrIndex) {
+                                var endDate = new Date(krItem.EndDate);  // End date
+                                var currentDate = new Date();
+                                endDate.setHours(0, 0, 0, 0);
+                                currentDate.setHours(0, 0, 0, 0);
+                                if (item.objective_id === krItem.krObjectiveId) {
+                                    var totalDisplay = krItem.score !== undefined && krItem.score !== 0 && krItem.score !== null ? (krItem.score + '/' + krItem.krWeightage) : '--';
+                                    var Kr_flat_per = krItem.review_type == 2 ? '%' : '';
+                                    var score = "";
+                                    if (krItem.review_type == 2) {
+                                        score = ((krItem.score / krItem.krWeightage) * 100).toFixed(2);
+                                    }
+                                    else {
+                                        score = krItem.score !== undefined && krItem.score !== 0 && krItem.score !== null ? krItem.score : '--';
+                                    }
+                                    var krContent = $(
+                                        '<div class="no_bd_radius">' +
+                                        '<div class="portlet-body">' +
+                                        '<div class="okr_acc_body">' +
+                                        '<div class="okr_body_ttl">' +
+                                        '<img src="/assets/images/icon_kr.svg" alt="objective icon" width="13" height="14" />' +
+                                        '<span id="KR_id_' + KrIndex + '" hidden>' + krItem.krid + '</span>' +
+                                        '<span id="Kr_name_' + KrIndex + '">' + krItem.krKeyResult + '</span>' +
+                                        '</div>' +
+                                        '<div class="d-flex align-items-center">' +
+                                        '<div class="okr_acc_based_data">Reviewed by ' + getRoleNameByRoleId(krItem.krFieldby, krItem.Krreviewdby) + '</div>' +
+                                        '<div class="okr_acc_based_data">' + krItem.KrDescription + '</div>' +
+                                        '<div class="okr_acc_st">Weightage: <span id="kr_weightage_' + KrIndex + '">' + krItem.krWeightage + '</span></div>' +
+                                       '<div class="okr_acc_st text-center">Score: <span id="kr_score_' + KrIndex + '">' + score + Kr_flat_per + '</span></div>' +
+                                        '<div class="okr_acc_st">Total: <span>' + totalDisplay + '</span></div>' +
+                                        '<div class="okr_acc_st " id="review_status_' + KrIndex + '">' + krItem.review_status + '</div>' +
+                                        '<div class="okr_acc_st">Start Date: <span id = "kr_start_date_' + KrIndex + '">' + krItem.StartDate + '</span></div>' +
+                                        '<div class="okr_acc_st">End Date: <span id = "kr_end_date_' + KrIndex + '">' + krItem.EndDate + '</span></div>' +
+                                        '<span id = "kr_effective_end_date_' + KrIndex + '" hidden>' + krItem.effectiveenddate + '</span>' +
+                                        '<div class="okr_acc_actiondata d-flex">' +
+                                        '<a href="javascript:;" class="btn btn-xs essokr_notes" id="notes_btn_' + KrIndex + '" title="" data-original-title="Edit">' +
+                                        '<i class="fa-regular fa-file-lines margin-right-5"></i>Notes' +
+                                        '</a>' +
+                                        '<a href="javascript:;" class="btn btn-xs essokr_notes blue_font" id="uploaddoc_btn_' + KrIndex + '" title="">' +
+                                        '<i class="fa-regular fa-upload margin-right-5"></i>' +
+                                        '</a>' +
+                                        '</div>' +
+                                        '</div>' +
+                                        '</div>' +
+                                        '</div>' +
+                                        '</div>'
+                                    );
+                                    krmain.append(krContent);
+
+                                    var notes_btn = krContent.find('#notes_btn_' + KrIndex);
+                                    var upload_btn = krContent.find('#uploaddoc_btn_' + KrIndex);
+
+                                    // Adjust targetDate based on TragatPeriod
+                                    //switch (item.TragatPeriod) {
+                                    //    case 1:
+                                    //        targetDate.setMonth(targetDate.getMonth() + 3);
+                                    //        break;
+                                    //    case 2:
+                                    //        targetDate.setMonth(targetDate.getMonth() + 1);
+                                    //        break;
+                                    //    case 3:
+                                    //        targetDate.setFullYear(targetDate.getFullYear() + 1);
+                                    //        break;
+                                    //    default:
+                                    //        // Handle unknown TragatPeriod
+                                    //        break;
+                                    //}
+
+                                    // Add 5 days to the target date
+                                    endDate.setDate(endDate.getDate() + 5);
+
+
+                                    // Check if the current date is before or equal to the target date
+                                    if (currentDate <= endDate) {
+                                        notes_btn.prop('disabled', false).removeClass('disabled');
+                                        upload_btn.prop('disabled', false).removeClass('disabled');
+                                    } else {
+                                        notes_btn.prop('disabled', true).addClass('disabled');
+                                        upload_btn.prop('disabled', true).addClass('disabled');
+                                    }
+                                    // If the Key Result (KR) meets the specified condition, then the associated objective is displayed
+                                    accordationmain.append(accordionHeader); // Append header to the accordion box
+                                    accordationmain.append(krmain); // Append KR content to the accordion box
+                                    var reviewStatusElement = krContent.find('#review_status_' + KrIndex);
+                                    var reviewupdatenote = krContent.find('#notes_btn_' + KrIndex);
+                                    if (krItem.review_status === 'Reviewed') {
+                                        reviewStatusElement.addClass('green_font '); // Add a class for green color
+                                        reviewupdatenote.addClass('green_font ');
+                                    }
+                                    else if (krItem.review_status === 'InProgress') {
+                                        reviewStatusElement.addClass('grey_font');
+                                        reviewupdatenote.addClass('grey_font ')
+                                    }
+                                    else if (krItem.review_status === 'Pending') {
+                                        reviewStatusElement.addClass('navyblue_font');
+                                        reviewupdatenote.addClass('navyblue_font ')
+                                    }
+                                }
+                            });
+                        }
+                        accordionContainer.append(accordationmain); // Append accordion box to the main container
+
+                    });
+                }
+                else {
+                    $("#NotificationGrid-empty").css('display', 'flex');
+                    var accordionContainer = $(".okrreview_main");
+                    accordionContainer.empty();
+                }
+            },
+            error: function (xhr, ajaxOptions, thrownError) {
+                $("#ajax_loader").hide();
+            },
+            complete: function () {
+                $("#ajax_loader").hide();
+            }
+        });
+
+    }
+    function SaveNotes() {
+        if ($("#notes_review").val().trim() == "") {
+            toastr.remove();
+            toastr.error("Please fill the notes.");
+            $("#notes_review").focus();
+            return false;
+        }
+        else {
+            $("#notes_review").removeClass('field_error');
+        }
+        var obj = {
+            "EmpID": $("#empid").text(),
+            "EmpName": $("#empname").text().trim(),
+            "DesignationId": $("#designationid").text(),
+            "objectiveId": objectiveid_emp,
+            "KRId": krid_emp,
+            "description": $("#notes_review").val(),
+            "review_note_status": 2
+        };
+        $.ajax({
+            type: "POST",
+            headers: { 'Authorization': '@_tokan' },
+            url: '@_webapiurlokr' + 'Objectve/SaveOKRReviewNotes',
+            data: JSON.stringify(obj),
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            beforeSend: function () {
+                $("#ajax_loader").show();
+            },
+            success: function (response) {
+                if (response.success == true) {
+                    setTimeout(function () {
+                        toastr.remove();
+                        toastr.success("Note has been saved successfully; employees are not allowed to upload it again.");
+                    }, 100)
+                    $('#reviewnotes_modal').modal('toggle');
+                    if ($("#okrreview_" + index_OKR).hasClass('in')) {
+                        // If it has the class, remove it and set aria-expanded to 'false'
+                        $("#okrreview_" + index_OKR).removeClass('in');
+                        $("#okrreview_" + index_OKR).attr('aria-expanded', 'false');
+                    }
+                     getempname(function () {
+                         getassignobjectiveKR('@empid', 1);
+                     });
+                     var getMonth = new Date().getMonth() + 1;
+                     if (getMonth.toString().length == 1) {
+                         $("#Effectedfrom").val(new Date().getFullYear() + "-0" + getMonth + "-01");
+                     } else {
+                         $("#Effectedfrom").val(new Date().getFullYear() + "-" + getMonth + "-01");
+                     }
+                }
+                if (response.success == false) {
+                    toastr.remove();
+                    toastr.error(response.message);
+                    $('#reviewnotes_modal').modal('toggle');
+                    if ($("#okrreview_" + index_OKR).hasClass('in')) {
+                        // If it has the class, remove it and set aria-expanded to 'false'
+                        $("#okrreview_" + index_OKR).removeClass('in');
+                        $("#okrreview_" + index_OKR).attr('aria-expanded', 'false');
+                    }
+                    getempname(function () {
+                        getassignobjectiveKR('@empid', 1);
+                    });
+                    var getMonth = new Date().getMonth() + 1;
+                    if (getMonth.toString().length == 1) {
+                        $("#Effectedfrom").val(new Date().getFullYear() + "-0" + getMonth + "-01");
+                    } else {
+                        $("#Effectedfrom").val(new Date().getFullYear() + "-" + getMonth + "-01");
+                    }
+                }
+            },
+            error: function () {
+                $("#ajax_loader").hide();
+            },
+            complete: function () {
+                $("#ajax_loader").hide();
+            }
+        });
+    }
+    function frmclearOKRReviewNotes() {
+        $("#notes_review").val("");
+        $("#btnsave").prop('disabled', false);
+    }
+    function getreviewnotes(objectiveid, krid, empid) {
+        return new Promise(function (resolve, reject) {
+            $.ajax({
+                type: "GET",
+                url: '@_webapiurlokr' + 'Objectve/GetEmployeeReviewNotes/' + objectiveid + '/' + krid + '/' + empid,
+                headers: { 'Authorization': '@_tokan' },
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                beforeSend: function () {
+                    $(".loading").show();
+                },
+                success: function (response) {
+                    if (response.isRedirect) {
+                        window.location.href = response.redirectUrl;
+                    }
+                    if (response != null) {
+                        resolve(response); // Resolve the Promise with the response data
+                    }
+                    $(".loading").hide();
+                },
+                error: function () {
+                    $(".loading").hide();
+                    reject("Error occurred"); // Reject the Promise if there's an error
+                }
+            });
+        });
+    }
+    function frmClearFiles() {
+        $('#selectedFilesContainer').empty();
+        $("#btnsave_Upload_doc").prop('disabled', false);
+
+    }
+
+    function saveUploadDoc(e) {
+        e.preventDefault();
+        var file_names = [];
+        $(".selectedfile_block .file-name").each(function () {
+            var fileName = $(this).text().trim();
+            file_names.push(fileName);
+        });
+        if (file_names.length == 0) {
+            toastr.remove();
+            toastr.error("Please select atleast one file.");
+            return false;
+        }
+        var obj = [];
+        for (var i = 0; i < file_names.length; i++) {
+            var data = {
+                "employee_id": $("#empid").text(),
+                "emp_name": $("#empname").text().trim(),
+                "designation_id": $("#designationid").text(),
+                "objective_id": objectiveid_emp,
+                "kr_id": krid_emp,
+                "file_paths_OKR": file_names[i],// Remove semicolon from here,
+                "Isactive": 1
+
+            };
+            obj.push(data);
+        }
+        $.ajax({
+            type: "POST",
+            headers: { 'Authorization': '@_tokan' }, // Assuming '@_tokan' should be replaced by a valid token variable
+            url: '@_webapiurlokr' + 'Objectve/SaveOKREmployeeDoc',
+            data: JSON.stringify(obj),
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            beforeSend: function () {
+                $("#ajax_loader").show();
+            },
+            success: function (response) {
+                var successCount = 0;
+                var failCount = 0;
+                var successMessages = [];
+                var failMessages = [];
+
+                for (var i = 0; i < response.length; i++) {
+                    var currentResponse = response[i];
+                    if (currentResponse.responseCode  === 201) {
+                        successCount++;
+                        successMessages.push(currentResponse.message);
+                    } else if (currentResponse.responseCode === 210) {
+                        failCount++;
+                        failMessages.push("File already exists.");
+                    } else if (currentResponse.responseCode === 211) {
+                        failCount++;
+                        failMessages.push("Maximum limit of 8 files reached.");
+                    } else {
+                        failCount++;
+                        failMessages.push("Failed to upload file.");
+                    }
+                }
+
+                toastr.remove();
+
+                if (successCount > 0 && failCount === 0) {
+                    // All successful uploads
+                    toastr.success(successCount + " file(s) uploaded successfully.");
+                } else if (failCount > 0 && successCount === 0 && currentResponse.responseCode === 211) {
+                    // All failed uploads
+                    toastr.error("Maximum limit of 8 files reached.");
+                }
+                else if (failCount > 0 && successCount === 0 && currentResponse.responseCode === 210) {
+                    // All failed uploads
+                    toastr.error(failCount + " File already exists.");
+                }
+                else if(successCount >= 1 && failCount >= 1)
+                {
+                    toastr.success(successCount + " file(s) uploaded successfully." + failCount + "file(s) failed to upload.");
+                }
+                else {
+                    // Mixed results or single upload
+                    if (successCount > 0) {
+                        toastr.success(successCount + " file(s) uploaded successfully.");
+                    }
+                    if (failCount > 0) {
+                        toastr.error(failCount + " file(s) failed to upload.");
+                    }
+                }
+                setTimeout(function () {
+                    $("#OKRForm").submit();
+                }, 1000);
+                $('#uploaddocument_modal').modal('toggle');
+                getempname(function () {
+                    getassignobjectiveKR('@empid', 1);
+                });
+                var getMonth = new Date().getMonth() + 1;
+                if (getMonth.toString().length == 1) {
+                    $("#Effectedfrom").val(new Date().getFullYear() + "-0" + getMonth + "-01");
+                } else {
+                    $("#Effectedfrom").val(new Date().getFullYear() + "-" + getMonth + "-01");
+                }
+            },
+            error: function () {
+                $("#ajax_loader").hide();
+            },
+            complete: function () {
+                $("#ajax_loader").hide();
+            }
+        });
+    }
+    function Getuploadfilename(objectiveid, krid, empid, status) {
+        $.ajax({
+            type: "GET",
+            url: '@_webapiurlokr' + 'Objectve/GetEmpOKRUploadFile/' + objectiveid + '/' + krid + '/' + empid,
+            headers: { 'Authorization': '@_tokan' },
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            beforeSend: function () {
+                $(".loading").show();
+            },
+            success: function (response) {
+                if (response.isRedirect) {
+                    window.location.href = response.redirectUrl;
+                }
+                if (response != null) {
+                    var responsecnt = response.length;
+                    $("#upload_file_cnt").text(responsecnt);
+                    var $container = $("#upload_File");
+                    $container.empty(); // Clear previous content
+
+                    response.forEach(function (item, index) {
+                        var ulElement = $('<ul></ul>');
+                        var objectiveItem = $('<li class="d-flex align-items-center justify-content-between"> <div class="uploadfilename" id="upload_file_name_' + index + '" ><i class="fa-regular fa-file margin-right-5"></i>' + item.file_path_OKR + '</div><span id="file_id" hidden>' + item.file_id + '</span> <div class="assign_text"> <a href="javascript:;"><img class="margin-right-5" src="/assets/images/download_icon.svg" height="24" width="24" alt="close icon" id="remove_file_download_' + index + '"></a> <a href="javascript:;"><img src="/assets/images/close_icon.svg" height="24" width="24" alt="close icon" id="remove_file_upload_' + index + '"></a> </div> </li>');
+                        ulElement.append(objectiveItem);
+                        $container.append(ulElement);
+                    });
+                    if (status === "Reviewed") {
+                        $('[id^="remove_file_upload_"]').each(function () {
+                            var fileIndex = $(this).attr('id').replace('remove_file_upload_', ''); // Get the file index
+
+                            // Hide the download icon associated with the file index
+                            $(this).hide();
+
+                            // Disable the link behavior (if needed)
+                            $(this).removeAttr('href'); // Remove the href attribute to disable the link
+                        });
+
+                    }
+
+                }
+                $(".loading").hide();
+            },
+            error: function () {
+                $(".loading").hide();
+            }
+        });
+    }
+    function removenotes(fileid, isactive) {
+        $.ajax({
+            type: "POST",
+            headers: { 'Authorization': '@_tokan' },
+            url: '@_webapiurlokr' + 'Objectve/RemoveFileNotes/' + fileid + '/' + isactive,
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            beforeSend: function () {
+                $("#ajax_loader").show();
+            },
+            success: function (response) {
+                if (response.success == true) {
+                    setTimeout(function () {
+                        toastr.remove();
+                        toastr.success("File removed successfully. ");
+                    }, 100);
+                    Getuploadfilename(objectiveid_emp, krid_emp, '@empid', status_name);
+                    var _gmonth = new Date().getMonth() + 1;
+                    if (_gmonth.toString().length == 1) {
+                        $("#Effectedfrom").val(new Date().getFullYear() + "-0" + _gmonth + "-01");
+                    } else {
+                        $("#Effectedfrom").val(new Date().getFullYear() + "-" + _gmonth + "-01");
+                    }
+                }
+                if (response.success == false) {
+                    toastr.remove();
+                    toastr.error(response.message);
+                    var _gmonth = new Date().getMonth() + 1;
+                    if (_gmonth.toString().length == 1) {
+                        $("#Effectedfrom").val(new Date().getFullYear() + "-0" + _gmonth + "-01");
+                    } else {
+                        $("#Effectedfrom").val(new Date().getFullYear() + "-" + _gmonth + "-01");
+                    }
+                }
+            },
+            error: function () {
+                $("#ajax_loader").hide();
+            },
+            complete: function () {
+                $("#ajax_loader").hide();
+            }
+        });
+    }
+    function Gettotalscore(selecteddate) {
+        // Show loader before making the AJAX request
+        $("#ajax_loader").show();
+        $.ajax({
+            type: "GET",
+            headers: { 'Authorization': '@_tokan' },
+            url: '@_webapiurlokr' + 'Objectve/GetOKRReviewDetailsEmpwise/' + loginempid + '/' + selecteddate,
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            success: function (response) {
+                if (response != null && response.length > 0) {
+                    var responseObject = response[0]; // First object in the response array
+                    var keys = Object.keys(responseObject); // Getting all keys of the object
+                    var dynamicColumnName = keys[11]; // Getting the 11th key (0-based index, so 10)
+                    var totalScore = responseObject[dynamicColumnName];
+                    // Check if totalScore is not null or undefined
+                    if (totalScore != null && totalScore !== undefined) {
+                        // Bind the totalScore with the percentage symbol
+                        $("#ttl_score").text(totalScore);
+                    } else {
+                        // If totalScore is null or undefined, bind 0 with the percentage symbol
+                        $("#ttl_score").text('0');
+                    }
+                }
+            },
+            error: function () {
+                // Handle the error case
+                $("#ajax_loader").hide();
+            },
+            complete: function () {
+                // Hide the loader whether the request is successful or not
+                $("#ajax_loader").hide();
+            }
+        });
+    }
+
+</script>
+
+<div class="page-bar">
+    <ul class="page-breadcrumb" style="float: none">
+        <li>
+            <a href="/Dashboard/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+        </li>
+        <li>
+            <span><i class="fa-light fa-angle-right"></i> MyOKR</span>
+        </li>
+    </ul>
+    <div class="emptotalcount justify-content-between" id="reviewemplyoee_title">
+        <div class="reviewemplyoee_header">
+            <span>
+                <p id="empname" hidden> </p>
+                <p id="designationname" hidden></p>
+                <p id="empid" hidden></p>
+                <p id="designationid" hidden></p>
+            </span>
+            <div class="form-group margin-bottom-0">
+                <select class="form-control input-sm" data-val="true" id="Effectedfrom" name="Effectedfrom"></select>
+            </div>
+        </div>
+        <div class="page-toolbar">
+            <div class="ttl_score">Total Score <span id="ttl_score"></span>/100%</div>
+        </div>
+    </div>
+</div>
+
+<div id="ajax_loader" class="modal_bg loading" aria-hidden="true" style="display:none">
+    <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading"/>
+</div>
+<!-- Accordian ESSOKR Notes add and upload Doc info : Begin -->
+<div class="portlet list-content ess_okr_box" id="ess_okr_acc_box">
+    @*<div class="nodata_block no_recoed" style="display: none;" id="no_data">
+            <img src="/assets/images/nodata_block.png" height="161" width="162" alt="No Data Icon">
+            <p>Not Data Found</p>
+        </div>*@
+    <div id="NotificationGrid-empty">
+        <div class="datanotfound">
+            <img src="~/assets/images/emptyscreen_3.png" height="148" width="280" alt="Nodata Found Icon">
+            <p class="datanotfound_title">No data found</p> <!-- titleText -->
+            <p class="">No matching data found for the selected filters.</p><!-- subText -->
+        </div>
+    </div>
+    <div class="okrreview_main" id="Ess_OKR_review">
+        <span id="KR_id_notes" hidden></span>
+        <span id="obj_id_notes" hidden></span>
+    </div>
+</div>
+<!-- Accordian ESSOKR Notes add and upload Doc info : End -->
+<!-- Review Notes Modal : Begin -->
+<div id="reviewnotes_modal" class="modal fade popup_info_model" role="dialog" data-keyboard="false" data-backdrop="static">
+    <div class="modal-dialog">
+        <!-- Modal content-->
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal">&times;</button>
+                <h4 class="modal-title">Notes</h4>
+            </div>
+            <div class="modal-body">
+                <div class="modal-card">
+                    <fieldset>
+                        <div class="row">
+                            <div class="col-xs-12">
+                                <textarea class="notes_block" id="notes_review" name="notes_review" maxlength="1000"></textarea>
+                                <div class="increase_pay">
+                                    <div class="row">
+                                        <div class="d-flex align-items-center flex-wrap">
+                                            <div class="col-lg-12 col-sm-12">
+                                                <div class="row">
+                                                    <div class="d-flex align-items-center">
+                                                        <div class="col-lg-6" id="Kr_name_out">
+                                                        </div>
+                                                        <div class="col-lg-3 col-xs-5">
+                                                            Weightage: <span id="weightage_out"></span>
+                                                        </div>
+                                                        <div class="col-lg-3 col-xs-5">
+                                                            Status : <span class="red_font" id="status_out"></span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                            </div>
+                        </div>
+                    </fieldset>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <div class="row">
+                    <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                        <div class="d-flex align-items-center justify-content-between" id="modal_Btn" style="visibility: visible;">
+                            <div class="weightage_surpass">
+                                <img src="/assets/images/assign_info.svg" alt="info icon" width="24" height="24" class="margin-right-5">
+                                <span class="red_font">After reviewing and saving, cannot be edited.</span>
+                            </div>
+                            <div>
+                                <button type="button" class="btn save_btn" id="btnsave"> Save</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Review Notes Modal : End -->
+<!-- Upload Document Modal : Begin -->
+<div id="uploaddocument_modal" class="modal fade popup_info_model" role="dialog" data-keyboard="false" data-backdrop="static">
+    <div class="modal-dialog">
+        <!-- Modal content-->
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal">&times;</button>
+                <h4 class="modal-title">Attachments Files</h4>
+            </div>
+            <div class="modal-body">
+                <div class="modal-card">
+                    <fieldset>
+                        <div class="d-flex">
+                            <div class="uploadfile_left">
+                                <p class="ttl">Uploaded Files: <span id="upload_file_cnt"></span></p>
+                                <div class="upload_data">
+                                    <!-- Empty Document block : Begin -->
+                                    <div class="obj_data" style="display: none;">
+                                        <img src="/assets/images/nodata_block.png" alt="No Data Icon" width="162" height="161" class="">
+                                        <p class="obj_note">Not Selected any objective</p>
+                                    </div>
+                                    <!-- Empty Document block : End -->
+                                    <!-- Document Upload block : Begin -->
+                                    <div id="upload_File">
+                                        @*<ul>
+                                    <li class="d-flex align-items-center justify-content-between">
+                                        <div class=""><i class="fa-regular fa-file margin-right-5"></i>Sales Report</div>
+                                        <div class="assign_text">
+                                            <a href="javascript:;"><img class="margin-right-5" src="/assets/images/download_icon.svg" height="24" width="24" alt="close icon"></a>
+                                            <a href="javascript:;"><img src="/assets/images/close_icon.svg" height="24" width="24" alt="close icon"></a>
+                                        </div>
+                                    </li>
+                                    <li class="d-flex align-items-center justify-content-between">
+                                        <div class=""><i class="fa-regular fa-file margin-right-5"></i>Sales Report</div>
+                                        <div class="assign_text">
+                                            <a href="javascript:;"><img class="margin-right-5" src="/assets/images/download_icon.svg" height="24" width="24" alt="close icon"></a>
+                                            <a href="javascript:;"><img src="/assets/images/close_icon.svg" height="24" width="24" alt="close icon"></a>
+                                        </div>
+                                    </li>
+                                    <li class="d-flex align-items-center justify-content-between">
+                                        <div class=""><i class="fa-regular fa-file margin-right-5"></i>Sales Report</div>
+                                        <div class="assign_text">
+                                            <a href="javascript:;"><img class="margin-right-5" src="/assets/images/download_icon.svg" height="24" width="24" alt="close icon"></a>
+                                            <a href="javascript:;"><img src="/assets/images/close_icon.svg" height="24" width="24" alt="close icon"></a>
+                                        </div>
+                                    </li>
+                                    <li class="d-flex align-items-center justify-content-between">
+                                        <div class=""><i class="fa-regular fa-file margin-right-5"></i>Sales Report</div>
+                                        <div class="assign_text">
+                                            <a href="javascript:;"><img class="margin-right-5" src="/assets/images/download_icon.svg" height="24" width="24" alt="close icon"></a>
+                                            <a href="javascript:;"><img src="/assets/images/close_icon.svg" height="24" width="24" alt="close icon"></a>
+                                        </div>
+                                    </li>
+                                    <li class="d-flex align-items-center justify-content-between">
+                                        <div class=""><i class="fa-regular fa-file margin-right-5"></i>Sales Report</div>
+                                        <div class="assign_text">
+                                            <a href="javascript:;"><img class="margin-right-5" src="/assets/images/download_icon.svg" height="24" width="24" alt="close icon"></a>
+                                            <a href="javascript:;"><img src="/assets/images/close_icon.svg" height="24" width="24" alt="close icon"></a>
+                                        </div>
+                                    </li>
+                                    <li class="d-flex align-items-center justify-content-between">
+                                        <div class=""><i class="fa-regular fa-file margin-right-5"></i>Sales Report</div>
+                                        <div class="assign_text">
+                                            <a href="javascript:;"><img class="margin-right-5" src="/assets/images/download_icon.svg" height="24" width="24" alt="close icon"></a>
+                                            <a href="javascript:;"><img src="/assets/images/close_icon.svg" height="24" width="24" alt="close icon"></a>
+                                        </div>
+                                    </li>
+                                    <li class="d-flex align-items-center justify-content-between">
+                                        <div class=""><i class="fa-regular fa-file margin-right-5"></i>Sales Report</div>
+                                        <div class="assign_text">
+                                            <a href="javascript:;"><img class="margin-right-5" src="/assets/images/download_icon.svg" height="24" width="24" alt="close icon"></a>
+                                            <a href="javascript:;"><img src="/assets/images/close_icon.svg" height="24" width="24" alt="close icon"></a>
+                                        </div>
+                                    </li>
+                                    <li class="d-flex align-items-center justify-content-between">
+                                        <div class=""><i class="fa-regular fa-file margin-right-5"></i>Sales Report</div>
+                                        <div class="assign_text">
+                                            <a href="javascript:;"><img class="margin-right-5" src="/assets/images/download_icon.svg" height="24" width="24" alt="close icon"></a>
+                                            <a href="javascript:;"><img src="/assets/images/close_icon.svg" height="24" width="24" alt="close icon"></a>
+                                        </div>
+                                    </li>
+                                </ul>*@
+                                    </div>
+                                    <!-- Document Upload block : End -->
+                                </div>
+                            </div>
+
+                            <div class="uploadfile_right">
+                                <div class="text-center">
+                                    <form class="upload-file-wrapper" enctype="multipart/form-data" id="OKRForm" method="post" action="/ESSOKR/UploadOKRFilesEmployee">
+                                        <div class="upload-files-container" id="">
+                                            <div class="steper_file_upload text-left">
+                                                <p class="file-upload-title">Upload Files</p>
+                                                <p>Maximum File Size 5MB- JPG, JPEG, PNG, PDF, Excel,Presentations,CSV,Text,Word Document </p>
+                                            </div>
+                                            <!-- ... other form elements ... -->
+                                            <div class="drag-file-area" id="fileupload">
+                                                <label class="label">
+                                                    <img src="~/assets/images/upload_icon.svg">
+                                                    <span class="browse-files">
+                                                        <input type="file" class="default-file-input" name="Uploadempokrdoc" id="OKr_Notes_File" multiple>
+                                                        <span class="browse-files-text">Drag & drop files or </br><b>Browse</b></span>
+                                                    </span>
+                                                </label>
+                                            </div>
+                                            <div class="file-block" id="selectedFilesContainer">
+                                            </div>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                    </fieldset>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <div class="row">
+                    <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                        <div class="d-flex align-items-center justify-content-between" id="modal_Btn" style="visibility: visible;">
+                            <div class="weightage_surpass">
+                                <img src="/assets/images/assign_info.svg" alt="info icon" width="24" height="24" class="margin-right-5">
+                                <span class="red_font">8 Maximum number of files that can be uploaded</span>
+                            </div>
+                            <div>
+                                <button type="button" class="btn save_btn" id="btnsave_Upload_doc"> Save</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Upload Document Modal : End -->

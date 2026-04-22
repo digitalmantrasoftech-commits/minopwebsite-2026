@@ -1,0 +1,989 @@
+@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@using System.Configuration;
+@{
+    ViewBag.Title = "Always Available";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    int _UserId = Convert.ToInt32(HttpContext.Current.Session["UserId"]);
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapicms"].ToString();
+
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+
+    string isClientDBMatchFlag = HttpContext.Current.Session["IsClientDBMatch"] != null
+        ? HttpContext.Current.Session["IsClientDBMatch"].ToString()
+        : "false";
+}
+<style>
+    .field_error {
+        border-color: #dc3545 !important;
+    }
+
+    .meal-radio-item {
+        display: block;
+        padding: 8px 12px;
+        margin: 0;
+        border-bottom: 1px solid #f0f0f0;
+        cursor: pointer;
+        font-weight: normal;
+    }
+
+        .meal-radio-item:hover {
+            background-color: #f8f9fa;
+        }
+
+    #addMealList {
+        max-height: 300px;
+        overflow-y: auto;
+        border: 1px solid #e7ecf1;
+        border-radius: 4px;
+    }
+
+    .meal-block {
+        padding: 10px;
+        background: #f8f9fa;
+        border-radius: 6px !important;
+        margin-bottom: 15px;
+    }
+</style>
+<script>
+    var _webapiurl = '@_webapiurl';
+    var _tokan = '@_tokan';
+
+    let RoleId = '@_RoleId';
+    let UserId = '@_UserId';
+    let isedit = '@obj.CanEdit';
+    let isdelete = '@obj.CanDelete';
+    let canadd = '@obj.CanAdd';
+
+    let alwaysAvailableData = [];
+    let mealSlotsData = [];
+    let selectedCanteenId = null;
+    let aaTable = null;
+
+    // ========================================
+    // DOCUMENT READY
+    // ========================================
+    $(document).ready(function () {
+        // Load canteen dropdown directly for all roles
+        loadCanteenDropdown();
+
+        // Canteen selector change
+        $('#CanteenSelector').change(function () {
+            selectedCanteenId = $(this).val();
+
+            if (selectedCanteenId) {
+                if (aaTable) {
+                    aaTable.ajax.reload();
+                } else {
+                    FillTable();
+                }
+            } else {
+                if (aaTable) {
+                    aaTable.destroy();
+                    aaTable = null;
+                    $("#dataTables_tbl_header").remove();
+                }
+                selectedCanteenId = null;
+                alwaysAvailableData = [];
+                mealSlotsData = [];
+                $('#tblAlwaysAvailableBlock').hide();
+                $('#NotificationGrid-empty').show();
+                $('#emptyMessage').text('Please select a canteen to view always available items.');
+            }
+        });
+
+        // Add button
+        $('#AddItem').click(function () {
+            if (!selectedCanteenId) {
+                toastr.warning("Please select a canteen first");
+                $(".filter_portlet_wrapper").removeClass("full-width");
+                return;
+            }
+            checkSession();
+            openAddModal();
+        });
+
+        // Save new item
+        $('#btnAddItem').click(executeAdd);
+
+        // Save edited item
+        $('#btnUpdateItem').click(executeUpdate);
+
+        // Slot type radio toggle
+        $('input[name="AddSlotType"]').change(function () {
+            if ($(this).val() === 'all') {
+                $('#AddSlotCheckboxes').hide();
+            } else {
+                $('#AddSlotCheckboxes').show();
+            }
+        });
+
+        $('input[name="EditSlotType"]').change(function () {
+            if ($(this).val() === 'all') {
+                $('#EditSlotCheckboxes').hide();
+            } else {
+                $('#EditSlotCheckboxes').show();
+            }
+        });
+
+        // Display order - only numbers
+        $('#AddDisplayOrder, #EditDisplayOrder').on('input', function () {
+            this.value = this.value.replace(/[^0-9]/g, '');
+        });
+
+        // Search/Clear
+        $("#Search_OPration").click(function () {
+            if (!selectedCanteenId) {
+                toastr.warning("Please select a canteen first");
+                return;
+            }
+            if (aaTable) {
+                aaTable.ajax.reload();
+            } else {
+                FillTable();
+            }
+        });
+
+        $("#Clear_OPration").click(function () {
+            $('#FilterActiveStatus').val('');
+            if (selectedCanteenId) {
+                if (aaTable) {
+                    aaTable.ajax.reload();
+                } else {
+                    FillTable();
+                }
+            }
+        });
+
+        // Filter panel toggle
+        $("#Filter_search").click(function () {
+            var wrapper = $(".filter_portlet_wrapper");
+            wrapper.toggleClass("full-width");
+            var screenWidth = $(window).width();
+            if (screenWidth >= 300 && screenWidth <= 600) {
+                $('.filter_portlet_tbl').toggle();
+                $('.filter_portlet_wrapper .filter_boxModal').css('width', '100%');
+            }
+        });
+
+        $(".filterclose_btn").click(function () {
+            var wrapper = $(".filter_portlet_wrapper");
+            wrapper.addClass("full-width");
+            var screenWidth = $(window).width();
+            if (screenWidth >= 300 && screenWidth <= 600) {
+                $(".filter_portlet_tbl").css("display", "block");
+            }
+        });
+    });
+
+    // ========================================
+    // DROPDOWN INITIALIZATION
+    // ========================================
+    function loadCanteenDropdown() {
+        $.ajax({
+            type: "GET",
+            url: _webapiurl + 'canteens?pageSize=100&isActive=true',
+            headers: { 'Authorization': 'Bearer ' + _tokan },
+            dataType: "json",
+            success: function (response) {
+                var $sel = $('#CanteenSelector');
+                $sel.empty().append('<option value="">-- Select Canteen --</option>');
+                var canteens = response.canteens || [];
+                if (canteens.length > 0) {
+                    for (var i = 0; i < canteens.length; i++) {
+                        $sel.append('<option value="' + canteens[i].canteenId + '">' +
+                            escapeHtml(canteens[i].canteenName) + '</option>');
+                    }
+                    if (canteens.length === 1) {
+                        $sel.val(canteens[0].canteenId).trigger('change');
+                    } else {
+                        // Auto-open filter panel so user can select canteen immediately
+                        $(".filter_portlet_wrapper").removeClass("full-width");
+                    }
+                }
+            },
+            error: function () {
+                toastr.error("Failed to load canteens");
+            }
+        });
+    }
+
+    // ========================================
+    // DATATABLE
+    // ========================================
+    function FillTable() {
+        if (!selectedCanteenId) return;
+
+        $('#NotificationGrid-empty').hide();
+        $('#tblAlwaysAvailableBlock').show();
+
+        if (aaTable) {
+            aaTable.destroy();
+            aaTable = null;
+            $("#dataTables_tbl_header").remove();
+        }
+
+        aaTable = $('#tblAlwaysAvailable').DataTable({
+            dom: _domCommon,
+            language: _languageCommon,
+            processing: true,
+            serverSide: true,
+            searching: true,
+            searchDelay: 500,
+            ordering: false,
+            ajax: {
+                url: _webapiurl + "always-available/list",
+                type: "POST",
+                contentType: "application/json",
+                headers: { 'Authorization': 'Bearer ' + _tokan },
+                data: function (d) {
+                    var filterActive = $('#FilterActiveStatus').val();
+                    return JSON.stringify({
+                        canteenId: parseInt(selectedCanteenId),
+                        searchText: d.search.value || "",
+                        isActive: filterActive === '' ? null : (filterActive === 'true'),
+                        pageNumber: Math.floor(d.start / d.length) + 1,
+                        pageSize: d.length
+                    });
+                },
+                dataSrc: function (json) {
+                    json.recordsTotal = json.totalRecords || 0;
+                    json.recordsFiltered = json.totalRecords || 0;
+                    alwaysAvailableData = json.items || [];
+                    mealSlotsData = json.mealSlots || [];
+                    var hasSearch = aaTable && aaTable.search();
+                    if (json.recordsTotal === 0 && !hasSearch) {
+                        $('#tblAlwaysAvailableBlock').hide();
+                        $('#NotificationGrid-empty').show();
+                        $('#emptyMessage').text('No always available items found.');
+                    } else {
+                        $('#tblAlwaysAvailableBlock').show();
+                        $('#NotificationGrid-empty').hide();
+                    }
+
+                    return alwaysAvailableData;
+                },
+                error: function (xhr) {
+                    var errorMsg = "Failed to load data";
+                    if (xhr.responseJSON && xhr.responseJSON.detail) {
+                        errorMsg = xhr.responseJSON.detail;
+                    }
+                    toastr.error(errorMsg);
+                    $('#tblAlwaysAvailableBlock').hide();
+                    $('#NotificationGrid-empty').show();
+                    $('#emptyMessage').text('Failed to load data.');
+                }
+            },
+            pageLength: 20,
+            lengthMenu: [[10, 20, 50], [10, 20, 50]],
+            columns: [
+                {
+                    title: "Sr No",
+                    data: null,
+                    width: "40px",
+                    render: function (data, type, row, meta) {
+                        return meta.row + meta.settings._iDisplayStart + 1;
+                    }
+                },
+                {
+                    title: "Meal",
+                    data: "mealName",
+                    createdCell: function (td) { $(td).css("min-width", "100px"); },
+                    render: function (data, type, row) {
+                        var imgSrc = row.imageUrl || '/assets/images/icon_food.svg';
+                        var html = '<div style="display:flex; align-items:center; gap:8px;">';
+                        html += '<img src="' + imgSrc + '" alt="" style="width:36px; height:36px; border-radius:50% !important; object-fit:cover; border:1px solid #e7ecf1;" onerror="this.onerror=null; this.src=\'/assets/images/icon_food.svg\';">';
+                        html += getDietaryIcon(row.dietaryType) + ' ';
+                        html += escapeHtml(data);
+                        html += '</div>';
+                        return html;
+                    }
+                },
+                {
+                    title: "Price",
+                    data: "price",
+                    width: "90px",
+                    render: function (data) {
+                        return data != null ? parseFloat(data).toFixed(2) : '-';
+                    }
+                },
+                {
+                    title: "Available In",
+                    data: "applicableSlotsDisplay",
+                    render: function (data) {
+                        return data ? escapeHtml(data) : 'All Slots';
+                    }
+                },
+                {
+                    title: "Order",
+                    data: "displayOrder",
+                    width: "60px",
+                    render: function (data) {
+                        return data || 0;
+                    }
+                },
+                {
+                    title: "Active",
+                    data: "isActive",
+                    width: "70px",
+                    render: function (data) {
+                        if (data) {
+                            return '<span class="green_font">Active</span>';
+                        } else {
+                            return '<span class="red_font">Inactive</span>';
+                        }
+                    }
+                },
+                {
+                    title: "Action",
+                    data: null,
+                    createdCell: function (td) { $(td).css("min-width", "85px"); },
+                    orderable: false,
+                    render: function (data, type, row) {
+                        var str = "";
+                        if (isedit == "True") {
+                            str += '<a class="editclass btn seagreen_btnnew tooltips" data-placement="top" data-original-title="Edit" onclick="openEditModal(' + row.alwaysAvailableId + ')"><i class="fa-regular fa-pen-to-square"></i></a> ';
+                        }
+                        if (isdelete == "True") {
+                            str += '<a class="Deleteclass btn red_btnnew tooltips" data-placement="top" data-original-title="Remove" onclick="deleteItem(' + row.alwaysAvailableId + ')"><i class="fa-regular fa-trash-can"></i></a>';
+                        }
+                        return str;
+                    }
+                }
+            ],
+            initComplete: function () {
+                var visibleTable = 'tblAlwaysAvailable';
+                if ($('#buttons').length) {
+                    if ($('#buttons').children().length != 0) { $("#buttons").empty(); }
+                    $("#buttons").append(
+                        '<div id="export-button1" class="export-button tooltips" data-placement="bottom" data-original-title="Download" data-table-id="' + visibleTable + '">' +
+                        '<img src="../Newlayout/images/download_icon.svg" alt="Download icon">' +
+                        '</div>'
+                    );
+                }
+
+                // Custom debounce: unbind default search and add 500ms delay
+                var searchTimer = null;
+                var $searchInput = $('#tblAlwaysAvailable_wrapper .dataTables_filter input');
+                $searchInput.unbind();
+                $searchInput.on('keyup search input paste cut', function () {
+                    var value = this.value;
+                    clearTimeout(searchTimer);
+                    searchTimer = setTimeout(function () {
+                        aaTable.search(value).draw();
+                    }, 500);
+                });
+                $searchInput.on('keypress', function (e) {
+                    if (e.keyCode === 13) return false;
+                });
+            },
+            drawCallback: function () {
+                $('.tooltips').tooltip();
+                setTimeout(function () {
+                    $("#tblAlwaysAvailable_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+                }, 100);
+            }
+        });
+    }
+
+    // ========================================
+    // ADD ITEM
+    // ========================================
+    function openAddModal() {
+        // Reset form
+        $('input[name="AddMealSelection"]').prop('checked', false);
+        $('input[name="AddSlotType"][value="all"]').prop('checked', true);
+        $('#AddSlotCheckboxes').hide();
+        $('#AddDisplayOrder').val('0');
+        $('#addMealList').empty();
+        $('#addMealLoader').show();
+        $('#addMealEmpty').hide();
+
+        // Render slot checkboxes
+        renderSlotCheckboxes('AddSlotCheckboxes', mealSlotsData, []);
+
+        $('#addItemModal').modal('show');
+
+        // Load available meals
+        $.ajax({
+            type: "GET",
+            url: _webapiurl + "always-available/available-meals?canteenId=" + selectedCanteenId,
+            headers: { 'Authorization': 'Bearer ' + _tokan },
+            dataType: "json",
+            success: function (data) {
+                $('#addMealLoader').hide();
+                var meals = data.meals || [];
+                if (meals.length === 0) {
+                    $('#addMealEmpty').show();
+                } else {
+                    var html = '';
+                    for (var i = 0; i < meals.length; i++) {
+                        var m = meals[i];
+                        html += '<label class="meal-radio-item">';
+                        html += '<input type="radio" name="AddMealSelection" value="' + m.mealId + '"> ';
+                        html += '<span style="position: relative; top: -3px;">';
+                        html += getDietaryIcon(m.dietaryType) + ' ';
+                        html += escapeHtml(m.mealName);
+                        if (m.price != null) html += ' <small class="text-muted">&#8377;' + parseFloat(m.price).toFixed(2) + '</small>';
+                        html += '</span>';
+                        html += '</label>';
+                    }
+                    $('#addMealList').html(html).show();
+                }
+            },
+            error: function (xhr) {
+                $('#addMealLoader').hide();
+                var errorMsg = "Failed to load available meals";
+                if (xhr.responseJSON && xhr.responseJSON.detail) {
+                    errorMsg = xhr.responseJSON.detail;
+                }
+                toastr.error(errorMsg);
+                $('#addItemModal').modal('hide');
+            }
+        });
+    }
+
+    function executeAdd() {
+        checkSession();
+
+        var mealId = $('input[name="AddMealSelection"]:checked').val();
+        if (!mealId) {
+            toastr.warning("Please select a meal");
+            return;
+        }
+
+        var applicableSlots = null;
+        if ($('input[name="AddSlotType"]:checked').val() === 'specific') {
+            var selected = [];
+            $('input[name="AddSlotCheck"]:checked').each(function () {
+                selected.push(parseInt($(this).val()));
+            });
+            if (selected.length === 0) {
+                toastr.warning("Please select at least one slot");
+                return;
+            }
+            applicableSlots = selected;
+        }
+
+        var payload = {
+            canteenId: parseInt(selectedCanteenId),
+            mealId: parseInt(mealId),
+            applicableSlots: applicableSlots,
+            displayOrder: parseInt($('#AddDisplayOrder').val()) || 0,
+            isActive: true
+        };
+
+        $.ajax({
+            type: "POST",
+            url: _webapiurl + "always-available",
+            headers: { 'Authorization': 'Bearer ' + _tokan },
+            data: JSON.stringify(payload),
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            success: function () {
+                toastr.success("Item added to always available");
+                $('#addItemModal').modal('hide');
+                if (aaTable) {
+                    aaTable.ajax.reload();
+                } else {
+                    FillTable();
+                }
+            },
+            error: function (xhr) {
+                var errorMsg = "Error adding item";
+                if (xhr.responseJSON) {
+                    if (xhr.responseJSON.detail) {
+                        errorMsg = xhr.responseJSON.detail;
+                    }
+                    if (xhr.responseJSON.errors) {
+                        for (var field in xhr.responseJSON.errors) {
+                            errorMsg = xhr.responseJSON.errors[field].join(", ");
+                            break;
+                        }
+                    }
+                }
+                toastr.error(errorMsg);
+            }
+        });
+    }
+
+    // ========================================
+    // EDIT ITEM
+    // ========================================
+    function openEditModal(alwaysAvailableId) {
+        checkSession();
+
+        var item = alwaysAvailableData.find(function (v) { return v.alwaysAvailableId == alwaysAvailableId; });
+        if (!item) {
+            toastr.error("Item not found");
+            return;
+        }
+
+        // Meal info
+        var editImgSrc = item.imageUrl || '/assets/images/icon_food.svg';
+        var infoHtml = '<div class="meal-block" style="display:flex; align-items:center; gap:10px;">' +
+            '<img src="' + editImgSrc + '" alt="" style="width:50px; height:50px; border-radius:6px !important; object-fit:cover; border:2px solid #e7ecf1;" onerror="this.onerror=null; this.src=\'/assets/images/icon_food.svg\';">' +
+            '<div>' + getDietaryIcon(item.dietaryType) + ' <b>' + escapeHtml(item.mealName) + '</b>' +
+            (item.price != null ? '<br><small class="text-muted">&#8377;' + parseFloat(item.price).toFixed(2) + '</small>' : '') +
+            '</div></div>';
+        $('#EditMealInfo').html(infoHtml);
+
+        $('#EditAlwaysAvailableId').val(item.alwaysAvailableId);
+        $('#EditDisplayOrder').val(item.displayOrder || 0);
+        $('input[name="EditActiveStatus"][value="' + item.isActive + '"]').prop('checked', true);
+
+        // Slot selection
+        var currentSlots = item.applicableSlots || [];
+        if (currentSlots === null || (Array.isArray(currentSlots) && currentSlots.length === 0)) {
+            $('input[name="EditSlotType"][value="all"]').prop('checked', true);
+            $('#EditSlotCheckboxes').hide();
+            renderSlotCheckboxes('EditSlotCheckboxes', mealSlotsData, []);
+        } else {
+            $('input[name="EditSlotType"][value="specific"]').prop('checked', true);
+            $('#EditSlotCheckboxes').show();
+            renderSlotCheckboxes('EditSlotCheckboxes', mealSlotsData, currentSlots);
+        }
+
+        $('#editItemModal').modal('show');
+    }
+
+    function executeUpdate() {
+        checkSession();
+
+        var alwaysAvailableId = parseInt($('#EditAlwaysAvailableId').val());
+
+        var applicableSlots = null;
+        if ($('input[name="EditSlotType"]:checked').val() === 'specific') {
+            var selected = [];
+            $('input[name="EditSlotCheck"]:checked').each(function () {
+                selected.push(parseInt($(this).val()));
+            });
+            if (selected.length === 0) {
+                toastr.warning("Please select at least one slot");
+                return;
+            }
+            applicableSlots = selected;
+        } else {
+            applicableSlots = [];  // empty array = all slots per API doc
+        }
+
+        var isActive = $('input[name="EditActiveStatus"]:checked').val() === 'true';
+
+        var payload = {
+            alwaysAvailableId: alwaysAvailableId,
+            applicableSlots: applicableSlots,
+            displayOrder: parseInt($('#EditDisplayOrder').val()) || 0,
+            isActive: isActive
+        };
+
+        $.ajax({
+            type: "PUT",
+            url: _webapiurl + "always-available",
+            headers: { 'Authorization': 'Bearer ' + _tokan },
+            data: JSON.stringify(payload),
+            contentType: "application/json; charset=utf-8",
+            success: function () {
+                toastr.success("Item updated successfully");
+                $('#editItemModal').modal('hide');
+                if (aaTable) {
+                    aaTable.ajax.reload();
+                }
+            },
+            error: function (xhr) {
+                var errorMsg = "Error updating item";
+                if (xhr.responseJSON) {
+                    if (xhr.responseJSON.detail) {
+                        errorMsg = xhr.responseJSON.detail;
+                    }
+                    if (xhr.responseJSON.errors) {
+                        for (var field in xhr.responseJSON.errors) {
+                            errorMsg = xhr.responseJSON.errors[field].join(", ");
+                            break;
+                        }
+                    }
+                }
+                toastr.error(errorMsg);
+            }
+        });
+    }
+
+    // ========================================
+    // DELETE ITEM
+    // ========================================
+    function deleteItem(alwaysAvailableId) {
+        checkSession();
+
+        Swal.fire({
+            html: '<div class="swal_subtitle"><b>You want to remove this item from always available?</b></div>',
+            title: "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_error.svg' alt=''>Are you sure?",
+            showCloseButton: true,
+            showCancelButton: true,
+            focusConfirm: false,
+            cancelButtonText: 'Cancel',
+            confirmButtonText: 'Yes, remove it!',
+            allowOutsideClick: false,
+            allowEscapeKey: false,
+            customClass: {
+                confirmButton: 'swal-confirm-button-class',
+                cancelButton: 'swal-cancel-button-class'
+            }
+        }).then(function (result) {
+            if (result.isConfirmed) {
+                $.ajax({
+                    type: "DELETE",
+                    url: _webapiurl + "always-available/" + alwaysAvailableId,
+                    headers: { 'Authorization': 'Bearer ' + _tokan },
+                    contentType: "application/json; charset=utf-8",
+                    success: function () {
+                        Swal.fire({
+                            html: '<div class="swal_subtitle"><b>Item has been removed from always available.</b></div>',
+                            title: "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_success.svg' alt=''>Removed!",
+                            showCloseButton: true,
+                            confirmButtonText: 'OK',
+                            allowOutsideClick: false,
+                            allowEscapeKey: false,
+                            customClass: {
+                                confirmButton: 'swal-confirm-button-class'
+                            }
+                        });
+                        $('img[src="/assets/images/icons/swal_icon/icon_success.svg"]').parent().parent().parent().addClass('swal_success');
+                        if (aaTable) {
+                            aaTable.ajax.reload();
+                        }
+                    },
+                    error: function (xhr) {
+                        var errorMsg = "Error during removal";
+                        if (xhr.responseJSON && xhr.responseJSON.detail) {
+                            errorMsg = xhr.responseJSON.detail;
+                        }
+                        Swal.fire({
+                            html: '<div class="swal_subtitle"><b>' + errorMsg + '</b></div>',
+                            title: "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_error.svg' alt=''>Error!",
+                            showCloseButton: true,
+                            confirmButtonText: 'OK',
+                            allowOutsideClick: false,
+                            allowEscapeKey: false,
+                            customClass: {
+                                confirmButton: 'swal-confirm-button-class'
+                            }
+                        });
+                        $('img[src="/assets/images/icons/swal_icon/icon_error.svg"]').parent().parent().parent().addClass('swal_error');
+                    }
+                });
+            }
+        });
+        $('img[src="/assets/images/icons/swal_icon/icon_error.svg"]').parent().parent().parent().addClass('swal_error');
+    }
+
+    // ========================================
+    // HELPER FUNCTIONS
+    // ========================================
+    function renderSlotCheckboxes(containerId, slots, selectedSlotIds) {
+        var $container = $('#' + containerId);
+        $container.find('.slot-checks').remove();
+        var html = '<div class="slot-checks" style="margin-top:5px;">';
+        for (var i = 0; i < slots.length; i++) {
+            var s = slots[i];
+            var checked = selectedSlotIds.indexOf(s.mealSlotId) >= 0 ? 'checked' : '';
+            var inputName = containerId === 'AddSlotCheckboxes' ? 'AddSlotCheck' : 'EditSlotCheck';
+            html += '<label style="margin-right:15px;font-weight:normal;cursor:pointer;">';
+            html += '<input type="checkbox" name="' + inputName + '" value="' + s.mealSlotId + '" ' + checked + '> ';
+            html += escapeHtml(s.slotName);
+            html += '</label>';
+        }
+        html += '</div>';
+        $container.append(html);
+    }
+
+    function getDietaryIcon(dietaryType) {
+        switch (dietaryType) {
+            case 1:
+                return '<i class="fa-solid fa-circle" style="color:#22C55E;font-size:8px;vertical-align:middle;"></i>';
+            case 2:
+                return '<i class="fa-solid fa-circle" style="color:#EF4444;font-size:8px;vertical-align:middle;"></i>';
+            case 3:
+                return '<i class="fa-solid fa-circle" style="color:#10B981;font-size:8px;vertical-align:middle;"></i>';
+            default:
+                return '';
+        }
+    }
+
+    function escapeHtml(text) {
+        if (!text) return '';
+        var map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
+        return text.replace(/[&<>"']/g, function (m) { return map[m]; });
+    }
+
+    function checkSession() {
+        $.ajax({
+            type: "GET",
+            async: false,
+            url: "/ESS/checkSession",
+            contentType: "application/json; charset=utf-8",
+            success: function (data) {
+                if (data.isRedirect) {
+                    window.location.href = data.redirectUrl;
+                }
+            },
+            error: function (data) {
+                window.location.href = data;
+            }
+        });
+    }
+</script>
+
+@if (obj.CanView)
+{
+    <div class="page-bar">
+        @if (_RoleId == 1 || _RoleId == 6805 || _RoleId == 6806 || _RoleId == 6811)
+        {
+            <ul class="page-breadcrumb">
+                <li>
+                    @if (isClientDBMatchFlag == "True")
+                    {
+                        <a href="/Admin/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+                    }
+                    else
+                    {
+                        <a href="/Dashboard/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+                    }
+                </li>
+                <li>
+                    <span><i class="fa-light fa-angle-right"></i> Canteen Management</span>
+                </li>
+                <li>
+                    <span><i class="fa-light fa-angle-right"></i> Always Available</span>
+                </li>
+            </ul>
+        }
+        else
+        {
+            <ul class="page-breadcrumb">
+                <li>
+                    @if (isClientDBMatchFlag == "true")
+                    {
+                        <a href="/Admin/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+                    }
+                    else
+                    {
+                        <a href="/Dashboard/EmployeeDashboard"><i class="fa-regular fa-house"></i></a>
+                    }
+                </li>
+                <li>
+                    <span><i class="fa-light fa-angle-right"></i> Always Available</span>
+                </li>
+            </ul>
+        }
+        <div class="page-toolbar text-right">
+            <a href="javascript:;" class="btn icon_transparent_btn tooltips" id="Filter_search" data-placement="left" data-original-title="Filter"><i class="fa-light fa-filter"></i></a>
+            @if (obj.CanAdd)
+            {
+                <a id="AddItem" class="btn icon_transparent_btn tooltips" data-placement="left" data-original-title="Add Always Available Item"><i class="fa-solid fa-plus"></i></a>
+            }
+        </div>
+    </div>
+
+    <div class="filter_portlet_wrapper full-width">
+
+        <!-- Datatable Block : Begin -->
+        <div class="portlet filter_portlet_tbl">
+            <div class="portlet-body">
+                <div class="row">
+                    <div class="col-lg-12">
+                        <div id="divtblAlwaysAvailable" class="table-scrollable">
+                            <div id="tblAlwaysAvailableBlock" style="display:none;">
+                                <div class="table-responsive" id="tableResponsive">
+                                    <table id="tblAlwaysAvailable" class="new_datatbl table table-striped table-bordered table-hover table-checkable order-column"></table>
+                                </div>
+                            </div>
+                            <div id="NotificationGrid-empty">
+                                <div class="datanotfound">
+                                    <img src="~/assets/images/emptyscreen_3.png" height="148" width="280" alt="No Data Found Icon">
+                                    <p class="datanotfound_title">No data found</p>
+                                    <p id="emptyMessage">Please select a canteen to view always available items.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Datatable Block : End -->
+        <!-- Filter Block : Begin -->
+        <div class="portlet filter_boxModal">
+            <div class="filterbox_header">
+                <div class="d-flex align-items-center justify-content-between">
+                    <h4 class="filter-title">Filters</h4>
+                    <button type="button" class="filterclose_btn"><i class="fa-light fa-xmark"></i></button>
+                </div>
+            </div>
+            <div class="filterbox_body">
+                <div class="col-lg-12">
+                    <div class="form-group">
+                        <label>Canteen</label>
+                        <select class="form-control" id="CanteenSelector">
+                            <option value="">-- Select Canteen --</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="col-lg-12">
+                    <div class="form-group">
+                        <label>Status</label>
+                        <select class="form-control input-sm" id="FilterActiveStatus">
+                            <option value="">All</option>
+                            <option value="true">Active</option>
+                            <option value="false">Inactive</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="filterbox_footer">
+                <div class="text-right">
+                    <button type="button" id="Clear_OPration" class="btn clear_btn margin-left-5 tooltips" data-placement="top" data-original-title="Clear filters"><i class="fa-regular fa-eraser"></i></button>
+                    <button type="button" id="Search_OPration" class="btn icon_btn margin-left-5 tooltips" data-placement="top" data-original-title="Search filters"><i class="fa-solid fa-magnifying-glass"></i></button>
+                </div>
+            </div>
+        </div>
+        <!-- Filter Block : End -->
+
+    </div>
+
+    <div class="col-lg-12">
+        <div id='ajax_loader' class="modal_bg loading">
+            <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading" />
+        </div>
+    </div>
+
+    <!-- Add Item Modal -->
+    <div id="addItemModal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog w-500">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    <h4 class="modal-title">Add Always Available Item</h4>
+                </div>
+                <div class="modal-body">
+                    <div class="modal-card">
+                        <div class="form-group">
+                            <label>Select Meal <span class="required" style="color:red;"> * </span></label>
+                            <div id="addMealLoader" style="text-align:center;display:none;padding:20px;">
+                                <img src="~/LandingAssets/images/loading.gif" style="width:40px;" alt="loading" />
+                            </div>
+                            <div id="addMealEmpty" style="display:none;text-align:center;padding:15px;">
+                                <p class="text-muted">All allocated meals are already in the always available list.</p>
+                            </div>
+                            <div id="addMealList" style="display:none;"></div>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Available In Slots <span class="required" style="color:red;"> * </span></label>
+                            <div>
+                                <label style="margin-right:20px;font-weight:normal;cursor:pointer;">
+                                    <input type="radio" name="AddSlotType" value="all" checked> All Slots
+                                </label>
+                                <label style="font-weight:normal;cursor:pointer;">
+                                    <input type="radio" name="AddSlotType" value="specific"> Specific Slots
+                                </label>
+                            </div>
+                            <div id="AddSlotCheckboxes" style="display:none;"></div>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Display Order</label>
+                            <input type="number" class="form-control input-sm" id="AddDisplayOrder" min="0" value="0" style="width:100px;">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <div class="row">
+                        <div class="col-lg-12 text-right">
+                            <button type="button" class="btn clear_btn" data-dismiss="modal"><i class="fa-light fa-xmark"></i> Cancel</button>
+                            <button type="button" id="btnAddItem" class="btn save_btn"><i class="fa-solid fa-plus"></i> Add Item</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Item Modal -->
+    <div id="editItemModal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog w-500">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    <h4 class="modal-title">Edit Always Available Item</h4>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="EditAlwaysAvailableId">
+
+                    <div id="EditMealInfo"></div>
+
+                    <div class="modal-card">
+                        <div class="form-group">
+                            <label>Available In Slots <span class="required" style="color:red;"> * </span></label>
+                            <div>
+                                <label style="margin-right:20px;font-weight:normal;cursor:pointer;">
+                                    <input type="radio" name="EditSlotType" value="all" checked> All Slots
+                                </label>
+                                <label style="font-weight:normal;cursor:pointer;">
+                                    <input type="radio" name="EditSlotType" value="specific"> Specific Slots
+                                </label>
+                            </div>
+                            <div id="EditSlotCheckboxes" style="display:none;"></div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-lg-12">
+                                <div class="form-group">
+                                    <label>Display Order</label>
+                                    <input type="number" class="form-control input-sm" id="EditDisplayOrder" min="0" value="0">
+                                </div>
+                            </div>
+                            <div class="col-lg-12">
+                                <div class="form-group">
+                                    <label>Status</label>
+                                    <div style="padding-top:5px;">
+                                        <label style="margin-right:20px;font-weight:normal;cursor:pointer;">
+                                            <input type="radio" name="EditActiveStatus" value="true" checked> Active
+                                        </label>
+                                        <label style="font-weight:normal;cursor:pointer;">
+                                            <input type="radio" name="EditActiveStatus" value="false"> Inactive
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <div class="row">
+                        <div class="col-lg-12 text-right">
+                            <button type="button" class="btn clear_btn" data-dismiss="modal"><i class="fa-light fa-xmark"></i> Cancel</button>
+                            <button type="button" id="btnUpdateItem" class="btn save_btn"><i class="fa-light fa-floppy-disk"></i> Update</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    <div class="alert alert-danger">
+        <strong>Unauthorized Access.</strong> You do not have permission to view this page.
+    </div>
+}

@@ -1,0 +1,593 @@
+﻿    @using System.Configuration;
+@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@{
+    ViewBag.Title = "Custom Report Template";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    string _companyCode = HttpContext.Current.Session["cmpcode"].ToString();
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+}
+
+
+<script type="text/javascript">
+    var selecteditemArray = [];
+
+
+    function Rowenable(ctl) {
+
+        if ($('#chkselect_t' + ctl).prop('checked') == true) {
+
+            $('#chkgroup_' + ctl + '').prop('disabled', false);
+            $('#chkorder_' + ctl + '').prop('disabled', false);
+            $('#txtgroup_' + ctl + '').prop('disabled', false);
+        }
+        else {
+            $('#chkgroup_' + ctl + '').prop('checked', false);
+            $('#chkorder_' + ctl + '').prop('checked', false);
+            $('#txtgroup_' + ctl + '').val(0);
+            $('#txtorder_' + ctl + '').val(0);
+            $('#chkgroup_' + ctl + '').prop('disabled', true);
+            $('#chkorder_' + ctl + '').prop('disabled', true);
+            $('#txtgroup_' + ctl + '').prop('disabled', true);
+            $('#txtorder_' + ctl + '').prop('disabled', true);
+            var index = $.inArray(ctl, selecteditemArray);
+            if (index != -1) {
+                selecteditemArray.splice(index, 1);
+            }
+        }
+
+        $("#hdnfieldList").val(selecteditemArray);
+    }
+    function chkgrpchange(ctl) {
+        if ($('#chkgroup_' + ctl + '').prop('checked') == true) {
+            $('#txtgroup_' + ctl + '').prop('disabled', false);
+
+        }
+        else {
+            $('#txtgroup_' + ctl + '').val(0);
+            $('#txtgroup_' + ctl + '').prop('disabled', true);
+        }
+    }
+    function chkorderchange(ctl) {
+        if ($('#chkorder_' + ctl + '').prop('checked') == true) {
+            $('.chkordby').prop('checked', false);
+            $('#chkorder_' + ctl + '').prop('checked', true);
+            //$('#txtorder_' + ctl + '').prop('disabled', false);
+        }
+        else {
+            $('#txtorder_' + ctl + '').val(0);
+            //$('#txtorder_' + ctl + '').prop('disabled', true);
+        }
+    }
+
+
+
+    $(document).ready(function () {
+
+        var t = $('#tblCustomrepotemplate').DataTable(
+			{
+			    "processing": true,
+			    "ajax": {
+			        url: '@_webapiurl' + 'Report/ReporttemplateGetall',
+			        type: "GET",
+			        headers: { 'Authorization': '@_tokan' },
+			        dataSrc: '',
+			    },
+			    "columns": [
+                    { "data": null },
+					{ "data": "ReportId" },
+					{ "data": "ReportType" },
+					{ "data": "ReportName" },
+					{ "data": "ReportHeaderName" },
+			    ],
+			    "columnDefs": [
+                    {
+                        "targets": [1],
+                        "visible": false
+                    },
+
+					{
+					    "targets": 5,
+					    "data": null,
+					    "render": function (data, type, full, meta) {
+					        if ('@obj.CanEdit.ToString()' == 'True') {
+					            data = "<a class='editclass btn blue_btnnew tooltips' data-placement='top' title='Edit'><i class='fa-regular fa-pen-to-square'></i></a>";
+					        }
+					        else {
+					            data = "";
+					        }
+					        return data;
+					    }
+
+					},
+					 {
+					     "searchable": false,
+					     "orderable": false,
+					     "targets": 0
+					 }],
+			    "order": [[1, 'asc']],
+			}
+			);
+        t.on('order.dt search.dt', function () {
+            $('.tooltips').tooltip();
+            t.column(0, { search: 'applied', order: 'applied' }).nodes().each(function (cell, i) {
+                cell.innerHTML = i + 1;
+            });
+        }).draw();
+
+        $("#Add").on('click', function () {
+            hidemsg();
+            frmClear();
+            Bindcolumntable();
+            $("#Add").attr("data-toggle", "modal");
+            $("#Add").attr("data-target", "#frmpopup");
+        });
+
+        $('#ReportType').on('change', function () {
+            var optsel = $('#ReportType option:selected').val();
+            document.getElementById('tblcolbody').innerHTML = '';
+            if ($('#ReportType option:selected').val() != '') {
+                valid('ReportType');
+                if (optsel == 'Daily Report') {
+                    bindcoltable('Getreportfields?rptid=1');
+                }
+                else if (optsel == 'Monthly Report') {
+                    bindcoltable('Getreportfields?rptid=2');
+                }
+                else if (optsel == 'Summary Report') {
+                    bindcoltable('Getreportfields?rptid=3');
+                }
+            }
+            else {
+                Invalid('ReportType');
+            }
+
+        });
+
+        $("#tblCustomrepotemplate").on('click', '.editclass', function () {
+            hidemsg();
+            valid("ReportName");
+            var reportid = t.row($(this).parent('td').parent('tr')).data()["ReportId"];
+            var reporttype = t.row($(this).parent('td').parent('tr')).data()["ReportType"];
+            var reportname = t.row($(this).parent('td').parent('tr')).data()["ReportName"];
+            var reportheadername = t.row($(this).parent('td').parent('tr')).data()["ReportHeaderName"];
+            $("#ReportId").val(reportid);
+            $('#ReportType').val(reporttype);
+            $("#ReportName").val(reportname);
+            $("#ReportHeaderName").val(reportheadername);
+            document.getElementById('tblcolbody').innerHTML = '';
+            if (reporttype == 'Daily Report') {
+                bindcoltable('Getreportfields?rptid=1');
+            }
+            //else if (reporttype == 'Monthly Report') {
+            //    bindcoltable('Getreportfields?rptid=2');
+            //}
+            //else if (reporttype == 'Summary Report') {
+            //    bindcoltable('Getreportfields?rptid=3');
+            //}
+            bindcoltablewithdata('@_webapiurl' + 'Report/ReportfieldsSelectbyreport?ReportId=' + reportid + '');
+            $(".editclass").attr("data-toggle", "modal");
+            $(".editclass").attr("data-target", "#frmpopup");
+        });
+
+
+
+        $('#ReportName').on('keyup keypress blur change', function () {
+            if ($('#ReportName').val() != '') {
+
+                if ($('#ReportName').length > 50) {
+                    Invalid('ReportName');
+                    $('#err').text('Reportname maximum 50 char');
+                    showmsg();
+                }
+                else {
+                    valid('ReportName');
+                }
+            }
+            else {
+                Invalid('ReportName');
+            }
+        });
+
+        function Bindcolumntable() {
+            document.getElementById('tblcolbody').innerHTML = '';
+            bindcoltable('Getreportfields?rptid=1');
+        }
+
+        function Invalid(ctlname) {
+
+            $('#' + ctlname + '').addClass('field_error');
+            $('#' + ctlname + '').focus();
+            return false;
+        }
+
+        function valid(ctlname) {
+            $('#' + ctlname + '').removeClass('field_error');
+        }
+
+
+
+        $('#chkallcolumn').on('click', function () {  //on click
+            $('.chkselectcol').prop('checked', this.checked);
+            $('.chkgrpby').prop('disabled', !this.checked);
+            $('.chkordby').prop('disabled', !this.checked);
+            $('.numgrpby').prop('disabled', !this.checked);
+            $('.numorderby').prop('disabled', !this.checked);
+
+        });
+
+
+        $('#btnsave').on('click', function () {
+
+            var token = '@_tokan';
+            var ReportId = $("#ReportId").val();
+            var ReportType = $("#ReportType").val();
+            var ReportName = $("#ReportName").val();
+            var ReportHeaderName = $("#ReportHeaderName").val();
+            var fieldList = $("#hdnfieldList").val();
+            var ercnt = 0;
+            selecteditemArray = [];
+            $("#tblcol .chkselectcol").each(function () {
+
+                if ($(this).is(':checked') == true) {
+                    var ctlid = $(this).attr("id");
+                    var ctldisp = $(this).parent('td').parent('tr').find('#coldisp').text();
+                    var ctl = ctlid.split('_t')[1];
+                    var colldisporder = $('#txtgroup_' + ctl + '').val();
+                    if (colldisporder == '') {
+                        ercnt++;
+                        //Invalid('txtgroup_' + ctl + '');
+                        $('#txtgroup_' + ctl + '').val(0);
+
+                    }
+                    var selecteditem = { "ReportfieldName": ctl, "ReportfieldType": ctldisp, "IsGroupby": true, "IsOrderby": $('#chkorder_' + ctl).prop('checked'), "Groupbyorder": $('#txtgroup_' + ctl + '').val(), "Orderbyorder": $('#txtorder_' + ctl + '').val() };
+                    selecteditemArray.push(selecteditem);
+                }
+
+            });
+
+            if (ReportName == '' || ReportName == null) {
+                $('#err').text('ReportName required.');
+                showmsg();
+                return false;
+            }
+
+            if (selecteditemArray.length == 0) {
+                $('#err').text('Please select report field.');
+                showmsg();
+                return false;
+            }
+            if (ercnt > 0) {
+                $('#err').text('Display order value shoud be not empty.');
+                showmsg();
+                return false;
+            }
+
+            var objcls = {
+                "ReportId": ReportId,
+                "ReportType": 'Daily Report',
+                "ReportName": ReportName,
+                "ReportHeaderName": ReportHeaderName,
+                "fieldList": JSON.stringify(selecteditemArray)
+            }
+
+            $.ajax({
+
+                type: 'POST',
+                url: '@_webapiurl' + "/Report/ReporttemplateInsert",
+                data: JSON.stringify(objcls),
+                contentType: "application/json",
+                dataType: 'json',
+                async: false,
+                cache: false,
+                timeout: 30000,
+                beforeSend: function (xhr) {
+                    xhr.setRequestHeader("Authorization", token)
+                },
+                success: function (data) {
+                    if (data.isRedirect) {
+                        window.location.href = data.redirectUrl;
+                    }
+                    $('#msg').text('Report template saved');
+                    showmsg();
+                    var url = '@Url.Action("CustomReportTemplate", "Report")';
+                    window.location.href = url;
+                    return true;
+                },
+                error: function (data) {
+                    var url = '@Url.Action("CustomReportTemplate", "Report")';
+                    window.location.href = url;
+                    return false;
+                },
+            });
+        });
+
+
+
+        function bindcoltable(_url) {
+            $.ajax({
+                type: 'GET',
+                url: _url,
+                contentType: "application/json",
+                dataType: 'json',
+                async: false,
+                cache: false,
+                timeout: 30000,
+                success: function (data) {
+                    var tr;
+                    var coldt = JSON.parse(data);
+                    for (var i = 0; i < coldt.length; i++) {
+                        tr = '<tr/>';
+                        tr += ("<td> <input type='checkbox' onchange=Rowenable('" + coldt[i].colname + "');  id='chkselect_t" + coldt[i].colname + "' class='chkselectcol' name='chkselect_" + coldt[i].colname + "' value='" + coldt[i].colname + "'></td>");
+                        tr += ("<td id='srno'>" + (i + 1) + "</td>");
+                        tr += ("<td hidden>" + coldt[i].colid + "</td>");
+                        tr += ("<td id='colname' hidden>" + coldt[i].colname + "</td>");
+                        tr += ("<td id='coldisp'>" + coldt[i].coldisplay + "</td>");
+                        tr += ("<td hidden> <input type='checkbox' id='chkgroup_" + coldt[i].colname + "' onchange=chkgrpchange('" + coldt[i].colname + "');  class='chkgrpby' name=chkgroup_" + coldt[i].colname + "  value=" + coldt[i].colname + "></td>");
+                        tr += ("<td> <input type='checkbox' id='chkorder_" + coldt[i].colname + "'   onchange=chkorderchange('" + coldt[i].colname + "'); class='chkordby' name='chkorder' value=" + coldt[i].colname + "></td>");
+                        tr += ("<td> <input type='number' id='txtgroup_" + coldt[i].colname + "'  class='numgrpby' name=txtgroup_" + coldt[i].colname + " min='0' max='" + coldt.length + "' step='1' value='0' size='2' onkeypress='checkpositive(event);' ></td>");
+                        tr += ("<td hidden> <input type='number' id='txtorder_" + coldt[i].colname + "' class='numorderby' name=txtorder_" + coldt[i].colname + " min='0' max='10' step='1' value='0' size='2'></td>");
+                        tr += '</tr>';
+                        $('#tblcolbody').append(tr);
+                    }
+
+                    $('.chkgrpby').prop('disabled', true);
+                    $('.chkordby').prop('disabled', true);
+                    $('.numgrpby').prop('disabled', true);
+                    $('.numorderby').prop('disabled', true);
+                }
+            });
+
+
+        }
+
+        function bindcoltablewithdata(_url) {
+            var token = '@_tokan'
+            $.ajax(
+			 {
+			     type: "GET",
+			     async: false,
+			     url: _url,
+			     contentType: "application/json;",
+			     dataType: "json",
+			     cache: false,
+			     timeout: 30000,
+			     beforeSend: function (xhr) {
+			         xhr.setRequestHeader("Authorization", token)
+			     },
+			     success: function (result, status) {
+			         var obj = JSON.parse(result);
+			         $("#tblcol > tbody > tr").each(function () {
+			             var currentRow = $(this);
+			             var col3_value = currentRow.find("td:eq(3)").text();
+			             for (var j = 0; j < obj.length; j++) {
+			                 if (col3_value == obj[j].ReportfieldName);
+			                 {
+			                     currentRow.find("#chkselect_t" + obj[j].ReportfieldName).prop('checked', true);
+			                     currentRow.find("#chkorder_" + obj[j].ReportfieldName).prop('disabled', false);
+			                     currentRow.find("#txtgroup_" + obj[j].ReportfieldName).prop('disabled', false);
+			                     currentRow.find("#txtorder_" + obj[j].ReportfieldName).prop('disabled', false);
+			                     currentRow.find("#chkorder_" + obj[j].ReportfieldName).prop('checked', obj[j].IsOrderby);
+			                     currentRow.find("#txtgroup_" + obj[j].ReportfieldName).val(obj[j].Groupbyorder);
+			                     currentRow.find("#txtorder_" + obj[j].ReportfieldName).val(obj[j].Orderbyorder);
+			                 }
+			             }
+
+			         });
+			     },
+			     error: function (jqXHR, ajaxOptions, thrownError) {
+			         if (jqXHR.status == 500) { //InternalServerError = 500,
+			             toastr.error("InternalServerError");
+			         } else if (jqXHR.status == 400) { //BadRequest = 400,
+			             toastr.error("BadRequest");
+			         } else if (jqXHR.status == 401) {
+			             window.location.href = "/PayTime/LoginPage";
+			         }
+			     }
+			 });
+        }
+
+        function frmClear() {
+            $("#ReportId").val(0);
+            $('#ReportType').prop('selectedIndex', 0);
+            valid('ReportType');
+            $("#ReportName").val("");
+            $("#ReportName").attr("placeholder", "Enter Report Name");
+            valid('ReportName');
+            $("#ReportHeaderName").val("");
+            $("#ReportHeaderName").attr("placeholder", "Enter Report Header");
+            $('#chkallcolumn').prop('checked', false);
+            document.getElementById('tblcolbody').innerHTML = '';
+        }
+        function showmsg() {
+            var _msg = $('#msg').text();
+            var _err = $('#err').text();
+
+            if (_msg != "") {
+                $(".alert-danger").hide();
+                $(".alert-success").show();
+            }
+            if (_err != "") {
+                $(".alert-danger").show();
+                $(".alert-success").hide();
+            }
+        }
+
+        function hidemsg() {
+            $(".alert").hide();
+            $('#msg').text('');
+            $('#err').text('');
+        }
+
+    });
+    function hidemsg() {
+        $(".alert").hide();
+        $('#msg').text('');
+        $('#err').text('');
+    }
+    function checkpositive(event) {
+        var k;
+        if (event.keyCode > 0) {
+            k = event.keyCode;
+        }
+        else if (typeof (event.charCode) != "undefined") {
+            k = event.charCode;
+        }
+        return (k ? (k == 69 ? false : k >= 48 && k <= 57 || k == 8) : ((k >= 48 && k <= 57) || k == 8)) ? true : event.preventDefault();
+    }
+
+
+</script>
+
+<div class="page-bar">
+    @if (_RoleId == 1 || _RoleId == 6805 || _RoleId == 6806)
+    {
+        <ul class="page-breadcrumb">
+            <li>
+                <a href="/Dashboard/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> @PayTimeWebClient.Resource.Resource.CustomReport</span>
+            </li>
+        </ul>
+    }
+    else
+    {
+        <ul class="page-breadcrumb">
+            <li>
+                <a href="/Dashboard/EmployeeDashboard"><i class="fa-regular fa-house"></i></a>
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> @PayTimeWebClient.Resource.Resource.CustomReport</span>
+            </li>
+        </ul>
+    }
+
+
+    <div class="page-toolbar">
+        @if (obj.CanAdd)
+        {
+            <div class="text-right">
+                <a href="javascript:void(0)" id="Add" class="btn icon_btn tooltips" data-placement="left" title="Add Template"><i class="fa-solid fa-plus"></i></a>
+            </div>
+        }
+    </div>
+</div>
+<h1 class="page-title">
+    <small></small>
+</h1>
+@if (obj.CanView)
+{
+    <div class="portlet">
+        <div class="portlet-body">
+            <div class="row">
+                <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                    <table id="tblCustomrepotemplate" class="table table-striped table-bordered table-hover table-checkable order-column">
+                        <thead>
+                            <tr>
+                                <th>Sr no</th>
+                                <th>ReportId</th>
+                                <th>Report Type</th>
+                                <th>Report Name</th>
+                                <th>Report HeaderName</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div id="frmpopup" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog">
+            <!-- Modal content-->
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    <h4 class="modal-title">Custom Report Template</h4>
+                </div>
+                <div class="modal-body">
+                    <div class="modal-card">
+                        <fieldset>
+                            <div class="row">
+                                <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12" hidden>
+                                    <div class="form-group">
+                                        <label>
+                                            @Html.Hidden("ReportId")
+                                            @Html.Hidden("hdnfieldList")
+                                            Report Type<span class="required" aria-required="true"> * </span>
+                                        </label>
+                                        @Html.DropDownList("ReportType", new SelectList(new[] { "Daily Report" }), "Select ReportType", new { @class = "form-control input-sm" })
+                                    </div>
+                                </div>
+                                <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                    <div class="form-group">
+                                        <label>Report Name <span class="required" aria-required="true"> * </span></label>
+                                        @Html.Editor("ReportName", new { htmlAttributes = new { @class = "form-control input-sm", @maxlength = 100 } })
+                                    </div>
+                                </div>
+                                <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                    <div class="form-group">
+                                        <label>Report HeaderName</label>
+                                        @Html.Editor("ReportHeaderName", new { htmlAttributes = new { @class = "form-control input-sm" } })
+                                    </div>
+                                </div>
+                            </div>
+                        </fieldset>
+                    </div>
+                    <fieldset>
+                        <div class="row">
+                            <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                                <hr class="save_hr_line" /> 
+                                <div class="form-group">
+                                    <div style="height:300px;width:auto; overflow-y:auto;">
+                                        <table id="tblcol" class="table table-striped table-bordered table-hover table-checkable order-column">
+                                            <thead>
+                                                <tr>
+                                                    <th><input type='checkbox' class="chkallselectall" id="chkallcolumn" name="chkallcolumn" value="chkallcolumn" /></th>
+                                                    <th>Sr no</th>
+                                                    <th hidden>colid</th>
+                                                    <th>Columns Name</th>
+                                                    <th hidden>IsGroupby</th>
+                                                    <th>IsOrderby</th>
+                                                    <th>Display Order</th>
+                                                    <th hidden>Orderby At</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="tblcolbody"></tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>                        
+                    </fieldset>
+                </div>
+                <div class="modal-footer">
+                    <div class="row">
+                        <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                            <button type="button" id="btnsave" class="btn save_btn"><i class="fa-light fa-floppy-disk"></i> Save</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    <span style="color:red">@PayTimeWebClient.Resource.Resource.UnauthorizedAccess</span>
+}
+

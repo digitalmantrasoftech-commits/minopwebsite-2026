@@ -1,0 +1,2575 @@
+﻿@model PayTimeWebClient.Models.HRPolicy
+@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@using System.Configuration;
+@{
+    ViewBag.Title = "HRPolicy";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    string _Message = ViewBag.msg;
+    string _error = ViewBag.error;
+    string _success = ViewBag.success;
+    int _UserId = Convert.ToInt32(HttpContext.Current.Session["UserId"]);
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    //int _cmpid = Convert.ToInt32(HttpContext.Current.Session["ClientCompanyId"]);
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+    int _cmpid = 0;
+    int _branchid = 0;
+
+    if (_RoleId == 6805)
+    {
+        _cmpid = Convert.ToInt32(HttpContext.Current.Session["ClientCompanyId"]);
+    }
+    if (_RoleId == 6806)
+    {
+        _cmpid = Convert.ToInt32(HttpContext.Current.Session["ClientCompanyId"]);
+        _branchid = Convert.ToInt32(HttpContext.Current.Session["BranchId"]);
+    }
+    string _dbName = HttpContext.Current.Session["DbName"].ToString();
+
+    string isClientDBMatchFlag = HttpContext.Current.Session["IsClientDBMatch"] != null
+    ? HttpContext.Current.Session["IsClientDBMatch"].ToString()
+    : "false"; // Default to "false" if the session is null
+}
+<script src="~/AssetsNew/js/CommonValidation.js"></script>
+<script src="~/Scripts/timeme.js"></script>
+<script>
+    var count = 0;
+    var form = "HR Policy";
+    var operation = "";
+    var t = "";
+    $(document).ready(function () {
+        /*timeMeInitialize function is  a javascript library which displays a timer to display how long you are actively viewing the current webpage.*/
+        timeMeInitialize();
+        $("#Issedwrule").attr("value", 0);
+        $("#RuleBothTB").prop('disabled', true);
+        $("#RuleBoth").prop('disabled', true);
+        $("#RulePrefix").prop('disabled', true);
+        $("#RuleSuffix").prop('disabled', true);
+        $("#IssedwruleType").val(0);
+        $('input[type="text"]').on('keydown', function (e) {
+            if ((e.ctrlKey || e.metaKey) && e.keyCode == 86) {
+                e.preventDefault();
+                return false;
+            }
+
+        });
+        $("#PolicyName").keypress(function (e) {
+            var keyCode = e.which;
+            var Responce = validateKeyPress(keyCode);
+            if (Responce == true) {
+            }
+            else { e.preventDefault(); }
+        });
+        document.oncontextmenu = function () { return false; };
+        $(document).mousedown(function (e) {
+            if (e.button == 2) {
+                return false;
+            }
+            return true;
+        });
+        if ("@_success" == "true") {
+            swal({
+                title: "Important Notice",
+                text: "Changes will be reflected with new punch",
+                type: "info",
+
+
+                confirmButtonText: "OK",
+                closeOnConfirm: true
+
+            },
+             function (isConfirm) {
+                 //if (isConfirm) {
+                 //    window.location.href = "/Utilities/ProcessMaster";
+                 //    return true;
+                 //}
+                 //else {
+                 //    event.preventDefault();
+                 //    return false;
+                 //}
+             });
+        }
+        var plcid = "";
+        //  $("#s2").attr("disabled", "disabled");
+        //$("#s2").prop('disabled', true);
+        // $("#s2").unbind("click");
+        //   $("#s2").off('click');
+        $("#tblHrpolicy").DataTable({
+            dom: _domCommon,
+            language: _languageCommon,
+            "columnDefs": [
+                {
+                    "targets": 3,
+                    orderable:false
+                }
+            ]
+        });
+        setTimeout(function () {
+            $("#" + "tblHrpolicy" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+            $('.tooltips').tooltip();
+        }, 100);
+        $(".alert").hide();
+        if ("@_Message" != "") {
+            toastr.remove();
+            toastr.success("@_Message");
+        }
+        if ('@_error' != "") {
+            toastr.remove();
+            toastr.error("@_error");
+        }
+        //for attendance form popup
+        var navListItems1 = $('#frmattndpopup div.setup-panel div a'),
+                allWells1 = $('#frmattndpopup .setup-content'),
+                allNextBtn1 = $('#frmattndpopup .nextBtn'),
+                allPrevBtn1 = $('#frmattndpopup .prevbtn');
+        allWells1.hide();
+        navListItems1.click(function (e) {
+            e.preventDefault();
+            var $target1 = $($(this).attr('href')),
+                    $item1 = $(this);
+
+            if (!$item1.hasClass('disabled')) {
+                navListItems1.removeClass('btn-primary').addClass('btn-default');
+                $item1.addClass('btn-primary');
+                allWells1.hide();
+                $target1.show();
+            }
+        });
+        $('#PolicyName').keydown(function (e) {
+            if (this.value.length === 0 && e.which === 32) e.preventDefault();
+        });
+
+        $("#s1").on("click", function (event) {
+            HrStep1ShowHide();
+            if ($('.editbtn').is(':visible')) {
+                AllHrstepsClicable();
+            }
+        });
+
+        $("#frstNext, #s2").click(function (event) {
+
+            if ($("#PolicyName").val().trim() == "") {
+                $("#PolicyName").attr('required', true);
+                $("#PolicyName").addClass('field_error');
+                return false;
+            }
+            else {
+                $("#PolicyName").removeClass('field_error');
+            }
+
+            if ($("#EmpSecondWeekOff").val() != 0) {
+                if ($("#EmpSecondWeekOffRule1").prop('checked') == false && $("#EmpSecondWeekOffRule2").prop('checked') == false && $("#EmpSecondWeekOffRule3").prop('checked') == false && $("#EmpSecondWeekOffRule4").prop('checked') == false && $("#EmpSecondWeekOffRule5").prop('checked') == false) {
+                    $("#checkboxpanel").addClass('field_error');
+                    return false;
+                }
+                else {
+                    $("#checkboxpanel").removeClass('field_error');
+                }
+            }
+            else {
+                $("#checkboxpanel").removeClass('field_error');
+            }
+
+
+            if ($("#EmpHalfDay").val() != 0) {
+                if ($("#EmpHalfDayRule1").prop('checked') == false && $("#EmpHalfDayRule2").prop('checked') == false && $("#EmpHalfDayRule3").prop('checked') == false && $("#EmpHalfDayRule4").prop('checked') == false && $("#EmpHalfDayRule5").prop('checked') == false) {
+                    $("#checkboxHalfDay").addClass('field_error');
+                    return false;
+                }
+                else {
+                    $("#checkboxHalfDay").removeClass('field_error');
+                }
+            }
+            else {
+                $("#checkboxHalfDay").removeClass('field_error');
+            }
+            var curStep1 = $("#frstNext").closest("#frmattndpopup .setup-content"),
+        curStepBtn1 = curStep1.attr("id"),
+        nextStepWizard1 = $('#frmattndpopup div.setup-panel div a[href="#' + curStepBtn1 + '"]').parent().next().children("a"),
+        curInputs1 = curStep1.find("input[type='text'],input[type='url'],select"),
+        isValid1 = true;
+            if (isValid1) {
+                // $("#s2").attr("disabled", false);
+                //$("#s2").bind("click");
+                //nextStepWizard1.removeAttr('disabled').trigger('click');
+                HrStep2ShowHide();
+                if ($('.editbtn').is(':visible')) {
+                    AllHrstepsClicable();
+                }
+            }
+        });
+        $("#SecondNext, #s3").click(function (event) {
+            if ($("#MaxOutDur").val() == "") {
+                var nextStepWizard1 = $('#frmattndpopup div.setup-panel div a[href="#s-2"]').parent().children("a");
+                nextStepWizard1.removeAttr('disabled').trigger('click');
+                $("#MaxOutDur").attr('required', true);
+                $("#MaxOutDur").addClass('field_error');
+                event.preventDefault();//or return false
+                return false;
+            }
+            else {
+                $("#MaxOutDur").removeClass('field_error');
+            }
+
+            if ($("#TimeBetPunch").val() == "") {
+                var nextStepWizard1 = $('#frmattndpopup div.setup-panel div a[href="#s-2"]').parent().children("a");
+                nextStepWizard1.removeAttr('disabled').trigger('click');
+                $("#TimeBetPunch").attr('required', true);
+                $("#TimeBetPunch").addClass('field_error');
+                event.preventDefault();//or return false
+                return false;
+            }
+            else {
+                $("#TimeBetPunch").removeClass('field_error');
+            }
+
+            if ($("#GraceLateIN").val() == "") {
+                var nextStepWizard1 = $('#frmattndpopup div.setup-panel div a[href="#s-2"]').parent().children("a");
+                nextStepWizard1.removeAttr('disabled').trigger('click');
+                $("#GraceLateIN").attr('required', true);
+                $("#GraceLateIN").addClass('field_error');
+                event.preventDefault();//or return false
+                return false;
+            }
+            else {
+                $("#GraceLateIN").removeClass('field_error');
+            }
+
+            if ($("#GraceEarlyOUT").val() == "") {
+                var nextStepWizard1 = $('#frmattndpopup div.setup-panel div a[href="#s-2"]').parent().children("a");
+                nextStepWizard1.removeAttr('disabled').trigger('click');
+                $("#GraceEarlyOUT").attr('required', true);
+                $("#GraceEarlyOUT").addClass('field_error');
+                event.preventDefault();//or return false
+                return false;
+            }
+            else {
+                $("#GraceEarlyOUT").removeClass('field_error');
+            }
+            //   alert($("#ApplicationMode").val());
+            //if ($("#ApplicationMode").val() == "") {
+            //    var nextStepWizard1 = $('#frmattndpopup div.setup-panel div a[href="#s-2"]').parent().children("a");
+            //    nextStepWizard1.removeAttr('disabled').trigger('click');
+            //    $("#ApplicationMode").attr('required', true);
+            //    $("#ApplicationMode").addClass('field_error');
+            //    event.preventDefault();//or return false
+            //    return false;
+            //}
+            //else {
+            //    $("#ApplicationMode").removeClass('field_error');
+            //}
+
+
+            if ($("#MonthlyRptStaDay").val() == "") {
+                var nextStepWizard1 = $('#frmattndpopup div.setup-panel div a[href="#s-2"]').parent().children("a");
+                nextStepWizard1.removeAttr('disabled').trigger('click');
+                $("#MonthlyRptStaDay").attr('required', true);
+                $("#MonthlyRptStaDay").addClass('field_error');
+                event.preventDefault();//or return false
+                return false;
+            }
+            else {
+                $("#MonthlyRptStaDay").removeClass('field_error');
+            }
+            //var nextStepWizard1 = $('#frmattndpopup div.setup-panel div a[href="#s-3"]').parent().children("a");
+            //nextStepWizard1.removeAttr('disabled').trigger('click');
+            HrStep3ShowHide();
+            if ($('.editbtn').is(':visible')) {
+                AllHrstepsClicable();
+            }
+        });
+        $("#ThirdNext, #s4").click(function (event) {
+            if ($("#OTMinHour").val() == "") {
+                var nextStepWizard1 = $('#frmattndpopup div.setup-panel div a[href="#s-3"]').parent().children("a");
+                nextStepWizard1.removeAttr('disabled').trigger('click');
+                $("#OTMinHour").attr('required', true);
+                $("#OTMinHour").addClass('field_error');
+                event.preventDefault();//or return false
+                return false;
+            }
+            else {
+                $("#OTMinHour").removeClass('field_error');
+            }
+
+            if ($("#WeekOffOTHour").val() == "") {
+                var nextStepWizard1 = $('#frmattndpopup div.setup-panel div a[href="#s-3"]').parent().children("a");
+                nextStepWizard1.removeAttr('disabled').trigger('click');
+                $("#WeekOffOTHour").attr('required', true);
+                $("#WeekOffOTHour").addClass('field_error');
+                event.preventDefault();//or return false
+                return false;
+            }
+            else {
+                $("#WeekOffOTHour").removeClass('field_error');
+            }
+
+            if ($("#HolidayOffOTHour").val() == "") {
+                var nextStepWizard1 = $('#frmattndpopup div.setup-panel div a[href="#s-3"]').parent().children("a");
+                nextStepWizard1.removeAttr('disabled').trigger('click');
+                $("#HolidayOffOTHour").attr('required', true);
+                $("#HolidayOffOTHour").addClass('field_error');
+                event.preventDefault();//or return false
+                return false;
+            }
+            else {
+                $("#HolidayOffOTHour").removeClass('field_error');
+            }
+            //var nextStepWizard1 = $('#frmattndpopup div.setup-panel div a[href="#s-4"]').parent().children("a");
+            //nextStepWizard1.removeAttr('disabled').trigger('click');
+            HrStep4ShowHide();
+            if ($('.editbtn').is(':visible')) {
+                AllHrstepsClicable();
+            }
+
+        });
+        $("#btnsubmit").click(function (event) {
+            var kVehicleNo = $("#VehicleNo").val();
+            var kNoofSeats = $("#NoofSeats").val();
+            var kVehicleType = $("#VehicleType").val();
+            var kImeinumber = $("#Imeinumber").val();
+            var kSimcardnumber = $("#Simcardnumber").val();
+            var kSimphonenumber = $("#Simphonenumber").val();
+            var kTrackingDevicetypeid = $("#TrackingDevicetypeid").val();
+            var kEnginenumber = $("#Enginenumber").val();
+            var kMakeyear = $("#Makeyear").val();
+            var kInsurancestartdate = $("#Insurancestartdate").val();
+            var kInsuranceenddate = $("#Insuranceenddate").val();
+            var kRegistrationstartdate = $("#Registrationstartdate").val();
+            var kRegistrationenddate = $("#Registrationenddate").val();
+            var kIsownvehicle = $("#Isownvehicle").val();
+            var kFleetmanagerid = $("#Fleetmanagerid").val();
+            var kChassisVinnumber = $("#ChassisVinnumber").val();
+            var kFueltype = $("#Fueltyp").val();
+            var HdLateorEd = $("#HdLateorEd").val();
+            var ALateorED = $("#ALateorED").val();
+            if (HdLateorEd != 0 && ALateorED != 0) {
+                var cntchk = parseInt($("#HdLateorEd").val()) - parseInt($("#ALateorED").val());
+                if (cntchk >= 0) {
+                    $("#ALateorED").addClass('field_error');
+                    toastr.remove();
+                    toastr.error("Calculate absent count should be greater than calculate half day count.");
+                    event.preventDefault();//or return false
+                    return false;
+                }
+                else {
+                    $("#ALateorED").removeClass('field_error');
+                }
+            }
+            if ($("#LateInMin").val() == "") {
+                $("#LateInMin").attr('required', true);
+                $("#LateInMin").addClass('field_error');
+                event.preventDefault();//or return false
+                return false;
+            }
+            else {
+                $("#LateInMin").removeClass('field_error');
+            }
+            if ($("#EDMin").val() == "") {
+                $("#EDMin").attr('required', true);
+                $("#EDMin").addClass('field_error');
+                event.preventDefault();//or return false
+                return false;
+            }
+            else {
+                $("#EDMin").removeClass('field_error');
+            }
+            if ($("#HdLate").val() == "") {
+                $("#HdLate").attr('required', true);
+                $("#HdLate").addClass('field_error');
+                event.preventDefault();//or return false
+                return false;
+            }
+            else {
+                $("#HdLate").removeClass('field_error');
+            }
+            if ($("#HdEd").val() == "") {
+                $("#HdEd").attr('required', true);
+                $("#HdEd").addClass('field_error');
+                event.preventDefault();//or return false
+                return false;
+            }
+            else {
+                $("#HdEd").removeClass('field_error');
+            }
+            if ($("#HdLateorEd").val() == "") {
+                $("#HdLateorEd").attr('required', true);
+                $("#HdLateorEd").addClass('field_error');
+                event.preventDefault();//or return false
+                return false;
+            }
+            else {
+                $("#HdLateorEd").removeClass('field_error');
+            }
+            if ($("#ALate").val() == "") {
+                $("#ALate").attr('required', true);
+                $("#ALate").addClass('field_error');
+                event.preventDefault();//or return false
+                return false;
+            }
+            else {
+                $("#ALate").removeClass('field_error');
+            }
+            if ($("#AED").val() == "") {
+                $("#AED").attr('required', true);
+                $("#AED").addClass('field_error');
+                event.preventDefault();//or return false
+                return false;
+            }
+            else {
+                $("#AED").removeClass('field_error');
+            }
+            if ($("#ALateorED").val() == "") {
+                $("#ALateorED").attr('required', true);
+                $("#ALateorED").addClass('field_error');
+                event.preventDefault();//or return false
+                return false;
+            }
+            else {
+                $("#ALateorED").removeClass('field_error');
+            }
+
+            if ($("#HdLatetxt").prop('checked') == true && $("#ALatetxt").prop('checked') == true) {
+                var HdLateorEd = $("#HdLate").val();
+                var ALateorED = $("#ALate").val();
+                if (HdLateorEd == 0 && ALateorED == 0) {
+
+                } else {
+                    var cntchk = parseInt($("#HdLate").val()) - parseInt($("#ALate").val());
+                    if (cntchk >= 0) {
+                        $("#ALate").addClass('field_error');
+                        toastr.remove();
+                        toastr.error("Calculate absent count should be greater than calculate half day count.");
+                        event.preventDefault();//or return false
+                        return false;
+                    }
+                    else {
+                        $("#ALate").removeClass('field_error');
+                    }
+                }
+            }
+            if ($("#HdEdtxt").prop('checked') == true && $("#AEDtxt").prop('checked') == true) {
+                var HdLateorEd = $("#HdEd").val();
+                var ALateorED = $("#AED").val();
+                if (HdLateorEd == 0 && ALateorED == 0) {
+
+                } else {
+                    var cntchk = parseInt($("#HdEd").val()) - parseInt($("#AED").val());
+                    if (cntchk >= 0) {
+                        $("#AED").addClass('field_error');
+                        toastr.remove();
+                        toastr.error("Calculate absent count should be greater than calculate half day count.");
+                        event.preventDefault();//or return false
+                        return false;
+                    }
+                    else {
+                        $("#AED").removeClass('field_error');
+                    }
+                }
+            }
+            if ($("#HdLateorEdtxt").prop('checked') == true && $("#ALateorEDtxt").prop('checked') == true) {
+                var HdLateorEd = $("#HdLateorEd").val();
+                var ALateorED = $("#ALateorED").val();
+                if (HdLateorEd == 0 && ALateorED == 0) {
+
+                } else {
+                    var cntchk = parseInt($("#HdLateorEd").val()) - parseInt($("#ALateorED").val());
+                    if (cntchk >= 0) {
+                        $("#ALateorED").addClass('field_error');
+                        toastr.remove();
+                        toastr.error("Calculate absent count should be greater than calculate half day count.");
+                        event.preventDefault();//or return false
+                        return false;
+                    }
+                    else {
+                        $("#ALateorED").removeClass('field_error');
+                    }
+                }
+            }
+        });
+        //allPrevBtn1.click(function () {
+        //    var curStep1 = $(this).closest("#frmattndpopup .setup-content"),
+        //        curStepBtn1 = curStep1.attr("id"),
+        //        nextStepWizard1 = $('#frmattndpopup div.setup-panel div a[href="#' + curStepBtn1 + '"]').parent().prev().children("a"),
+        //        curInputs1 = curStep1.find("input[type='text'],input[type='url']"),
+        //        isValid1 = true;
+
+        //    $(".form-group").removeClass("has-error");
+        //    if (isValid1)
+        //        nextStepWizard1.removeAttr('disabled').trigger('click');
+        //});
+
+        $("#Secondprev").click(function () {
+            HrStep1ShowHide();
+            if ($('.editbtn').is(':visible')) {
+                AllHrstepsClicable();
+            }
+        });
+
+        $("#Thirdprev").click(function () {
+            HrStep2ShowHide();
+            if ($('.editbtn').is(':visible')) {
+                AllHrstepsClicable();
+            }
+        });
+
+        $("#Fourthprev").click(function () {
+            HrStep3ShowHide();
+            if ($('.editbtn').is(':visible')) {
+                AllHrstepsClicable();
+            }
+        });
+
+
+        $("#PolicyName").keypress(function (e) {
+            $("#PolicyName").removeClass('field_error');
+        });
+        $("#PolicyName").blur(function () {
+            var policyName = removeTags($("#PolicyName").val());
+            $("#PolicyName").val(policyName);
+        });
+        $("#EmpSecondWeekOffRule1").change(function () {
+            $("#checkboxpanel").removeClass('field_error');
+        });
+        $("#EmpSecondWeekOffRule2").change(function () {
+            $("#checkboxpanel").removeClass('field_error');
+        });
+        $("#EmpSecondWeekOffRule3").change(function () {
+            $("#checkboxpanel").removeClass('field_error');
+        });
+        $("#EmpSecondWeekOffRule4").change(function () {
+            $("#checkboxpanel").removeClass('field_error');
+        });
+        $("#EmpSecondWeekOffRule5").change(function () {
+            $("#checkboxpanel").removeClass('field_error');
+        });
+
+
+        //For Halfday By Balvant
+        $("#EmpHalfDayRule1").change(function () {
+            $("#checkboxHalfDay").removeClass('field_error');
+        });
+        $("#EmpHalfDayRule2").change(function () {
+            $("#checkboxHalfDay").removeClass('field_error');
+        });
+        $("#EmpHalfDayRule3").change(function () {
+            $("#checkboxHalfDay").removeClass('field_error');
+        });
+        $("#EmpHalfDayRule4").change(function () {
+            $("#checkboxHalfDay").removeClass('field_error');
+        });
+        $("#EmpHalfDayRule5").change(function () {
+            $("#checkboxHalfDay").removeClass('field_error');
+        });
+        $("#EmpWeekOff").change(function () {
+
+            if ($("#EmpWeekOff").val() != 0) {
+                if ($("#EmpWeekOff").val() == $("#EmpSecondWeekOff").val() || $("#EmpWeekOff").val() == $("#EmpHalfDay").val()) {
+                    toastr.remove();
+                    toastr.error("You can not assign same day which is already applied.");
+                    $("#spEmpWeekOff").fadeIn('fast').delay(3000).fadeOut('slow');
+                    $("#EmpWeekOff").val(0);
+
+                }
+                else {
+                    $("#spEmpWeekOff").hide();
+                    return true;
+                }
+            }
+            else {
+                $("#spEmpWeekOff").hide();
+                return true;
+            }
+
+        });
+        $("#EmpSecondWeekOff").change(function () {
+            if ($("#EmpSecondWeekOff").val() != 0) {
+                if ($("#EmpSecondWeekOff").val() == $("#EmpWeekOff").val() || $("#EmpSecondWeekOff").val() == $("#EmpHalfDay").val()) {
+                    $("#spEmpSecondWeekOff").html("You can not assign same day which is already applied").show();
+                    $("#spEmpSecondWeekOff").fadeIn('fast').delay(3000).fadeOut('slow');
+                    $("#EmpSecondWeekOff").val(0);
+                }
+                else {
+                    $("#spEmpSecondWeekOff").hide();
+                }
+            }
+            else {
+                $("#spEmpSecondWeekOff").hide();
+            }
+
+
+
+            if ($("#EmpSecondWeekOff").val() != 0) {
+                $("#EmpSecondWeekOffRule1").prop('disabled', false);
+                $("#EmpSecondWeekOffRule2").prop('disabled', false);
+                $("#EmpSecondWeekOffRule3").prop('disabled', false);
+                $("#EmpSecondWeekOffRule4").prop('disabled', false);
+                $("#EmpSecondWeekOffRule5").prop('disabled', false);
+            }
+            else {
+                $("#EmpSecondWeekOffRule").val(0);
+                $("#EmpSecondWeekOffRule1").prop('disabled', true);
+                $("#EmpSecondWeekOffRule1").prop('checked', false);
+                $("#EmpSecondWeekOffRule2").prop('disabled', true);
+                $("#EmpSecondWeekOffRule2").prop('checked', false);
+                $("#EmpSecondWeekOffRule3").prop('disabled', true);
+                $("#EmpSecondWeekOffRule3").prop('checked', false);
+                $("#EmpSecondWeekOffRule4").prop('disabled', true);
+                $("#EmpSecondWeekOffRule4").prop('checked', false);
+                $("#EmpSecondWeekOffRule5").prop('disabled', true);
+                $("#EmpSecondWeekOffRule5").prop('checked', false);
+            }
+        });
+        //For Half Day by Balvant
+        $("#EmpHalfDay").change(function () {
+            if ($("#EmpHalfDay").val() != 0) {
+                if ($("#EmpHalfDay").val() == $("#EmpWeekOff").val() || $("#EmpHalfDay").val() == $("#EmpSecondWeekOff").val()) {
+                    $("#spEmpHalfDay").html("You can not assign same day which is already applied").show();
+                    $("#spEmpHalfDay").fadeIn('fast').delay(3000).fadeOut('slow');
+                    $("#EmpHalfDay").val(0);
+                }
+                else {
+                    $("#spEmpHalfDay").hide();
+                }
+            }
+            else {
+                $("#spEmpHalfDay").hide();
+            }
+
+            if ($("#EmpHalfDay").val() != 0) {
+                $("#EmpHalfDayRule1").prop('disabled', false);
+                $("#EmpHalfDayRule2").prop('disabled', false);
+                $("#EmpHalfDayRule3").prop('disabled', false);
+                $("#EmpHalfDayRule4").prop('disabled', false);
+                $("#EmpHalfDayRule5").prop('disabled', false);
+            }
+            else {
+                $("#EmpHalfDayRule").val("0");
+                $("#EmpHalfDayRule1").prop('disabled', true);
+                $("#EmpHalfDayRule1").prop('checked', false);
+                $("#EmpHalfDayRule2").prop('disabled', true);
+                $("#EmpHalfDayRule2").prop('checked', false);
+                $("#EmpHalfDayRule3").prop('disabled', true);
+                $("#EmpHalfDayRule3").prop('checked', false);
+                $("#EmpHalfDayRule4").prop('disabled', true);
+                $("#EmpHalfDayRule4").prop('checked', false);
+                $("#EmpHalfDayRule5").prop('disabled', true);
+                $("#EmpHalfDayRule5").prop('checked', false);
+            }
+        });
+        //$("#EmpSecondWeekOffRule").change(function () {
+        //    $("#EmpSecondWeekOffRule").removeClass('field_error');
+        //});
+        $("#EmpHalfDayRule").change(function () {
+            $("#EmpHalfDayRule").removeClass('field_error');
+        });
+        $('#frmattndpopup div.setup-panel div a.btn-primary').trigger('click');
+        $("#btnCreateHRPolicy").on('click', function () {
+            count++;
+            operation = "Add Form";
+            var t = $("#tblHrpolicy").DataTable();
+            var lastColumnIndex = t.columns().count() - 1;
+            if (lastColumnIndex > 0) {
+                t.column(lastColumnIndex).nodes().each(function (cell) {
+                    $(cell).find('a').removeClass('editbtn');
+                });
+            }
+
+            ruleclear();
+            HrStep1ShowHide();
+            $("#checkboxpanel").removeClass('field_error');
+            $("#EmpHalfDayRule").removeClass('field_error');
+            $("#btnCreateHRPolicy").attr("data-toggle", "modal");
+            $("#btnCreateHRPolicy").attr("data-target", "#frmattndpopup");
+        });
+
+        $("#tblHrpolicy").on('click', '.previewclass', function () {
+            var plid = $(this).parent('td').parent('tr').children(1)[1].innerText;
+            window.open('/PayTime/SamplePolicy?id=' + parseInt(plid) + ' ', ' _blank');
+        });
+
+        //EditPolicy
+        $("#tblHrpolicy").on('click', '.editclass', function () {
+            count++;
+            operation = "Edit Form";
+
+            t = $("#tblHrpolicy").DataTable();
+            var lastColumnIndex = t.columns().count() - 1;
+            t.column(lastColumnIndex).nodes().each(function (cell) {
+                $(cell).find('a').addClass('editbtn');
+            });
+
+            ruleclear();
+            AllHrstepsClicable();
+            $("#checkboxpanel").removeClass('field_error');
+            $("#EmpHalfDayRule").removeClass('field_error');
+            $(".editclass").attr("data-toggle", "modal");
+            $(".editclass").attr("data-target", "#frmattndpopup");
+            $("#PolicyId").val($(this).parent('td').parent('tr').children(1)[1].innerText);
+            var policyid = $("#PolicyId").val();
+            $.get("/PayTime/FillPolicyListbyID?id=" + policyid, function (response) {
+                if (response.isRedirect) {
+                    window.location.href = response.redirectUrl;
+                }
+                if (response != null) {
+                    var obj = JSON.parse(response);
+                    $("#PolicyName").val(obj.PolicyName);
+                    $("#EmpWeekOff option[value = " + obj.EmpWeekOff + "]").prop('selected', true);
+                    $("#EmpSecondWeekOff option[value = " + obj.EmpSecondWeekOff + "]").prop('selected', true);
+                    //   $("#EmpSecondWeekOffRule option[value = " + obj.EmpSecondWeekOffRule + "]").prop('selected', true);
+                    if ($("#EmpSecondWeekOff").val() != 0) {
+                        $("#EmpSecondWeekOffRule1").prop('disabled', false);
+                        $("#EmpSecondWeekOffRule2").prop('disabled', false);
+                        $("#EmpSecondWeekOffRule3").prop('disabled', false);
+                        $("#EmpSecondWeekOffRule4").prop('disabled', false);
+                        $("#EmpSecondWeekOffRule5").prop('disabled', false);
+
+                    }
+                    var str = obj.EmpSecondWeekOffRule;
+                    var str1 = str.split(',');
+                    var i;
+                    for (i = 0; i <= str1.length; i++) {
+                        if (str1[i] == 1) {
+                            $("#EmpSecondWeekOffRule1").prop('checked', true);
+
+                        }
+                        if (str1[i] == 2) {
+                            $("#EmpSecondWeekOffRule2").prop('checked', true);
+                        }
+                        if (str1[i] == 3) {
+                            $("#EmpSecondWeekOffRule3").prop('checked', true);
+                        }
+                        if (str1[i] == 4) {
+                            $("#EmpSecondWeekOffRule4").prop('checked', true);
+                        }
+                        if (str1[i] == 5) {
+                            $("#EmpSecondWeekOffRule5").prop('checked', true);
+                        }
+                    }
+
+                    $("#EmpHalfDay option[value = " + obj.EmpHalfDay + "]").prop('selected', true);
+                    //$("#EmpHalfDayRule option[value = " + obj.EmpHalfDayRule + "]").prop('selected', true);
+
+                    if ($("#EmpHalfDay").val() != 0) {
+                        $("#EmpHalfDayRule1").prop('disabled', false);
+                        $("#EmpHalfDayRule2").prop('disabled', false);
+                        $("#EmpHalfDayRule3").prop('disabled', false);
+                        $("#EmpHalfDayRule4").prop('disabled', false);
+                        $("#EmpHalfDayRule5").prop('disabled', false);
+                    }
+                    //else {
+                    //    $("#EmpHalfDayRule").val(0);
+                    //    $("#EmpHalfDayRule").prop('disabled', true);
+                    //}
+                    var str = obj.EmpHalfDayRule;
+                    var str1 = str.split(',');
+                    var i;
+                    for (i = 0; i <= str1.length; i++) {
+                        if (str1[i] == 1) {
+                            $("#EmpHalfDayRule1").prop('checked', true);
+
+                        }
+                        if (str1[i] == 2) {
+                            $("#EmpHalfDayRule2").prop('checked', true);
+                        }
+                        if (str1[i] == 3) {
+                            $("#EmpHalfDayRule3").prop('checked', true);
+                        }
+                        if (str1[i] == 4) {
+                            $("#EmpHalfDayRule4").prop('checked', true);
+                        }
+                        if (str1[i] == 5) {
+                            $("#EmpHalfDayRule5").prop('checked', true);
+                        }
+                    }
+                    $("#EmpAllowOT option[value = " + obj.EmpAllowOT + "]").prop('selected', true);
+                    $("#MaxOutDur").val(obj.MaxOutDur);
+                    $("#TimeBetPunch").val(obj.TimeBetPunch);
+                    $("#GraceLateIN").val(obj.GraceLateIN);
+                    $("#GraceEarlyOUT").val(obj.GraceEarlyOUT);
+                    $("#ApplicationMode").val(obj.ApplicationMode);
+                    $("#MonthlyRptStaDay").val(obj.MonthlyRptStaDay);
+                    $("#OTMinHour").val(obj.OTMinHour);
+                    var OTFormula = obj.OTFormula;
+                    if (OTFormula == 1) {
+                        $("#WhSh").prop('checked', true);
+                        $("#OTFormula").attr("value", 1);
+                    }
+                    else if (OTFormula == 2) {
+                        $("#WhPh").prop('checked', true);
+                        $("#OTFormula").attr("value", 2);
+                    }
+                    else if (OTFormula == 3) {
+                        $("#AfEt").prop('checked', true);
+                        $("#OTFormula").attr("value", 3);
+                    }
+                    else {
+                        $("#BsSt").prop('checked', true);
+                        $("#OTFormula").attr("value", 4);
+                    }
+                    var OTWO = obj.OTAllowWO;
+                    if (OTWO == 1) {
+                        $("#OTAllowWO").prop('checked', true);
+                        $("#OTAllowWO").attr("value", 1);
+                        $("#WeekOffOTHour").val(obj.WeekOffOTHour);
+                        $("#WeekOffOTHour").attr("readOnly", false);
+                    }
+                    else {
+                        $("#OTAllowWO").prop('checked', false);
+                        $("#OTAllowWO").attr("value", 0);
+                        $("#WeekOffOTHour").attr("readOnly", true);
+                    }
+                    var OTHO = obj.OTAllowHO;
+                    if (OTHO == 1) {
+                        $("#OTAllowHO").prop('checked', true);
+                        $("#OTAllowHO").attr("value", 1);
+                        $("#HolidayOffOTHour").val(obj.HolidayOffOTHour);
+                        $("#HolidayOffOTHour").attr("readOnly", false);
+                    }
+                    else {
+                        $("#OTAllowHO").prop('checked', false);
+                        $("#OTAllowHO").attr("value", 0);
+                        $("#HolidayOffOTHour").attr("readOnly", true);
+                    }
+
+
+                    var notpresentMnth = obj.NotPresentInMnth;
+                    if (notpresentMnth == 1) {
+                        $("#NotPresentInMnth").prop('checked', true);
+                        $("#NotPresentInMnth").attr("value", 1);
+                    }
+                    else {
+                        $("#NotPresentInMnth").prop('checked', false);
+                        $("#NotPresentInMnth").attr("value", 0);
+                    }
+                    var IsSWRule = obj.Issedwrule;
+                    if (IsSWRule == 1) {
+                        $("#Issedwrule").prop('checked', true);
+                        $("#Issedwrule").attr("value", 1);
+                        $("#RuleBothTB").prop('disabled', false);
+                        $("#RuleBoth").prop('disabled', false);
+                        $("#RulePrefix").prop('disabled', false);
+                        $("#RuleSuffix").prop('disabled', false);
+                    }
+                    else {
+                        $("#Issedwrule").prop('checked', false);
+                        $("#Issedwrule").attr("value", 0);
+                    }
+                    var sandwhichRuleType = obj.IssedwruleType;
+                    if (sandwhichRuleType == 1) {
+                        $("#RuleBothTB").prop('checked', true);
+                        $("#IssedwruleType").attr("value", 1);
+                        //$("#RuleBothTB").prop('disabled', true);
+                    }
+                    else if (sandwhichRuleType == 2) {
+                        $("#RuleBoth").prop('checked', true);
+                        $("#IssedwruleType").attr("value", 2);
+                        //$("#RuleBoth").prop('disabled', true);
+                    }
+                    else if (sandwhichRuleType == 3) {
+                        $("#RulePrefix").prop('checked', true);
+                        $("#IssedwruleType").attr("value", 3);
+                        //$("#RulePrefix").prop('disabled', true);
+                    }
+                    else if (sandwhichRuleType == 4) {
+                        $("#RuleSuffix").prop('checked', true);
+                        $("#IssedwruleType").attr("value", 4);
+                        //$("#RuleSuffix").prop('disabled', true);
+                    }
+                    //ErrorCase
+                    var ercs = obj.AllErrorCase;
+                    if (ercs == 1) {
+                        $("#AllErrorCase").prop('checked', true);
+                        $("#AllErrorCase").attr("value", 1);
+                    }
+                    else {
+                        $("#AllErrorCase").prop('checked', false);
+                        $("#AllErrorCase").attr("value", 0);
+                    }
+
+                    var ecwh = obj.ErrorCaseWH;
+                    if (ecwh == 1) {
+                        $("#ErrorCaseWH").prop('checked', true);
+                        $("#ErrorCaseWH").val("value", 1);
+                    }
+                    else {
+                        $("#ErrorCaseWH").prop('checked', false);
+                        $("#ErrorCaseWH").attr("value", 0);
+                    }
+                    if (obj.HdLate != 0) {
+                        $("#HdLatetxt").prop('checked', true);
+                        $("#HdLate").attr("readOnly", false);
+                        $("#HdEd").attr("readOnly", true);
+                        $("#HdLateorEd").attr("readOnly", true);
+                    }
+                    $("#HdLate").val(obj.HdLate);
+                    if (obj.HdEd != 0) {
+                        $("#HdEdtxt").prop('checked', true);
+                        $("#HdEd").attr("readOnly", false);
+                        $("#HdLate").attr("readOnly", true);
+                        $("#HdLateorEd").attr("readOnly", true);
+                    }
+                    $("#HdEd").val(obj.HdEd);
+                    if (obj.HdLateorEd != 0) {
+                        $("#HdLateorEdtxt").prop('checked', true);
+                        $("#HdLateorEd").attr("readOnly", false);
+                        $("#HdEd").attr("readOnly", true);
+                        $("#HdLate").attr("readOnly", true);
+                    }
+                    $("#HdLateorEd").val(obj.HdLateorEd);
+                    if (obj.ALate != 0) {
+                        $("#ALatetxt").prop('checked', true);
+                        $("#ALate").attr("readOnly", false);
+                        $("#AED").attr("readOnly", true);
+                        $("#ALateorED").attr("readOnly", true);
+                    }
+                    $("#ALate").val(obj.ALate);
+                    if (obj.AED != 0) {
+                        $("#AEDtxt").prop('checked', true);
+                        $("#AED").attr("readOnly", false);
+                        $("#ALate").attr("readOnly", true);
+                        $("#ALateorED").attr("readOnly", true);
+                    }
+                    $("#AED").val(obj.AED);
+                    if (obj.ALateorED != 0) {
+                        $("#ALateorEDtxt").prop('checked', true);
+                        $("#ALateorED").attr("readOnly", false);
+                        $("#AED").attr("readOnly", true);
+                        $("#ALate").attr("readOnly", true);
+                    }
+                    $("#ALateorED").val(obj.ALateorED);
+                    if (obj.TotalHrbeforeStatus != 0) {
+                        $("#TotalHrbeforeStatus").prop('checked', true);
+                        $("#TotalHrbeforeStatus").attr("value", 1);
+                    }
+                    if (obj.TotalHrafterStatus != 0) {
+                        $("#TotalHrafterStatus").prop('checked', true);
+                        $("#TotalHrafterStatus").attr("value", 1);
+                    }
+                    $("#LateInMin").val(obj.LateInMin);
+                    $("#EDMin").val(obj.EDMin);
+
+                    $("#EarlyInoutMin").val(obj.EarlyInoutMin);
+                    $("#EarlyInoutday").val(obj.EarlyInoutday);
+                }
+            });
+        });
+        //  For Attendance Rule Validation
+
+        $("#AllErrorCase").change(function () {
+            if (this.checked) {
+                $("#AllErrorCase").attr("value", 1);
+            }
+            else {
+                $("#AllErrorCase").attr("value", 0);
+            }
+        });
+
+        $("#ErrorCaseWH").change(function () {
+            if (this.checked) {
+                $("#ErrorCaseWH").attr("value", 1);
+            }
+            else {
+                $("#ErrorCaseWH").attr("value", 0);
+            }
+        });
+
+        //$("#allerror").change(function () {
+        //    if (this.checked) {
+        //        $("#AllErrorCase").attr("value", 1);
+        //        $("#ErrorCaseWH").attr("value", 0);
+        //    }
+        //});
+        //$("#errorwh").change(function () {
+        //    if (this.checked) {
+        //        $("#ErrorCaseWH").attr("value", 1);
+        //        $("#AllErrorCase").attr("value", 0);
+        //    }
+        //});
+        $("#TotalHrafterStatus").change(function () {
+            if (this.checked) {
+                $("#TotalHrafterStatus").attr("value", 1);
+                //$("#TotalHrbeforeStatus").attr("value", 0);
+                // $("#TotalHrbeforeStatus").prop('checked', false);
+            }
+            else {
+                $("#TotalHrafterStatus").attr("value", 0);
+            }
+        });
+        $("#TotalHrbeforeStatus").change(function () {
+            if (this.checked) {
+                $("#TotalHrbeforeStatus").attr("value", 1);
+                //$("#TotalHrafterStatus").attr("value", 0);
+                //$("#TotalHrafterStatus").prop('checked', false);
+            }
+            else {
+                $("#TotalHrbeforeStatus").attr("value", 0);
+            }
+        });
+        $("#HdLatetxt").change(function () {
+            if (this.checked) {
+                $("#HdLate").attr("readOnly", false);
+                $("#HdEd").val(0);
+                $("#HdEd").attr("readOnly", true);
+                $("#HdLateorEd").val(0);
+                $("#HdLateorEd").attr("readOnly", true);
+            }
+            else {
+                $("#HdLate").val(0);
+                $("#HdLate").attr("readOnly", true);
+
+
+            }
+        });
+        $("#HdEdtxt").change(function () {
+            if (this.checked) {
+                $("#HdEd").attr("readOnly", false);
+                $("#HdLate").val(0);
+                $("#HdLate").attr("readOnly", true);
+                $("#HdLateorEd").val(0);
+                $("#HdLateorEd").attr("readOnly", true);
+            }
+            else {
+                $("#HdEd").val(0);
+                $("#HdEd").attr("readOnly", true);
+            }
+        });
+        $("#HdLateorEdtxt").change(function () {
+            if (this.checked) {
+                $("#HdLateorEd").attr("readOnly", false);
+                $("#HdLate").val(0);
+                $("#HdLate").attr("readOnly", true);
+                $("#HdEd").val(0);
+                $("#HdEd").attr("readOnly", true);
+
+            }
+            else {
+                $("#HdLateorEd").val(0);
+                $("#HdLateorEd").attr("readOnly", true);
+
+
+            }
+        });
+        $("#ALatetxt").change(function () {
+            if (this.checked) {
+                $("#ALate").attr("readOnly", false);
+                $("#AED").val(0);
+                $("#AED").attr("readOnly", true);
+                $("#ALateorED").attr("readOnly", true);
+                $("#ALateorED").val(0);
+
+            }
+            else {
+                $("#ALate").attr("readOnly", true);
+                $("#ALate").val(0);
+
+            }
+        });
+        $("#AEDtxt").change(function () {
+            if (this.checked) {
+                $("#AED").attr("readOnly", false);
+                $("#ALate").val(0);
+                $("#ALate").attr("readOnly", true);
+                $("#ALateorED").val(0);
+                $("#ALateorED").attr("readOnly", true);
+
+            }
+            else {
+                $("#AED").val(0);
+                $("#AED").attr("readOnly", true);
+
+            }
+        });
+        $("#ALateorEDtxt").change(function () {
+            if (this.checked) {
+                $("#ALateorED").attr("readOnly", false);
+                $("#ALate").val(0);
+                $("#ALate").attr("readOnly", true);
+                $("#AED").val(0);
+                $("#AED").attr("readOnly", true);
+
+            }
+            else {
+                $("#ALateorED").val(0);
+                $("#ALateorED").attr("readOnly", true);
+
+            }
+        });
+        //For Attendance Parameter
+        $("#Wbackup").change(function () {
+            if (this.checked) {
+                $("#Wbackup").attr("value", true);
+            }
+            else {
+                $("#Wbackup").attr("value", false);
+            }
+        });
+        $("#Dbackup").change(function () {
+            if (this.checked) {
+                $("#Dbackup").attr("value", true);
+            }
+            else {
+                $("#Dbackup").attr("value", false);
+            }
+        });
+        $("#OTAllowWO").change(function () {
+            if (this.checked) {
+                $("#OTAllowWO").attr("value", 1);
+                $("#WeekOffOTHour").attr("readOnly", false);
+
+
+            }
+            else {
+                $("#OTAllowWO").attr("value", 0);
+                $("#WeekOffOTHour").attr("readOnly", true);
+                $("#WeekOffOTHour").val(0);
+            }
+        });
+        $("#OTAllowHO").change(function () {
+            if (this.checked) {
+                $("#OTAllowHO").attr("value", 1);
+                $("#HolidayOffOTHour").attr("readOnly", false);
+            }
+            else {
+                $("#OTAllowHO").attr("value", 0);
+                $("#HolidayOffOTHour").attr("readOnly", true);
+                $("#HolidayOffOTHour").val(0);
+            }
+        });
+        $("#NotPresentInMnth").change(function () {
+            if (this.checked) {
+                $("#NotPresentInMnth").attr("value", 1);
+            }
+            else {
+                $("#NotPresentInMnth").attr("value", 0);
+            }
+        });
+        $("#WhSh").change(function () {
+            if (this.checked) {
+                $("#WhSh").attr("value", 1);
+                $("#OTFormula").val($("#WhSh").val());
+            }
+            else {
+                $("#WhSh").attr("value", 0);
+            }
+        });
+        $("#WhPh").change(function () {
+            if (this.checked) {
+                $("#WhPh").attr("value", 2);
+                $("#OTFormula").val($("#WhPh").val());
+            }
+            else {
+                $("#WhPh").attr("value", 0);
+            }
+        });
+        $("#AfEt").change(function () {
+            if (this.checked) {
+                $("#AfEt").attr("value", 3);
+                $("#OTFormula").val($("#AfEt").val());
+            }
+            else {
+                $("#AfEt").attr("value", 0);
+            }
+        });
+        $("#BsSt").change(function () {
+            if (this.checked) {
+                $("#BsSt").attr("value", 4);
+                $("#OTFormula").val($("#BsSt").val());
+            }
+            else {
+                $("#BsSt").attr("value", 0);
+            }
+        });
+        $("#RuleBothTB").change(function () {
+            if (this.checked) {
+                $("#RuleBothTB").attr("value", 1);
+                $("#IssedwruleType").val($("#RuleBothTB").val());
+            }
+            else {
+                $("#RuleBothTB").attr("value", 0);
+            }
+        });
+        $("#RuleBoth").change(function () {
+            if (this.checked) {
+                $("#RuleBoth").attr("value", 2);
+                $("#IssedwruleType").val($("#RuleBoth").val());
+            }
+            else {
+                $("#RuleBoth").attr("value", 0);
+            }
+        });
+        $("#RulePrefix").change(function () {
+
+            if (this.checked) {
+                $("#RulePrefix").attr("value", 3);
+                $("#IssedwruleType").val($("#RulePrefix").val());
+            }
+            else {
+                $("#RulePrefix").attr("value", 0);
+            }
+        });
+        $("#RuleSuffix").change(function () {
+            if (this.checked) {
+                $("#RuleSuffix").attr("value", 4);
+                $("#IssedwruleType").val($("#RuleSuffix").val());
+            }
+            else {
+                $("#RuleSuffix").attr("value", 0);
+            }
+        });
+
+        $("#Issedwrule").change(function () {
+            if (this.checked) {
+                $("#Issedwrule").attr("value", 1);
+                $("#RuleBothTB").prop('checked', true);
+                $("#RuleBothTB").attr("value", 1);
+                $("#IssedwruleType").val($("#RuleBothTB").val());
+                $("#RuleBothTB").prop('disabled', false);
+                $("#RuleBoth").prop('disabled', false);
+                $("#RulePrefix").prop('disabled', false);
+                $("#RuleSuffix").prop('disabled', false);
+            } else {
+                $("#RuleBothTB").prop('disabled', true);
+                $("#RuleBoth").prop('disabled', true);
+                $("#RulePrefix").prop('disabled', true);
+                $("#RuleSuffix").prop('disabled', true);
+            }
+
+        });
+        $("#PolicyName").keypress(function (e) {
+            $("#PolicyName").removeClass('field_error');
+        });
+        $("#ApplicationMode").change(function (e) {
+            $("#ApplicationMode").removeClass('field_error');
+        });
+        $("#MonthlyRptStaDay").keypress(function (e) {
+            if (e.which != 8 && e.which != 0 && (e.which < 48 || e.which > 57)) {
+                $("#spMnthlyStart").html("Enter Digits Only").show();
+                return false;
+            }
+            else {
+
+                $("#spMnthlyStart").hide();
+            }
+        });
+        $("#MonthlyRptStaDay").change(function () {
+            if ($("#MonthlyRptStaDay").val() == 0) {
+                $("#spMnthlyStart").html("Can not add 0 value").show();
+                $("#MonthlyRptStaDay").focus();
+                return false;
+            }
+            else {
+                $("#spMnthlyStart").hide();
+            }
+        });
+        $("#MaxOutDur").keypress(function (e) {
+            if (e.which != 8 && e.which != 0 && (e.which < 48 || e.which > 57)) {
+                return false;
+            }
+            else {
+                $("#MaxOutDur").removeClass('field_error');
+            }
+        });
+        $("#TimeBetPunch").keypress(function (e) {
+            if (e.which != 8 && e.which != 0 && (e.which < 48 || e.which > 57)) {
+                return false;
+            }
+            else {
+                $("#TimeBetPunch").removeClass('field_error');
+            }
+        });
+        $("#GraceLateIN").keypress(function (e) {
+            if (e.which != 8 && e.which != 0 && (e.which < 48 || e.which > 57)) {
+                return false;
+            }
+            else {
+                $("#GraceLateIN").removeClass('field_error');
+            }
+        });
+        $("#GraceEarlyOUT").keypress(function (e) {
+            if (e.which != 8 && e.which != 0 && (e.which < 48 || e.which > 57)) {
+                return false;
+            }
+            else {
+                $("#GraceEarlyOUT").removeClass('field_error');
+            }
+        });
+        $("#OTMinHour").keypress(function (e) {
+            if (e.which != 8 && e.which != 0 && (e.which < 48 || e.which > 57)) {
+                return false;
+            }
+            else {
+                $("#OTMinHour").removeClass('field_error');
+            }
+        });
+        $("#WeekOffOTHour").keypress(function (e) {
+            if (e.which != 8 && e.which != 0 && (e.which < 48 || e.which > 57)) {
+                return false;
+            }
+            else {
+                $("#WeekOffOTHour").removeClass('field_error');
+            }
+        });
+        $("#HolidayOffOTHour").keypress(function (e) {
+            if (e.which != 8 && e.which != 0 && (e.which < 48 || e.which > 57)) {
+                return false;
+            }
+            else {
+                $("#HolidayOffOTHour").removeClass('field_error');
+            }
+        });
+        $("#LateInMin").keypress(function (e) {
+            if (e.which != 8 && e.which != 0 && (e.which < 48 || e.which > 57)) {
+                return false;
+            }
+            else {
+                $("#LateInMin").removeClass('field_error');
+            }
+        });
+        $("#EDMin").keypress(function (e) {
+            if (e.which != 8 && e.which != 0 && (e.which < 48 || e.which > 57)) {
+                return false;
+            }
+            else {
+                $("#EDMin").removeClass('field_error');
+            }
+        });
+
+        $("#EarlyInoutMin").keypress(function (e) {
+            if (e.which != 8 && e.which != 0 && (e.which < 48 || e.which > 57)) {
+                return false;
+            }
+            else {
+                $("#EarlyInoutMin").removeClass('field_error');
+
+            }
+        });
+        $("#EarlyInoutday").keypress(function (e) {
+            if (e.which != 8 && e.which != 0 && (e.which < 48 || e.which > 57)) {
+                return false;
+            }
+            else {
+                $("#EarlyInoutday").removeClass('field_error');
+            }
+        });
+
+
+        $("#EarlyInoutday").change(function () {
+            if ($("#EarlyInoutday").val() == '') {
+                $("#EarlyInoutday").val(0);
+            }
+            else if ($("#EarlyInoutday").val() > 10) {
+                toastr.remove();
+                toastr.error("Maximum  10 days allowed per month.");
+                $("#EarlyInoutday").val(0);
+            }
+
+            if (/^0\d+/.test($("#EarlyInoutday").val())) {
+                toastr.remove();
+                toastr.error("Number must not start with 0.");
+                $("#EarlyInoutday").val(0);
+            }
+        });
+
+        $("#EarlyInoutMin").change(function () {
+            if ($("#EarlyInoutMin").val() == '') {
+                $("#EarlyInoutMin").val(0);
+            }
+            else if ($("#EarlyInoutMin").val() > 120) {
+                toastr.remove();
+                toastr.error("Maximum 120 minutes allowed per day.");
+                $("#EarlyInoutMin").val(0);
+            }
+
+            if (/^0\d+/.test($("#EarlyInoutMin").val())) {
+                toastr.remove();
+                toastr.error("Number must not start with 0.");
+                $("#EarlyInoutMin").val(0);
+            }
+        });
+
+        $("#HdLate").keypress(function (e) {
+            if (e.which != 8 && e.which != 0 && (e.which < 48 || e.which > 57)) {
+                return false;
+            }
+            else {
+                $("#HdLate").removeClass('field_error');
+            }
+        });
+        $("#HdEd").keypress(function (e) {
+            if (e.which != 8 && e.which != 0 && (e.which < 48 || e.which > 57)) {
+                return false;
+            }
+            else {
+                $("#HdEd").removeClass('field_error');
+            }
+        });
+        $("#HdLateorEd").keypress(function (e) {
+            if (e.which != 8 && e.which != 0 && (e.which < 48 || e.which > 57)) {
+                return false;
+            }
+            else {
+                $("#HdLateorEd").removeClass('field_error');
+            }
+        });
+        $("#ALate").keypress(function (e) {
+            if (e.which != 8 && e.which != 0 && (e.which < 48 || e.which > 57)) {
+                return false;
+            }
+            else {
+                $("#ALate").removeClass('field_error');
+            }
+        });
+        $("#AED").keypress(function (e) {
+            if (e.which != 8 && e.which != 0 && (e.which < 48 || e.which > 57)) {
+                return false;
+            }
+            else {
+                $("#AED").removeClass('field_error');
+            }
+        });
+        $("#ALateorED").keypress(function (e) {
+            if (e.which != 8 && e.which != 0 && (e.which < 48 || e.which > 57)) {
+                return false;
+            }
+            else {
+                $("#ALateorED").removeClass('field_error');
+            }
+        });
+        $("#tblHrpolicy").on('click', '.downloadClass', function () {
+            plcid = $(this).parent('div').parent('div').siblings('a').parent('td').parent('tr').children('#poid').html();
+        });
+        $("#tblHrpolicy").on('click', '#exceldownload', function () {
+            $.post("/PayTime/DownloadPolicy", { PolicyId: plcid, DownloadType: "Excel" }, function (data) {
+                if (data.isRedirect) {
+                    window.location.href = data.redirectUrl;
+                }
+                if (data != "/PayTime/ErrorPage") {
+                    window.location = '/Downloads/' + data;
+                }
+                else {
+                    window.location = data;
+                }
+
+            });
+        });
+        $("#tblHrpolicy").on('click', '#csvdownload', function () {
+            $.post("/PayTime/DownloadPolicy", { PolicyId: plcid, DownloadType: "CSV" }, function (data) {
+                if (data != "/PayTime/ErrorPage") {
+                    window.location = '/Downloads/' + data;
+                }
+                else {
+                    window.location = data;
+                }
+            });
+        });
+        $("#tblHrpolicy").on('click', '#xmldownload', function () {
+            $(this).attr("href", "/PayTime/DownloadXMLPolicy?PolicyId=" + plcid + "");
+        });
+        $("#tblHrpolicy").on('click', '#jsondownload', function () {
+            $(this).attr("href", "/PayTime/DownloadTextPolicy?PolicyId=" + plcid + "");
+        });
+        window.onload = function () {
+            timeSpentOnPage();
+        }
+        $(window).on("beforeunload", function () {
+            if (operation == "" || operation == null || operation == '') {
+                operation = "View HR Policy";
+            }
+            var url = '@_webapiurl' + '/DashBoard/AddAnalyticsUser';
+            var timeSpent = timeSpentOnPage();
+            analyticsDataUsage(url, '@_dbName', form, '@_tokan', count, operation, timeSpent)
+        })
+
+    });
+
+    //***********************************frmattndpopup Model Steps Show/Hide with BtnTab for Fixed Footer***********************************//
+    function HrStep1ShowHide() {
+
+        //*****show/Hide setup-content perticular step*****//
+        $("#s-1").css("display", "block");
+        $("#s-2").css("display", "none");
+        $("#s-3").css("display", "none");
+        $("#s-4").css("display", "none");
+
+        //For Highlight pericualr stepwizard-step
+        $("#s1").addClass("btn-primary");
+        $("#s2").removeClass("btn-primary");
+        $("#s3").removeClass("btn-primary");
+        $("#s4").removeClass("btn-primary");
+
+        //For click perticular stepwizard-step
+        $("#s1").removeClass("disabled");
+        $("#s2").addClass("disabled");
+        $("#s3").addClass("disabled");
+        $("#s4").addClass("disabled");
+
+        //*****Show/Hide Step perticular step Btntab*****//
+        $("#FrstTabBtnDiv").css("display", "block");
+        $("#SecondTabBtnDiv").css("display", "none");
+        $("#ThirdTabBtnDiv").css("display", "none");
+        $("#FourthTabBtnDiv").css("display", "none");
+    }
+
+    function HrStep2ShowHide() {
+
+        //*****show/Hide setup-content perticular step*****//
+        $("#s-2").css("display", "block");
+        $("#s-1").css("display", "none");
+        $("#s-3").css("display", "none");
+        $("#s-4").css("display", "none");
+
+        //For Highlight pericualr stepwizard-step
+        $("#s2").addClass("btn-primary");
+        $("#s1").removeClass("btn-primary");
+        $("#s3").removeClass("btn-primary");
+        $("#s4").removeClass("btn-primary");
+
+        //For click perticular stepwizard-step
+        $("#s2").removeClass("disabled");
+        $("#s1").removeClass("disabled");
+        $("#s3").addClass("disabled");
+        $("#s4").addClass("disabled");
+
+        //*****Show/Hide Step perticular step Btntab*****//
+        $("#SecondTabBtnDiv").css("display", "block");
+        $("#FrstTabBtnDiv").css("display", "none");
+        $("#ThirdTabBtnDiv").css("display", "none");
+        $("#FourthTabBtnDiv").css("display", "none");
+    }
+
+    function HrStep3ShowHide() {
+
+        //*****show/Hide setup-content perticular step*****//
+        $("#s-3").css("display", "block");
+        $("#s-1").css("display", "none");
+        $("#s-2").css("display", "none");
+        $("#s-4").css("display", "none");
+
+        //For Highlight pericualr stepwizard-step
+        $("#s3").addClass("btn-primary");
+        $("#s1").removeClass("btn-primary");
+        $("#s2").removeClass("btn-primary");
+        $("#s4").removeClass("btn-primary");
+
+        //For click perticular stepwizard-step
+        $("#s3").removeClass("disabled");
+        $("#s1").removeClass("disabled");
+        $("#s2").removeClass("disabled");
+        $("#s4").addClass("disabled");
+
+        //*****Show/Hide Step perticular step Btntab*****//
+        $("#ThirdTabBtnDiv").css("display", "block");
+        $("#FrstTabBtnDiv").css("display", "none");
+        $("#SecondTabBtnDiv").css("display", "none");
+        $("#FourthTabBtnDiv").css("display", "none");
+    }
+
+    function HrStep4ShowHide() {
+
+        //*****show/Hide setup-content perticular step*****//
+        $("#s-4").css("display", "block");
+        $("#s-1").css("display", "none");
+        $("#s-2").css("display", "none");
+        $("#s-3").css("display", "none");
+
+        //For Highlight pericualr stepwizard-step
+        $("#s4").addClass("btn-primary");
+        $("#s1").removeClass("btn-primary");
+        $("#s2").removeClass("btn-primary");
+        $("#s3").removeClass("btn-primary");
+
+        //For click perticular stepwizard-step
+        $("#s4").removeClass("disabled");
+        $("#s1").removeClass("disabled");
+        $("#s2").removeClass("disabled");
+        $("#s3").removeClass("disabled");
+
+        //*****Show/Hide Step perticular step Btntab*****//
+        $("#FourthTabBtnDiv").css("display", "block");
+        $("#FrstTabBtnDiv").css("display", "none");
+        $("#SecondTabBtnDiv").css("display", "none");
+        $("#ThirdTabBtnDiv").css("display", "none");
+    }
+
+    //For click perticular stepwizard-step
+    function AllHrstepsClicable() {
+        $("#s1").removeClass("disabled");
+        $("#s2").removeClass('disabled');
+        $("#s3").removeClass('disabled');
+        $("#s4").removeClass('disabled');
+    }
+    //******************************END********************************//
+
+    function ruleclear() {
+        $("#PolicyId").val(0);
+        $("#PolicyName").val("");
+        //Attendance Rule
+
+        //$("#allerror").prop('checked', false);
+        //$("#errorwh").prop('checked', false);
+        $("#AllErrorCase").val(0);
+        $("#ErrorCaseWH").val(0);
+        $("#HdLate").val(0);
+        $("#HdEd").val(0);
+        $("#HdLateorEd").val(0);
+        $("#ALate").val(0);
+        $("#AED").val(0);
+        $("#ALateorED").val(0);
+        $("#TotalHrafterStatus").prop('checked', false);
+        $("#TotalHrafterStatus").val(0);
+        $("#TotalHrbeforeStatus").prop('checked', false);
+        $("#TotalHrbeforeStatus").val(0);
+        $("#LateInMin").val(0);
+        $("#EDMin").val(0);
+
+        //Attendance Parameter
+
+        $("#CompanyIdAT").val(0);
+        $("#BranchIdAT").val(0);
+        $("#MaxOutDur").val(15);
+        $("#TimeBetPunch").val(0);
+        $("#GraceLateIN").val(0);
+        $("#GraceEarlyOUT").val(0);
+        $("#ApplicationMode").val("AUTO");
+        $("#MonthlyRptStaDay").val(1);
+        $("#MfsPopTime").val("");
+        $("#MfsAuthMode").val(0);
+        $("#WeekOffOTHour").val(0);
+        $("#HolidayOffOTHour").val(0);
+        $("#OTMinHour").val(0);
+        $("#OTFormula").val(0);
+        $("#OTAllowWO").prop('checked', false);
+        $("#OTAllowHO").prop('checked', false);
+        $("#NotPresentInMnth").prop('checked', false);;
+        $("#Wbackup").prop('checked', false);
+        $("#Dbackup").prop('checked', false);
+        $("#Issedwrule").prop('checked', false);
+
+        //Employee
+        $("#EmpWeekOff").val(0);
+        $("#EmpSecondWeekOff").val(0);
+        //        $("#EmpSecondWeekOffRule").prop('disabled', true);
+        //     $("#EmpSecondWeekOffRule").val(0);
+        $("#EmpSecondWeekOffRule1").prop('checked', false);
+        $("#EmpSecondWeekOffRule2").prop('checked', false);
+        $("#EmpSecondWeekOffRule3").prop('checked', false);
+        $("#EmpSecondWeekOffRule4").prop('checked', false);
+        $("#EmpSecondWeekOffRule5").prop('checked', false);
+
+        $("#EmpSecondWeekOffRule1").prop('disabled', true);
+        $("#EmpSecondWeekOffRule2").prop('disabled', true);
+        $("#EmpSecondWeekOffRule3").prop('disabled', true);
+        $("#EmpSecondWeekOffRule4").prop('disabled', true);
+        $("#EmpSecondWeekOffRule5").prop('disabled', true);
+
+
+
+        $("#EmpHalfDayRule1").prop('checked', false);
+        $("#EmpHalfDayRule2").prop('checked', false);
+        $("#EmpHalfDayRule3").prop('checked', false);
+        $("#EmpHalfDayRule4").prop('checked', false);
+        $("#EmpHalfDayRule5").prop('checked', false);
+
+        $("#EmpHalfDayRule1").prop('disabled', true);
+        $("#EmpHalfDayRule2").prop('disabled', true);
+        $("#EmpHalfDayRule3").prop('disabled', true);
+        $("#EmpHalfDayRule4").prop('disabled', true);
+        $("#EmpHalfDayRule5").prop('disabled', true);
+
+
+
+        $("#EmpHalfDay").val(0);
+        $("#EmpHalfDayRule").prop('disabled', true);
+        $("#EmpHalfDayRule").val(0);
+
+        $("#EmpAllowOT").val(0);
+        $("#PolicyName").removeClass('field_error');
+        $("#MaxOutDur").removeClass('field_error');
+        $("#TimeBetPunch").removeClass('field_error');
+        $("#GraceLateIN").removeClass('field_error');
+        $("#GraceEarlyOUT").removeClass('field_error');
+        $("#ApplicationMode").removeClass('field_error');
+        $("#MonthlyRptStaDay").removeClass('field_error');
+        $("#OTMinHour").removeClass('field_error');
+        $("#WeekOffOTHour").removeClass('field_error');
+        $("#HolidayOffOTHour").removeClass('field_error');
+        $("#LateInMin").removeClass('field_error');
+        $("#EDMin").removeClass('field_error');
+        $("#HdLate").removeClass('field_error');
+        $("#HdEd").removeClass('field_error');
+        $("#HdLateorEd").removeClass('field_error');
+        $("#ALate").removeClass('field_error');
+        $("#AED").removeClass('field_error');
+        $("#ALateorED").removeClass('field_error');
+        $('input[name="IssedwruleType"]').attr('checked', false);
+        $('input[name="OTFormula1"]').attr('checked', false);
+
+        //  $("#s2").attr("disabled", "disabled");
+
+
+        //var nextStepWizard = $('div.setup-panel div a[href="#s-1"]').parent().children("a");
+        //nextStepWizard.removeAttr('disabled').trigger('click');
+
+        //$("#s2").unbind("click");
+
+        HrStep1ShowHide();
+    }
+</script>
+<style type="text/css">
+    .connecting_line {
+        height: 1px;
+        background: #295097;
+        position: absolute;
+        width: 90%;
+        margin: 0 auto;
+        left: 0;
+        right: 0;
+        top: 50%;
+    }
+
+    .or_circle {
+        position: absolute;
+        top: 0px;
+        left: 48%;
+        width: 32px;
+        height: 32px;
+        background-color: #295097;
+        color: #ffffff;
+        border-radius: 25px !important;
+        font-size: 14px;
+        padding: 6px;
+        margin-top: 10px;
+        border: 1px solid #295097;
+    }
+</style>
+<div class="page-bar">
+    @if (_RoleId == 1 || _RoleId == 6805 || _RoleId == 6806)
+    {
+        <ul class="page-breadcrumb">
+            <li>
+                <a href="@(isClientDBMatchFlag == "True" ? "/Admin/AdminDashboard" : "/Dashboard/AdminDashboard")"><i class="fa-regular fa-house"></i></a>
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> HR Policy</span>
+            </li>
+        </ul>
+    }
+    else
+    {
+        <ul class="page-breadcrumb">
+            <li>
+                <a href="/Dashboard/EmployeeDashboard"><i class="fa-regular fa-house"></i></a>
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> HR Policy</span>
+            </li>
+        </ul>
+    }
+    <div class="page-toolbar">
+        @if (obj.CanAdd)
+        {
+            <div class="clearfix">
+
+                <a href="javascript:void(0)" id="btnCreateHRPolicy" class="btn icon_transparent_btn tooltips" data-placement="left" data-original-title="Create Policy"><i class="fa-light fa-gavel"></i></a>
+                <span class="btn btn-circle btn-icon-only">OR</span>
+                <a href="/Paytime/Templates" id="btntemplates" class="btn icon_transparent_btn tooltips" data-placement="left" data-original-title="Use Templates"><i class="fa-light fa-file"></i></a>
+            </div>
+
+        }
+    </div>
+</div>
+@if (obj.CanView)
+{
+    <div class="portlet">
+        <div class="portlet-body">
+            <div class="row">
+                <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                    @if (ViewBag.PolicyGetAll.Count > 0)
+                    {
+                        <div class="table-responsive" id="tableResponsive">
+                            <table id="tblHrpolicy" class="new_datatbl table table-striped table-bordered table-hover  order-column ">
+                                <thead>
+                                    <tr>
+                                        <th style="display:none;">Sr. No</th>
+                                        <th hidden>Policy ID</th>
+                                        <th>Policy Name</th>
+                                        <th style="width: 10%;">Action</th>
+                                    </tr>
+                                </thead>
+                                @{int n = 1;}
+                                <tbody>
+                                    @foreach (var item in ViewBag.PolicyGetAll)
+                                    {
+                                        <tr>
+                                            <td style="display:none;">@n</td>
+                                            <td hidden id="poid">@item.PolicyId</td>
+                                            <td>@item.PolicyName</td>
+                                            <td class="tbl_btn">
+                                                @if (_RoleId == 1)
+                                                {
+                                                    <a class="editclass seagreen_btnnew tooltips" data-placement="top" data-original-title="Edit">
+                                                        <i class="fa-regular fa-pen-to-square"></i>
+                                                    </a>
+                                                }
+                                                else if (_RoleId == 6805 && obj.CanEdit && (item.CompanyID != 0 && item.CompanyID == _cmpid))
+                                                {
+                                                    <a class="editclass seagreen_btnnew tooltips" title="Edit">
+                                                        <i class="fa-regular fa-pen-to-square"></i>
+                                                    </a>
+                                                }
+                                                else if (_RoleId == 6806 && obj.CanEdit && (item.CompanyID != 0 && item.BranchID == _branchid))
+                                                {
+                                                    <a class="editclass seagreen_btnnew tooltips" data-placement="top" data-original-title="Edit">
+                                                        <i class="fa-regular fa-pen-to-square"></i>
+                                                    </a>
+                                                }
+                                                else if (_RoleId > 1 && obj.CanEdit && _RoleId != 6805 && _RoleId != 6806)
+                                                {
+                                                    <a class="editclass seagreen_btnnew tooltips" data-placement="top" data-original-title="Edit">
+                                                        <i class="fa-regular fa-pen-to-square"></i>
+                                                    </a>
+                                                }
+                                                <a class="previewclass blue_btnnew tooltips" data-placement="top" data-original-title="View"><i class="fa-regular fa-eye"></i></a>
+                                                @*@if (obj.CanExport)
+                                                                            {
+                                                                                <div class="btn-group ">
+                                                                                    <div class="pull-right">
+                                                                                        <a class="btn btn-xs green-dark dropdown-toggle downloadClass" href="" data-toggle="dropdown">
+                                                                                            Export
+                                                    <i class="fa-light fa-angle-down"></i>
+                                                                                        </a>
+                                                                                        <ul class="dropdown-menu pull-right">
+                                                                                            <li>
+                                                                                                <a href="" id="pdfdownload">
+                                                            <i class="fa-light fa-file-pdf"></i> PDF
+                                                                                                </a>
+                                                                                                </li>
+                                                                                            <li>
+                                                                                                <a href="" id="exceldownload">
+                                                            <i class="fa-regular fa-file-excel"></i> XLS
+                                                                                                </a>
+                                                                                            </li>
+                                                                                            <li>
+                                                                                                <a href="" id="csvdownload">
+                                                            <i class="fa-regular fa-file-excel"></i>CSV
+                                                                                                </a>
+                                                                                            </li>
+                                                                                            <li>
+                                                                                                <a href="" id="xmldownload">
+                                                            <i class="fa-light fa-file-code"></i>XML
+                                                                                                </a>
+                                                                                            </li>
+                                                                                            <li>
+                                                                                                <a href="" id="jsondownload">
+                                                            <i class="fa-light fa-file-lines"></i>JSON
+                                                                                                </a>
+                                                                                            </li>
+                                                                                            <li>
+                                                                                                <a href="javascript:;">
+                                                            <i class="fa-regular fa-print"></i>Print Preview
+                                                                                                </a>
+                                                                                            </li>
+                                                                                            <li>
+                                                                                                <a href="javascript:;">
+                                                            <i class="fa-regular fa-print"></i>Print
+                                                                                                </a>
+                                                                                            </li>
+                                                                                        </ul>
+                                                                                    </div>
+                                                                                </div>
+                                                                }*@
+                                            </td>
+                                        </tr>
+                                        n++;
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    else
+                    {
+                        <div id="NotificationGrid-empty">
+                            <div class="datanotfound">
+                                <img src="~/assets/images/emptyscreen_1.png" height="148" width="280" alt="Nodata Found Icon">
+                                <p class="datanotfound_title">No data found</p> <!-- titleText -->
+                                <p class="">No entries found. Please add a record to get started.</p><!-- subText -->
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <div id="frmattndpopup" class="modal fade bs-modal-lg" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog modal-lg">
+            <!-- Modal content-->
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    <h4 class="modal-title">HR Policy</h4>
+                </div>
+
+                @using (Html.BeginForm("HRPolicy", "PayTime", FormMethod.Post))
+                {
+                    <div class="modal-body">
+                        <div class="stepwizard">
+                            <div class="stepwizard-row setup-panel">
+                                <div class="stepwizard-step">
+                                    <a href="#s-1" id="s1" type="button" class="btn btn-primary btn-circle"><i class="fa-regular fa-user "></i> Employment</a>
+                                </div>
+                                <div class="stepwizard-step">
+                                    <a href="#s-2" id="s2" type="button" class="btn btn-default btn-circle disabled"><i class="fa-light fa-arrow-right-arrow-left"></i> Shift Calculation</a>
+                                </div>
+                                <div class="stepwizard-step">
+                                    <a href="#s-3" id="s3" type="button" class="btn btn-default btn-circle disabled"><i class="fa-regular fa-clock"></i> Overtime Calculation</a>
+                                </div>
+                                <div class="stepwizard-step">
+                                    <a href="#s-4" id="s4" type="button" class="btn btn-default btn-circle disabled"><i class="fa-regular fa-file-lines"></i> Attendance Rule</a>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="setup-content form" id="s-1">
+                            <div class="modal-card">
+                                <fieldset>
+                                    <div class="row">
+                                        <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12" hidden>
+                                            <div class="form-group">
+                                                <input type="text" id="PolicyId" name="PolicyId" value="0" class="form-control input-sm">
+                                                <input type="text" id="ModifyBy" name="ModifyBy" value="@_UserId" class="form-control input-sm">
+                                                @*<input type="text" id="ModifyBy" name="ModifyBy" value="@_UserId" class="form-control input-sm">*@
+                                            </div>
+                                        </div>
+                                        <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                                            <div class="form-group">
+                                                <label class="control-label">Policy Name <span class="required" aria-required="true"> * </span></label>
+                                                <input type="text" id="PolicyName" name="PolicyName" required="" class="form-control input-sm" placeholder="Enter Policy Name" maxlength="50">
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                                            <h4 class="stepwizard_sub_title">Employee Rules</h4>
+                                        </div>
+                                        <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                            <div class="form-group">
+                                                <label>First Week Off </label>
+                                                <a class="tooltips" data-placement="top" title="Select default week off day">
+                                                    <i class="fa-regular fa-circle-info"></i>
+                                                </a>
+                                                <select class="form-control input-sm" id="EmpWeekOff" name="EmpWeekOff">
+                                                    <option value=0 selected>Select First Week Off</option>
+                                                    <option value=1>Sunday</option>
+                                                    <option value=2>Monday</option>
+                                                    <option value=3>Tuesday</option>
+                                                    <option value=4>Wednesday</option>
+                                                    <option value=5>Thursday</option>
+                                                    <option value=6>Friday</option>
+                                                    <option value=7>Saturday</option>
+                                                    @*<option value=8>Sunday</option>*@
+                                                </select>
+                                                <span class="help-block error_help_block" hidden id="spEmpWeekOff"></span>
+                                            </div>
+                                        </div>
+                                        <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                            <div class="form-group">
+                                                <label>Second Week Off</label>
+                                                <a class="tooltips" data-placement="top" title="If applicable than please select second weekoff">
+                                                    <i class="fa-regular fa-circle-info"></i>
+                                                </a>
+                                                <select class="form-control input-sm" id="EmpSecondWeekOff" name="EmpSecondWeekOff">
+                                                    <option value=0 selected>Select Second Week Off</option>
+                                                    <option value=1>Sunday</option>
+                                                    <option value=2>Monday</option>
+                                                    <option value=3>Tuesday</option>
+                                                    <option value=4>Wednesday</option>
+                                                    <option value=5>Thursday</option>
+                                                    <option value=6>Friday</option>
+                                                    <option value=7>Saturday</option>
+                                                </select>
+                                                <span class="help-block error_help_block" hidden id="spEmpSecondWeekOff"></span>
+                                            </div>
+                                        </div>
+                                        <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                            <div class="form-group">
+                                                <label>Half Day</label>
+                                                <a class="tooltips" data-placement="right" title="If applicable than please select half day">
+                                                    <i class="fa-regular fa-circle-info"></i>
+                                                </a>
+                                                <select class="form-control input-sm" id="EmpHalfDay" name="EmpHalfDay">
+                                                    <option value=0 selected>Select HalfDay</option>
+                                                    <option value=1>Sunday</option>
+                                                    <option value=2>Monday</option>
+                                                    <option value=3>Tuesday</option>
+                                                    <option value=4>Wednesday</option>
+                                                    <option value=5>Thursday</option>
+                                                    <option value=6>Friday</option>
+                                                    <option value=7>Saturday</option>
+                                                </select>
+                                                <span class="help-block error_help_block" hidden id="spEmpHalfDay"></span>
+                                            </div>
+                                        </div>
+                                        <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                            <div class="form-group">
+                                                <label>Allow OT </label>
+                                                <a class="tooltips" data-placement="top" title="Specify wheather over time is allowed or not">
+                                                    <i class="fa-regular fa-circle-info"></i>
+                                                </a>
+                                                <select class="form-control input-sm" id="EmpAllowOT" name="EmpAllowOT">
+                                                    <option value="0" selected>Select Allow OT</option>
+                                                    <option value="1">Yes</option>
+                                                    <option value="2">No</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                            <div class="form-group">
+                                                <label>Second Week Off Rule</label>
+                                                <a class="tooltips" data-placement="top" title="Select which day of month is applicable for second week off">
+                                                    <i class="fa-regular fa-circle-info"></i>
+                                                </a>
+                                                <div class="check_box" id="checkboxpanel">
+                                                    @*<label class="mt-checkbox mt-checkbox-outline">ALL<input type="checkbox" value="0" name="emptempweekoff" id="EmpSecondWeekOffRule" /><span></span></label>*@
+                                                    <label class="mt-checkbox mt-checkbox-outline">First<input type="checkbox" value="1" name="emptempweekoff" id="EmpSecondWeekOffRule1" /><span></span></label>
+                                                    <label class="mt-checkbox mt-checkbox-outline">Second<input type="checkbox" value="2" name="emptempweekoff" id="EmpSecondWeekOffRule2" /><span></span></label>
+                                                    <label class="mt-checkbox mt-checkbox-outline">Third<input type="checkbox" value="3" name="emptempweekoff" id="EmpSecondWeekOffRule3" /><span></span></label>
+                                                    <label class="mt-checkbox mt-checkbox-outline">Fourth<input type="checkbox" value="4" name="emptempweekoff" id="EmpSecondWeekOffRule4" /><span></span></label>
+                                                    <label class="mt-checkbox mt-checkbox-outline">Fifth<input type="checkbox" value="5" name="emptempweekoff" id="EmpSecondWeekOffRule5" /><span></span></label>
+                                                    @*<select class="form-control input-sm" id="EmpSecondWeekOffRule" name="EmpSecondWeekOffRule">
+                                                            <option value="0" disabled selected>Select Second Week off Rule</option>
+                                                            <option value="1">None</option
+                                                            <option value="1">All</option>
+                                                            <option value="2">2,4</option>
+                                                            <option value="3">1,3,5</option>
+                                                            <option value="4">1,3</option>
+                                                            <option value="5">2,3</option>
+                                                        </select>*@
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                            <div class="form-group">
+                                                <label>HalfDay Rule</label>
+                                                <a class="tooltips" data-placement="top" title="Select which day of month is applicable for half day">
+                                                    <i class="fa-regular fa-circle-info"></i>
+                                                </a>
+                                                <div class="check_box" id="checkboxHalfDay">
+                                                    @*<label class="mt-checkbox mt-checkbox-outline">ALL<input type="checkbox" value="0" name="emptempweekoff" id="EmpSecondWeekOffRule" /><span></span></label>*@
+                                                    <label class="mt-checkbox mt-checkbox-outline">First<input type="checkbox" value="1" name="emphalfdayoff" id="EmpHalfDayRule1" /><span></span></label>
+                                                    <label class="mt-checkbox mt-checkbox-outline">Second<input type="checkbox" value="2" name="emphalfdayoff" id="EmpHalfDayRule2" /><span></span></label>
+                                                    <label class="mt-checkbox mt-checkbox-outline">Third<input type="checkbox" value="3" name="emphalfdayoff" id="EmpHalfDayRule3" /><span></span></label>
+                                                    <label class="mt-checkbox mt-checkbox-outline">Fourth<input type="checkbox" value="4" name="emphalfdayoff" id="EmpHalfDayRule4" /><span></span></label>
+                                                    <label class="mt-checkbox mt-checkbox-outline">Fifth<input type="checkbox" value="5" name="emphalfdayoff" id="EmpHalfDayRule5" /><span></span></label>
+                                                    @*<select class="form-control input-sm" id="EmpHalfDayRule" name="EmpHalfDayRule">
+                                                            <option value="0" disabled selected>Select Half Day Rule</option>
+                                                            <option value="1">None</option>
+                                                            <option value="1">All</option>
+                                                            <option value="2">2,4</option>
+                                                            <option value="3">1,3,5</option>
+                                                            <option value="4">1,3</option>
+                                                            <option value="5">2,3</option>
+                                                        </select>*@
+                                                </div>
+                                            </div>
+                                        </div>
+                                        @*<div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                                                                    <hr class="save_hr_line" />
+                                            <button class="btn nextBtn next_btn" type="button" id="frstNext"> Next <i class="fa-light fa-angle-right"></i></button>
+                                                                </div>*@
+                                    </div>
+                                </fieldset>
+                            </div>
+                        </div>
+
+                        <div class=" setup-content form" id="s-2">
+                            <div class="modal-card">
+                                <fieldset>
+                                    <div class="row">
+                                        <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                                            <h4 class="stepwizard_sub_title">Shift Calculation Formula</h4>
+                                        </div>
+                                        <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                            <div class="form-group">
+                                                <label class="control-label no_position">OUT Punch Accepted Within </label>
+                                                <a class="tooltips" data-placement="top" title="Specify time allowed to accept out punch">
+                                                    <i class="fa-regular fa-circle-info"></i>
+                                                </a>
+                                                <input type="text" class="form-control input-sm" name="MaxOutDur" id="MaxOutDur">
+                                                <label>(Hrs.) Not > 24hrs.</label>
+                                            </div>
+                                        </div>
+                                        <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                            <div class="form-group">
+                                                <label class=" control-label no_position">Time Duration Between Two Punches </label>
+                                                <a class="tooltips" data-placement="top" title="Specify minimum time required between two punches">
+                                                    <i class="fa-regular fa-circle-info"></i>
+                                                </a>
+                                                <input type="text" class="form-control input-sm" name="TimeBetPunch" id="TimeBetPunch">
+                                                <label>(Minutes)</label>
+                                            </div>
+                                        </div>
+                                        <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                            <div class="form-group">
+                                                <label class=" control-label no_position">Grace Time For Late IN </label>
+                                                <a class="tooltips" data-placement="top" title="Specify Grace time allowed to punch in">
+                                                    <i class="fa-regular fa-circle-info"></i>
+                                                </a>
+                                                <input type="text" class="form-control input-sm" name="GraceLateIN" id="GraceLateIN">
+                                                <label>(Minutes)</label>
+                                            </div>
+                                        </div>
+                                        <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                            <div class="form-group">
+                                                <label class="control-label no_position">Grace Time For Early OUT</label>
+                                                <a class="tooltips" data-placement="top" title="specify grace time allowed to puch out">
+                                                    <i class="fa-regular fa-circle-info"></i>
+                                                </a>
+                                                <input type="text" class="form-control input-sm" name="GraceEarlyOUT" id="GraceEarlyOUT">
+                                                <label>(Minutes)</label>
+                                            </div>
+                                        </div>
+                                        <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                            <div class="form-group">
+                                                <label class="control-label no_position">Application Mode <span class="required" aria-required="true"> * </span> </label>
+                                                <a class="tooltips" data-placement="top" title="Default application mode">
+                                                    <i class="fa-regular fa-circle-info"></i>
+                                                </a>
+                                                <select class="form-control input-sm" id="ApplicationMode" name="ApplicationMode">
+                                                    @*<option value="" disabled>Select Mode</option>*@
+                                                    <option value="AUTO" selected>Auto</option>
+                                                    <option value="FIX">Fix</option>
+                                                    <option value="MANUAL">Manual</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                        <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12" hidden>
+                                            <div class="form-group row">
+                                                <label class="control-label">Monthly Report Start Day </label>
+                                                <a class="tooltips" data-placement="top" title="Specify from which date monthly reports to be generated">
+                                                    <i class="fa-regular fa-circle-info"></i>
+                                                </a>
+                                                <input type="text" class="form-control input-sm" name="MonthlyRptStaDay" id="MonthlyRptStaDay">
+                                                <span class="help-block" style="color:red;" hidden id="spMnthlyStart"></span>
+                                            </div>
+                                        </div>
+                                        <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12" hidden>
+                                            <div class="form-group">
+                                                <label class="check mt-checkbox mt-checkbox-outline">
+                                                    <input name="Wbackup" id="Wbackup" type="checkbox">Weekly backup on application close.
+                                                    <span></span>
+                                                </label>
+                                            </div>
+                                        </div>
+                                        <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12" hidden>
+                                            <div class="form-group">
+                                                <label class="check mt-checkbox mt-checkbox-outline">
+                                                    <input name="Dbackup" id="Dbackup" type="checkbox">Daily backup on application close.
+                                                    <span></span>
+                                                </label>
+                                            </div>
+                                        </div>
+                                        @*<div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                                                        <hr class="save_hr_line" />
+                                            <button class="btn prevbtn prev_btn" type="button"><i class="fa-regular fa-angle-left"></i> Prev</button>
+                                            <button class="btn nextBtn next_btn" type="button" id="SecondNext"> Next <i class="fa-light fa-angle-right"></i></button>
+                                                    </div>*@
+                                    </div>
+                                </fieldset>
+                            </div>
+                        </div>
+
+                        <div class="setup-content form" id="s-3">
+                            <div class="modal-card">
+                                <fieldset>
+                                    <div class="row">
+                                        <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                                            <h4 class="stepwizard_sub_title">Overtime Calculation Formula </h4>
+                                        </div>
+                                        <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                            <div class="form-group">
+                                                <label class=" control-label no_position">Minimum Hour For OverTime Start</label>
+                                                <a class="tooltips" data-placement="top" title="Specify minimum hours required for over time on normal shift day">
+                                                    <i class="fa-regular fa-circle-info"></i>
+                                                </a>
+                                                <input type="text" class="form-control input-sm" name="OTMinHour" id="OTMinHour" value="0">
+                                                <span>(Minutes)</span>
+                                                <span class="help-block error_help_block" hidden id="spOTMinHour"></span>
+                                            </div>
+                                            <input type="hidden" id="OTFormula" name="OTFormula" />
+                                        </div>
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                            <div class="form-group radio_shift_box">
+                                                <label class="mt-radio mt-radio-outline ">
+                                                    Working Hrs - Shift Hrs
+                                                    <input value="1" name="OTFormula1" id="WhSh" type="radio" checked>
+                                                    <span></span>
+                                                </label>
+                                                <label class="mt-radio mt-radio-outline">
+                                                    Working Hrs - Present Hrs
+                                                    <input value="2" name="OTFormula1" id="WhPh" type="radio">
+                                                    <span></span>
+                                                </label>
+                                                <label class="mt-radio mt-radio-outline">
+                                                    After Shift End Time
+                                                    <input value="3" name="OTFormula1" id="AfEt" type="radio">
+                                                    <span></span>
+                                                </label>
+                                                <label class="mt-radio mt-radio-outline">
+                                                    Before Shift Start Time
+                                                    <input value="4" name="OTFormula1" id="BsSt" type="radio">
+                                                    <span></span>
+                                                </label>
+                                            </div>
+                                        </div>
+                                        <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                            <div class="form-group checkbox_with_input_box">
+                                                <label class="check mt-checkbox mt-checkbox-outline ">
+                                                    <input name="OTAllowWO" id="OTAllowWO" type="checkbox">Weekly Off Hour Calculated As OT Hour
+                                                    <span></span>
+                                                </label>
+                                                <a class="tooltips" data-placement="top" title="Specify minimum hours required for Over time on week off">
+                                                    <i class="fa-regular fa-circle-info"></i>
+                                                </a>
+                                                <input type="text" id="WeekOffOTHour" class="form-control input-sm" name="WeekOffOTHour" value="0" readonly />
+                                                <span class="help-block error_help_block" hidden id="spOTAllowWO"></span>
+                                            </div>
+                                            <div class="form-group checkbox_with_input_box">
+                                                <label class="check mt-checkbox mt-checkbox-outline ">
+                                                    <input name="OTAllowHO" id="OTAllowHO" type="checkbox">Holiday Off Hour Calculated As OT Hour
+                                                    <span></span>
+                                                </label>
+                                                <a class="tooltips" data-placement="top" title="Specify minimum hours required for Over time on holiday">
+                                                    <i class="fa-regular fa-circle-info"></i>
+                                                </a>
+                                                <input type="text" id="HolidayOffOTHour" class="form-control input-sm" value="0" name="HolidayOffOTHour" readonly />
+                                                <span class="help-block error_help_block" hidden id="spOTAllowHO"></span>
+                                            </div>
+                                        </div>
+                                        <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                                            <div class="form-group">
+                                                <label class="check mt-checkbox mt-checkbox-outline">
+                                                    <input name="NotPresentInMnth" id="NotPresentInMnth" type="checkbox">Calculated As Absent for Weekly Off & Holiday Off If Employee not Present for Whole Month
+                                                    <span></span>
+                                                </label>
+                                                <a class="tooltips" data-placement="top" title="Mark absent on week off and holidays, if employee not present for whole month">
+                                                    <i class="fa-regular fa-circle-info"></i>
+                                                </a>
+                                            </div>
+                                        </div>
+
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                                            <h4 class="stepwizard_sub_title">Is Allow Sandwich Rule</h4>
+                                        </div>
+                                        <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                                            <div class="form-group checkbox_with_input_box">
+                                                <label class="check mt-checkbox mt-checkbox-outline ">
+                                                    <input name="Issedwrule" id="Issedwrule" type="checkbox">Is Allow Sandwich Rule
+                                                    <span></span>
+                                                </label>
+                                            </div>
+
+                                            <div class="">
+                                                <div class="form-group radio_shift_box">
+                                                    <label class="mt-radio mt-radio-outline Hrpolicy">
+                                                        Week off or Holiday absent if prefix And suffix day absent
+                                                        <input value="1" name="IssedwruleType" id="RuleBothTB" type="radio">
+                                                        <span></span>
+                                                    </label>
+                                                    <label class="mt-radio mt-radio-outline Hrpolicy">
+                                                        Week off or Holiday absent if prefix Or suffix day absent
+                                                        <input value="2" name="IssedwruleType" id="RuleBoth" type="radio">
+                                                        <span></span>
+                                                    </label>
+                                                    <label class="mt-radio mt-radio-outline Hrpolicy">
+                                                        Week off or Holiday absent if prefix day absent
+                                                        <input value="3" name="IssedwruleType" id="RulePrefix" type="radio">
+                                                        <span></span>
+                                                    </label>
+                                                    <label class="mt-radio mt-radio-outline Hrpolicy">
+                                                        Week off or Holiday absent if suffix day absent
+                                                        <input value="4" name="IssedwruleType" id="RuleSuffix" type="radio">
+                                                        <span></span>
+                                                    </label>
+                                                </div>
+                                            </div>
+                                            @*<div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                                                            <hr class="save_hr_line" />
+                                                <button class="btn prevbtn prev_btn" type="button"><i class="fa-regular fa-angle-left"></i> Prev</button>
+                                                <button class="btn nextBtn next_btn" type="button" id="ThirdNext">Next <i class="fa-light fa-angle-right"></i></button>
+                                                        </div>*@
+                                        </div>
+                                    </div>
+
+                                </fieldset>
+                            </div>
+                        </div>
+
+                        <div class="setup-content form" id="s-4">
+                            <div class="modal-card">
+                                <fieldset>
+                                    <div class="row">
+                                        <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                            <h4 class="stepwizard_sub_title">Present</h4>
+                                            <div class="form-group check_noti_box box-tooltip">
+                                                <label class="mt-checkbox mt-checkbox-single mt-checkbox-outline">
+                                                    <input name="AllErrorCase" id="AllErrorCase" type="checkbox">Any Error Case
+                                                    <span></span>
+                                                </label>
+                                                <a class="tooltips" data-placement="top" title="Mark present in any error case">
+                                                    <i class="fa-regular fa-circle-info"></i>
+                                                </a>
+                                            </div>
+                                            <div class="form-group check_noti_box box-tooltip margin-bottom-0">
+                                                <label class="mt-checkbox mt-checkbox-single mt-checkbox-outline">
+                                                    <input name="ErrorCaseWH" id="ErrorCaseWH" type="checkbox"> Calculate HD/Present when error Case
+                                                    <span></span>
+                                                </label>
+                                                <a class="tooltips" data-placement="top" title="calculate attendance on error case">
+                                                    <i class="fa-regular fa-circle-info"></i>
+                                                </a>
+                                            </div>
+                                        </div>
+                                        <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                            <h4 class="stepwizard_sub_title">Half Day & absent </h4>
+                                            <div class="form-group minute_count_box">
+                                                <label>Count Late after Late in Minutes</label>
+                                                <input type="text" id="LateInMin" name="LateInMin" class="form-control">
+                                                <span class="help-block error_help_block" hidden id="spLateInMin"></span>
+                                            </div>
+                                            <div class="form-group minute_count_box margin-bottom-0">
+                                                <label>Count Early departure after Early Dept. In Minutes</label>
+                                                <input type="text" id="EDMin" name="EDMin" class="form-control">
+                                                <span class="help-block error_help_block" hidden id="spEDMin"></span>
+                                            </div>
+                                            @*<div class="form-group check_noti_box box-tooltip">
+                                                                    <label class="mt-checkbox mt-checkbox-single mt-checkbox-outline">
+                                                                        <input name="TotalhrsAbshalf" id="TotalhrsAbshalf" type="checkbox"> Full / half day will be calculated as per total hours
+                                                                        <span></span>
+                                                                    </label>
+                                                                    <a class="tooltips" data-placement="top" title="Full/half day will be calculated as per total hours">
+                                                <i class="fa-regular fa-circle-info"></i>
+                                                                    </a>
+                                                                </div>*@
+                                        </div>
+                                    </div>
+                                </fieldset>
+                            </div>
+                            <div class="modal-card">
+                                <fieldset>
+                                    <div class="row">
+                                        <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                            <h4 class="stepwizard_sub_title">Calculate Half Day If</h4>
+                                            <div class="form-group calculate_hd_box box-tooltip">
+                                                <label class="mt-radio mt-radio-outline">
+                                                    <div class="">Late Count<p>(Greater or Equal)</p></div>
+                                                    <input value="0" name="IFHalfDay" id="HdLatetxt" type="radio" checked>
+                                                    <span></span>
+                                                </label>
+                                                <a class="tooltips" data-placement="top" title="Specify number of late in allowed after which consider HALF DAY">
+                                                    <i class="fa-regular fa-circle-info"></i>
+                                                </a>
+                                                <input type="text" class="form-control" name="HdLate" id="HdLate" value="0" />
+                                                <span class="help-block error_help_block" hidden id="spHdLate"></span>
+                                            </div>
+                                            <div class="form-group calculate_hd_box box-tooltip">
+                                                <label class="mt-radio mt-radio-outline">
+                                                    <div class="">Early dept Count<p>(Greater or Equal)</p></div>
+                                                    <input value="1" name="IFHalfDay" id="HdEdtxt" type="radio">
+                                                    <span></span>
+                                                </label>
+                                                <a class="tooltips" data-placement="top" title="Specify number of early departure allowed after which consider HALF DAY">
+                                                    <i class="fa-regular fa-circle-info"></i>
+                                                </a>
+                                                <input type="text" class="form-control input-sm" name="HdEd" id="HdEd" readonly value="0" />
+                                                <span class="help-block error_help_block" hidden id="spHdEd"></span>
+                                            </div>
+                                            <div class="form-group calculate_hd_box box-tooltip">
+                                                <label class="mt-radio mt-radio-outline">
+                                                    <div class="">Late or Early Dept count<p>(Greater or Equal)</p></div>
+                                                    <input value="2" name="IFHalfDay" id="HdLateorEdtxt" type="radio">
+                                                    <span></span>
+                                                </label>
+                                                <a class="tooltips" data-placement="top" title="specify number of late in or early departure allowed after which consider HALF DAY">
+                                                    <i class="fa-regular fa-circle-info"></i>
+                                                </a>
+                                                <input type="text" class="form-control input-sm " name="HdLateorEd" id="HdLateorEd" readonly value="0" />
+                                                <span class="help-block error_help_block" hidden id="spHdLateorEd"></span>
+                                            </div>
+                                        </div>
+                                        <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                            <h4 class="stepwizard_sub_title">Calculate Absent If </h4>
+                                            <fieldset>
+                                                <div class="form-group calculate_a_box box-tooltip">
+                                                    <label class="mt-radio mt-radio-outline">
+                                                        <div class="">Late Count<p>(Greater or Equal)</p></div>
+                                                        <input value="0" name="Absent" id="ALatetxt" type="radio" checked>
+                                                        <span></span>
+                                                    </label>
+                                                    <a class="tooltips" data-placement="top" title="Specify number of late in allowed after which consider Absent">
+                                                        <i class="fa-regular fa-circle-info"></i>
+                                                    </a>
+                                                    <input type="text" class="form-control input-sm" id="ALate" name="ALate" value="0" />
+                                                    <span class="help-block error_help_block" hidden id="spALate"></span>
+                                                </div>
+                                                <div class="form-group calculate_a_box box-tooltip">
+                                                    <label class="mt-radio mt-radio-outline">
+                                                        <div class="">Early dept Count<p>(Greater or Equal)</p></div>
+                                                        <input value="1" name="Absent" id="AEDtxt" type="radio">
+                                                        <span></span>
+                                                    </label>
+                                                    <a class="tooltips" data-placement="top" title="Specify number of early departure allowed after which consider Absent.">
+                                                        <i class="fa-regular fa-circle-info"></i>
+                                                    </a>
+                                                    <input type="text" class="form-control input-sm " id="AED" name="AED" readonly value="0" />
+                                                    <span class="help-block error_help_block" hidden id="spAED"></span>
+                                                </div>
+                                                <div class="form-group calculate_a_box box-tooltip">
+                                                    <label class="mt-radio mt-radio-outline">
+                                                        <div class="">Late or Early Dept count<p>(Greater or Equal)</p></div>
+                                                        <input value="2" name="Absent" id="ALateorEDtxt" type="radio">
+                                                        <span></span>
+                                                    </label>
+                                                    <a class="tooltips" data-placement="top" title="specify number of late in or early departure allowed after which consider Absent">
+                                                        <i class="fa-regular fa-circle-info"></i>
+                                                    </a>
+                                                    <input type="text" class="form-control input-sm " id="ALateorED" name="ALateorED" value="0" readonly />
+                                                    <span class="help-block error_help_block" hidden id="spALateorED"></span>
+                                                </div>
+
+                                            </fieldset>
+                                        </div>
+                                        <div class="col-lg-12">
+                                            <div style="position: relative; height: 50px; margin-bottom: 20px;">
+                                                <div class="connecting_line"></div>
+                                                <div class="or_circle">OR</div>
+                                            </div>
+                                        </div>
+                                        <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                                            <h4 class="stepwizard_sub_title">
+                                                Attendance Relaxation Rules <a class="tooltips" data-placement="top" title="The `Count if half day` and `Count if absent` rules will no longer apply once the `attendance relaxation rules` are implemented. Both `Apply then minutes per day` and `Days per month` are mandatory for the attendance relaxation rules to take effect. If either of these values is zero, the relaxation rules will not be applied.">
+                                                    <i class="fa-regular fa-circle-info"></i>
+                                                </a>
+                                            </h4>
+                                            <div class="row">
+                                                <div class="col-lg-6">
+                                                    <div class="form-group margin-bottom-0">
+                                                        <label>Minutes Par day </label>
+                                                        <input type="text" id="EarlyInoutMin" name="EarlyInoutMin" class="form-control" maxlength="3">
+                                                        <span class="help-block error_help_block" hidden id="spEarlyInoutMin"></span>
+                                                    </div>
+                                                </div>
+                                                <div class="col-lg-6">
+                                                    <div class="form-group margin-bottom-0">
+                                                        <label>Day per Month </label>
+                                                        <input type="text" id="EarlyInoutday" name="EarlyInoutday" class="form-control" maxlength="2">
+                                                        <span class="help-block error_help_block" hidden id="spEarlyInoutday"></span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </fieldset>
+                            </div>
+                            <div class="modal-card">
+                                <fieldset>
+                                    <div class="row">
+                                        <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                                            <h4 class="stepwizard_sub_title">Total hour Calculation Rules</h4>
+                                            <div class="row">
+                                                <div class="col-lg-6">
+                                                    <div class="form-group margin-bottom-0">
+                                                        <label class="mt-checkbox mt-checkbox-single mt-checkbox-outline margin-bottom-0">
+                                                            <input type="checkbox" class="checkboxes" id="TotalHrafterStatus" name="TotalHrafterStatus" />After Shift Start Time
+                                                            <span></span>
+                                                        </label>
+                                                        <a class="tooltips" data-placement="top" title="Calculate working duration of employee only after shift start time">
+                                                            <i class="fa-regular fa-circle-info"></i>
+                                                        </a>
+                                                    </div>
+                                                </div>
+                                                <div class="col-lg-6">
+                                                    <div class="form-group margin-bottom-0">
+                                                        <label class="mt-checkbox mt-checkbox-single mt-checkbox-outline margin-bottom-0">
+                                                            <input type="checkbox" class="checkboxes" id="TotalHrbeforeStatus" name="TotalHrbeforeStatus" />Before Shift End Time
+                                                            <span></span>
+                                                        </label>
+                                                        <a class="tooltips" data-placement="top" title="Calculate working duration of employee only time shift end time">
+                                                            <i class="fa-regular fa-circle-info"></i>
+                                                        </a>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </fieldset>
+                            </div>
+                        </div>
+
+                    </div>
+
+                    <div class="modal-footer">
+
+                        <!-- First Tab Button -->
+                        <div class="row" id="FrstTabBtnDiv" style="display:none;">
+                            <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                                <button class="btn nextBtn next_btn" type="button" id="frstNext"> Next <i class="fa-light fa-angle-right"></i></button>
+                            </div>
+                        </div>
+
+                        <!-- Second Tab Button -->
+                        <div class="row" id="SecondTabBtnDiv" style="display:none;">
+                            <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                                <button class="btn prevbtn prev_btn" type="button" id="Secondprev"><i class="fa-regular fa-angle-left"></i> Prev</button>
+                                <button class="btn nextBtn next_btn" type="button" id="SecondNext"> Next <i class="fa-light fa-angle-right"></i></button>
+                            </div>
+                        </div>
+
+                        <!-- Third Tab Button -->
+                        <div class="row" id="ThirdTabBtnDiv" style="display:none;">
+                            <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                                <button class="btn prevbtn prev_btn" type="button" id="Thirdprev"><i class="fa-regular fa-angle-left"></i> Prev</button>
+                                <button class="btn nextBtn next_btn" type="button" id="ThirdNext">Next <i class="fa-light fa-angle-right"></i></button>
+                            </div>
+                        </div>
+
+                        <!-- Fourth Tab Button -->
+                        <div class="row" id="FourthTabBtnDiv" style="display:none;">
+                            <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                                <button class="btn prevbtn prev_btn" type="button" id="Fourthprev"><i class="fa-regular fa-angle-left"></i> Prev</button>
+                                <button type="submit" class=" btn save_btn" id="btnsubmit"> <i class="fa-light fa-floppy-disk"></i> Save</button>
+                            </div>
+                        </div>
+
+                    </div>
+                }
+
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    <span style="color:red">Unauthorized Access.</span>
+}
+<script>
+    $('.overlay').fadeIn('fast').delay(5000).fadeOut('slow');
+</script>
+
+

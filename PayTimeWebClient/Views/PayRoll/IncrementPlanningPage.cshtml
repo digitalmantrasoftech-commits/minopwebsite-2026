@@ -1,0 +1,2947 @@
+﻿@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@using System.Configuration;
+@{
+    ViewBag.Title = "Increment Planning";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiurlpayroll = ConfigurationManager.AppSettings["webapipaytimePayroll"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    string _companyid = string.Empty;
+    int _empid = 0;
+    if (_RoleId == 6805)
+    {
+        _companyid = HttpContext.Current.Session["ClientCompanyId"].ToString();
+    }
+    string _branchid = string.Empty;
+    if (_RoleId == 6806)
+    {
+        _companyid = HttpContext.Current.Session["ClientCompanyId"].ToString();
+        _branchid = HttpContext.Current.Session["BranchId"].ToString();
+        _empid = Convert.ToInt32(HttpContext.Current.Session["EmpId"].ToString());
+    }
+    if (_RoleId > 1 && _RoleId != 6805 && _RoleId != 6806)
+    {
+        _companyid = HttpContext.Current.Session["ClientCompanyId"].ToString();
+        _branchid = HttpContext.Current.Session["BranchId"].ToString();
+    }
+    string _isdateformat = HttpContext.Current.Session["IsDateFormat"].ToString();
+
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+    string _CheckCustomClientDBName = ConfigurationManager.AppSettings["CheckCustomClientDBName"].ToString();
+    string _dbName = HttpContext.Current.Session["DbName"].ToString();
+    int _CheckFastrackdb = 0;
+    if (_CheckCustomClientDBName.Contains(_dbName))
+    {
+        _CheckFastrackdb = 1;
+    }
+    string isClientDBMatchFlag = HttpContext.Current.Session["IsClientDBMatch"] != null
+    ? HttpContext.Current.Session["IsClientDBMatch"].ToString()
+    : "false"; // Default to "false" if the session is null
+}
+
+<script src="~/Scripts/Helpers/noDataHandler.js"></script>
+<link href="/Newlayout/css/payrollstructure.css" rel="stylesheet">
+<link href="~/AssetsNew/css/animate.css" rel="stylesheet" />
+
+<style type="text/css">
+    #emp_close:hover {
+        cursor: pointer;
+    }
+
+    .fixed-column {
+        width: 80px !important;
+        min-width: 80px !important;
+        right: 1px;
+        position: sticky !important;
+        background-color: #fff !important;
+        box-shadow: -2px 2px 4px 0px rgba(0, 0, 0, 0.20);
+    }
+</style>
+
+<script>
+    var cmpid = '@_companyid';
+    var branchid = '@_branchid';
+    var emprole = '@_RoleId';
+    var IncrementValueflag = 0;
+    var batch_id = 0;
+    var currentPolicySelected = 0;
+    var isViewbtnClicked = 0;
+    var flag = 0;
+    var IsIncrementmodepercentage = 1; //if 1 = Percentage, 2 = flatAmount
+    $(document).ready(function () {
+        var Company = [];
+        var Branch = [];
+        var Department = [];
+        var designation = [];
+        const startYear = new Date().getFullYear(); // Current financial year start
+        const transactionYears = 3; // Number of years to generate
+        const $dropdown = $("#financialYearDropdown");
+
+        disableWorkflow();
+
+        for (let i = 0; i < transactionYears; i++) {
+            const yearStart = startYear + i; // Increment year
+            const yearEnd = yearStart + 1;  // Next year
+            const financialYear = `${yearStart}-${yearEnd}`;
+            $dropdown.append(`<option value="${yearStart}-${yearEnd}">${financialYear}</option>`);
+        }
+
+        $('#EffectiveDatedivdp').datepicker({
+            format: "@_isdateformat", // Example: "dd-mm-yyyy"
+            //startDate: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+            autoclose: true,           // Automatically close after date selection
+             
+        }).datepicker('setDate', new Date()) // Set default date as current date
+         .on('changeDate', function (e) {
+             // Get the selected date
+             let selectedDate = e.date; // This is a Date object
+             let today = new Date();
+
+             // Normalize both dates to avoid time comparison issues
+             selectedDate.setHours(0, 0, 0, 0);
+             today.setHours(0, 0, 0, 0);
+             let selectedMonth = selectedDate.getMonth();
+             let selectedYear = selectedDate.getFullYear();
+             let currentMonth = today.getMonth();
+             let currentYear = today.getFullYear();
+             //  Example Condition: Check if selected date is in the past
+             if (selectedYear < currentYear ||
+                 (selectedYear === currentYear && selectedMonth < currentMonth)) {
+             //if (selectedDate < today) {
+                 $("#isArrearsdiv").show();
+                 $('#rbno2').prop('checked', true);
+                 $('#rbyes2').prop('checked', false);
+                 $("#isArrearsTypediv").hide();
+                 $('#InstallmentMonthdiv').hide();
+                 $("#ArrearsTypes").val('');
+                 $("#InstallmentMonth").val('');
+             } else {
+                 $("#isArrearsdiv").hide();
+                 $("#isArrearsTypediv").hide();
+                 $('#InstallmentMonthdiv').hide();
+                 $("#ArrearsTypes").val('');
+                 $("#InstallmentMonth").val('');
+                 $('input[name="rb2"]').prop('checked', false);
+
+             }
+         });
+
+        //$(document).ready(function () {
+        //    // Initialize the date picker
+        //    $('#EffectiveDate').datepicker({
+        //        format: 'dd-M-yyyy',
+        //        autoclose: true,
+        //    });
+
+        //    // Event listener for the financial year dropdown change
+        //    $('#financialYearDropdown').change(function () {
+        //        // Get the selected financial year
+        //        var selectedYear = $(this).val();
+
+        //        if (selectedYear !== "0") {
+        //            // Parse the start and end year from the selected financial year
+        //            var years = selectedYear.split('-');
+        //            var startYear = years[0];
+        //            var endYear = years[1];
+
+        //            // Define start date and end date
+        //            var startDate = startYear + '-04-01'; // Start date is April 1st of the start year
+        //            var endDate = endYear + '-03-31'; // End date is March 31st of the end year
+
+        //            // Update the date picker with the restricted range
+        //            $('#EffectiveDate').datepicker('setStartDate', startDate);
+        //            $('#EffectiveDate').datepicker('setEndDate', endDate);
+
+        //            // Reset the value if it's outside the range
+        //            $('#EffectiveDate').datepicker('update', ''); // Clear the current selection
+        //        } else {
+        //            // Reset the date picker if no financial year is selected
+        //            $('#EffectiveDate').datepicker('setStartDate', null);
+        //            $('#EffectiveDate').datepicker('setEndDate', null);
+        //            $('#EffectiveDate').datepicker('update', ''); // Clear the current selection
+        //        }
+        //    });
+        //});
+
+
+        var $Companyselect = $("#CompanyID").multiselect({
+            selectAllValue: 'multiselect-all',
+            enableCaseInsensitiveFiltering: true,
+            includeSelectAllOption: true,
+            allSelectedText: 'All Select',
+            enableFiltering: true,
+            maxHeight: '300',
+            buttonWidth: '100%',
+            enableClickableOptGroups: true,
+            nonSelectedText: 'Select Company'
+
+        });
+        var $Branchselect = $("#BranchIds").multiselect({
+            selectAllValue: 'multiselect-all',
+            enableCaseInsensitiveFiltering: true,
+            includeSelectAllOption: true,
+            allSelectedText: 'All Select',
+            enableFiltering: true,
+            maxHeight: '300',
+            buttonWidth: '100%',
+            enableClickableOptGroups: true,
+            nonSelectedText: 'Select Branch'
+
+        });
+
+        var $Departmentselect = $("#DeptIds").multiselect({
+            selectAllValue: 'multiselect-all',
+            enableCaseInsensitiveFiltering: true,
+            includeSelectAllOption: true,
+            allSelectedText: 'All Select',
+            enableFiltering: true,
+            maxHeight: '300',
+            buttonWidth: '100%',
+            enableClickableOptGroups: true,
+            nonSelectedText: 'Select Department',
+
+        });
+        //
+        var $DesignationId = $("#DesignationId").multiselect({
+            selectAllValue: 'multiselect-all',
+            enableCaseInsensitiveFiltering: true,
+            includeSelectAllOption: true,
+            allSelectedText: 'All Select',
+            enableFiltering: true,
+            maxHeight: '300',
+            buttonWidth: '100%',
+            enableClickableOptGroups: true,
+            nonSelectedText: 'Select Designation',
+
+        });
+
+        //var $Workflowselect = $("#WorkflowId").multiselect({
+        //    //selectAllValue: 'multiselect-all',
+        //    enableCaseInsensitiveFiltering: true,
+        //    //includeSelectAllOption: true,
+        //    //allSelectedText: 'All Select',
+        //    //enableFiltering: true,
+        //    maxHeight: '300',
+        //    buttonWidth: '100%',
+        //    //enableClickableOptGroups: true,
+        //    nonSelectedText: 'Select Workflow'
+
+        //});
+
+
+        $("#create_Incrementblock").show();
+        $("#batch_table_block").hide();
+        $("BackStrbtn").hide();
+
+
+        $("#BackStrbtn").on('click', function () {
+            $(".NotificationGrid-empty1").hide();
+            frmclear();
+            if (flag == 0) {
+                $("#filtercolumn_block").hide();
+                $("#main_bock").show();
+                $("#create_Incrementblock").show();
+                $("#BackStrbtn").hide();
+            }
+            else {
+                 $("#filtercolumn_block").hide();
+                 $("#BackStrbtn").hide();
+                 $("#main_bock").show();
+                 $("#batch_table_block").show();
+                 $("#AddStrfrmbtn").show();
+                 $("#Employee_dataTable").hide();
+                //$("#AddStrfrmbtn").show();
+                //$("#batch_table_block").show();
+                $("#tableResponsive1").hide();
+                $(".ForPlaning_selected_emp").hide();
+                $("#Employee_Table #dataTables_tbl_header").hide();
+                $("#tblbatchdetails #dataTables_tbl_header").show();
+                $("#policyDetailsBlock").hide();
+
+            }
+        });
+
+
+
+        $("body").on('click', '#Send_For_Approval_1', function () {
+            Status_Update_ForBatch(batch_id);
+        })
+
+
+        $("body").on('click', '#Send_For_Revision', function () {
+            Status_Update_ForBatch_Revise(batch_id);
+        })
+
+        $("body").on("change", '#selectall', function (e) {
+            if ($(this).is(":checked")) {
+                $("#Employee_dataTable .ClsChkEmp").each(function () {
+                    $(this).prop('checked', true);
+                });
+            } else {
+                $("#Employee_dataTable .ClsChkEmp").each(function () {
+                    $(this).prop('checked', false);
+                });
+            }
+        });
+        $("body").on('click', '#send_Approval', function () {
+            checkSession();
+
+            $.ajax({
+                type: "POST",
+                headers: { 'Authorization': '@_tokan' },
+                url: '@_webapiurlpayroll'+'SalaryIncrementPlanning/SendBatchForApproval?batchId=' + batch_id,
+                contentType: "application/json",
+                dataType: "json",
+                beforeSend: function () {
+                    $('#ajax_loader').show();
+                },
+                complete: function () {
+                    $('#ajax_loader').hide();
+                },
+                success: function (response) {
+
+                    if(response != null){
+                        if(response.Success == true){
+                            toastr.remove();
+                            toastr.success(response.Message);
+                            batchtable();
+                        }else{
+                            toastr.remove();
+                            toastr.error(response.Message);
+                        }
+                    }
+                },
+                error: function (xhr, status, error) {
+                    console.error("Failed to fetch data: ", error);
+                }
+            });
+        })
+        $("body").on('click','#emp_close',function () {
+            Employeetablebind(batch_id,1,1);
+            //isback=1, hideButton=1
+        });
+        $("#Employee_dataTable").on('click', '.Activeclass', function () {
+            const $backButtons = $('[id="Back_btn"]');
+            if ($backButtons.length > 1) {
+                $backButtons.slice(1).remove();
+            }
+            //$("#Back_btn").remove();
+            checkSession();
+            let clickedRow = $(this).closest("tr");
+            var newgrowth = clickedRow.find(".newgrowth").val();
+
+            if (newgrowth == '') {
+                toastr.remove();
+                toastr.error("please enter growth");
+            }
+            else {
+                let id = clickedRow.find(".ClsChkEmp").text();
+                $.ajax({
+                    type: "POST",
+                    headers: { 'Authorization': '@_tokan' },
+                    url: '@_webapiurlpayroll' + 'SalaryIncrementPlanning/UpdateGrowthamount?Growth=' + newgrowth + "&incrementid=" + id,
+                    contentType: "application/json",
+                    dataType: "json",
+                    beforeSend: function () {
+                        $('#ajax_loader').show();
+                    },
+                    complete: function () {
+                        $('#ajax_loader').hide();
+                    },
+                    success: function (response) {
+                        if (response != null) {
+                            if (response.success == true) {
+                                toastr.remove();
+                                toastr.success(response.message);
+                                Employeetablebind(batch_id, 1, 1);
+                            } else {
+                                toastr.remove();
+                                toastr.error(response.message);
+                            }
+                        }
+                    },
+                    error: function (xhr, status, error) {
+                        console.error("Failed to fetch data: ", error);
+                    }
+                });
+                $("#Back_btn").remove();
+            }
+        })
+        $("body").on('click', ".editclass", function () {
+            $(this).css('display', 'none');
+            $("#Employee_dataTable").DataTable().$('.editclass').each(function (key, value) {
+                if (value !== event.target) {
+                    $(value).prop('disabled', true);
+                }
+            });
+            let clickedRow = $(this).closest("tr");
+            let growthElement = clickedRow.find(".growth").text();
+
+            clickedRow.find('td:eq(3)').html('<input type="text" style="text-align:center" class=" form-control input-sm newgrowth" value="' +growthElement+ '">');
+            clickedRow.find(".Activeclass").show();
+            $(".reset_filter_btn").show();
+            $(".selected_list_btn").hide();
+            $("#Back_btn").remove();
+        });
+
+        //on edit GrowthInput validation
+        $("#Employee_dataTable").on('input', '.newgrowth', function () {
+
+            var value = $(this).val();
+            if (IsIncrementmodepercentage == 1) {
+                //valid decimal and does not exceed 100.00
+                if (/^\d+(\.\d{0,2})?$/.test(value) && parseFloat(value) <= 100) {
+                    // If valid, update the value in the input field
+                    if (value == "100.00") {
+                        value = "100.00";
+                    }
+                    $(this).val(value);
+                } else {
+                    // If invalid, revert the value to the previous valid value
+                    $(this).val(value.substring(0, value.length - 1));
+                }
+            }
+            else {
+                // Flat amount validation
+                const numberRegex = /^\d+(\.\d{0,2})?$/; // Allow decimals up to 2 places
+                if (value.length > 9) {
+                    value = value.slice(0, 9);
+                    $(this).val(value);
+                }
+                if (!numberRegex.test(value)) {
+                    // Clear invalid input
+                    $(this).val("");
+                    toastr.error("Please enter a valid flat amount (positive number).");
+                }
+            }
+
+        });
+
+
+        $("#tblbatchdetails").on('click', ".Inactiveclass", function () {
+            
+            /*$("#dataTables_tbl_header").remove();*/
+            checkSession();
+            var $row = $(this).closest('tr');
+            var batchIdValue = $row.find('._Batchid').text();
+            $.ajax({
+                type: "POST",
+                headers: { 'Authorization': '@_tokan' },
+                url: '@_webapiurlpayroll' + 'SalaryIncrementPlanning/removebatch?id=' + batchIdValue,
+                contentType: "application/json",
+                dataType: "json",
+                beforeSend: function () {
+                    $('#ajax_loader').show();
+                },
+                complete: function () {
+                    $('#ajax_loader').hide();
+                },
+                success: function (response) {
+                    if (response != null) {
+                        if (response.success == true) {
+                            toastr.remove();
+                            toastr.success(response.message);
+                            batchtable();
+                        } else {
+                            toastr.remove();
+                            toastr.error(response.message);
+                        }
+                    }
+                },
+                error: function (xhr, status, error) {
+                    console.error("Failed to fetch data: ", error);
+                }
+            });
+        });
+        $("#Employee_dataTable").on('click', ".Inactiveclass", function () {
+         
+            const $backButtons = $('[id="Back_btn"]');
+            if ($backButtons.length > 1) {
+                $backButtons.slice(1).remove();
+            }
+            $('#Back_btn').remove();
+            checkSession();
+            let clickedRow = $(this).closest("tr");
+            let id = clickedRow.find(".ClsChkEmp").text();
+            $.ajax({
+                type: "POST",
+                headers: { 'Authorization': '@_tokan' },
+                url: '@_webapiurlpayroll' + 'SalaryIncrementPlanning/removeemployee?id=' + id,
+                contentType: "application/json",
+                dataType: "json",
+                beforeSend: function () {
+                    $('#ajax_loader').show();
+                },
+                complete: function () {
+                    $('#ajax_loader').hide();
+                },
+                success: function (response) {
+                    if (response != null) {
+                        if (response.success == true) {
+                            toastr.remove();
+                            toastr.success(response.message);
+                            Employeetablebind(batch_id, 1,1);
+                        } else {
+                            toastr.remove();
+                            toastr.error(response.message);
+                        }
+                    }
+                },
+                error: function (xhr, status, error) {
+                    console.error("Failed to fetch data: ", error);
+                }
+            });
+        })
+
+        function formatDateTime(datetimeStr) { //Soumya 28-07-2025
+            if (!datetimeStr) return '';
+
+            const d = new Date(datetimeStr);
+            if (isNaN(d)) return datetimeStr;
+
+            const pad = n => n < 10 ? '0' + n : n;
+            const day = pad(d.getDate());
+            const month = pad(d.getMonth() + 1);
+            const year = d.getFullYear();
+            let hour = d.getHours();
+            const minute = pad(d.getMinutes());
+            const ampm = hour >= 12 ? 'PM' : 'AM';
+            hour = pad(hour % 12 || 12);
+
+            return `${day}-${month}-${year} ${hour}:${minute} ${ampm}`;
+        }
+
+        $("#tblbatchdetails").on("click", ".viewpolicyreqtimeline", function () {
+
+            //codeh
+            var $row = $(this).closest('tr');
+            var batchIdValue = $row.find('._Batchid').text();
+            //var batchIdValue = $row.find('.reqBatchID').text();
+            $(".viewpolicyreqtimeline").attr("data-toggle", "modal");
+            $(".viewpolicyreqtimeline").attr("data-target", "#viewpolicyreqtimeline_modal");
+            policyreqtimelineview(batchIdValue);
+        });
+
+        function policyreqtimelineview(policyid) {
+        checkSession();
+        $.ajax({
+            type: "GET",
+            headers: { 'Authorization': '@_tokan' },
+            url: '@_webapiurlpayroll' + 'SalaryIncrementApproval/GetPolicyRequestTimeline?PolicyId=' + policyid,
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            success: function (response) {
+
+                var custhtmlreq = "";
+                var modalContent = '';
+                $.each(response.lstRequestTimeLine, function (index, item) {
+                    var status = item.Status;
+                    statustext = "";
+
+                    if (status == 1) {
+                        if (RoleId != '1' && RoleId != '6805' && RoleId != '6806') {
+                            statustext = "Pending for Approval";
+                            statusClass = "blue_font";
+                        } else {
+                            statustext = "Sending for Approval";
+                            statusClass = "purple_font";
+                        }
+                    }
+                    else if (item.status == "Send for Approval") {
+                        statustext = "Sending for Approval";
+                        statusClass = "purple_font";
+                        //statustext = "Approved";
+                        //statusClass = "green_font";
+                    }
+                    else if (item.status == "Rejected") {
+                        statustext = "Rejected";
+                        statusClass = "red_font";
+                    }
+                    else if (item.status == "Approved") {
+                        statustext = "Approved";
+                        statusClass = "green_font";
+                    }
+                    else if (item.levelid != 0 && item.status == 'Created') {
+                        statustext = "Pending";
+                        statusClass = "orange_font";
+                    }
+                    else {
+                        statustext = "Pending";
+                        statusClass = "orange_font";
+                    }
+                    if (item.levelid == 0 && item.status == 'Created') {
+
+                        //levelHtml += '<div class="clearance-level-block">';
+                        //levelHtml += '<div>Policy Name :<span class="margin-left-5"> ' + (response.objPolicyDetails.policyname || '') + '</span></div>';
+                        //levelHtml += '<div class="level-approval">';
+                        //levelHtml += 'Created By : <span class="margin-left-5"> ' + (item.fromuser || ' Admin') + '</span>  <span class="margin-left-5"> at ' + item.statusupdatedatetime + '</span> ';
+                        //levelHtml += '</div>';
+                        //levelHtml += '<div class="level-data">';
+                        //levelHtml += '<div class="level-status">Status : <span class="orange_font">' + (item.status || '') + '</span></div>';
+                        //levelHtml += '</div>';
+                        //levelHtml += '</div> ';
+
+                        // Added by Damini on 07-08-2025
+                        @*var StatusUpdatedTime = item.statusupdatedatetime;
+                        var parsedDate = new Date(StatusUpdatedTime);
+                        var dateformat = "@_isdateformat";
+                        var formattedDate = formatDate(parsedDate, dateformat);*@
+
+                        //if (!isNaN(parsedDate)) {
+                        //    formattedDate = formatDate(parsedDate, `${dateformat} HH:MM:ss A`);
+                        //} else {
+                        //    formattedDate = parseDateSafe(StatusUpdatedTime);
+                        //}
+
+
+                       /* <div class="level-date">${item.statusupdatedatetime}<span class="margin-left-5"></span></div>*/
+
+
+                        modalContent += `
+                    <div class="clearance-level-block">
+                        <div>Policy Name : <span>${response.objPolicyDetails.policyname}</span></div>
+                        <div class="level-approval">
+                            Name: <span class="margin-left-5 margin-right-5">${item.level_uname}</span>
+                             <div class="level-date">${item.statusupdatedatetime}<span class="margin-left-5"></span></div>
+                        </div>
+                        <div class="level-data">
+                            <div></div>
+                            <div class="level-status">Status: <span class="${statusClass}">${item.status}</span></div>
+                        </div>
+                    </div>`;
+
+
+                    } else {
+
+                        let formattedDate = formatDateTime(item.modifieddate);
+                        modalContent += `
+                    <div class="clearance-level-block">
+                        <div>Level <span>${item.levelid}</span></div>
+                        <div class="level-approval">
+                            Name: <span class="margin-left-5 margin-right-5">${item.level_uname}</span>
+                            <div class="level-date">${formattedDate}<span class="margin-left-5"></span></div>
+                        </div>
+                        <div class="level-data">
+                            <div>Department: <span>${item.DepartmentName}</span></div>
+                            <div class="level-status">Status: <span class="${statusClass}">${statustext}</span></div>
+                        </div>
+                    </div>`;
+                    }
+                    //let levelHtml = "";
+                    //if (item.levelid == 0 && item.status =='Created') {
+
+                    //    levelHtml += '<div class="clearance-level-block">';
+                    //    levelHtml += '<div>Policy Name :<span class="margin-left-5"> ' + (response.objPolicyDetails.policyname || '') + '</span></div>';
+                    //    levelHtml += '<div class="level-approval">';
+                    //    levelHtml += 'Created By : <span class="margin-left-5"> ' + (item.fromuser || ' Admin') + '</span>  <span class="margin-left-5"> at ' + item.statusupdatedatetime + '</span> ';
+                    //    levelHtml += '</div>';
+                    //    levelHtml += '<div class="level-data">';
+                    //    levelHtml += '<div class="level-status">Status : <span class="orange_font">' + (item.status || '') +'</span></div>';
+                    //    levelHtml += '</div>';
+                    //    levelHtml += '</div> ';
+                    //} else {
+                    //    levelHtml += '<div class="clearance-level-block">';
+
+                    //    if (item.levelid == 0) {
+                    //        levelHtml += '<div>Admin</div>';
+                    //    }
+                    //    else {
+                    //        levelHtml += '<div>Level <span>' + item.levelid + '</span></div>';
+                    //    }
+
+
+                    //    levelHtml += '<div class="level-approval">';
+                    //    levelHtml += 'From : <span class="margin-left-5"> ' + (item.fromuser || '') +'</span>';
+                    //    levelHtml += '</div>';
+
+                    //    levelHtml += '<div class="level-data">';
+
+                    //    levelHtml += '<div class="level-status">Status : <span class="orange_font">' + (item.status || '') + '  </span> <span class="margin-left-5"> at ' + item.statusupdatedatetime + '</span>  </div>';
+                    //    levelHtml += '</div>';
+
+                    //    levelHtml += '<div class="level-approval">';
+                    //    levelHtml += 'To : <span class="margin-left-5"> ' + (item.touser || '') + '</span>';
+                    //    //levelHtml += '<div class="level-date margin-left-5">' + item.statusupdatedatetime + '</div>';
+                    //    levelHtml += '</div>';
+
+                    //    levelHtml += '</div> ';
+                    //}
+                    // Append this level’s HTML as a new, distinct entry
+                    //custhtmlreq += levelHtml;
+                });
+            $("#timeline-container").html(modalContent);
+                //$("#timeline-container").html(custhtmlreq);
+            }
+        });
+    }
+
+
+        $("body").on('click', "#Back_btn", function () {
+            $("#Back_btn").remove();
+            $("#Employee_Table").hide();
+            $("#batch_table_block").show();
+            $("#Employee_dataTable").hide();
+            batchtable();
+            currentPolicySelected = 0;
+            isViewbtnClicked = 0;
+            $("#policyDetailsBlock").hide();
+            IsIncrementmodepercentage = 1; //initial state 1 for Percentage
+            if ($("#dataTables_tbl_header").length > 0) {
+                $("#dataTables_tbl_header").remove()
+            }
+            $(".ForPlaning_selected_emp").remove();
+            if ($("#Back_btn").length > 0) {
+                $("#Back_btn").remove();
+            }
+        });
+
+        fillCompany();
+        batchtable();
+        fillWorkflow();
+
+        $(document).on('click', '.Activeclass', function () {
+            $('#Back_btn').remove();
+        });
+        $(document).on('click', '.Inactiveclass', function () {
+            const $backButtons = $('[id="Back_btn"]');
+            if ($backButtons.length > 1) {
+                $backButtons.slice(1).remove();
+            }
+        });
+
+
+        //$("#IncrementValue").on("keyup", function () {
+        //    const incrementMode = $("#IncrementMode").val(); // Get the IncrementMode value
+        //    let incrementValue = $(this).val().trim(); // Get the IncrementValue input
+        //    toastr.remove(); // Remove existing Toastr messages
+
+        //    if (incrementMode === "1") {
+        //        // Allow partial matches while typing (e.g., "99.")
+        //        const partialPercentageRegex = /^(\d{1,2}(\.\d{0,2})?|100(\.0{0,2})?)$/;
+        //        const fullPercentageRegex = /^(100|(\d{1,2}(\.\d{1,2})?))$/; // Full percentage validation
+
+        //        if (!partialPercentageRegex.test(incrementValue)) {
+        //            // Clear invalid input during typing
+        //            incrementValue = incrementValue.slice(0, -1); // Remove last invalid character
+        //            $(this).val(incrementValue);
+        //        }
+
+        //        // Validate after typing completion
+        //        if (!fullPercentageRegex.test(incrementValue) && incrementValue !== "") {
+        //            toastr.error("Please enter a valid percentage (0-100 with up to 2 decimals).");
+        //            IncrementValueflag = 1;
+        //        } else {
+        //            IncrementValueflag = 0;
+        //        }
+        //    } else if (incrementMode === "2") {
+        //        // Flat amount validation
+        //        const numberRegex = /^\d+(\.\d{0,2})?$/; // Allow decimals up to 2 places
+        //        if (!numberRegex.test(incrementValue)) {
+        //            // Clear invalid input
+        //            $(this).val("");
+        //            toastr.error("Please enter a valid flat amount (positive number).");
+        //            IncrementValueflag = 1;
+        //        } else {
+        //            IncrementValueflag = 0;
+        //        }
+        //    } else {
+        //        toastr.error("Invalid Increment Mode selected.");
+        //    }
+        //});
+        $(".form-control.uneditable-input").click(function () {
+            $("#FileUpload").trigger("click");
+        });
+
+
+        $("#FileUpload").on("change", function () {
+            const allowedExtensions = [
+                "pdf", "doc", "docx", "odt", "rtf", "wps", "txt", // Document formats
+                "xps", // Paper specification
+                "xls", "xlsx", "ods", "csv", // Spreadsheet formats
+                "ppt", "pptx", "odp", "key"  // Presentation formats
+            ]; // Allowed file extensions
+
+            const fileName = $(this).val(); // Get the file name
+            const fileExtension = fileName.split('.').pop().toLowerCase(); // Extract the extension
+            const fileInput = $(this);
+
+            // Clear any previous error
+            fileInput.removeClass("is-invalid");
+            toastr.remove();
+
+            if (!fileName) {
+                toastr.success("File deleted successfully.");
+                return;
+            }
+
+            if (allowedExtensions.indexOf(fileExtension) === -1) {
+                // If the file is not valid
+                fileInput.val(""); // Clear the input
+                fileInput.addClass("is-invalid");
+                toastr.error("Invalid file format. Allowed formats are: " + allowedExtensions.join(", ").toUpperCase());
+            }
+        });
+
+        document.getElementById("IncrementValue").addEventListener("input", function (e) {
+            if ($("#IncrementMode").val() === "1") {
+                var value = e.target.value;
+                // Replace the input with a valid value if it exceeds two decimal places
+                if (!/^\d*\.?\d{0,2}$/.test(value)) {
+                    e.target.value = value.slice(0, -1);
+                }
+                if (value.length > 6) {
+                    e.target.value = value.slice(0, -1);
+                }
+            }
+            if ($("#IncrementMode").val() === "2") {
+                var value = e.target.value;
+                // Replace the input with a valid value if it exceeds two decimal places
+                if (!/^\d*$/.test(value)) {
+                    e.target.value = value.slice(0, -1);
+                }
+
+                if (value.length>10) {
+                    e.target.value = value.slice(0, -1);
+                }
+            }
+        });
+
+        document.getElementById("PolicyName").addEventListener("input", function (e) {
+            var value = e.target.value;
+
+            value = value.replace(/[^a-zA-Z0-9 ]/g, "");
+
+            value = value.replace(/\s{2,}/g, " ");
+
+            e.target.value = value;
+        });
+
+        $('#InstallmentMonth').on('blur', function () {
+            var val = parseInt($(this).val());
+            if (isNaN(val) || val < 1) {
+                $(this).val(1);
+            } else if (val > 12) {
+                $(this).val(12);
+            }
+        });
+
+
+        $("#btnSubmit").click(function () {
+
+            //$("#filtercolumn_block").toggle();
+            currentPolicySelected = 1
+            Company = $("#CompanyID").val();
+            Branch = $("#BranchIds").val();
+            Department = $("#DeptIds").val() || [];
+            designation = $("#DesignationId").val() || [];
+            var IsFlag = 0;
+            if (!Company) {
+                //$(".payroll_details_table_div").hide();
+                toastr.remove();
+                toastr.error("Please select company.");
+                IsFlag = 1;
+                return false;
+            } else {
+                toastr.remove();
+            }
+            if (!Branch) {
+                //$(".payroll_details_table_div").hide();
+                toastr.remove();
+                toastr.error("Please select branch.");
+                IsFlag = 1;
+                return false;
+            } else {
+                toastr.remove();
+            }
+            if ($("#financialYearDropdown").val() == 0) {
+                toastr.remove();
+                toastr.error("Please select Financial Year");
+                IsFlag = 1;
+                return false;
+            } else {
+                toastr.remove();
+            }
+            if ($("#EffectiveDate").val() == "") {
+                toastr.remove();
+                toastr.error("Please select Effective Date");
+                IsFlag = 1;
+                return false;
+            } else {
+                toastr.remove();
+            }
+
+            if ($("#InstallmentMonthdiv").is(":visible")) {
+                if ($("#InstallmentMonth").val() == "") {
+                    toastr.remove();
+                    toastr.error("Please enter Installment Month");
+                    IsFlag = 1;
+                    return false;
+                } else {
+                    toastr.remove();
+                }
+            }
+
+
+            if ($("#PolicyName").val() == "") {
+                toastr.remove();
+                toastr.error("Please Enter PolicyName");
+                IsFlag = 1;
+                return false;
+            } else {
+                toastr.remove();
+            }
+            if ($("#IncrementValue").val() == "") {
+                toastr.remove();
+                toastr.error("Please Enter Increment Value");
+                IsFlag = 1;
+                return false;
+            } else {
+                toastr.remove();
+                if (IncrementValueflag == 1) {
+                    toastr.error("Please Enter Proper Increment Value");
+                    IsFlag = 1;
+                    return false;
+                }
+            }
+
+            //var wrkflyid = 0;
+            //if (document.getElementById('rbyes').checked && $("#WorkflowId").val()=='0') {
+            //    toastr.remove();
+            //    toastr.error("Please select Workflow");
+            //    IsFlag = 1;
+            //    return false;
+            //} else {
+            //    //wrkflyid = $("#WorkflowId").val();
+            //    toastr.remove();
+            //}
+
+            var isApprovalRequired = document.getElementById('rbyes').checked;
+            var workflowId = $("#WorkflowId").val();
+            if (isApprovalRequired && workflowId === '0') {
+                toastr.error("Please select a workflow.");
+                IsFlag = 1;
+                return false;
+            }
+
+            if ($("#IncrementMode").val() === "1") {//percent
+                var inputa = $("#IncrementValue").val();
+                if (isNaN(inputa)) {
+                    toastr.remove();
+                    toastr.error("Increment Value must be a number.");
+                    IsFlag = 1;
+                    return false;
+
+                }
+                else {
+                    toastr.remove();
+                }
+                if (inputa < 0 || inputa > 1000) {
+                    toastr.remove();
+                    toastr.error("Increment Value must be between 0 and 1000.");
+                    IsFlag = 1;
+                    return false;
+                }
+                else {
+                    toastr.remove();
+                }
+                if (!/^\d+(\.\d+)?$/.test(inputa)) {
+                    toastr.remove();
+                    toastr.error("Increment Value must be a valid number format.");
+                    IsFlag = 1;
+                    return false;
+                }
+                else {
+                    toastr.remove();
+                }
+            }
+            //else if ($("#IncrementMode").val()   === "2") {//flat amount
+            //    if (isNaN(inputa)) {
+            //        toastr.remove();
+            //        toastr.error("Please select Workflow");
+            //        IsFlag = 1;
+            //        return false;
+            //        return "Input must be a number.";
+            //    }
+            //    if (inputa < minValue || inputa > maxValue) {
+            //        toastr.remove();
+            //        toastr.error("Please select Workflow");
+            //        IsFlag = 1;
+            //        return false;
+            //        return `Input must be between ${minValue} and ${maxValue}.`;
+            //    }
+
+            //}
+
+            if ($("#financialYearDropdown").val() == 0) {
+                toastr.remove();
+                toastr.error("Please select Financial Year");
+                IsFlag = 1;
+                return false;
+            } else {
+                toastr.remove();
+            }
+
+            if (!$("#PolicyName").val() || $("#PolicyName").val().trim() === "") {
+                toastr.remove();
+                toastr.error("Policy increment name cannot be empty.");
+                IsFlag = 1;
+                return false;
+            }
+            else {
+                toastr.remove();
+            }
+
+
+            //if (!/^[a-zA-Z0-9 ]+$/.test($("#PolicyName").val())) {
+            //    toastr.remove();
+            //    toastr.error("Policy name can only contain letters, numbers, and spaces.");
+            //    IsFlag = 1;
+            //    return false;
+            //}
+            //else {
+            //    toastr.remove();
+            //}
+
+            if (IsFlag == 0) {
+
+                var formData = new FormData();
+                if($("#FileUpload").val() != ""){
+                    var fileInput = $("#FileUpload")[0].files[0];
+                    formData.append('file', fileInput);
+                }else{
+                    var emptyFile = new Blob([], { type: "application/octet-stream" });
+                    formData.append('file', emptyFile, 'emptyfile.txt'); // You can specify any filename here
+                }
+                const isRequired = document.querySelector('input[name="rb"]:checked').value;
+                const isAreRequired = document.querySelector('input[name="rb2"]:checked')?.value || false;
+
+
+                var requestObj = {
+                    "CompanyId": Company.toString(),
+                    "BranchId": Branch.toString(),
+                    "DeptId": Department.toString(),
+                    "DesignationId": designation.toString(),
+                    "PolicyName": $("#PolicyName").val(),
+                    "FinancialYearFrom": $("#financialYearDropdown").val().split('-')[0],
+                    "FinancialYearTo": $("#financialYearDropdown").val().split('-')[1],
+                    "EffectiveDate": parseDateSafe($("#EffectiveDate").val()),
+                    "IncrementCycle": $("#IncrementCycle").val(),
+                    "IncrementMode": $("#IncrementMode").val(),
+                    "IncrementValue": $("#IncrementValue").val(),
+                    "ArrearsType": $("#ArrearsTypes").val(),
+                    "InstallmentCount": $("#InstallmentMonth").val(),
+                    "IsActive": 1,
+                    "Attachment" : "Attachment",
+                    "isAppRequired": isRequired,
+                    "isArrearsRequire": isAreRequired,
+                    "WorkFlowID": isRequired=='true' ? $("#WorkflowId").val() : '0'
+                }
+
+                for (var key in requestObj) {
+                    formData.append(key, requestObj[key]);
+                }
+                checkSession();
+                $.ajax({
+                    type: "POST",
+                    headers: { 'Authorization': '@_tokan' },
+                    url: '@_webapiurlpayroll' + 'SalaryIncrementPlanning/AddIncrementPlanning',
+                    processData: false, // Prevent jQuery from automatically transforming the data
+                    contentType: false, // Ensure content type is multipart/form-data
+                    data: formData,
+                    beforeSend: function () {
+                        $('#ajax_loader').show();
+                    },
+                    complete: function () {
+                        $('#ajax_loader').hide();
+                    },
+                    success: function (response) {
+                        if (response != null) {
+
+                            if (response.success == true) {
+                                toastr.remove();
+                                toastr.success(response.message);
+                                $("#main_bock").show();
+                                $("#BackStrbtn").hide();
+                                var Last_iD = response.insertedId;
+                                batch_id = Last_iD;
+                                Employeetablebind(Last_iD, 1,1);
+                                $("#Back_btn").hide();
+                                //bind policy list
+                                setTimeout(function () {
+                                    batchtable();
+                                }, 1000);
+                            } else {
+                                $('#ajax_loader').hide();
+                                toastr.remove();
+                                toastr.error(response.message);
+                                $("#BackStrbtn").hide(); //soumya
+                                $("#filtercolumn_block").hide();
+                                $("#main_bock").show();
+                                setTimeout(function () {
+                                    batchtable();
+                                }, 1000);
+                            }// soumya 04/08/2025
+                        } else {
+                            $('#ajax_loader').hide();
+                        }
+                    },
+                    error: function (xhr, status, error) {
+                        console.error("Failed to fetch data: ", error);
+                    }
+                });
+            }
+            $("#noRecordsMessage").hide();
+            if ($("#dataTables_tbl_header").length > 0) {
+                $("#dataTables_tbl_header").remove()
+            }
+        });
+
+        $("#IncrementMode").change(function () {
+            $("#IncrementValue").val("");
+        })
+        $('#CompanyID').change(function () {
+
+
+            //$("#tbldepartment1 tbody").remove();
+            Company = $('#CompanyID').val();
+            $('#CompanyName').val($("#CompanyID option:selected").text());
+            if (Company != null) {
+                fillBranchbycompnyid(Company, "");
+            } else {
+                $('#BranchIds').empty();
+                $Branchselect.multiselect('rebuild');
+            }
+            $("#DeptIds").empty();
+            $Departmentselect.multiselect('rebuild');
+            $("#DesignationId").val('0');
+            $DesignationId.multiselect('rebuild');
+        });
+
+
+        $('#BranchIds').change(function () {
+            //$("#spvalidation").hide();
+            Branch = $('#BranchIds').val();
+            $('#BranchName').val($('#BranchIds :selected').text());
+            fillDeptTable(Branch, "");
+            $("#DesignationId").val('0');
+            $DesignationId.multiselect('rebuild');
+        });
+
+
+
+        $('#DeptIds').change(function () {
+            //$("#spvalidation").hide();
+            Department = $('#DeptIds').val();
+            $('#DepartmentName').val($("#DeptIds option:selected").text());
+            //fillDeptTable(Branch, "");
+
+
+        });
+
+        $('#DesignationId').change(function () {
+            //$("#spvalidation").hide();
+            designation = $('#DesignationId').val();
+            $('#DesignationName').val($('#DesignationId :selected').text());
+        });
+
+
+        //Use to parse the 6 date format (DD-MMM-YYYY, DD-MM-YYYY, MMM-DD-YYYY, MM-DD-YYYY, YYYY-MMM-DD, YYYY-MM-DD)
+        function parseDateSafe(value) {
+            if (!value) return null;
+            const monthNames = {
+                Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5,
+                Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11
+            };
+            value = value.trim().replace(/[\s]+/g, '');
+            const patterns = [
+                { regex: /^(\d{2})-([A-Za-z]{3})-(\d{4})$/, order: ['D', 'M', 'Y'] },
+                { regex: /^(\d{2})-(\d{2})-(\d{4})$/, order: ['D', 'N', 'Y'] },
+                { regex: /^([A-Za-z]{3})-(\d{2})-(\d{4})$/, order: ['M', 'D', 'Y'] },
+                { regex: /^(\d{2})-(\d{2})-(\d{4})$/, order: ['N', 'D', 'Y'] },
+                { regex: /^(\d{4})-([A-Za-z]{3})-(\d{2})$/, order: ['Y', 'M', 'D'] },
+                { regex: /^(\d{4})-(\d{2})-(\d{2})$/, order: ['Y', 'N', 'D'] }
+            ];
+            for (let pattern of patterns) {
+                const match = value.match(pattern.regex);
+                if (match) {
+                    let day, month, year;
+                    pattern.order.forEach((part, i) => {
+                        const val = match[i + 1];
+                        switch (part) {
+                            case 'D': day = parseInt(val); break;
+                            case 'M': month = monthNames[val.substring(0, 3)] ?? -1; break;
+                            case 'N': month = parseInt(val) - 1; break;
+                            case 'Y': year = parseInt(val); break;
+                        }
+                    });
+                    const date = new Date(year, month, day);
+                    if (!isNaN(date)) {
+                        // Manual formatting to YYYY-MM-DD (local date)
+                        const mm = String(month + 1).padStart(2, '0');
+                        const dd = String(day).padStart(2, '0');
+                        return `${year}-${mm}-${dd}`;
+                    }
+                }
+            }
+            // fallback
+            const fallback = new Date(value);
+            if (isNaN(fallback)) return null;
+            return fallback.toISOString().split("T")[0];
+        }
+
+
+        function formatDate(date, format) {
+            if (isNaN(date)) return '';
+            const monthNames = [
+                "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+            ];
+            const map = {
+                yyyy: date.getFullYear(),
+                yy: String(date.getFullYear()).slice(-2),
+                M: monthNames[date.getMonth()],
+                mm: String(date.getMonth() + 1).padStart(2, '0'),
+                dd: String(date.getDate()).padStart(2, '0')
+            };
+            return format.replace(/yyyy|M|mm|dd|yy/g, matched => map[matched]);
+        }
+
+        //function formatDate(date, format) {
+        //    if (isNaN(date)) return '';
+
+        //    const monthNames = [
+        //        "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+        //        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+        //    ];
+
+        //    const hours24 = date.getHours();
+        //    const hours12 = hours24 % 12 || 12;
+        //    const ampm = hours24 >= 12 ? 'PM' : 'AM';
+
+        //    const map = {
+        //        yyyy: date.getFullYear(),
+        //        yy: String(date.getFullYear()).slice(-2),
+        //        M: monthNames[date.getMonth()],              // ← use this for month name
+        //        mm: String(date.getMonth() + 1).padStart(2, '0'), // ← numeric month
+        //        dd: String(date.getDate()).padStart(2, '0'),
+        //        HH: String(hours24).padStart(2, '0'),
+        //        hh: String(hours12).padStart(2, '0'),
+        //        MM: String(date.getMinutes()).padStart(2, '0'),  // ← minutes
+        //        ss: String(date.getSeconds()).padStart(2, '0'),
+        //        A: ampm
+        //    };
+
+        //    // Match longest keys first to prevent partial matches (e.g., MM before M)
+        //    return format.replace(/yyyy|M|yy|mm|dd|HH|hh|MM|ss|A/g, match => map[match]);
+        //}
+
+
+        function Status_Update_ForBatch_Revise(policyId) {
+            checkSession();
+            $("#ajax_loader").show();
+               var obj = {
+                   policyID: policyId,
+                   remarks: ''
+               };
+               if (policyId > 0) {
+
+                $.ajax({
+                    type: "POST",
+                    headers: { 'Authorization': '@_tokan' },
+                    url: '@_webapiurlpayroll' + "SalaryIncrementApproval/ReviseBatch", // Fixed space issue
+                    contentType: "application/json; charset=utf-8",
+                    data: JSON.stringify(obj),
+                    dataType: "json",
+                    beforeSend: function () {
+                        $('#ajax_loader').show();
+                    },
+                    complete: function () {
+                        $('#ajax_loader').hide();
+                    },
+                    success: function (response) {
+                        if (response.Success) {
+                            toastr.remove();
+                            toastr.success(response.Message);
+                        }
+                        else {
+                            toastr.remove();
+                            toastr.error(response.Message);
+                        }
+                        $("#ajax_loader").hide();
+                        setTimeout(function () {
+                            window.location.reload();
+                        }, 2500 );
+                    },
+                    error: function (xhr, status, error) {
+                        console.error("Failed to fetch data: ", error);
+                    }
+                })
+            }
+
+            else {
+                $("#ajax_loader").hide();
+                toastr.remove();
+                toastr.error("Invalid status passed for process.");
+            }
+        }
+
+        function Status_Update_ForBatch(policyId) {
+            checkSession();
+            $("#ajax_loader").show();
+            //var obj = {
+            //    policyID: policyId,
+            //}
+            if (policyId > 0) {
+
+                $.ajax({
+                    type: "POST",
+                    headers: { 'Authorization': '@_tokan' },
+                    url: '@_webapiurlpayroll' + "SalaryIncrementApproval/SendBatchForApproval?policyID=" + parseInt(policyId), // Fixed space issue
+                    contentType: "application/json; charset=utf-8",
+                    //data: JSON.stringify(obj),
+                    dataType: "json",
+                    beforeSend: function () {
+                        $('#ajax_loader').show();
+                    },
+                    complete: function () {
+                        $('#ajax_loader').hide();
+                    },
+                    success: function (response) {
+                        if (response.Success) {
+                            toastr.remove();
+                            toastr.success(response.Message);
+                        }
+                        else {
+                            toastr.remove();
+                            toastr.error(response.Message);
+                        }
+                        $("#ajax_loader").hide();
+                        setTimeout(function () {
+                            window.location.reload();
+                        }, 2500 );
+                    },
+                    error: function (xhr, status, error) {
+                        console.error("Failed to fetch data: ", error);
+                    }
+                })
+            }
+
+            else {
+                $("#ajax_loader").hide();
+                toastr.remove();
+                toastr.error("Invalid status passed for process.");
+            }
+        }
+
+        function fillCompany() { //In use
+            $.ajax({
+                type: "GET",
+                url: '@_webapiurl' + "Master/CompanyGetAll",
+                headers: { 'Authorization': '@_tokan' },
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                success: function (data) {
+                    $("#CompanyID").empty();
+                    var markup = '';
+                    data.sort(function (a, b) {
+                        return a.CompanyName.localeCompare(b.CompanyName);
+                    });
+                    for (var x = 0; x < data.length; x++) {
+                        markup += "<option value=" + data[x].CompanyID + ">" + data[x].CompanyName + "</option>";
+                    }
+                    $("#CompanyID").append(markup);
+                    $Companyselect.multiselect('rebuild');
+                },
+                error: function (xhr, ajaxOptions, thrownError) {
+
+                    if (xhr.status == 404) { //NotFound = 404
+                        toastr.error(thrownError);
+                    } else if (xhr.status == 500) { //InternalServerError = 500,
+                        toastr.error("InternalServerError");
+                    } else if (xhr.status == 400) { //BadRequest = 400,
+                        toastr.error("BadRequest");
+                    } else if (xhr.status == 419) {
+                        window.location.href = "/PayTime/LoginPage";
+                    } else {
+                        toastr.error(thrownError);
+                    }
+                }
+            });
+        }
+
+        //In use code
+        function fillBranchbycompnyid(companyid, selectedBranch) {
+
+            $('#BranchIds').empty();
+            $("#ajax_loaderaddon").show();
+            $("#ajax_loader").show();
+
+            $.ajax({
+                type: "GET",
+                headers: { 'Authorization': '@_tokan' },
+                url: '@_webapiurl' + "Master/BranchGetAll",
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                success: function (data) {
+
+                    var markup = '';
+                    var companyIdsToFind = companyid; // Change '1,2,3' to the actual comma-separated CompanyIDs you want to find
+
+                    if (companyid != null) {
+
+                        var filteredData = data.filter(function (item) {
+                            return companyid.includes(item.CompanyID.toString());
+                        });
+
+                        filteredData.sort(function (a, b) {
+                            return a.branchname.localeCompare(b.branchname);
+                        });
+                        for (var x = 0; x < filteredData.length; x++) {
+                            if (selectedBranch.length != 0) {
+                                var re = new RegExp("(^|,)" + filteredData[x].BranchId + "($|,)");
+                                if (re.test(selectedBranch) == true) {
+                                    markup += '<option selected="selected" value="' + filteredData[x].BranchId + '" >' + filteredData[x].branchname + '</option>';
+                                }
+                                else {
+                                    markup += "<option value=" + filteredData[x].BranchId + ">" + filteredData[x].branchname + "</option>";
+                                }
+                            }
+                            else {
+                                markup += "<option value=" + filteredData[x].BranchId + ">" + filteredData[x].branchname + "</option>";
+                            }
+                        }
+                        $('#BranchIds').append(markup);
+                        $Branchselect.multiselect('rebuild');
+                        $(document.body).on('change', '#BranchIds', function () {
+                            var branid = $('#BranchIds option:selected');
+                            var BranchArray = [];
+                            $(branid).each(function (index, branid) {
+                                BranchArray.push([$(this).val()]);
+                            });
+                            if (BranchArray == "") {
+                                $("#txt2").val(0);
+                            }
+                            else {
+                                $("#txt2").val(BranchArray);
+                                $("#spValidation").hide();
+                            }
+                            var Arrbranch = $("#txt2").val();
+                            BranchIdlst = Arrbranch;
+                            $("#BranchId").val(BranchIdlst);
+                            //getEmp();
+                        });
+                    } else {
+                        $Branchselect.multiselect('rebuild');
+                    }
+
+
+                },
+                error: function (xhr, ajaxOptions, thrownError) {
+
+                    if (xhr.status == 404) { //NotFound = 404
+                        toastr.error(thrownError);
+                    } else if (xhr.status == 500) { //InternalServerError = 500,
+                        toastr.error("InternalServerError");
+                    } else if (xhr.status == 400) { //BadRequest = 400,
+                        toastr.error("BadRequest");
+                    } else if (xhr.status == 419) {
+                        window.location.href = "/PayTime/LoginPage";
+                    } else {
+                        toastr.error(thrownError);
+                    }
+                },
+                complete: function () {
+                    $("#ajax_loader").hide();
+                }
+            });
+        }
+
+
+        function fillDeptTable(BranchId, selectedDept) {
+            $("#DeptIds").empty();
+            checkSession();
+            $("#ajax_loader").show();
+            $.ajax({
+                type: "GET",
+                url: "/MasterData/GetDeptbyBranchstr?BranchId=" + BranchId,
+                contentType: "application/json; charset=utf-8",
+                datatype: "json",
+                async: "false",
+                success: function (response) {
+                    if (response != null) {
+                        for (var i = 0; i < response.length; i++) {
+                            if (selectedDept.length != 0 && selectedDept != null) {
+                                var re = new RegExp("(^|,)" + response[i].Value + "($|,)");
+                                if (re.test(selectedDept) == true) {
+                                    $('#DeptIds').append('<option value=" ' + response[i].Value + '" selected>' + response[i].Text + '</option>');
+                                }
+                                else {
+                                    $('#DeptIds').append('<option value=" ' + response[i].Value + ' ">' + response[i].Text + '</option>');
+                                }
+                            }
+                            else {
+                                $('#DeptIds').append('<option value=" ' + response[i].Value + ' ">' + response[i].Text + '</option>');
+                            }
+                        }
+                        $Departmentselect.multiselect('rebuild');
+                        $(document.body).on('change', '#DeptIds', function () {
+                            $("#spvalidation").hide();
+                            var deptid = $('#DeptIds option:selected');
+                            var DeptArray = [];
+                            $(deptid).each(function (index, deptid) {
+                                DeptArray.push([$(this).val()]);
+                            });
+                            if (DeptArray == "") {
+                                $("#txt3").val(0);
+                            }
+                            else {
+                                $("#txt3").val(DeptArray);
+                                $("#spValidation").hide();
+                            }
+                            var ArrDept = $("#txt3").val();
+                            DeptIdlst = ArrDept;
+                            $("#DepId").val(DeptIdlst);
+                            $("#DesignationId").val('0');
+                            $DesignationId.multiselect('rebuild');
+                        });
+                        //DesignationId
+                        $(document.body).on('change', '#DesignationId', function () {
+                            $("#spvalidation").hide();
+                            var desgid = $('#DesignationId option:selected');
+                            var DesgArray = [];
+                            $(desgid).each(function (index, deptid) {
+                                DesgArray.push([$(this).val()]);
+                            });
+                            if (DesgArray == "") {
+                                $("#txt4").val("");
+                            }
+                            else {
+                                $("#txt4").val(DesgArray);
+                                $("#spValidation").hide();
+                            }
+                            var Arrdesg = $("#txt4").val();
+                            DesgIdlst = Arrdesg;
+                        });
+
+                    }
+                    $(".loading").hide();
+                },
+                beforeSend: function () {
+                    $(".loading").show();
+                },
+                error: function () {
+                    $(".loading").hide();
+                },
+                complete: function () {
+                    $("#ajax_loader").hide();
+                }
+            });
+        }
+        // Create search inputs in footer
+        $("#tblstengthdetails tfoot th").each(function () {
+            var title = $(this).text();
+            $(this).html('<input type="text" class="search_input" placeholder="Search" /><i class="clm-search" id=""></i>');
+        });
+
+
+        // DataTable initialisation
+        var table = $("#tblstengthdetails").DataTable({
+            dom: "<'row'<'col-lg-3 col-sm-5 col-xs-12'<'record_btn_main'l,><'dt-buttons'Bf>><'col-lg-9 col-sm-7 col-xs-12 mb_margin_bottom_15'>>" +
+                  "<'row'<'col-sm-12 margin-bottom-10'<'customforms_table EmpNew_tbl_scroll'tr'>>>" +
+                  "<'row'<'col-md-5 col-sm-5'i><'col-md-7 col-sm-7'p>>",
+            paging: true,
+            autoWidth: true,
+            ordering: false,
+            buttons: [
+                "excelHtml5",
+            ],
+            initComplete: function (settings, json) {
+                var footer = $("#tblstengthdetails tfoot tr");
+                $("#tblstengthdetails thead").append(footer);
+            }
+        });
+
+        // Apply the column Search
+        $("#tblstengthdetails thead").on("keyup", "input", function () {
+            table.column($(this).parent().index())
+            .search(this.value)
+            .draw();
+
+        });
+
+        //Add Strength Modal Code
+        $("#AddStrfrmbtn").on('click', function () {
+
+            frmclear();
+            /*$("#filtercolumn_block").show();*/
+            $("#filtercolumn_block").toggle();
+            /*$("#batch_table_block").toggle();*/
+            $("#batch_table_block").hide();
+            $("#main_bock").toggle();
+            $("#AddStrfrmbtn").hide();
+            $("#BackStrbtn").show();
+            if(isViewbtnClicked){
+                $("#policyDetailsBlock").toggle();
+            }
+            else{
+                $("#policyDetailsBlock").hide();
+            }
+            $("#policyDetailsBlock").hide();
+        });
+        $("#Create_Increment_Plan_btn").on('click', function () {
+            $("#AddStrfrmbtn").hide();
+            $("#BackStrbtn").show();
+            $("#main_bock").hide();
+            $("#filtercolumn_block").show();
+            $("#create_Incrementblock").hide();
+        });
+
+        //Edit Strength Modal Code
+        $("#tblempStrength").on('click', function () {
+            $("#tblempStrength").attr("data-toggle", "modal");
+            $("#tblempStrength").attr("data-target", "#EditStrength_modal");
+        });
+
+        $("#tblbatchdetails").on('click', '.eye_btn', function () {
+            totalcurrentCTC
+            const $backButtons = $('[id="Back_btn"]');
+            if ($backButtons.length > 1) {
+                $backButtons.slice(1).remove();
+            }
+            checkSession();
+            isViewbtnClicked = 1;
+            var $row = $(this).closest('tr');
+            var batchIdValue = $row.find('._Batchid').text();
+            var policystatus = $row.find('._PolicyStatus').text();
+
+            let policyName = $row.find('.policyName').text();
+            let finYear = $row.find('.Financial_year').text();
+            policyStatusbyName = $row.find('.policy_status_name').text();
+
+
+            currentPolicySelected = policystatus;
+            if (policystatus == 0 || policystatus == 1 || policystatus == 3) {
+                Employeetablebind(batchIdValue, 1, true);
+            }
+            else {
+                Employeetablebind(batchIdValue, 1, false);
+            }
+            batch_id = batchIdValue;
+            //Employeetablebind(batchIdValue, 1);
+            $("#Back_btn").hide();
+            $("#tableResponsive1").show();
+            $(".ForPlaning_selected_emp").show();
+            $("#Employee_Table #dataTables_tbl_header").show();
+            $("#policyDetailsBlock").show();
+            $("#AddStrfrmbtn").hide(); //Soumya 04/08/2025
+
+            $.ajax({
+                type: "POST",
+                headers: { 'Authorization': '@_tokan' },
+                url: '@_webapiurlpayroll' + 'SalaryIncrementApproval/GetTotalCTCGrowthByBatch?batchID=' + batchIdValue + '&approvalStatus=' + policystatus,
+                contentType: "application/json",
+                //data: JSON.stringify(obj),
+                dataType: "json",
+                async: true,
+                beforeSend: function () {
+                    $('#ajax_loader').show();
+                },
+                complete: function () {
+                    $('#ajax_loader').hide();
+                },
+                success: function (response) {
+                    if (response.success) {
+
+                        PolicyGrowthCTC = response.totalNewCTC;
+                        const totalCurrentCTC = parseFloat(response.totalPreviousCTC);
+                        const totalNewCTC = parseFloat(response.totalNewCTC);
+
+                        $("#totalcurrentCTC").val(totalCurrentCTC);
+                        $("#newProposedCTC").val(totalNewCTC);
+                        $("#newProposedCTC").removeClass("animated shake");
+
+                        //Calculate percentage growth
+                        let growthPercentage = 0;
+                        if (totalCurrentCTC > 0) {
+                            growthPercentage = ((totalNewCTC - totalCurrentCTC) / totalCurrentCTC) * 100;
+                        }
+
+                        //Set the calculated growth percentage in the proposed growth field, rounded to 2 decimals
+                        $("#proposedGrowth").val(growthPercentage.toFixed(2));
+
+                        //hide show revise btn
+
+
+
+                        var isshowapplybutton = response.objShowStatusButton.isWorkflowApprovalNotRequired || false;
+                        if (isshowapplybutton) {
+                            $("#Send_For_Revision").hide();
+                            $("#Send_For_Approval_1").hide();
+                            $("#btnapplypolicy").show();
+
+                        }
+                        else {
+
+                            var isshowrevise = response.objShowStatusButton.isshowrevisionbutton || false;
+                            if (isshowrevise) {
+                                $("#Send_For_Revision").show();
+                            }
+                            else {
+                                $("#Send_For_Revision").hide();
+                            }
+
+                            var isshowapprove = response.objShowStatusButton.isshowapprovebutton || false;
+                            if (isshowapprove) {
+                                $("#Send_For_Approval_1").show();
+                            }
+                            else {
+
+                                //$("#Send_For_Approval_1").hide();
+                                setTimeout(function () {
+                                    $("#Send_For_Approval_1").hide();
+                                }, 100);
+                                //$("#Send_For_Approval_1").css("display", "none !important");
+                            }
+                        }
+                    }
+                    else {
+                        $("#totalcurrentCTC").val(0);
+                        $("#newProposedCTC").val(0);
+                        $("#Send_For_Revision").hide();
+
+                        toastr.remove();
+                        toastr.error(response.message);
+                    }
+                    $("#ajax_loader").hide();
+                },
+                error: function (xhr, status, error) {
+                    console.error("Failed to fetch data: ", error);
+                }
+            });
+            //let visibleTable = 'Employee_dataTable'; //hide by soumya 04/08/2025
+            //$('<div class="ForPlaning_selected_emp"> <div class="tbl_text"> <a href="javascript:;" id="Back_btn" class="btn add_btn btn-effect tooltips" data-placement="bottom" data-original-title="Back" style="display: none;"> <i class="fa-regular fa-arrow-left" aria-hidden="true"></i> </a> </div></div>').insertBefore('#Employee_Table .table-scrollable');
+
+            $("#policyNameView").val(policyName);
+            $("#financialYearView").val(finYear);
+            $("#policyStatusView").val(policyStatusbyName);
+            $("#policyDetailsBlock").show();
+        });
+
+        $('#ApplyGrowth').on('click', function () {
+            let value = parseFloat($('#proposedGrowth').val());
+
+            if ($('#proposedGrowth').val() == "") {
+                toastr.remove();
+                toastr.error("Please enter some value to view total new ctc");
+                return false;
+            }
+            if (value <= 100) {
+                $("#newProposedCTC").removeClass("animated shake");
+                $("#newProposedCTC").val("");
+                let currentCTC = parseFloat($("#totalcurrentCTC").val());
+                let newProposedCTC = parseFloat((currentCTC + ((currentCTC * value) / 100)).toFixed(2));
+                $("#newProposedCTC").val(newProposedCTC);
+            }
+            setTimeout(function () {
+                $("#newProposedCTC").addClass("animated shake");
+            }, 300)
+        });
+
+        $('#Clear_Operation').on('click', function () {
+            frmclear();
+            $("#proposedGrowth").val("");
+            $("#newProposedCTC").removeClass("animated shake");
+            $("#newProposedCTC").val(PolicyGrowthCTC);
+        });
+
+        $('#clear_operation').on('click', function () {
+            frmclear();
+        });
+
+        $('#proposedGrowth').on('input', function () {
+
+            var value = $(this).val();
+            if (IsIncrementmodepercentage == 1) {
+                //valid decimal and does not exceed 100.00
+                if (/^\d+(\.\d{0,2})?$/.test(value) && parseFloat(value) <= 100) {
+                    // If valid, update the value in the input field
+                    if (value == "100.00") {
+                        value = "100.00";
+                    }
+                    $(this).val(value);
+                } else {
+                    // If invalid, revert the value to the previous valid value
+                    $(this).val(value.substring(0, value.length - 1));
+                }
+            }
+            else {
+                // Flat amount validation
+                const numberRegex = /^\d+(\.\d{0,2})?$/; // Allow decimals up to 2 places
+                if (value.length > 9) {
+                    value = value.slice(0, 9);
+                    $(this).val(value);
+                }
+                if (!numberRegex.test(value)) {
+                    // Clear invalid input
+                    $(this).val("");
+                    toastr.error("Please enter a valid flat amount (positive number).");
+                }
+            }
+
+        });
+
+
+        function checkSession() {
+
+            $.ajax({
+                type: "GET",
+                async: false,
+                url: "/ESS/checkSession",
+                contentType: "application/json; charset=utf-8",
+                success: function (data) {
+                    if (data.isRedirect) {
+                        window.location.href = data.redirectUrl;
+                    }
+                },
+                error: function (data) {
+                    window.location.href = data;
+                }
+            });
+        }
+
+        function Employeetablebind(id, isback, hidebutton) {
+            $("#batch_table_block").hide();
+            $("#filtercolumn_block").hide();
+            $("#BackStrbtn").hide(); // Soumya 04/08/2025
+            $("#Employee_dataTable").show();
+            $("#Employee_Table").show();
+            var Employee_dataTable = $('#Employee_dataTable').DataTable();
+            //$("#batch_table_block #dataTables_tbl_header").remove();
+            Employee_dataTable.destroy();
+            $.ajax({
+                type: "GET",
+                headers: { 'Authorization': '@_tokan' },
+                url: '@_webapiurlpayroll' + 'SalaryIncrementPlanning/GetEmployeeData?id=' + id,
+                contentType: "application/json",
+                dataType: "json",
+                beforeSend: function () {
+                    $('#ajax_loader').show();
+                },
+                complete: function () {
+                    $('#ajax_loader').hide();
+                },
+                success: function (response) {
+                    if (response != null) {
+                        const payrollC = response;
+                        handleGridVisibility("tblempty1", "NotificationGrid-empty1", payrollC, {
+                            imageUrl: "emptyscreen_1.png",
+                            subText: "No entries found. Please add a record to get started."
+                        });
+                    }
+                    if (response != null) {
+                        if (response.length > 0) {
+                            $("#BackStrbtn").show();
+                            $("#filtercolumn_block").hide();
+                            $("#Employee_dataTable thead tr:eq(1)").remove();
+                            $(".div_head_1").show();
+                            $("#Employee_Table #dataTables_tbl_header").remove();
+                            Employee_dataTable = $("#Employee_dataTable").DataTable({
+                                //dom: "<'row '<'col-sm-12 margin-bottom-5'<''>>>" +
+                                //    "<'row div_head_1'<'col-lg-9 col-sm-7 col-xs-12 mb_margin_bottom_15'<'ForPlaning_selected_emp selected_emp_main'<'tbl_text'><'tbl_text_close'>>><'col-lg-3 col-sm-5 col-xs-12 '<'record_btn_main'l,><'dt-buttons'Bf>>>" +
+                                //    "<'row'<'col-sm-12 margin-bottom-10'<'customforms_table'tr'>>>" +
+                                //    "<'row'<'col-md-5 col-sm-5'i><'col-md-7 col-sm-7'p>>",
+                                dom: _domCommon,
+                                language: _languageCommon,
+                                destroy: true,
+                                processing: true,
+                                paging: true,
+                                data: response,
+                                buttons: [
+                                    {
+                                        extend: 'excel',
+                                        exportOptions: {
+                                            columns: [0, 1, 2, 3, 4, 5] // Include only columns 0 to 5, excluding the last column (index 6)
+                                        }
+                                    }
+                                ],
+                                columns: [
+
+                                    { data: "Empcode" },
+                                    { data: "EmpName" },
+                                    { data: "monthly_ctc" },
+                                    { data: "IncrementValue" },
+                                    { data: "newctc" },
+                                    { data: "increment_amount" },
+                                    { data: "isvalidpaystructure" },
+                                    /*{ data: null }*/
+                                ],
+                                initComplete: function (settings, json) {
+                                    var footer = '<tr> <th> Employee Code</th> <th> Name</th> <th> Current CTC</th> <th> Growth % or Amount </th> <th> New CTC</th> <th> Pay structure</th> <th> Action</th> </tr>';
+                                    $("#Employee_dataTable thead").append(footer);
+                                    const visibleTable = "Employee_dataTable";
+                                    const waitForButtons = setInterval(() => {
+
+                                        const $buttons = $('#Employee_dataTable_wrapper').find('#buttons');
+                                        if ($buttons.length) {
+                                            clearInterval(waitForButtons);
+                                            $buttons.append(
+                                                `<div id="export-button" class="export-button tooltips" data-placement="bottom" data-original-title="Download" data-table-id="${visibleTable}">
+                                                 <img src="../Newlayout/images/download_icon.svg" alt="Download icon">
+                                             </div>`
+                                            );
+                                            $('[data-original-title]').tooltip();
+                                        }
+                                    }, 100);
+                                    $('.tooltips').tooltip();
+                                },
+                                "columnDefs": [
+                                    {
+                                        "targets": 0,
+
+                                    }
+                                    ,
+                                    {
+                                        "targets": 3,
+                                        "render": function (data, type, full) {
+                                            //when batchView Clicked then update Increment mode type for proposed growth input validation
+                                            IsIncrementmodepercentage = full.incrementmode;
+                                            if (full.incrementmode == 1) {
+                                                return '<span class="growth">' + full.incrementvalue + '</span> %';
+                                            } else {
+                                                return '<span class="growth">' + full.incrementvalue + '</span>';
+                                            }
+                                        }
+                                    },
+                                    {
+                                        "targets": 6,
+                                        "render": function (data, type, full) {
+                                            if (full.ispaystructurevalid == 1) {
+                                                return '<span class="pay_strustructure_namecture">' + full.structure_name + '</span>';
+
+                                            } else {
+                                                return '<span class="pay_structure red_font">' + full.structure_name + ' : not compatible</span>';
+                                            }
+                                        }
+                                    },
+                                    {
+                                        targets: 7,
+                                        visible: (currentPolicySelected == 0 || currentPolicySelected == 3),
+                                        orderable: false,
+                                        render: function (data, type, full) {
+                                            return `<span class="ClsChkEmp" hidden>${full.incrementid}</span><a style="display:none" class="Activeclass btn blue_btnnew tooltips" data-placement="left" title="Active"> <i class="fa-solid fa-check"></i></a><a class="editclass btn btn-xs blue_btnnew tooltips" data-placement="left" title="Edit"><i class="fa-regular fa-pen-to-square"></i></a><a class="Inactiveclass btn blue_btnnew tooltips" data-placement="left" title="Delete"><i class="fa-solid fa-xmark"></i></a>`;
+                                        }
+                                    },
+
+                                ],
+                                "lengthMenu": [
+                                    [10, 25, 50, 100], // Options for number of entries per page
+                                    [10, 25, 50, 100], // Label for the "All" option
+                                ]
+                            });
+
+
+
+
+                            setTimeout(function () {
+                                $("#" + "Employee_dataTable" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive1"));
+                                /*$('.tooltips').tooltip();*/
+                            }, 100);
+
+                            $("#Employee_dataTable thead tr:eq(1) th").each(function (index) {
+                                var title = $(this).text();
+                                $(this).html('<input type="text" class="search_input" placeholder="Search" /><i class="clm-search" id=""></i>');
+                            });
+
+                            $("#Employee_dataTable thead").on("keyup", "input", function () {
+                                var columnIndex = $(this).parent().index();
+                                //if ($(this).closest('tr').index() === 1 && columnIndex === 0) {
+                                //    return;
+                                //}
+                                Employee_dataTable.column(columnIndex).search(this.value).draw();
+                            });
+
+                            if (isback == 1) {
+                                $(".tbl_text").append('<a href="javascript:;" id="Back_btn" class="btn add_btn btn-effect tooltips" data-placement="bottom" data-original-title="Back"><i class="fa-regular fa-arrow-left" aria-hidden="true"></i></a>')
+                                $('.tooltips').tooltip(); // Assuming you're using Bootstrap tooltips
+                            }
+                            if (hidebutton) {
+
+                                $('.tbl_text_close').html('<div class="reset_filter_btn" id="emp_close" style="display:none">Reset</div><div class="selected_list_btn"><a href="#" class="btn add_btn margin-right-10 green_btn" style="display:none;" id="Send_For_Revision">Send for Revision</a><a href="#" class="btn add_btn margin-right-10 green_btn" style="display:none;" id="Send_For_Approval_1">Send for approval</a><a href="#" style="display:none;" class="btn add_btn margin-right-10 red_btn" id="btnapplypolicy">Apply Policy</a></div>');
+                            }
+                            else {
+                                $('.tbl_text_close').html('<div class="reset_filter_btn" id="emp_close" style="display:none">Reset</div>');
+                            }
+
+
+                        } else { $("#Employee_dataTable").hide(); $("#noRecordsMessage").show(); }
+                    }
+
+                },
+                error: function (xhr, status, error) {
+                    console.error("Failed to fetch data: ", error);
+                }
+            });
+        }
+
+
+        function getPolicyStatusValue(status) {
+            switch (status) {
+                case "Pending":
+                    return 2;
+                    break;
+                case "Revise":
+                    return 3;
+                    break;
+                case "Approved":
+                    return 4;
+                    break;
+                case "Rejected":
+                    return 5;
+                    break;
+                case "Hold":
+                    return 6;
+                    break;
+                case "Applied":
+                    return 7;
+                    break;
+                default:
+                    return -1;
+                    break;
+            }
+        }
+
+
+        function batchtable() {
+            $("#batch_table_block").show();
+            $("#Employee_Table").hide();
+            $("#Employee_dataTable").hide();
+            $("#dataTables_tbl_header").remove();
+            //$("#AddStrfrmbtn").show();
+            var tblbatchdetails = $('#tblbatchdetails').DataTable();
+            tblbatchdetails.destroy();
+            $.ajax({
+                type: "GET",
+                headers: { 'Authorization': '@_tokan' },
+                url: '@_webapiurlpayroll' + 'SalaryIncrementPlanning/Getallbatchesdata',
+                contentType: "application/json",
+                dataType: "json",
+                beforeSend: function () {
+                    $('#ajax_loader').show();
+                },
+                complete: function () {
+                    $('#ajax_loader').hide();
+                },
+                success: function (response) {
+                    if (response != null) {
+                        const payrollC = response;
+                        handleGridVisibility("tblempty", "NotificationGrid-empty", payrollC, {
+                            imageUrl: "emptyscreen_1.png",
+                            subText: "No entries found. Please add a record to get started."
+                        });
+                    }
+                    if (response != null) {
+                        if (response.length > 0) {
+                            flag = 1;
+                            $("#create_Incrementblock").hide();
+                            $("#batch_table_block").show();
+                            $("#AddStrfrmbtn").show();
+                            $("#BackStrbtn").hide();// added by soumya
+
+                            tblbatchdetails = $("#tblbatchdetails").DataTable({
+                                //dom: "<'row '<'col-sm-12 margin-bottom-5'<''>>>" +
+                                //     "<'row '<'col-lg-3 col-sm-5 col-xs-12 '<'record_btn_main'l,><'dt-buttons'Bf>><'col-lg-9 col-sm-7 col-xs-12 mb_margin_bottom_15'<'selected_emp_main'<'tbl_text'><'tbl_text_close'>>>>" +
+                                //     "<'row'<'col-sm-12 margin-bottom-10'<'customforms_table'tr'>>>" +
+                                //     "<'row'<'col-md-5 col-sm-5'i><'col-md-7 col-sm-7'p>>",
+                                dom: _domCommon,
+                                language: _languageCommon,
+                                destroy: true,
+                                processing: true,
+                                paging: true,
+                                data: response,
+                                buttons: [
+                                    {
+                                        extend: 'excel'
+                                    }
+                                ],
+                                columns: [
+                                    { data: "policyname" },
+                                    { data: "policyapprovalstatus" },
+                                    { data: "policycreateddate" },
+                                    { data: "isAppRequired" },
+                                    { data: "incrementcycle" },
+                                    { data: "IsArrearsRequire" },
+                                    { data: "empcount" },
+                                    { data: "Financial_year" },
+                                    /*{ data: null }*/
+                                ],
+                                "columnDefs": [
+                                    {
+                                        "targets": 0,
+                                        "render": function (data, type, full) {
+                                            return '<span class="policyName">' + full.policyname + '</span>';
+                                        }
+                                    },
+                                        {
+                                            "targets": 1,
+                                            "render": function (data, type, full) {
+                                                if (full.policyapprovalstatus == 0) {
+                                                    return '<span class="orange_font policy_status_name">Pending</span>';
+                                                } else  if (full.policyapprovalstatus == 1) {
+                                                    return '<span class="orange_font policy_status_name">Pending</span>';
+                                                } else if (full.policyapprovalstatus == 2) {
+                                                    return '<span class="purple_font policy_status_name">Send for approval</span>';
+                                                } else if (full.policyapprovalstatus == 3) {
+                                                    return '<span class="blue_font policy_status_name">Revise</span>';
+                                                } else if (full.policyapprovalstatus == 4) {
+                                                    return '<span class="green_font policy_status_name">Approved</span>';
+                                                } else if (full.policyapprovalstatus == 5) {
+                                                    return '<span class="red_font policy_status_name" >Reject</span>';
+                                                } else if (full.policyapprovalstatus == 6) {
+                                                    return '<span class="orange_font policy_status_name">Hold</span>';
+                                                } else if (full.policyapprovalstatus == 7) {
+                                                    return '<span class="green_font policy_status_name">Applied</span>';
+                                                }
+
+                                            }
+                                    },
+
+                                    {
+                                        "targets": 2,
+                                        "render": function (data, type, full)
+                                        {
+                                            var PolicyCreatedDate = full.policycreateddate;
+                                            var parsedDate = new Date(PolicyCreatedDate);
+                                            var dateformat = "@_isdateformat";
+                                            if (!isNaN(parsedDate)) {
+                                                return formatDate(parsedDate, dateformat);
+                                            } else {
+                                                return parseDateSafe(PolicyCreatedDate);
+                                            }
+                                        }
+                                    },
+
+                                    {
+                                        targets: 3,
+                                        render: function (data, type, full) {
+
+                                            var val = full?.isAppRequired;
+
+                                            if (val == 1) {
+                                                return "Yes"
+                                            }
+                                            else if (val == 0) {
+                                                return "No"
+                                            }
+                                            else {
+                                                return "";
+                                            }
+                                        }
+                                    },
+
+
+                                    {
+                                        targets: 4,
+                                        render: function (data, type, full) {
+                                            let cycle = parseInt(full.incrementcycle);
+                                            if (cycle == 1) {
+                                                return "Yearly";
+                                            } else if (cycle == 2) {
+                                                return "Half Yearly";
+                                            } else {
+                                                return "";
+                                            }
+                                        }
+                                    },
+
+                                    {
+                                        targets: 5,
+                                        render: function (data, type, full) {
+                                            let Arrears = full.IsArrearsRequire;
+                                            if (Arrears == true) {
+                                                return "Yes"
+                                            }
+                                            else if (Arrears == false) {
+                                                return "No"
+                                            }
+                                            else {
+                                                return "";
+                                            }
+                                        }
+                                    },
+
+                                    //{
+                                    //    "targets": 5,
+                                    //    data: "empcount",
+                                    //    title: "No Of Employees(s)",
+                                    //    render: function (data, type, full) {
+                                    //        debugger;
+                                    //        return full.empcount;
+                                    //    }
+                                    //},
+
+                                        {
+                                            "targets": 7,
+                                            "render": function (data, type, full) {
+                                                return '<span class="Financial_year">' + full.Financial_year + '</span>';
+
+                                            }
+                                        },
+                                        {
+                                            "targets": 8,
+                                            orderable:false,
+                                            "render": function (data, type, full) {
+                                                if (full.empcount == 0) {
+                                                    return '<span class="_Batchid" hidden="">' + full.policyid + '</span> <span></span><a style="display:none" class="Activeclass btn blue_btnnew tooltips" data-placement="left" title="Active"><i class="fa-solid fa-check"></i></a><a class="Inactiveclass btn blue_btnnew tooltips" data-placement="left" title="Delete"><i class="fa-solid fa-xmark"></i></a> <a class="previewclass btn seagreen_btnnew tooltips viewpolicyreqtimeline" data-placement="left" data-original-title="View Policy Request"><i class="fa-regular fa-info-circle"></i></a> ';
+                                                } else {
+                                                    return '<a class="eyeclass btn blue_btnnew tooltips eye_btn" data-placement="left" title="View" > <span class="_Batchid" hidden="">' + full.policyid + '</span> <i class="fa-regular fa-eye"> </i>  </a> <span hidden class="_PolicyStatus">' + full.policyapprovalstatus + '</span><a style="display:none" class="Activeclass btn blue_btnnew tooltips" data-placement="left" title="Delete"><i class="fa-solid fa-check"></i></a><a class="previewclass btn seagreen_btnnew tooltips viewpolicyreqtimeline" data-placement="left" data-original-title="View Policy Request"><i class="fa-regular fa-info-circle"></i></a>';
+                                                }
+                                            }
+                                        }
+                                ],
+                                "lengthMenu": [
+                                       [10, 25, 50, 100], // Options for number of entries per page
+                                       [10, 25, 50, 100], // Label for the "All" option
+                                ],
+                                initComplete: function () {
+
+                                    const visibleTable = $('table:visible').attr('id');
+
+                                        $("#buttons").append(`
+                                        <div id="export-button" class="export-button tooltips" data-placement="bottom" data-original-title="Download" data-table-id="${visibleTable}">
+                                            <img src="../Newlayout/images/download_icon.svg" alt="Download icon">
+                                        </div>
+                                    `);
+                                    $('.tooltips').tooltip();
+                                },
+                            });
+                            setTimeout(function () {
+                                $("#" + "tblbatchdetails" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+                                //$('.tooltips').tooltip();
+                            }, 100);
+                        } else {
+                            flag = 0;
+                            $("#batch_table_block").hide();
+
+                        }
+                    }
+                },
+                error: function (xhr, status, error) {
+                    console.error("Failed to fetch data: ", error);
+                }
+            });
+        }
+
+        function resetWorkflow() {
+            $("#WorkflowId").val('0');
+            document.getElementById("WorkflowId").disabled = false;
+        }
+        function disableWorkflow() {
+            $("#WorkflowId").val("0").trigger('change');
+            document.getElementById("WorkflowId").disabled = true;
+        }
+        function enableWorkflow() {
+            document.getElementById("WorkflowId").disabled = false;
+            $("#WorkflowId").val("0").trigger('change');
+        }
+        function fillWorkflow() { //In use
+            $.ajax({
+                type: "GET",
+                url: '@_webapiurlpayroll' + "SalaryIncrementWorkFlowDetails/getsalaryincrementworkflowlist",
+                headers: { 'Authorization': '@_tokan' },
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+
+                success: function (data) {
+                    $("#WorkflowId").empty();
+                    var option = '';
+                    option = "<option value='0'> Select Workflow </option>"
+                    //data.sort(function (a, b) {
+                    //    return a.WorkFlowName.localeCompare(b.WorkFlowName);
+                    //});
+                    if (data != null && data.length > 0 ) {
+
+                        for (var i = 0; i < data.length; i++) {
+
+                            option += "<option value='" + data[i].WorkFlowId + "'> " + data[i].WorkFlowName + "</option>";
+
+                        }
+                    }
+                    $("#WorkflowId").append(option);
+                    //$Workflowselect.multiselect('rebuild');
+                },
+                error: function (xhr, ajaxOptions, thrownError) {
+
+                    if (xhr.status == 404) { //NotFound = 404
+                        toastr.error(thrownError);
+                    } else if (xhr.status == 500) { //InternalServerError = 500,
+                        toastr.error("InternalServerError");
+                    } else if (xhr.status == 400) { //BadRequest = 400,
+                        toastr.error("BadRequest");
+                    } else if (xhr.status == 419) {
+                        window.location.href = "/PayTime/LoginPage";
+                    } else {
+                        toastr.error(thrownError);
+                    }
+                }
+            });
+        }
+
+        function frmclear() {
+            // Reset select dropdowns
+            $('#CompanyID option').prop('selected', false);
+            $('#CompanyID').multiselect('refresh');
+
+            $('#BranchIds option').prop('selected', false);
+            $('#BranchIds').multiselect('refresh');
+
+            $("#DeptIds").val(0).trigger('change');
+            $("#DesignationId").val(0).trigger('change');
+            $("#financialYearDropdown").val(0).trigger('change');
+            $("#IncrementCycle").val(1).trigger('change');
+            $("#IncrementMode").val(1).trigger('change');
+            $("#isclearance").val(0).trigger('change');
+            $("#WorkflowId").val(0).trigger('change');
+
+            // Clear input fields
+            $("#EffectiveDate").val('');
+            $("#PolicyName").val('');
+            $("#IncrementValue").val('');
+            $("#InstallmentMonth").val('');
+            resetFileInput();
+        }
+
+        //Reset the inputfile
+        function resetFileInput() {
+            var $fileInput = $('.fileinput');
+            $fileInput.removeClass('fileinput-exists').addClass('fileinput-new');
+            $fileInput.find('.fileinput-filename').text('');
+            $('#FileUpload').val('');
+        }
+
+
+        $('input[name="rb"]').change(function () {
+            var selectedValue = $(this).val();
+            if (selectedValue === "true") {
+                enableWorkflow();
+            } else if (selectedValue === "false") {
+                disableWorkflow();
+            }
+        });
+
+        $('input[name="rb2"]').change(function () {
+            var selectedValue = $(this).val();
+            if (selectedValue === "true") {
+                $("#isArrearsTypediv").show();
+                $('#ArrearsTypes').val('1').trigger('change');
+            } else if (selectedValue === "false") {
+                $("#isArrearsTypediv").hide();
+                $("#ArrearsTypes").val('');
+                $('#InstallmentMonthdiv').hide();
+                $("#InstallmentMonth").val('');
+            }
+        });
+
+
+        $('#ArrearsTypes').on('change', function () {
+            var selectedValues = $(this).val(); // Returns array of selected values
+            // Check if "2" (Multiple) is selected
+            if (selectedValues && selectedValues.includes("2")) {
+                $('#InstallmentMonthdiv').show();
+            } else {
+                $('#InstallmentMonthdiv').hide();
+                $("#InstallmentMonth").val('');
+            }
+        });
+
+    });
+</script>
+
+<!-- Page Bar : Begin -->
+<div class="page-bar">
+    <ul class="page-breadcrumb">
+        <li>
+            @*<a href="/PayTime/AdminDashboard"><i class="fa-regular fa-house"></i></a>*@
+            <a href="@(isClientDBMatchFlag == "True" ? "/Admin/AdminDashboard" : "/Dashboard/AdminDashboard")"><i class="fa-regular fa-house"></i></a>
+        </li>
+        <li>
+            <span><i class="fa-light fa-angle-right"></i> Increment policy planning</span>
+        </li>
+    </ul>
+    <div class="page-toolbar">
+
+        <div class="text-right Onboard_page_header">
+            <a href="#" id="BackStrbtn" class="btn icon_transparent_btn tooltips" data-placement="left" data-original-title="Back" style="display:none"><i class="fa-regular fa-arrow-left"></i></a>
+            <a href="#" id="AddStrfrmbtn" class="btn icon_transparent_btn tooltips" data-placement="left" data-original-title="Create increment policy" style="display:none"> <i class="fa-solid fa-plus"></i></a>
+        </div>
+    </div>
+</div>
+<!-- Page Bar : End -->
+<!-- Filter Block : Begin -->
+<div class="portlet light bordered margin-bottom-10" id="filtercolumn_block" style="display:none">
+    <div class="list-content">
+        <div class="collapse in" id="listfive" aria-expanded="true">
+            <div class="portlet-body form">
+                <div class="row">
+                    <div class="col-md-3">
+                        <div class="form-group ">
+                            <label class="control-label">Company<span class="required" aria-required="true"> * </span></label>
+                            <input type="text" id="txt5" value="0" hidden />
+                            <select id="CompanyID" class="mt-multiselect btn blue btn-outline" multiple="multiple" data-width="100%"></select>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="form-group ">
+                            <label class="control-label">Branch <span class="required" aria-required="true"> * </span></label>
+                            <input type="text" id="txt2" value="0" hidden />
+                            <select id="BranchIds" class="mt-multiselect btn blue btn-outline" multiple="multiple" data-width="100%"></select>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="form-group ">
+                            <label class="control-label">Department <span class="required" aria-required="true">  </span></label>
+                            <input type="text" id="txt2" value="0" hidden />
+                            <select id="DeptIds" class="mt-multiselect btn blue btn-outline" multiple="multiple" data-width="100%"></select>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="form-group">
+                            <label>Designation <span class="required" aria-required="true"></span></label>
+                            <select class="mt-multiselect btn-sm btn blue btn-outline " aria-haspopup="true" aria-expanded="false" multiple="multiple" data-width="100%" id="DesignationId" name="DesignationId">
+                                @foreach (var item in ViewBag.DesignationList as IEnumerable<SelectListItem>)
+                                {
+                                    <option value="@item.Value">@item.Text</option>
+                                }
+                            </select>
+                            <span class="help-block error_help_block" hidden id="spDesignationId"></span>
+                            <input type="text" id="txt4" value="0" hidden />
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="form-group">
+                            <label class="control-label">Financial Year<span class="required" aria-required="true">*</span></label>
+                            <input type="text" id="txt3" value="0" hidden />
+                            <select class="form-control input-sm select2" id="financialYearDropdown">
+                                <option value="0">Select Financial Year</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="form-group data_picker_box">
+                            <label>Effective Date <span class="required" aria-required="true"> * </span></label>
+                            <div id="EffectiveDatedivdp" class="input-group input-group-sm date date-picker" data-date-format="yyyy-mm-dd" data-date-viewmode="years">
+                                <span class="input-group-btn">
+                                    <button class="btn default" type="button">
+                                        <i class="fa-light fa-calendar-days"></i>
+                                    </button>
+                                </span>
+                                <input type="text" class="form-control datepicker" id="EffectiveDate" name="EffectiveDate" autocomplete="off">
+                            </div>
+                            <span class="help-block error_help_block" hidden id="spEmpDOBDate"></span>
+                        </div>
+
+                    </div>
+
+                    <div class="col-md-3" id="isArrearsdiv" style="display:none">
+                        <div class="form-group">
+                            <label class="control-label">Is Arrears Required<span class="required" aria-required="true">*</span></label>
+                            <div>
+                                <label class="mt-radio mt-radio-outline">
+                                    Yes
+                                    <input value="true" name="rb2" id="rbyes2" type="radio">
+                                    <span></span>
+                                </label>
+                                <label class="mt-radio mt-radio-outline">
+                                    No
+                                    <input type="radio" id="rbno2" checked value="false" class="form-control" name="rb2" />
+                                    <span></span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-3" id="isArrearsTypediv" style="display:none">
+                        <div class="form-group">
+                            <label class="control-label">Arrears Types<span class="required" aria-required="true">*</span></label>
+                            <input type="text" id="txt3" value="0" hidden />
+                            <select class="form-control input-sm select2" id="ArrearsTypes">
+                                <option value="1">Single</option>
+                                <option value="2">Multiple</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="col-md-3" id="InstallmentMonthdiv" style="display:none">
+                        <div class="form-group">
+                            <label class="control-label">Installment month<span class="required" aria-required="true">*</span></label>
+                            <input type="number" id="InstallmentMonth" placeholder="Enter Installment Month" min="2" max="12" class="form-control" name="InstallmentMonth" />
+                        </div>
+                    </div>
+
+                    <div class="col-md-3">
+                        <div class="form-group">
+                            <label class="control-label">Policy Name<span class="required" aria-required="true">*</span></label>
+                            <input type="text" id="PolicyName" placeholder="Enter Policy Name" maxlength="200" class="form-control" name="PolicyName" />
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="form-group">
+                            <label class="control-label">Increment Cycle<span class="required" aria-required="true">*</span></label>
+                            <input type="text" id="txt3" value="0" hidden />
+                            <select class="form-control input-sm select2" id="IncrementCycle">
+                                <option value="1">Yearly</option>
+                                <option value="2">Half Yearly</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="form-group">
+                            <label class="control-label">Increment Mode<span class="required" aria-required="true">*</span></label>
+                            <input type="text" id="txt3" value="0" hidden />
+                            <select class="form-control input-sm select2" id="IncrementMode">
+                                <option value="1">% Percentage</option>
+                                <option value="2">Flat Amount</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="form-group">
+                            <label class="control-label">Increment Value<span class="required" aria-required="true">*</span></label>
+                            <input type="text" id="IncrementValue" placeholder="Enter Increment Value" class="form-control" name="IncrementValue" />
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+
+
+                        <div class="form-group">
+                            <label class="control-label">Is Approval Required<span class="required" aria-required="true">*</span></label>
+                            <div>
+                                <label class="mt-radio mt-radio-outline">
+                                    Yes
+                                    <input value="true" name="rb" id="rbyes" type="radio">
+                                    <span></span>
+                                </label>
+                                <label class="mt-radio mt-radio-outline">
+                                    No
+
+                                    <input type="radio" id="rbno" checked value="false" class="form-control" name="rb" />
+                                    <span></span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-3">
+                        <div class="form-group ">
+                            <label class="control-label">Workflow</label>
+                            <select id="WorkflowId" class="form-control input-sm select2" data-width="100%">
+                                <option value="0"> Select Workflow</option>
+                            </select>
+                        </div>
+                    </div>
+
+
+                    <div class="col-md-3">
+                        <label>Select File</label>
+                        <div class="fileinput fileinput-new margin-right-5" data-provides="fileinput">
+                            <div class="input-group">
+                                <!-- Removed data-trigger="fileinput" -->
+                                <div class="form-control uneditable-input input-fixed input" style="min-width: 165px;">
+                                    <i class="fa-light fa-file"></i>&nbsp;
+                                    <span class="fileinput-filename" style="width:120px;"> </span>
+                                </div>
+                                <span class="input-group-addon btn blue btn-file" style="padding: 3px 12px;">
+                                    <span class="fileinput-new"><i class="fa-regular fa-file" aria-hidden="true"></i></span>
+                                    <span class="fileinput-exists"><i class="fa-light fa-arrows-rotate" aria-hidden="true"></i></span>
+                                    <input type="file" name="FileUpload" id="FileUpload">
+                                </span>
+                                <a href="javascript:;" class="input-group-addon btn red fileinput-exists tooltips" data-dismiss="fileinput" data-placement="bottom" data-original-title="Remove File"><i class="fa-regular fa-trash-can" aria-hidden="true"></i></a>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="margin-top-25 text-right">
+                            <button type="submit" id="clear_operation" class="btn clear_btn tooltips" data-placement="top" data-original-title="Clear"><i class="fa-regular fa-eraser"></i></button>
+                            <button type="submit" id="btnSubmit" class="btn icon_btn margin-left-5 tooltips" data-placement="top" data-original-title="Create Policy"><i class="fa-solid fa-plus"></i></button>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Filter Block : End -->
+<!-- Policy View Block : Begin -->
+<div class="portlet light bordered margin-bottom-10" style="display:none" id="policyDetailsBlock">
+    <div class="list-content">
+        <div class="collapse in" id="listfive" aria-expanded="true">
+            <div class="portlet-body form">
+                <div class="row">
+                    <div class="col-md-3">
+                        <div class="form-group">
+                            <label class="label_bold">Policy Name</label>
+                            <input type="text" value="" class="form-control input-sm" id="policyNameView" style="border: none; padding-left: 0;">
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="form-group">
+                            <label class="label_bold">Financial Year</label>
+                            <input type="text" value="" class="form-control input-sm" id="financialYearView" style="border: none; padding-left: 0;">
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="form-group">
+                            <label class="label_bold">Policy Status</label>
+                            <input type="text" value="" class="form-control input-sm" id="policyStatusView" style="border: none; padding-left: 0;">
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="form-group">
+                            <label class="label_bold">Total Current CTC</label>
+                            <input type="text" value="10000" class="form-control input-sm" id="totalcurrentCTC" style="border: none; padding-left: 0;">
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="form-group">
+                            <label class="label_bold">Proposed Growth</label>
+                            <input type="text" class="form-control input-sm" id="proposedGrowth">
+                        </div>
+                    </div>
+                    <div class="col-md-3" style="margin-top: 17px;">
+                        <button type="button" id="ApplyGrowth" class="icon_btn tooltips" data-placement="top" data-original-title="Apply" data-toggle="tooltip"><i class="fa-solid fa-check"></i></button>
+                        <button type="button" id="Clear_Operation" class="clear_btn tooltips" data-placement="top" data-original-title="Clear" data-toggle="tooltip"><i class="fa-regular fa-eraser"></i></button>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="form-group">
+                            <label class="label_bold">Total New CTC</label>
+                            <input id="newProposedCTC" type="text" value="20000" class="form-control input-sm" style="border: none; padding-left: 0;">
+                        </div>
+                    </div>
+                    @*<div class="col-md-3">
+                            <div class="form-group">
+                                <label class="label_bold">Company</label>
+                                <input type="text" value="Name of Company" class="form-control input-sm" id="" style="border: none; padding-left: 0;">
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="form-group">
+                                <label class="label_bold">Branch</label>
+                                <input type="text" value="Name of Branch" class="form-control input-sm" id="" style="border: none; padding-left: 0;">
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="form-group">
+                                <label class="label_bold">Department</label>
+                                <input type="text" value="Name of Department" class="form-control input-sm" id="" style="border: none; padding-left: 0;">
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="form-group">
+                                <label class="label_bold">Designation</label>
+                                <input type="text" value="Name of Designation" class="form-control input-sm" id="" style="border: none; padding-left: 0;">
+                            </div>
+                        </div>*@
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Policy View Block : End -->
+<div id='ajax_loader' class="modal_bg loading" aria-hidden="true">
+    <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading" />
+</div>
+<!-- Datatable Block : Begin -->
+<div class="portlet" style="margin-bottom: 0px;" id="main_bock">
+
+    <div class="portlet-body">
+        <div class="row">
+
+            <!-- No Payroll Structure to Show : Begin -->
+            <div class="payroll_mainblock" id="create_Incrementblock" style="display:none">
+                <div class="col-sm-6 col-xs-12 payroll_emptyscreen">
+                    <div class="text-center">
+                        <img src="/assets/images/empty_screen.svg" class="empty_screen" alt="empty screen" />
+                        <p class="pay_title">No increment policy to show</p>
+                        <p class="pay_subtitle">There is not any increment policy available</p>
+                    </div>
+                </div>
+                <div class="col-sm-6 col-xs-12">
+                    <div class="payroll_configuration">
+                        <div class="payroll_config_title">Create employee increment policy</div>
+                        <div class="payroll_config_subtitle"><b>Step-1:</b> Configure approval flow</div>
+                        <div class="payroll_config_subtitle"><b>Step-2:</b> Create increment policy</div>
+                        <div class="payroll_config_subtitle"><b>Step-3:</b> Approve increment policy</div>
+                        <div class="payroll_config_subtitle"><b>Step-4:</b> Payroll will be process by effective date of increment policy</div>
+                        @if (obj.CanAdd)
+                        {
+                            <a href="#" id="Create_Increment_Plan_btn" class="btn create_payroll_btn"> <i class="fa-solid fa-plus"></i> Create increment policy</a>
+                        }
+                    </div>
+                </div>
+            </div>
+            <!-- No Payroll Structure to Show : End -->
+            <!-- requestbatchid,batchname,batchstatusid,batchorder,batchcreationdate,isactive -->
+            <div id="batch_table_block">
+                <div class="Strength_details_table">
+                    <div class="table-scrollable">
+                        <div class="col-lg-12">
+                            <div id="tblempty">
+                                <div class="table-responsive" id="tableResponsive">
+                                    <table id="tblbatchdetails" class="new_datatbl table table-striped table-bordered tbl_middle table-hover tbl_newdatatbl serch_datatable table-checkable order-column">
+                                        <thead>
+                                            <tr>
+                                                <th style="min-width: 80px">Policy Name</th>
+                                                <th style="min-width: 100px">Policy Status</th>
+                                                <th style="min-width: 100px">Policy Created</th>
+                                                <th style="min-width: 100px">IsApproved</th>
+                                                <th style="min-width: 100px">Increment Cycle</th>
+                                                <th style="min-width: 100px">IsArrears</th>
+                                                <th style="min-width: 100px">No Of Employee(s)</th>
+                                                <th style="min-width: 100px">Financial  year</th>
+                                                <th style="min-width: 100px">Action</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <div id="NotificationGrid-empty" style="display: none">
+                                <div class="datanotfound">
+                                    <img src="" height="148" width="280" alt="Nodata Found Icon">
+                                    <p class="datanotfound_title"></p> <!-- titleText -->
+                                    <p class=""></p><!-- subText -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Employee Datatable Start -->
+
+            <div id="noRecordsMessage" style="display: none; text-align: center; margin-top: 20px;">
+                No records found
+            </div>
+            <div id="Employee_Table">
+                <div class="Strength_details_table">
+                    <div class="col-lg-12">
+                        <div class="table-scrollable">
+                            <div id="tblempty1">
+                                <div class="table-responsive" id="tableResponsive1">
+                                    <table id="Employee_dataTable" class="table new_datatbl table-striped table-bordered tbl_middle table-hover tbl_newdatatbl serch_datatable table-checkable order-column" style="display:none">
+                                        <thead>
+                                            <tr>
+                                                <th style="min-width: 70px;"> Employee Code</th>
+                                                <th> Name</th>
+                                                <th> Current CTC</th>
+                                                <th> Growth % or Amount </th>
+                                                <th> New CTC</th>
+                                                <th> Increment Amount</th>
+                                                <th> Pay structure</th>
+                                                <th> Action</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <div id="NotificationGrid-empty1" style="display: none">
+                                <div class="datanotfound">
+                                    <img src="" height="148" width="280" alt="Nodata Found Icon">
+                                    <p class="datanotfound_title"></p> <!-- titleText -->
+                                    <p class=""></p><!-- subText -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Employee Datatable End -->
+        </div>
+    </div>
+</div>
+<!-- Datatable Block : End -->
+<!-- Add Strength Modal : Begin -->
+<div id="AddStrength_modal" class="modal fade bs-modal-sm" role="dialog" data-keyboard="false" data-backdrop="static">
+    <div class="modal-dialog modal-sm ">
+        <!-- Modal content-->
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal">&times;</button>
+                <h4 class="modal-title">Add Strength</h4>
+            </div>
+            <div class="modal-body">
+                <div class="modal-card">
+                    <fieldset>
+                        <div class="row">
+                            <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                <div class="form-group">
+                                    <label class="control-label">Department<span class="required" aria-required="true">*</span></label>
+                                    <select id="" class="form-control input-sm">
+                                        <option value="company-1">Department-1</option>
+                                        <option value="company-2">Department-2</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                <div class="form-group">
+                                    <label class="control-label">Designation<span class="required" aria-required="true">*</span></label>
+
+                                    <select id="" class="form-control input-sm">
+                                        <option value="company-1">Designation-1</option>
+                                        <option value="company-2">Designation-2</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                <div class="form-group">
+                                    <label class="control-label">Current Strength<span class="required" aria-required="true">*</span></label>
+                                    <input type="text" id="desname" placeholder="Enter Designation Name" class="form-control" name="desname" />
+                                    <span class="help-block" hidden id=""></span>
+                                </div>
+                            </div>
+                            <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                <div class="form-group">
+                                    <label class="control-label">Target Strength<span class="required" aria-required="true">*</span></label>
+                                    <input type="text" id="desname" placeholder="Enter Designation Name" class="form-control" name="desname" />
+                                    <span class="help-block" hidden id=""></span>
+                                </div>
+                            </div>
+                            <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                <div class="form-group">
+                                    <label class="control-label">Type<span class="required" aria-required="true">*</span></label>
+                                    <select id="" class="form-control input-sm">
+                                        <option value="company-1">Flat</option>
+                                        <option value="company-2">%</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                <div class="form-group">
+                                    <label class="control-label">Total<span class="required" aria-required="true">*</span></label>
+                                    <input type="text" id="desname" placeholder="Enter Designation Name" class="form-control" name="desname" />
+                                    <span class="help-block" hidden id=""></span>
+                                </div>
+                            </div>
+                        </div>
+                    </fieldset>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <div class="row">
+                    <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                        <button type="button" class="btn save_btn" id="btnDesgSubmit"><i class="fa-light fa-floppy-disk"></i> Save</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Add Strength Modal : End -->
+<!-- Edit Strength Modal : Begin -->
+<div id="EditStrength_modal" class="modal fade bs-modal-sm" role="dialog" data-keyboard="false" data-backdrop="static">
+    <div class="modal-dialog modal-sm ">
+        <!-- Modal content-->
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal">&times;</button>
+                <h4 class="modal-title">Edit Strength</h4>
+            </div>
+            <div class="modal-body">
+                <div class="modal-card">
+                    <fieldset>
+                        <div class="row">
+                            <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                <div class="form-group">
+                                    <label class="control-label">Department<span class="required" aria-required="true">*</span></label>
+                                    <select id="" class="form-control input-sm">
+                                        <option value="company-1">Department-1</option>
+                                        <option value="company-2">Department-2</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                <div class="form-group">
+                                    <label class="control-label">Designation<span class="required" aria-required="true">*</span></label>
+
+                                    <select id="" class="form-control input-sm">
+                                        <option value="company-1">Designation-1</option>
+                                        <option value="company-2">Designation-2</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                <div class="form-group">
+                                    <label class="control-label">Current Strength<span class="required" aria-required="true">*</span></label>
+                                    <input type="text" id="desname" placeholder="Enter Designation Name" class="form-control" name="desname" />
+                                    <span class="help-block" hidden id=""></span>
+                                </div>
+                            </div>
+                            <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                <div class="form-group">
+                                    <label class="control-label">Target Strength<span class="required" aria-required="true">*</span></label>
+                                    <input type="text" id="desname" placeholder="Enter Designation Name" class="form-control" name="desname" />
+                                    <span class="help-block" hidden id=""></span>
+                                </div>
+                            </div>
+                            <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                <div class="form-group">
+                                    <label class="control-label">Type<span class="required" aria-required="true">*</span></label>
+                                    <select id="" class="form-control input-sm">
+                                        <option value="company-1">Flat</option>
+                                        <option value="company-2">%</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                <div class="form-group">
+                                    <label class="control-label">Total<span class="required" aria-required="true">*</span></label>
+                                    <input type="text" id="desname" placeholder="Enter Designation Name" class="form-control" name="desname" />
+                                    <span class="help-block" hidden id=""></span>
+                                </div>
+                            </div>
+
+                        </div>
+                    </fieldset>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <div class="row">
+                    <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                        <button type="button" class="btn save_btn" id="btnDesgSubmit"><i class="fa-light fa-floppy-disk"></i> Save</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Edit Strength Modal : End -->
+<!-- Request Timeline Modal : Begin -->
+<div id="viewpolicyreqtimeline_modal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal">×</button>
+                <h4 class="modal-title">Policy Appraisal Timeline</h4>
+            </div>
+            <div class="modal-body nomodalfooter">
+                <div class="modal-card" id="timeline-container">
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Request Timeline Modal : End -->

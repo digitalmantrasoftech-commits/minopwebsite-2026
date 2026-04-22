@@ -1,0 +1,410 @@
+﻿@using System.Configuration;
+@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@{
+    ViewBag.Title = "Gate";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    string _companyCode = HttpContext.Current.Session["cmpcode"].ToString();
+    string _compcode = HttpContext.Current.Session["cmpcode"].ToString();
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+}
+<style>
+    .divpar .table-scrollable {
+        max-height: 208px;
+        overflow-y: scroll;
+    }
+</style>
+<script type="text/javascript">
+    $(document).ready(function () {
+        $('#tblGateMaster').destroy;
+        var t = $('#tblGateMaster').DataTable({
+            processing: true,
+            "ajax": {
+                url: '@_webapiurl' + 'SchoolMaster/GateGetAll',
+                type: "GET",
+                headers: { 'Authorization': '@_tokan' },
+                dataSrc: '',
+            },
+            "columns": [
+                { "data": null },
+                { "data": "GateId" },
+                { "data": "GateNo" },
+                { "data": "BusId" },
+                { "data": "DeviceId" },
+                { "data": "IsActive" }
+            ],
+            "columnDefs": [
+                {
+                    "targets": [1, 3, 4, 5],
+                    "visible": false
+                },
+                {
+                    "targets": 6,
+                    "data": null,
+                    "render": function (data, type, full, meta) {
+                        if ('@obj.CanEdit.ToString()' == 'True') {
+                            data = "<a class='editclass btn btn-xs blue tooltips' title='Edit'><i class='fa fa-edit'></i></a";
+                        }
+                        else {
+                            data = "";
+                        }
+                        return data;
+                    }
+                },
+                 {
+                     "searchable": false,
+                     "orderable": false,
+                     "targets": 0
+                 }
+            ],
+            "order": [[1, 'asc']],
+        }
+        );
+        t.on('order.dt search.dt', function () {
+            t.column(0, { search: 'applied', order: 'applied' }).nodes().each(function (cell, i) {
+                cell.innerHTML = i + 1;
+            });
+        }).draw();
+        $("#GateNo").blur(function () {
+            var name = $("#GateNo").val();
+            $.ajax({
+                type: "GET",
+                headers: { 'Authorization': '@_tokan' },
+                url: '@_webapiurl' + "/SchoolMaster/GateNo?name=" + name,
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                success: function (data) {
+                    if (data.isRedirect) {
+                        window.location.href = data.redirectUrl;
+                    }
+                    if (data != null && data.length > 0) {
+                        if (data[0]["name"] == name) {
+                            $("#spGateNo").html("Gate number must be Unique.").show();
+                            $("#GateNo").val("");
+                            $("#GateNo").focus();
+                            $("#GateNo").addClass('field_error');
+                            return false;
+                        }
+                        else {
+                            $("#GateNo").removeClass('field_error');
+                            $("#spGateNo").hide();
+                            return true;
+                        }
+                    }
+                    else {
+                        $("#GateNo").removeClass('field_error');
+                        $("#spGateNo").hide();
+                    }
+
+                }
+            });
+
+        });
+        $('#GateNo').on('keypress', function (event) {
+            var regex = new RegExp("^[a-zA-Z0-9]+$");
+            var key = String.fromCharCode(!event.charCode ? event.which : event.charCode);
+            if (!regex.test(key)) {
+                event.preventDefault();
+                return false;
+            }
+        });
+
+        $("#btnGate").on('click', function () {
+            frmClear();
+            getVehicle();
+            $("#btnGate").attr("data-toggle", "modal");
+            $("#btnGate").attr("data-target", "#frmpopup");
+        });
+        $("#tblGateMaster").on('click', '.editclass', function () {
+            $("#GateNo").removeClass('field_error');
+            $("#spBus").hide();
+            $("#GateId").val(t.row($(this).parent('td').parent('tr')).data()["GateId"]);
+            var GateNo = "";
+            GateNo = t.row($(this).parent('td').parent('tr')).data()["GateNo"];
+            $('#GateNo').val(GateNo);
+            var BusId = "";
+            BusId = t.row($(this).parent('td').parent('tr')).data()["BusId"];
+            getVehicle(BusId)
+            //$("#ClassId").val(t.row($(this).parent('td').parent('tr')).data()["BranchId"]);
+            //$("#ClassName").val(t.row($(this).parent('td').parent('tr')).data()["branchname"]);
+            $(".editclass").attr("data-toggle", "modal");
+            $(".editclass").attr("data-target", "#frmpopup");
+        });
+        $("#btnGateSubmit").click(function (event) {
+            if ($("#GateNo").val() == "") {
+                $("#GateNo").addClass('field_error');
+                $("#GateNo").focus();
+                event.preventDefault();//or return false
+                return false;
+            }
+            else {
+                $("#GateNo").removeClass('field_error');
+            }
+            var allVals = [];
+            $("#ctblpar .ClsChkPar").each(function () {
+                if ($(this).is(':checked') == true) {
+                    allVals.push($(this).attr("id"));
+                }
+            });
+            if (allVals.length == 0) {
+                $("#spBus").text("Please select aleast one Bus.");
+                $("#spBus").show();
+                event.preventDefault();//or return false
+                return false;
+            }
+            var obj = {
+                GateId: $("#GateId").val(),
+                GateNo: $("#GateNo").val(),
+                BusId: allVals,
+                DeviceId: 0,
+                IsActive: $("#IsActive").val()
+            };
+            if ($('#GateId').val() == "0") {
+                $.ajax({
+                    type: "POST",
+                    headers: { 'Authorization': '@_tokan' },
+                    url: '@_webapiurl' + 'SchoolMaster/GateCreate',
+                    data: JSON.stringify(obj),
+                    contentType: "application/json; charset=utf-8",
+                    dataType: "json",
+                    success: function (response) {
+                        if (response != null) {
+                            $("<div class='alert alert-success overlay'><label>Saved Successfully</label></div>").insertBefore(".portlet-body").fadeOut(3000);
+                            $('#tblGateMaster').DataTable().ajax.reload();
+                            $('#frmpopup').modal('toggle');
+                        } else {
+                            $("<div class='alert alert-danger overlay'><label>Error on save</label></div>").insertBefore(".portlet-body").fadeOut(3000);
+                            $('#tblGateMaster').DataTable().ajax.reload();
+                            $('#frmpopup').modal('toggle');
+                        }
+                    },
+                    error: function (response) {
+                        if (response != null) {
+                            var obj = JSON.parse(response.responseText);
+
+                            if (obj.MsgSts == 'error') {
+                                $("<div class='alert alert-danger overlay'><label>" + obj.Msg + "</label></div>").insertBefore(".portlet-body").fadeOut(3000);
+                                $('#tblGateMaster').DataTable().ajax.reload();
+                                $('#frmpopup').modal('toggle');
+                            }
+                        }
+                    }
+                });
+            }
+            else {
+                $.ajax({
+                    type: "POST",
+                    headers: { 'Authorization': '@_tokan' },
+                    url: '@_webapiurl' + 'SchoolMaster/GateUpdate',
+                    data: JSON.stringify(obj),
+                    contentType: "application/json; charset=utf-8",
+                    dataType: "json",
+                    success: function (response) {
+                        if (response != null) {
+                            $("<div class='alert alert-success overlay'><label>Updated Successfully</label></div>").insertBefore(".portlet-body").fadeOut(3000);
+                            $('#tblGateMaster').DataTable().ajax.reload();
+                            $('#frmpopup').modal('toggle');
+                        } else {
+                            $("<div class='alert alert-danger overlay'><label>Error on updation</label></div>").insertBefore(".portlet-body").fadeOut(3000);
+                            $('#tblGateMaster').DataTable().ajax.reload();
+                            $('#frmpopup').modal('toggle');
+                        }
+                    }
+                });
+            }
+        });
+    });
+    function frmClear() {
+        $("#GateId").val(0);
+        $("#GateNo").val("");
+        $("#GateNo").removeClass('field_error');
+        $("#GateNo").attr("placeholder", "Please Enter Gate Number.");
+        $("#spGateNo").hide();
+        $("#spBus").hide();
+    }
+    function getVehicle(strselectedParID) {
+        $("#clblpar").show();
+        $("#ctblpar").empty();
+        $.ajax({
+            type: "GET",
+            headers: { 'Authorization': '@_tokan' },
+            url: '@_webapiurl' + "/SchoolMaster/GetAllActiveVehicle",
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            beforeSend: function () {
+            },
+            success: function (response) {
+                if (response.isRedirect) {
+                    window.location.href = response.redirectUrl;
+                }
+                var table = "";
+                if (response != null) {
+                    for (var i = 0; i < response.length; i++) {
+                        var tbl = "<tr class='odd gradeX'>";
+                        tbl = tbl + "<td id='pid' hidden>" + response[i].VehicleId;
+                        tbl = tbl + "</td>";
+                        tbl = tbl + "<td id='pnme'>" + response[i].VehicleNo;
+                        tbl = tbl + "</td>";
+                        //tbl = tbl + "<td id='pcntno'>" + response[i].ContactNo;
+                        //tbl = tbl + "</td>";
+                        if (strselectedParID != null) {
+                            if (strselectedParID.length != 0) {
+                                var re = new RegExp("(^|,)" + response[i].VehicleId + "($|,)");
+                                if (re.test(strselectedParID) == true) {
+                                    tbl = tbl + "<td id=''><input type='checkbox' class='ClsChkPar' id='" + response[i].VehicleId + "' checked/>";
+                                }
+                                else {
+                                    tbl = tbl + "<td id=''><input type='checkbox' class='ClsChkPar' id='" + response[i].VehicleId + "'/>";
+                                }
+                            }
+                            else {
+                                tbl = tbl + "<td id=''><input type='checkbox' class='ClsChkPar' id='" + response[i].VehicleId + "'/>";
+                            }
+                        }
+                        else {
+                            tbl = tbl + "<td id=''><input type='checkbox' class='ClsChkPar' id='" + response[i].VehicleId + "'/>";
+                        }
+                        tbl = tbl + "</td>";
+                        tbl = tbl + "</tr>";
+                        table += tbl;
+                    }
+                }
+                $("#ctblpar").destroy;
+                $('#ctblpar').append(table);
+                $('#ctblpar').dataTable({
+                    // "data": data.d,
+                    "columnDefs": [
+                                        {
+                                            "targets": [0],
+                                            "visible": false,
+                                            "searchable": false,
+                                        }
+
+                    ],
+                    "destroy": true,
+                    "bInfo": false,
+                    "bPaginate": false,
+                    "bLengthChange": false,
+                    "columns": [
+                        { "title": "Vehicle ID" },
+                         { "title": "Vehicle Number" },
+                        //{ "title": "Contact No" },
+                        { "title": "" }
+                    ]
+                });
+            },
+            error: function () {
+            }
+        });
+    }
+</script>
+<div class="page-bar">
+    <ul class="page-breadcrumb">
+        <li>
+            <a href="/School/AdminDashboard">Home</a>
+            <i class="fa fa-circle"></i>
+        </li>
+        <li>
+            <span>Gate</span>
+        </li>
+    </ul>
+
+    <div class="page-toolbar">
+        @if (obj.CanAdd && Convert.ToInt32(Session["IsSchool"]) == 1)
+        {
+            <div class="">
+                <a href="#" id="btnGate" class="btn btn-sm blue" style="float:right"> <i class="fa fa-plus"></i> Add Gate</a>
+            </div>
+        }
+
+    </div>
+</div>
+<h1 class="page-title">
+    <small></small>
+</h1>
+@if (obj.CanView && Convert.ToInt32(Session["IsSchool"]) == 1)
+{
+    <div class="row">
+        <div class="col-md-12">
+            <div class="portlet ">
+                <div class="portlet-body">
+                    <div>
+                        <table id="tblGateMaster" class="table table-striped table-bordered table-hover table-checkable order-column">
+                            <thead>
+                                <tr>
+                                    <th>Sr. No</th>
+                                    <th hidden>Gate ID</th>
+                                    <th>Gate No</th>
+                                    <th hidden>Bus Id</th>
+                                    <th hidden>Device Id</th>
+                                    <th hidden> Is Active</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                        </table>
+                    </div>
+                    <div id="ajax_loaderbranch" class="modal_bg loading" aria-hidden="true">
+                        <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading"/>
+                    </div>
+                    <div id="frmpopup" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+                        <div class="modal-dialog">
+                            <!-- Modal content-->
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                                    <h4 class="modal-title">Gate</h4>
+                                </div>
+                                <div class="modal-body">
+                                    <div class="row">
+                                        <div class="col-md-12">
+                                                <fieldset class="form-horizontal">
+                                                    <div class="form-group">
+                                                        @Html.Hidden("GateId")
+                                                        <div class="editor-label   col-md-4 control-label">
+                                                            @Html.Hidden("IsActive", true)
+                                                            Gate No <span class="required" aria-required="true"> * </span>
+                                                        </div>
+                                                        <div class="editor-field col-md-7">
+                                                            <input type="text" id="GateNo" name="GateNo" required="" class="form-control input-sm" placeholder="Enter Gate Number" onkeyup="this.value = this.value.replace(/[<>]/g, '').replace(/\//g, '')" maxlength="50">
+                                                            <span class="help-block" hidden id="spGateNo" style="color:red;"></span>
+                                                        </div>
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <div class="divpar">
+                                                            <label id="clblpar" class="control-label" hidden>Bus<span class=" required" aria-required="true"> * </span> </label>
+                                                            <span class="help-block" hidden id="spBus" style="color:red;"></span>
+                                                            <table class="table table-striped table-bordered table-hover order-column" id="ctblpar"></table>
+                                                        </div>
+                                                    </div>
+                                                    <div class="form-group">
+                                                        <button type="button" class=" btn btn-sm blue" id="btnGateSubmit" style="float:right"> <i class="fa fa-check"></i> Save</button>
+                                                    </div>
+                                                </fieldset>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    <span style="color:red">Unauthorized Access.</span>
+}

@@ -1,0 +1,232 @@
+﻿@using System.Configuration;
+@using PayTimeWebClient.Models;
+@using PayTimeWebClient.Helper
+@{
+    ViewBag.Title = "EmployeeReferenceGuide";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    string _compcode = HttpContext.Current.Session["cmpcode"].ToString();
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    string _companyCode = HttpContext.Current.Session["cmpcode"].ToString();
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+    string _companyid = "0";
+    string _branchid = "0";
+    int _EmpId = 0;
+    if (_RoleId == 6805 || _RoleId == 6806 || _RoleId > 1)
+    {
+        _companyid = HttpContext.Current.Session["ClientCompanyId"].ToString();
+        _branchid = HttpContext.Current.Session["BranchId"].ToString();
+        _EmpId = Convert.ToInt32(HttpContext.Current.Session["EmpId"]);
+    }
+    string isClientDBMatchFlag = HttpContext.Current.Session["IsClientDBMatch"] != null
+    ? HttpContext.Current.Session["IsClientDBMatch"].ToString()
+    : "false"; // Default to "false" if the session is null
+}
+<style>
+    .policymodal_block {
+        position: fixed;
+        top: 0px;
+        left: 0px;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 11111;
+    }
+
+        .policymodal_block .modal_box {
+            position: relative;
+            width: 80%;
+            height: 87%;
+            margin: 3% auto;
+            background: #fff;
+            border-radius: 8px !important;
+            overflow: hidden;
+        }
+
+    .closeModal {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        background: #ffffff;
+        font-size: 20px;
+        border: none;
+        border-radius: 3px !important;
+        width: 30px;
+        height: 30px;
+    }
+</style>
+<script src="~/Scripts/Helpers/noDataHandler.js"></script>
+<script type="text/javascript">
+    var emprole = '@_RoleId';
+    var cmpId = '@_companyid';
+    var branchId = '@_branchid';
+    $(document).ready(function () {
+        url = '@_webapiurl' + 'Master/GetEmployeeReferenceGuide?Roleid=' + emprole + "&ComanyID=" + cmpId + "&BranchID=" + branchId + "&flag=1";
+        $("#dataTables_tbl_header").remove();
+        var t = $('#tblemployeeReferenceGuide').DataTable(
+            {
+                dom: _domCommon,
+                language: _languageCommon,
+	            "destroy": true,
+	            "ajax": {
+                    url: url,
+	                type: "GET",
+	                headers: { 'Authorization': '@_tokan' },
+	                dataSrc: '',
+	            },
+                "columns": [
+                    { "data": null, visible:false },
+                    { "data": "policy_title" },
+                    { "data": "policy_description" },
+                    { "data": "document_path" },
+                    { "data": "uploaded_date"}
+	            ],
+	            "columnDefs": [
+			         {
+			             "searchable": false,
+			             "orderable": false,
+			             "targets": 0
+                    },
+                    {
+                        "targets": [4],
+                        "visible": false
+                    },
+                    {
+                        "targets": [3],
+                        orderable:false,
+                        "render": function (data, type, row) {
+                            return '<a class="previewclass btn blue_btnnew tooltips" data-placement="top" data-original-title="Edit"><i class="fa-regular fa-eye"></i></a>';
+                        }
+                    }
+                ],
+                "order": [[1, 'asc']],
+                "initComplete": function (settings, json) {
+                    if (json != null) {
+                        const insurance = json;
+                        handleGridVisibility("tblempty", "NotificationGrid-empty", insurance, {
+                            imageUrl: "emptyscreen_1.png",
+                            subText: "No entries found. Please add a record to get started."
+                        });
+                    }
+                }
+	        }
+        );
+        setTimeout(function () {
+            $("#" + "tblemployeeReferenceGuide" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+            $('.tooltips').tooltip();
+        }, 100);
+         t.on('order.dt search.dt', function () {
+            t.column(0, { search: 'applied', order: 'applied' }).nodes().each(function (cell, i) {
+                cell.innerHTML = i + 1;
+            });
+         }).draw();
+         $("#tblemployeeReferenceGuide").on('click', '.previewclass', function () {
+            var pathname = t.row($(this).parent('td').parent('tr')).data()["document_path"];
+            // Generate the URL or file path for the document
+            var documentURL = '/UploadEmployeePolicies/' + '@_compcode/' + pathname; // Update the path to match your folder structure
+            // Set the iframe src to the document URL
+             $("#pdfViewer").attr("src", documentURL);
+             $("#pdfContainer").show();
+         });
+        $("#closePdf").on('click', function () {
+            $("#pdfContainer").hide();
+            $("#pdfViewer").attr("src", "");
+        });
+
+
+    });
+</script>
+<div class="page-bar">
+    @if (_RoleId == 1 || _RoleId == 6805 || _RoleId == 6806)
+    {
+        <ul class="page-breadcrumb">
+            <li>
+                @if (isClientDBMatchFlag == "True")
+                {
+                    <a href="/Admin/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+                }
+                else
+                {
+                    <a href="/Dashboard/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+                }
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> Employee Reference Guide</span>
+            </li>
+        </ul>
+    }
+    else
+    {
+        <ul class="page-breadcrumb">
+            <li>
+                <a href="/Dashboard/EmployeeDashboard"><i class="fa-regular fa-house"></i></a>
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> Employee Reference Guide</span>
+            </li>
+        </ul>
+    }
+</div>
+@if (obj.CanView)
+{
+    <div class="row">
+        <div class="col-md-12">
+            <div class="portlet">
+                <div class="portlet-body">
+                    <div style="width:100%;margin-left:auto;margin-right:auto;">
+                        <div id="tblempty">
+                            <div class="table-responsive" id="tableResponsive">
+                                <table id="tblemployeeReferenceGuide" class="new_datatbl table table-striped table-bordered table-hover table-checkable order-column ">
+                                    <thead>
+                                        <tr>
+                                            <th style="display:none;">Sr. No</th>
+                                            <th style="min-width: 150px;">Title</th>
+                                            <th>Description</th>
+                                            <th>Contents</th>
+                                            <th hidden>Uploaded Date</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div id="NotificationGrid-empty" style="display: none">
+                            <div class="datanotfound">
+                                <img src="" height="148" width="280" alt="Nodata Found Icon">
+                                <p class="datanotfound_title"></p> <!-- titleText -->
+                                <p class=""></p><!-- subText -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+        <div id="pdfContainer" class="policymodal_block" style="display: none;">
+            <div class="modal_box">
+                <button id="closePdf" class="closeModal">&times;</button>
+                <iframe id="pdfViewer" src="" frameborder="0" style="width: 100%; height: 100%;"></iframe>
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    <span style="color:red">Unauthorized Access.</span>
+}
+
+
+

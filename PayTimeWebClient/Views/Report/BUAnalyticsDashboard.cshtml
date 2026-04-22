@@ -1,0 +1,1277 @@
+@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@using System.Configuration;
+@using Newtonsoft.Json;
+@{
+    ViewBag.Title = "BUAnalyticsDashboard";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    string _companyCode = HttpContext.Current.Session["cmpcode"].ToString();
+    RoleRightsMapping obj = new RoleRightsMapping();
+    string _isdateformat = HttpContext.Current.Session["IsDateFormat"].ToString();
+    string _lockAttendanceDay = HttpContext.Current.Session["lockAttendanceDay"].ToString();
+    int _PlanId = Convert.ToInt32(HttpContext.Current.Session["PlanId"]);
+    int _cmpid = 0;
+    int _branchid = 0;
+    if (_RoleId == 6805)
+    {
+        _cmpid = Convert.ToInt32(HttpContext.Current.Session["ClientCompanyId"]);
+    }
+    if (_RoleId == 6806)
+    {
+        _cmpid = Convert.ToInt32(HttpContext.Current.Session["ClientCompanyId"]);
+        _branchid = Convert.ToInt32(HttpContext.Current.Session["BranchId"]);
+    }
+    int empid = Convert.ToInt32(HttpContext.Current.Session["EmpId"]);
+    bool hasTourCompletes = Convert.ToBoolean(HttpContext.Current.Session["Hastourcompleted"]);
+    int UserId = Convert.ToInt32(HttpContext.Current.Session["UserId"]);
+    _branchid = Convert.ToInt32(HttpContext.Current.Session["BranchId"]);
+    int DepartmentId = Convert.ToInt32(HttpContext.Current.Session["DepartmentId"]);
+    string Cmpid = HttpContext.Current.Session["ClientCompanyId"].ToString();
+    string _compcode = HttpContext.Current.Session["cmpcode"].ToString();
+    string WidgetId = HttpContext.Current.Session["WidgetId"].ToString();
+}
+
+<link href="/Newlayout/css/payrollstructure.css" rel="stylesheet">
+
+<style type="text/css">
+    #tableResponsiveemp {
+        max-height: unset;
+        height: calc(100vh - 260px);
+        overflow-y: auto;
+    }
+
+    .fixed-column {
+        width: 50px !important;
+        min-width: 50px !important;
+        right: 1px;
+        position: sticky !important;
+        background-color: #fff !important;
+        box-shadow: -2px 2px 4px 0px rgba(0, 0, 0, 0.20);
+    }
+
+    /* DateRange picker css custom code =============== */
+    .daterangepicker.dropdown-menu {
+        min-width: auto;
+        width: auto;
+        z-index: 11;
+    }
+
+    .daterangepicker .range_inputs .btn-sm {
+        padding: 5px 16px;
+        min-width: 80px;
+    }
+
+    .daterange_block .form-control {
+        padding-left: 32px;
+    }
+
+    .data_picker_box .input-group input {
+        height: 34px;
+        z-index: 999 !important;
+    }
+
+    /* buwise Gauge Chart Styles */
+    .buwise-chart-title {
+        text-align: center;
+        font-size: 15px;
+        font-weight: 600;
+        color: #333;
+        margin: 0 0 4px;
+        position: relative;
+        z-index: 1;
+    }
+
+    .buwise-gauge-container {
+        min-height: 200px;
+        margin-top: -40px;
+    }
+
+    .buwise-gauge-datalabel {
+        text-align: center;
+        font-size: 22px;
+        font-weight: 700;
+        color: #295097;
+    }
+
+    @@media (max-width: 767px) {
+        .buwise-gauge-container {
+            min-height: 180px;
+        }
+
+        .buwise-gauge-datalabel {
+            font-size: 18px;
+        }
+    }
+
+    /* Report table loader */
+    #ajax_loader {
+        display: none;
+    }
+
+    /* Tab panel */
+    .report-tabs-block .nav-tabs > li > a {
+        font-size: 13px;
+        font-weight: 500;
+    }
+</style>
+
+<script type="text/javascript">
+
+    $(document).ready(function () {
+        var pkloginemployeeid = '@empid';
+        var emprole = '@_RoleId';
+
+        // ================== GLOBAL ==================
+        var selectedEmpIds = new Set();
+        var currentFlag = 1; // default flag: Late In
+
+        // ================== DATATABLE INSTANCES ==================
+        var dtFlag1 = null;
+        var dtFlag2 = null;
+        var dtFlag3 = null;
+
+        // ================== MULTISELECT INIT ==================
+        $('#BuID').multiselect({
+            includeSelectAllOption: true,
+            enableFiltering: true,
+            enableCaseInsensitiveFiltering: true,
+            buttonWidth: '100%',
+            maxHeight: 300,
+            nonSelectedText: 'Select BU'
+        });
+
+        $('#SubBuID').multiselect({
+            includeSelectAllOption: true,
+            enableFiltering: true,
+            enableCaseInsensitiveFiltering: true,
+            buttonWidth: '100%',
+            maxHeight: 300,
+            nonSelectedText: 'Select SubBU'
+        });
+
+        // ================== PAGE LOAD ==================
+        LoadBU().then(() => {
+            LoadSavedEmployees();
+        });
+
+        // ================== LOAD BU ==================
+        function LoadBU() {
+            @*return $.ajax({
+                headers: { 'Authorization': '@_tokan' },
+                url: '@_webapiurl' + "Master/BUDropdownGetAll",
+                type: 'GET',
+                success: function (response) {
+                    $("#BuID").empty();
+                    $.each(response, function (i, bu) {
+                        $("#BuID").append(
+                            $('<option></option>').val(bu.BUId).text(bu.BUName)
+                        );
+                    });
+                    $('#BuID').multiselect('rebuild');
+                }
+            });*@
+            return $.ajax({
+                type: "POST",
+                url: '@_webapiurl' + "BU/GetAssignedBUs",
+                data: JSON.stringify({ loginemployeeid: pkloginemployeeid, RoleID: emprole }),
+                contentType: "application/json; charset=utf-8",
+                headers: { 'Authorization': '@_tokan' },
+                dataType: "json",
+                success: function (response) {
+                    if (typeof response === "string") {
+                        try { response = JSON.parse(response); } catch (e) { response = null; }
+                    }
+                    var buList = null;
+                    if (response != null) {
+                        if (Array.isArray(response)) {
+                            buList = response;
+                        } else if (response.Table && Array.isArray(response.Table)) {
+                            buList = response.Table;
+                        } else if (response.data && Array.isArray(response.data)) {
+                            buList = response.data;
+                        }
+                    }
+                    if (buList != null && buList.length > 0)
+                    {
+                        var buDropdown = $("#BuID");
+                        buDropdown.empty();
+                        for (var i = 0; i < buList.length; i++) {
+                            buDropdown.append('<option value="' + buList[i].BUId + '">' + buList[i].BUName + '</option>');
+                        }
+                        // Rebuild to show new options (keeps multiselect clickable)
+                        $('#BuID').multiselect('rebuild');
+                        // Re-set onChange callbacks after rebuild (rebuild can lose them)
+                        var msInstance = $('#BuID').data('multiselect');
+
+                        // Auto-load grid with ALL assigned BU IDs on page load
+                        var allBUIds = buList.map(function (b) { return b.BUId; }).join(",");
+                    } else {
+                        toastr.error("No BU assigned to your account.");
+                    }
+                },
+                error: function () {
+                    toastr.error("Failed to load BU list.");
+                }
+            });
+        }
+
+        // ================== GET SELECTED ==================
+        function getSelectedBU() {
+            return $('#BuID').val();
+        }
+
+        function getSelectedSubBU() {
+            return $('#SubBuID').val();
+        }
+
+        // ================== BU CHANGE ==================
+        $('#BuID').on('change', function () {
+            LoadSubBU();
+            selectedEmpIds.clear();
+            LoadEmployees();
+        });
+
+        // ================== LOAD SUBBU ==================
+        function LoadSubBU() {
+            var selectedBU = getSelectedBU();
+            if (!selectedBU || selectedBU.length === 0) {
+                $('#SubBuID').empty();
+                $('#SubBuID').multiselect('rebuild');
+                return $.Deferred().resolve().promise();
+            }
+            return $.ajax({
+                headers: { 'Authorization': '@_tokan' },
+                url: '@_webapiurl' + "Master/SubBUDropdown_multiselect",
+                type: 'POST',
+                contentType: "application/json",
+                data: JSON.stringify(selectedBU),
+                success: function (response) {
+                    $("#SubBuID").empty();
+                    $.each(response, function (i, subbu) {
+                        $("#SubBuID").append(
+                            $('<option></option>').val(subbu.SubBUId).text(subbu.SubBUName)
+                        );
+                    });
+                    $('#SubBuID').multiselect('rebuild');
+                }
+            });
+        }
+
+        // ================== SUBBU CHANGE ==================
+        $('#SubBuID').on('change', function () {
+            LoadEmployees();
+        });
+
+        // ================== LOAD EMPLOYEES ==================
+        function LoadEmployees() {
+            var model = {
+                BUIds: getSelectedBU(),
+                SubBUIds: getSelectedSubBU()
+            };
+            $.ajax({
+                headers: { 'Authorization': '@_tokan' },
+                url: '@_webapiurl' + "Master/GetEmployeesByBUAndSubBU",
+                type: 'POST',
+                contentType: "application/json",
+                data: JSON.stringify(model),
+                success: function (response) {
+                    $("#tblemp tbody").empty();
+                    if (!response || response.length === 0) {
+                        $("#tblemp tbody").append('<tr><td colspan="4" class="text-center">No Data Found</td></tr>');
+                        return;
+                    }
+                    $.each(response, function (i, emp) {
+                        let isChecked = selectedEmpIds.has(emp.EmpId) ? 'checked' : '';
+                        var row = `<tr>
+                            <td>${emp.Empcode}</td>
+                            <td>${emp.EmpName}</td>
+                            <td>${emp.EmpPunchID}</td>
+                            <td><input type="checkbox" class="empCheckbox" value="${emp.EmpId}" ${isChecked}/></td>
+                        </tr>`;
+                        $("#tblemp tbody").append(row);
+                    });
+                },
+                error: function () {
+                    alert("Error loading employees");
+                }
+            });
+        }
+
+        // ================== LOAD SAVED (MAIN LOGIC) ==================
+        function LoadSavedEmployees() {
+            $.ajax({
+                headers: { 'Authorization': '@_tokan' },
+                url: '@_webapiurl' + "Master/GetSavedEmployees",
+                type: 'GET',
+                success: function (data) {
+                    if (!data) return;
+                    let buIds = data.BUIds ? data.BUIds.split(',') : [];
+                    $('#BuID').multiselect('select', buIds);
+                    LoadSubBU().then(() => {
+                        let subIds = data.SubBUIds ? data.SubBUIds.split(',') : [];
+                        $('#SubBuID').multiselect('select', subIds);
+                        let empIds = data.EmpIds ? data.EmpIds.split(',').map(Number) : [];
+                        selectedEmpIds = new Set(empIds);
+                        var model = { BUIds: buIds, SubBUIds: subIds };
+                        $.ajax({
+                            headers: { 'Authorization': '@_tokan' },
+                            url: '@_webapiurl' + "Master/GetEmployeesByBUAndSubBU",
+                            type: 'POST',
+                            contentType: "application/json",
+                            data: JSON.stringify(model),
+                            success: function (response) {
+
+                                $("#tblemp tbody").empty();
+                                if (!response || response.length === 0) {
+                                    $("#tblemp tbody").append('<tr><td colspan="4" class="text-center">No Data Found</td></tr>');
+                                    return;
+                                }
+                                $.each(response, function (i, emp) {
+                                    let isChecked = selectedEmpIds.has(emp.EmpId) ? 'checked' : '';
+                                    var row = `<tr>
+                                        <td>${emp.Empcode}</td>
+                                        <td>${emp.EmpName}</td>
+                                        <td>${emp.EmpPunchID}</td>
+                                        <td><input type="checkbox" class="empCheckbox" value="${emp.EmpId}" ${isChecked}/></td>
+                                    </tr>`;
+                                    $("#tblemp tbody").append(row);
+                                    showReportTab(1);
+                                    LoadBuSubbuReport();
+                                    LoadBuSubbuCharts();
+                                });
+                            }
+                        });
+                    });
+                }
+            });
+        }
+
+        // ================== CHECKBOX ==================
+        $(document).on('change', '.empCheckbox', function () {
+            let empId = parseInt($(this).val());
+            if ($(this).is(':checked')) {
+                selectedEmpIds.add(empId);
+            } else {
+                selectedEmpIds.delete(empId);
+            }
+        });
+
+        // ================== SELECT ALL ==================
+        $(document).on('change', '#selectAll', function () {
+            let isChecked = $(this).prop('checked');
+            $('.empCheckbox').each(function () {
+                $(this).prop('checked', isChecked);
+                let empId = parseInt($(this).val());
+                if (isChecked) { selectedEmpIds.add(empId); }
+                else { selectedEmpIds.delete(empId); }
+            });
+        });
+
+        // ================== SAVE FILTER ==================
+       $('#btn_save').on('click', function () {
+            let buIds = getSelectedBU();
+            let subBuIds = getSelectedSubBU();
+            let empIds = Array.from(selectedEmpIds);
+            // ================= VALIDATION =================
+            if (!buIds || buIds.length === 0) {
+                toastr.warning("Please select BU");
+                return;
+            }
+            //if (!subBuIds || subBuIds.length === 0) {
+            //    toastr.warning("Please select Sub BU");
+            //    return;
+            //}
+            if (!empIds || empIds.length === 0) {
+                toastr.warning("Please select at least one Employee");
+                return;
+            }
+            // ================= MODEL =================
+            let model = {
+                BUIds: buIds,
+                SubBUIds: subBuIds,
+                EmpIds: empIds
+            };
+            // ================= AJAX =================
+            $.ajax({
+                headers: { 'Authorization': '@_tokan' },
+                url: '@_webapiurl' + "Master/SaveEmployeeSelection",
+                type: 'POST',
+                contentType: "application/json",
+                data: JSON.stringify(model),
+
+                success: function () {
+                    toastr.success("Data saved successfully");
+                    $('#Filterbtn_modal').modal('hide');
+                },
+
+                error: function () {
+                    toastr.error("Something went wrong");
+                }
+            });
+        });
+
+        // ================== CLEAR ==================
+        function clearEmployeeTable() {
+            $("#tblemp tbody").empty();
+        }
+
+        $("#Clear_Data").on("click", function () {
+            const picker = $('#daterange').data('daterangepicker');
+            const currentMonthRange = predefinedRanges['Current Month'];
+            $("#daterange").val("Current Month");
+            picker.setStartDate(currentMonthRange[0]);
+            picker.setEndDate(currentMonthRange[1]);
+            picker.callback(currentMonthRange[0], currentMonthRange[1], 'Current Month');
+            picker.hide();
+            $("#custom_daterange").val("");
+            $("#custom_date_input").hide();
+        });
+
+        // ================== HIDE ALL ON PAGE LOAD ==================
+        // Nothing shows until user clicks View Report
+        $('#reportTab1, #reportTab2, #reportTab3, #no_datas').hide();
+
+        // ================== REPORT TABLE SCROLL CLASS ==================
+        $(".reportblock_table").each(function () {
+            $(this).find(".table-scrollable").addClass("report_tbl_scroll");
+        });
+
+        // ================== DATATABLE BUTTONS POSITION ==================
+        // NOTE: Tables are NOT initialized on page load.
+        // They are initialized only when data is bound via bindFlag1/2/3Table().
+        // This prevents duplicate header insertBefore stacking.
+
+        // ================== ATTACH EXPORT BUTTONS ==================
+        $(document).on('click', '.export-btn', function () {
+            var reportNames = { 1: "Late In Report", 2: "Early Out Report", 3: "Working Hour Report" };
+            var reportName1 = reportNames[currentFlag] || "Report";
+            var fileName = `${reportName1} - ${getFileSafeDateTime()}`;
+            var reportName = `${reportName1} - ${getFormattedDateTime()}`;
+            var type = $(this).data('type');
+            const tableId = $('.new_datatbl:visible').attr('id');
+            const now = new Date();
+            const formattedDateTime = now.toLocaleString();
+
+            if (type === 'pdf') {
+                const table = $('#' + tableId).DataTable();
+                const originalPageLength = table.page.len();
+
+                table.page.len(-1).draw();
+                setTimeout(function () {
+                    const doc = new jspdf.jsPDF('landscape', 'pt', 'a3');
+                    doc.autoTable({
+                        html: `#${tableId}`,
+                        theme: 'grid',
+                        margin: { top: 70 },
+                        headStyles: {
+                            fillColor: [41, 80, 151],
+                            textColor: [255, 255, 255],
+                            fontStyle: 'bold'
+                        },
+                        didDrawPage: function (data) {
+                            doc.setFontSize(14);
+                            doc.setTextColor(40);
+                            doc.text(fileName + ": " + formattedDateTime, data.settings.margin.left, 50);
+                        }
+                    });
+                    doc.save(fileName + '.pdf');
+
+                    table.page.len(originalPageLength).draw();
+                }, 100);
+            } else if (type === 'excel') {
+                $(`#${tableId} thead th`).each(function (index) {
+                    $(this).attr('data-column-index', index);
+                });
+                exportTableToExcelFile(fileName, reportName);
+            }
+        });
+
+        function getActiveTable() {
+            if (currentFlag === 1) return dtFlag1;
+            if (currentFlag === 2) return dtFlag2;
+            if (currentFlag === 3) return dtFlag3;
+            return null;
+        }
+
+        // ================== FILTER MODAL OPEN ==================
+        $(".Filterbtn").on('click', function () {
+            $(".Filterbtn").attr("data-toggle", "modal");
+            $(".Filterbtn").attr("data-target", "#Filterbtn_modal");
+        });
+
+        // ================== CUSTOM DATE RANGE ==================
+        var predefinedRanges = {
+            'Today': [moment(), moment()],
+            'Yesterday': [moment().subtract(1, 'days'), moment().subtract(1, 'days')],
+            'Last 7 Days': [moment().subtract(6, 'days'), moment()],
+            'Last 15 Days': [moment().subtract(14, 'days'), moment()],
+            'Last 30 Days': [moment().subtract(29, 'days'), moment()],
+            'Current Month': [moment().startOf('month'), moment().endOf('month')],
+            'Previous Month': [moment().subtract(1, 'month').startOf('month'), moment().subtract(1, 'month').endOf('month')]
+        };
+
+        $('#daterange').val('Today');
+        //$('#daterange').val('Yesterday');
+
+        $('#daterange').daterangepicker({
+            locale: { format: 'DD/MM/YYYY' },
+            opens: 'right',
+            drops: 'down',
+            ranges: predefinedRanges,
+            autoUpdateInput: false,
+            startDate: moment(),
+            endDate: moment()
+        });
+
+        $('#daterange').on('apply.daterangepicker', function (ev, picker) {
+            var selectedRange = Object.keys(predefinedRanges).find(key =>
+                picker.startDate.isSame(predefinedRanges[key][0], 'day') &&
+                picker.endDate.isSame(predefinedRanges[key][1], 'day')
+            );
+            if (selectedRange) {
+                $(this).val(selectedRange);
+                $('#custom_date_input').hide();
+            } else {
+                var formattedStart = picker.startDate.format('DD/MM/YYYY');
+                var formattedEnd = picker.endDate.format('DD/MM/YYYY');
+                $('#daterange').val("Custom Range");
+                $('#custom_daterange').val(formattedStart + ' - ' + formattedEnd);
+                $('#custom_date_input').show();
+            }
+        });
+
+        // ================== MODAL FILTER DATATABLE ==================
+        $('#tblemp').dataTable({
+            "columnDefs": [{ "targets": [3], "orderable": false }],
+            "destroy": true,
+            "bInfo": false,
+            "bPaginate": false,
+            "bLengthChange": false,
+        });
+
+        // Close dropdown when clicking inside multiselect
+        $(document).on("click", ".multiselect-container li", function () {
+            $(".btn-group.open .multiselect").parent().removeClass("open");
+        });
+
+        // ================== REPORT DROPDOWN FLAG CHANGE ==================
+        $('#ReportType').on('change', function () {
+            currentFlag = parseInt($(this).val());
+            // Do NOT show any tab here — wait for user to click View Report
+            // Just hide all tables and no_data block so UI is clean after switching type
+            hideAllReportTables();
+            $('#no_datas').hide();
+            if (currentFlag === 3) {
+                const picker = $('#daterange').data('daterangepicker');
+                const currentMonthRange = predefinedRanges['Current Month'];
+                $("#daterange").val("Current Month");
+                picker.setStartDate(currentMonthRange[0]);
+                picker.setEndDate(currentMonthRange[1]);
+                picker.callback(currentMonthRange[0], currentMonthRange[1], 'Current Month');
+                picker.hide();
+                $("#custom_daterange").val("");
+                $("#custom_date_input").hide();
+            }
+        });
+
+        function showReportTab(flag) {
+            $('#reportTab1, #reportTab2, #reportTab3').hide();
+            if (flag === 1) $('#reportTab1').show();
+            else if (flag === 2) $('#reportTab2').show();
+            else if (flag === 3) $('#reportTab3').show();
+        }
+
+        // ================== VIEW REPORT (Filter_Data Button) ==================
+        $('#Filter_Data').on('click', function () {
+            $('#dataTables_tbl_header').remove();
+            // Reset header moved flags so DataTable toolbar always re-renders correctly
+            headerMoved1 = false;
+            headerMoved2 = false;
+            headerMoved3 = false;
+            LoadBuSubbuReport();
+        });
+
+        // ================== GAUGE RENDER (Hardcoded for now — wire to API as needed) ==================
+
+        /*renderBUWiseGauges(50.5, 60.0, 20.5);*/
+        renderBUWiseGauges(0.0, 0.0, 0.0);
+        function LoadBuSubbuCharts() {
+            $('#ajax_loader').show();
+
+            var picker = $('#daterange').data('daterangepicker');
+            var fromDate = picker.startDate.format('YYYY-MM-DD');
+            var toDate = picker.endDate.format('YYYY-MM-DD');
+
+            var buIds = getSelectedBU();
+            var subBuIds = getSelectedSubBU();
+            var empIds = Array.from(selectedEmpIds);
+
+            var model = {
+                BUIds: buIds ? buIds.map(Number) : [],
+                SubBUIds: subBuIds ? subBuIds.map(Number) : [],
+                EmpIds: empIds,
+                FromDate: fromDate,
+                ToDate: toDate
+            };
+            $.ajax({
+                headers: { 'Authorization': '@_tokan' },
+                url: '@_webapiurl' + "Master/GetBuSubbuReport_Chart",
+                type: 'POST',
+                contentType: "application/json",
+                data: JSON.stringify(model),
+                success: function (data)
+                {
+                    debugger;
+                    $('#ajax_loader').hide();
+                    var result = data.data || data.result || data;
+                    var latePer = result[0]['Late_Per'] || 0;
+                    var earlyPer = result[0]['Early_Per'] || 0;
+                    // call your chart function
+                    renderBUWiseGauges(latePer, earlyPer, 0.0);
+
+                    //console.log("API RESULT:", result); // 🔍 debug
+
+                    //    if (!result || result.length === 0) {
+                    //        hideAllReportTables();
+                    //        $('#no_datas').show();   // ✅ show only here
+                    //        return;
+                    //    }
+
+                    //    // ✅ VERY IMPORTANT (force hide again)
+                    //    $('#no_datas').hide();
+
+
+    },
+
+    error: function (xhr) {
+        $('#ajax_loader').hide();
+        $('#no_datas').show(); // optional
+        alert("Error loading report: " + xhr.statusText);
+    }
+});
+
+        }
+
+        // ================== CORE REPORT LOAD FUNCTION ==================
+        function LoadBuSubbuReport() {
+
+            //$('#no_datas').hide();   // ✅ ALWAYS RESET FIRST
+            $('#ajax_loader').show();
+
+            var picker = $('#daterange').data('daterangepicker');
+            var fromDate = picker.startDate.format('YYYY-MM-DD');
+            var toDate = picker.endDate.format('YYYY-MM-DD');
+
+            var buIds = getSelectedBU();
+            var subBuIds = getSelectedSubBU();
+            var empIds = Array.from(selectedEmpIds);
+
+            var model = {
+                BUIds: buIds ? buIds.map(Number) : [],
+                SubBUIds: subBuIds ? subBuIds.map(Number) : [],
+                EmpIds: empIds,
+                FromDate: fromDate,
+                ToDate: toDate,
+                Flag: currentFlag
+            };
+
+            // Hide all tables BEFORE API
+            hideAllReportTables();
+
+            // Show correct tab container
+            showReportTab(currentFlag);
+
+            $.ajax({
+                headers: { 'Authorization': '@_tokan' },
+                url: '@_webapiurl' + "Master/GetBuSubbuReport",
+                type: 'POST',
+                contentType: "application/json",
+                data: JSON.stringify(model),
+
+                success: function (data) {
+                    $('#ajax_loader').hide();
+
+                    var result = data.data || data.result || data;
+
+                    console.log("API RESULT:", result); // 🔍 debug
+
+                    if (!result || result.length === 0) {
+                        hideAllReportTables();
+                        $('#no_datas').show();   // ✅ show only here
+                        return;
+                    }
+
+                    $('#dataTables_tbl_header').remove();
+
+                    // ✅ VERY IMPORTANT (force hide again)
+                    $('#no_datas').hide();
+
+                    if (currentFlag === 1) {
+                        bindFlag1Table(result);
+                    } else if (currentFlag === 2) {
+                        bindFlag2Table(result);
+                    } else if (currentFlag === 3) {
+                        bindFlag3Table(result);
+                    }
+                },
+
+                error: function (xhr) {
+                    $('#ajax_loader').hide();
+                    $('#no_datas').show(); // optional
+                    alert("Error loading report: " + xhr.statusText);
+                }
+            });
+        }
+
+        function hideAllReportTables() {
+            $('#reportTab1, #reportTab2, #reportTab3').hide();
+        }
+
+        // ==========================================
+        // FLAG 1 — LATE IN
+        // Columns: EmpId, EmpName, EmpCode, BUName, SubBUName, Shift, InTime, OutTime, Total Hrs, Latein, Status
+        // ==========================================
+        var headerMoved1 = false;
+        function bindFlag1Table(data) {
+            if (dtFlag1) { dtFlag1.destroy(); dtFlag1 = null; }
+            $('#tbl_flag1 tbody').empty();
+
+            $.each(data, function (i, row) {
+                var tr = `<tr>
+                    <td>${row.EmpCode || ''}</td>
+                    <td>${row.EmpName || ''}</td>
+                    <td>${row.BUName || ''}</td>
+                    <td>${row.SubBUName || ''}</td>
+                    <td>${row.Shift || ''}</td>
+                    <td>${row.Attn_dt || ''}</td>
+                    <td>${row.InTime || ''}</td>
+                    <td>${row.OutTime || ''}</td>
+                    <td>${row.TotHour || ''}</td>
+                    <td>${row.LateHr || ''}</td>
+                    <td>${row.FinalStatus || ''}</td>
+                </tr>`;
+                $('#tbl_flag1 tbody').append(tr);
+            });
+
+            dtFlag1 = $('#tbl_flag1').DataTable({
+                dom: _domColumn,
+                language: _languageColumn,
+                destroy: true,
+                orderCellsTop: true
+            });
+
+            // Apply column search
+            $("#tbl_flag1 thead").off("keyup", "input").on("keyup", "input", function () {
+                dtFlag1.column($(this).parent().index())
+                    .search(this.value)
+                    .draw();
+            });
+
+            if (!headerMoved1) {
+                setTimeout(function () {
+                    $("#tbl_flag1_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsiveFlag1"));
+                    $('.tooltips').tooltip();
+                    headerMoved1 = true;
+                }, 100);
+            }
+        }
+
+        // ==========================================
+        // FLAG 2 — EARLY OUT
+        // Columns: EmpId, EmpName, EmpCode, BUName, SubBUName, Shift, InTime, OutTime, Total Hrs, EarlyOut, Status
+        // ==========================================
+        var headerMoved2 = false;
+        function bindFlag2Table(data) {
+            if (dtFlag2) { dtFlag2.destroy(); dtFlag2 = null; }
+            $('#tbl_flag2 tbody').empty();
+
+            $.each(data, function (i, row) {
+                var tr = `<tr>
+                    <td>${row.EmpCode || ''}</td>
+                    <td>${row.EmpName || ''}</td>
+                    <td>${row.BUName || ''}</td>
+                    <td>${row.SubBUName || ''}</td>
+                    <td>${row.Shift || ''}</td>
+                    <td>${row.Attn_dt || ''}</td>
+                    <td>${row.InTime || ''}</td>
+                    <td>${row.OutTime || ''}</td>
+                    <td>${row.TotHour || ''}</td>
+                    <td>${row.EarlyHr || ''}</td>
+                    <td>${row.FinalStatus || ''}</td>
+                </tr>`;
+                $('#tbl_flag2 tbody').append(tr);
+            });
+
+            dtFlag2 = $('#tbl_flag2').DataTable({
+                dom: _domColumn,
+                language: _languageColumn,
+                destroy: true,
+                orderCellsTop: true
+            });
+
+            // Apply column search
+            $("#tbl_flag2 thead").off("keyup", "input").on("keyup", "input", function () {
+                dtFlag2.column($(this).parent().index())
+                    .search(this.value)
+                    .draw();
+            });
+
+            if (!headerMoved2) {
+                setTimeout(function () {
+                    $("#tbl_flag2_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsiveFlag2"));
+                    $('.tooltips').tooltip();
+                    headerMoved2 = true;
+                }, 100);
+            }
+        }
+
+        // ==========================================
+        // FLAG 3 — WORKING HOUR
+        // Columns: EmpId, EmpName, EmpCode, BUName, SubBUName, From Date, To Date,
+        //          Allocated Hrs, Working Hrs, Difference, OD Hrs, Woff Days, Woff Hours, Holiday days, Holiday Hours
+        // ==========================================
+        var headerMoved3 = false;
+        function bindFlag3Table(data) {
+            if (dtFlag3) { dtFlag3.destroy(); dtFlag3 = null; }
+            $('#tbl_flag3 tbody').empty();
+
+            $.each(data, function (i, row) {
+                var tr = `<tr>
+                    <td>${row.Empcode || ''}</td>
+                    <td>${row.EmpName || ''}</td>
+                    <td>${row.BUName || ''}</td>
+                    <td>${row.SubBUName || ''}</td>
+                    <td>${row.FromDate || ''}</td>
+                    <td>${row.ToDate || ''}</td>
+                    <td>${row.AllocatedHrs || ''}</td>
+                    <td>${row.WorkingHrs || ''}</td>
+                    <td>${row.Difference || ''}</td>
+                    <td>${row.ODHours || ''}</td>
+                    <td>${row.WHdays || ''}</td>
+                    <td>${row.WHours || ''}</td>
+                    <td>${row.HOdays || ''}</td>
+                    <td>${row.HOHours || ''}</td>
+                </tr>`;
+                $('#tbl_flag3 tbody').append(tr);
+            });
+
+            dtFlag3 = $('#tbl_flag3').DataTable({
+                dom: _domColumn,
+                language: _languageColumn,
+                destroy: true,
+                orderCellsTop: true
+            });
+
+            // Apply column search
+            $("#tbl_flag3 thead").off("keyup", "input").on("keyup", "input", function () {
+                dtFlag3.column($(this).parent().index())
+                    .search(this.value)
+                    .draw();
+            });
+
+            if (!headerMoved3) {
+                setTimeout(function () {
+                    $("#tbl_flag3_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsiveFlag3"));
+                    $('.tooltips').tooltip();
+                    headerMoved3 = true;
+                }, 100);
+            }
+        }
+
+    }); // end document.ready
+</script>
+
+<!-- Page Bar : Begin -->
+<div class="page-bar">
+    <ul class="page-breadcrumb">
+        <li>
+            <a href="/PayTime/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+        </li>
+        <li>
+            <span><i class="fa-light fa-angle-right"></i> Reports</span>
+        </li>
+    </ul>
+</div>
+
+<!-- Topbar Filter Design : Begin -->
+<div class="filter_block">
+    <div class="d-flex align-items-center flex-wrap">
+        <div class="d-flex align-items-center filter_applied Filterbtn">
+            <span class="margin-right-5">
+                <i class="fa-light fa-calendar-days"></i>
+            </span>
+            <span>Applied Filter</span>
+        </div>
+        <div class="daterange_block data_picker_box">
+            <div class="input-group">
+                <span class="input-group-btn margin-right-5">
+                    <button class="btn default" type="button">
+                        <i class="fa-light fa-calendar-days"></i>
+                    </button>
+                </span>
+                <input type="text" id="daterange" class="form-control">
+            </div>
+        </div>
+        <!-- Hidden Custom Date Input (Initially Hidden) -->
+        <div id="custom_date_input" style="display: none; margin-right:8px;">
+            <input type="text" id="custom_daterange" class="form-control" placeholder="Select custom range">
+        </div>
+        <div class="reportselect_block" id="Report_Dropdown">
+            <div class="form-group">
+                <select class="form-control input-sm select2" id="ReportType">
+                    <option value="1">Late In</option>
+                    <option value="2">Early Out</option>
+                    <option value="3">Working Hour</option>
+                </select>
+            </div>
+        </div>
+        <div>
+            <a href="javascript:;" class="btn blue_btnnew tooltips" data-placement="top" data-original-title="View Report" data-toggle="tooltip" id="Filter_Data"><i class="fa-light fa-memo-circle-check"></i></a>
+            <a href="javascript:;" class="btn red_btnnew tooltips" data-placement="top" data-original-title="Clear Filter" data-toggle="tooltip" id="Clear_Data"><i class="fa-light fa-eraser"></i></a>
+        </div>
+    </div>
+
+    <!-- Download Button Code -->
+    <div class="reportdownload_block">
+        <ul class="margin-0">
+            <li class="dropdown dropdown-user">
+                <a href="javascript:;" class="dropdown-toggle" data-toggle="dropdown">
+                    Download As <i class="fa-light fa-angle-down"></i>
+                </a>
+                <ul class="dropdown-menu">
+                    <li>
+                        <a href="javascript:;" class="export-btn" data-type="excel">
+                            <img src="~/assets/images/icons/reports/ir_dw_excel.svg" alt="Excel Icon" width="22"> Excel
+                        </a>
+                    </li>
+                    @*<li>
+                            <a href="javascript:;" class="export-btn" data-type="pdf">
+                                <img src="~/assets/images/icons/reports/ir_dw_pdf.svg" alt="PDF Icon" width="22"> PDF
+                            </a>
+                        </li>*@
+                </ul>
+            </li>
+        </ul>
+    </div>
+</div>
+
+<!-- BU Wise Chart Design : Begin -->
+<div class="portlet" style="margin-bottom: 8px; display:none">
+    <div class="portlet-body">
+        <h4 class="buwise-chart-title">BU Wise Chart</h4>
+        <div class="row">
+            <div class="col-md-4 col-sm-4">
+                <div id="gaugeLateIn" class="buwise-gauge-container"></div>
+            </div>
+            <div class="col-md-4 col-sm-4">
+                <div id="gaugeEarlyOut" class="buwise-gauge-container"></div>
+            </div>
+            <div class="col-md-4 col-sm-4">
+                <div id="gaugeWorkingHour" class="buwise-gauge-container"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script type="text/javascript">
+    function renderBUWiseGauges(lateIn, earlyOut, workingHour) {
+        var gaugeConfig = [
+            { id: 'gaugeLateIn', title: 'Late In', value: lateIn, color: '#295097' },
+            { id: 'gaugeEarlyOut', title: 'Early Out', value: earlyOut, color: '#295097' },
+            { id: 'gaugeWorkingHour', title: 'Working Hour', value: workingHour, color: '#295097' }
+        ];
+        for (var i = 0; i < gaugeConfig.length; i++) {
+            createSemiGauge(gaugeConfig[i]);
+        }
+    }
+
+    function createSemiGauge(config) {
+        Highcharts.chart(config.id, {
+            chart: {
+                type: 'solidgauge',
+                height: '65%',
+                backgroundColor: 'transparent'
+            },
+            title: null,
+            pane: {
+                center: ['50%', '75%'],
+                size: '90%',
+                startAngle: -90,
+                endAngle: 90,
+                background: {
+                    backgroundColor: '#e6e6e6',
+                    innerRadius: '75%',
+                    outerRadius: '100%',
+                    shape: 'arc',
+                    borderWidth: 0
+                }
+            },
+            exporting: { enabled: false },
+            credits: { enabled: false },
+            tooltip: { enabled: false },
+            yAxis: {
+                min: 0,
+                max: 100,
+                stops: [[1, config.color]],
+                lineWidth: 0,
+                tickWidth: 0,
+                minorTickInterval: null,
+                tickAmount: 0,
+                labels: {
+                    enabled: true,
+                    distance: -12,
+                    style: { fontSize: '11px', color: '#999' },
+                    y: 12
+                },
+                tickPositions: [0, 100]
+            },
+            plotOptions: {
+                solidgauge: {
+                    dataLabels: {
+                        y: -30,
+                        borderWidth: 0,
+                        useHTML: true,
+                        format: '<div class="buwise-gauge-datalabel">{y}</div>'
+                    },
+                    rounded: false
+                }
+            },
+            series: [{
+                name: config.title,
+                data: [parseFloat(config.value.toFixed(1))],
+                innerRadius: '75%',
+                radius: '100%'
+            }],
+            subtitle: {
+                text: config.title,
+                align: 'center',
+                verticalAlign: 'bottom',
+                y: -16,
+                style: { fontSize: '13px', fontWeight: '600', color: '#333' }
+            }
+        });
+    }
+</script>
+<!-- BU Wise Chart Design : End -->
+<!-- Datatable Block : Begin -->
+<div class="portlet" style="margin-bottom: 8px;">
+    <div class="portlet-body">
+        <div id='ajax_loader' class="modal_bg loading" aria-hidden="true">
+            <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" />
+        </div>
+
+        <!-- ===== FLAG 1 : LATE IN TABLE ===== -->
+        <div id="reportTab1" class="reportblock_table">
+            <div class="table-responsive report_tbl" id="tableResponsiveFlag1">
+                <table id="tbl_flag1" class="table new_datatbl table-striped table-bordered table-hover serch_datatable table-checkable order-column">
+                    <thead>
+                        <tr>
+                            <th style="min-width:60px;">Emp Code</th>
+                            <th style="min-width:160px;">Emp Name</th>
+                            <th style="min-width:100px;">BU</th>
+                            <th style="min-width:110px;">Sub BU</th>
+                            <th style="min-width:150px;">Shift</th>
+                            <th style="min-width:100px;">Attn Date</th>
+                            <th style="min-width:60px;">In Time</th>
+                            <th style="min-width:60px;">Out Time</th>
+                            <th style="min-width:70px;">Total Hrs</th>
+                            <th style="min-width:70px;">Late In</th>
+                            <th style="min-width:90px;">Status</th>
+                        </tr>
+                        <tr style="display:none;">
+                            <th><input type="text" class="search_input" placeholder="Search" /><i class="clm-search"></i></th>
+                            <th><input type="text" class="search_input" placeholder="Search" /><i class="clm-search"></i></th>
+                            <th><input type="text" class="search_input" placeholder="Search" /><i class="clm-search"></i></th>
+                            <th><input type="text" class="search_input" placeholder="Search" /><i class="clm-search"></i></th>
+                            <th><input type="text" class="search_input" placeholder="Search" /><i class="clm-search"></i></th>
+                            <th><input type="text" class="search_input" placeholder="Search" /><i class="clm-search"></i></th>
+                            <th><input type="text" class="search_input" placeholder="Search" /><i class="clm-search"></i></th>
+                            <th><input type="text" class="search_input" placeholder="Search" /><i class="clm-search"></i></th>
+                            <th><input type="text" class="search_input" placeholder="Search" /><i class="clm-search"></i></th>
+                            <th><input type="text" class="search_input" placeholder="Search" /><i class="clm-search"></i></th>
+                            <th><input type="text" class="search_input" placeholder="Search" /><i class="clm-search"></i></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Dynamic Data -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- ===== FLAG 2 : EARLY OUT TABLE ===== -->
+        <div id="reportTab2" class="reportblock_table" style="display:none;">
+            <div class="table-responsive report_tbl" id="tableResponsiveFlag2">
+                <table id="tbl_flag2" class="table new_datatbl table-striped table-bordered table-hover serch_datatable table-checkable order-column">
+                    <thead>
+                        <tr>
+                            <th style="min-width:60px;">Emp Code</th>
+                            <th style="min-width:160px;">Emp Name</th>
+                            <th style="min-width:100px;">BU</th>
+                            <th style="min-width:110px;">Sub BU</th>
+                            <th style="min-width:150px;">Shift</th>
+                            <th style="min-width:100px;">Attn Date</th>
+                            <th style="min-width:60px;">In Time</th>
+                            <th style="min-width:60px;">Out Time</th>
+                            <th style="min-width:70px;">Total Hrs</th>
+                            <th style="min-width:70px;">Early Out</th>
+                            <th style="min-width:90px;">Status</th>
+                        </tr>
+                        <tr style="display:none;">
+                            <th><input type="text" class="search_input" placeholder="Search" /><i class="clm-search"></i></th>
+                            <th><input type="text" class="search_input" placeholder="Search" /><i class="clm-search"></i></th>
+                            <th><input type="text" class="search_input" placeholder="Search" /><i class="clm-search"></i></th>
+                            <th><input type="text" class="search_input" placeholder="Search" /><i class="clm-search"></i></th>
+                            <th><input type="text" class="search_input" placeholder="Search" /><i class="clm-search"></i></th>
+                            <th><input type="text" class="search_input" placeholder="Search" /><i class="clm-search"></i></th>
+                            <th><input type="text" class="search_input" placeholder="Search" /><i class="clm-search"></i></th>
+                            <th><input type="text" class="search_input" placeholder="Search" /><i class="clm-search"></i></th>
+                            <th><input type="text" class="search_input" placeholder="Search" /><i class="clm-search"></i></th>
+                            <th><input type="text" class="search_input" placeholder="Search" /><i class="clm-search"></i></th>
+                            <th><input type="text" class="search_input" placeholder="Search" /><i class="clm-search"></i></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Dynamic Data -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- ===== FLAG 3 : WORKING HOUR TABLE ===== -->
+        <div id="reportTab3" class="reportblock_table" style="display:none;">
+            <div class="table-responsive report_tbl" id="tableResponsiveFlag3">
+                <table id="tbl_flag3" class="table new_datatbl table-striped table-bordered table-hover serch_datatable table-checkable order-column">
+                    <thead>
+                        <tr>
+                            <th style="min-width:90px;">Emp Code</th>
+                            <th style="min-width:160px;">Emp Name</th>
+                            <th style="min-width:100px;">BU</th>
+                            <th style="min-width:110px;">Sub BU</th>
+                            <th style="min-width:90px;">From Date</th>
+                            <th style="min-width:90px;">To Date</th>
+                            <th style="min-width:100px;">Allocated Hrs</th>
+                            <th style="min-width:100px;">Working Hrs</th>
+                            <th style="min-width:90px;">Difference</th>
+                            <th style="min-width:80px;">OD Hrs</th>
+                            <th style="min-width:90px;">Woff Days</th>
+                            <th style="min-width:90px;">Woff Hours</th>
+                            <th style="min-width:100px;">Holiday Days</th>
+                            <th style="min-width:100px;">Holiday Hours</th>
+                        </tr>
+                        <tr style="display:none;">
+                            <th><input type="text" class="search_input" placeholder="Search" /><i class="clm-search"></i></th>
+                            <th><input type="text" class="search_input" placeholder="Search" /><i class="clm-search"></i></th>
+                            <th><input type="text" class="search_input" placeholder="Search" /><i class="clm-search"></i></th>
+                            <th><input type="text" class="search_input" placeholder="Search" /><i class="clm-search"></i></th>
+                            <th><input type="text" class="search_input" placeholder="Search" /><i class="clm-search"></i></th>
+                            <th><input type="text" class="search_input" placeholder="Search" /><i class="clm-search"></i></th>
+                            <th><input type="text" class="search_input" placeholder="Search" /><i class="clm-search"></i></th>
+                            <th><input type="text" class="search_input" placeholder="Search" /><i class="clm-search"></i></th>
+                            <th><input type="text" class="search_input" placeholder="Search" /><i class="clm-search"></i></th>
+                            <th><input type="text" class="search_input" placeholder="Search" /><i class="clm-search"></i></th>
+                            <th><input type="text" class="search_input" placeholder="Search" /><i class="clm-search"></i></th>
+                            <th><input type="text" class="search_input" placeholder="Search" /><i class="clm-search"></i></th>
+                            <th><input type="text" class="search_input" placeholder="Search" /><i class="clm-search"></i></th>
+                            <th><input type="text" class="search_input" placeholder="Search" /><i class="clm-search"></i></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Dynamic Data -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- No Data Block -->
+        <div id="no_datas" style="display:none;">
+            <div class="datanotfound">
+                <img src="/assets/images/emptyscreen_3.png" height="148" width="280" alt="No Records Found">
+                <p class="datanotfound_title">No data found</p>
+                <p>No matching records found for the selected filters.</p>
+            </div>
+        </div>
+
+    </div>
+</div>
+<!-- Datatable Block : End -->
+<!-- Filter Modal : Begin -->
+<div id="Filterbtn_modal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+    <div class="modal-dialog w-500">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal">&times;</button>
+                <h4 class="modal-title">Filter</h4>
+            </div>
+            <div class="modal-body">
+                <div class="modal-card">
+                    <fieldset>
+                        <div class="row">
+                            <div class="col-sm-12 col-xs-12">
+                                <div class="form-group newmultiselect">
+                                    <label class="control-label">BU<span class="required" aria-required="true"> * </span></label>
+                                    <select id="BuID" class="mt-multiselect btn blue btn-outline" multiple="multiple" data-width="100%">
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-sm-12 col-xs-12">
+                                <div class="form-group newmultiselect">
+                                    <label class="control-label">SubBU</label>
+                                    <select id="SubBuID" class="mt-multiselect btn blue btn-outline" multiple="multiple" data-width="100%">
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </fieldset>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-12" id="empdiv">
+                        <label class="control-label" id="lblemp" style="position: absolute; top: 8px;">Employee<span class="required" aria-required="true"> * </span></label>
+                        <div class="table-scroll-1 divEmp">
+                            <div class="table-responsive tblEmployee" id="tableResponsiveemp">
+                                <table id="tblemp" class="table table-striped table-bordered table-hover order-column">
+                                    <thead>
+                                        <tr>
+                                            <th>Code</th>
+                                            <th>Employee Name</th>
+                                            <th>Punch Id</th>
+                                            <th>
+                                                <input type="checkbox" id="selectAll" />
+                                            </th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <!-- Dynamic Data -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <div class="row">
+                    <div class="col-xs-4 text-left">
+                        @*<a href="javascript:;" class="btn font-dark">Clear All</a>*@
+                    </div>
+                    <div class="col-xs-8 text-right">
+                        <button type="button" class="btn cancel_btn" data-dismiss="modal"><i class="fa fa-close"></i> Cancel</button>
+                        <button type="button" class="btn save_btn" id="btn_save"><i class="fa-light fa-floppy-disk"></i> Save</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Filter Modal : End -->

@@ -1,0 +1,810 @@
+@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@using System.Configuration;
+@{
+    ViewBag.Title = "Meal Categories";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    int _UserId = Convert.ToInt32(HttpContext.Current.Session["UserId"]);
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapicms"].ToString();
+
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+
+    string isClientDBMatchFlag = HttpContext.Current.Session["IsClientDBMatch"] != null
+        ? HttpContext.Current.Session["IsClientDBMatch"].ToString()
+        : "false";
+}
+<style>
+    .field_error {
+        border-color: #dc3545 !important;
+    }
+</style>
+
+<script>
+    let RoleId = '@_RoleId';
+    let UserId = '@_UserId';
+    let isedit = '@obj.CanEdit';
+    let isdelete = '@obj.CanDelete';
+    let canadd = '@obj.CanAdd';
+    let CategoryData = [];
+    let categoryTable = null;
+
+    $(document).ready(function () {
+        // Show empty state on load — user must select a canteen first
+        $('#tableResponsive').hide();
+        $('#NotificationGrid-empty').show();
+        $('#emptyMessage').text('Please select a canteen to view categories.');
+
+        // Load canteen dropdown for all admin roles
+        loadCanteenDropdown();
+
+        // Form field validation
+        $('#CategoryName').blur(function () {
+            validateField('CategoryName');
+        });
+
+        // Keypress validation for text fields
+        $('#CategoryName').on('keypress', function (e) {
+            return validateKeyPress(e.which);
+        });
+        $('#CategoryDescription').on('keypress', function (e) {
+            return validateAddress(e.which);
+        });
+
+        // DisplayOrder - only allow numbers
+        $('#DisplayOrder').on('input', function () {
+            this.value = this.value.replace(/[^0-9]/g, '');
+        });
+
+        // Add button
+        $('#AddCategory').click(function () {
+            checkSession();
+            frmClear();
+            removeFieldErrors();
+
+            if (!$('#FilterCanteenId').val()) {
+                toastr.warning("Please select a canteen first");
+                $(".filter_portlet_wrapper").removeClass("full-width");
+                return;
+            }
+
+            $('#modalTitle').text('Add Category');
+            $('#categoryModal').modal('toggle');
+        });
+
+        // Submit button
+        $('#btnCategorySubmit').click(saveCategory);
+
+        // Filter canteen change - reload table
+        $("#FilterCanteenId").change(function () {
+            var canteenId = $(this).val();
+            if (canteenId) {
+                FillTable();
+            } else {
+                if (categoryTable) {
+                    categoryTable.destroy();
+                    categoryTable = null;
+                    $("#dataTables_tbl_header").remove();
+                }
+                CategoryData = [];
+                $('#tableResponsive').hide();
+                $('#NotificationGrid-empty').show();
+                $('#emptyMessage').text('Please select a canteen to view categories.');
+            }
+        });
+
+        // Search button
+        $("#Search_OPration").click(function () {
+            if (!$('#FilterCanteenId').val()) {
+                toastr.warning("Please select a canteen first");
+                return;
+            }
+            FillTable();
+        });
+
+        // Clear button
+        $("#Clear_OPration").click(function () {
+            $('#FilterStatusId').val('');
+            $('#FilterCanteenId').val('');
+            loadCanteenDropdown();
+            if (categoryTable) {
+                categoryTable.destroy();
+                categoryTable = null;
+                $("#dataTables_tbl_header").remove();
+            }
+            CategoryData = [];
+            $('#tableResponsive').hide();
+            $('#NotificationGrid-empty').show();
+            $('#emptyMessage').text('Please select a canteen to view categories.');
+        });
+
+        // Filter panel toggle
+        $("#Filter_search").click(function () {
+            var wrapper = $(".filter_portlet_wrapper");
+            wrapper.toggleClass("full-width");
+            var screenWidth = $(window).width();
+            if (screenWidth >= 300 && screenWidth <= 600) {
+                $('.filter_portlet_tbl').toggle();
+                $('.filter_portlet_wrapper .filter_boxModal').css('width', '100%');
+            }
+        });
+
+        // Filter panel close
+        $(".filterclose_btn").click(function () {
+            var wrapper = $(".filter_portlet_wrapper");
+            wrapper.addClass("full-width");
+            var screenWidth = $(window).width();
+            if (screenWidth >= 300 && screenWidth <= 600) {
+                $(".filter_portlet_tbl").css("display", "block");
+            }
+        });
+    });
+
+    function loadCanteenDropdown() {
+        $.ajax({
+            type: "GET",
+            url: '@_webapiurl' + 'canteens?pageSize=100&isActive=true',
+            headers: { 'Authorization': 'Bearer ' + '@_tokan' },
+            dataType: "json",
+            success: function (response) {
+                var $sel = $('#FilterCanteenId');
+                $sel.empty().append('<option value="">-- Select Canteen --</option>');
+                var canteens = response.canteens || [];
+                if (canteens.length > 0) {
+                    for (var i = 0; i < canteens.length; i++) {
+                        $sel.append('<option value="' + canteens[i].canteenId + '">' +
+                            escapeHtml(canteens[i].canteenName) + '</option>');
+                    }
+                    if (canteens.length === 1) {
+                        $sel.val(canteens[0].canteenId).trigger('change');
+                    } else {
+                        // Auto-open filter panel so user can select canteen immediately
+                        $(".filter_portlet_wrapper").removeClass("full-width");
+                    }
+                }
+            },
+            error: function (xhr) {
+                var errorMsg = "Failed to load canteens";
+                if (xhr.responseJSON && xhr.responseJSON.detail) {
+                    errorMsg = xhr.responseJSON.detail;
+                }
+                toastr.error(errorMsg);
+            }
+        });
+    }
+
+    function FillTable() {
+        checkSession();
+
+        var canteenId = $('#FilterCanteenId').val();
+        if (!canteenId) return;
+
+        var url = '@_webapiurl' + 'categories?canteenId=' + canteenId;
+
+        $("#ajax_loader").show();
+
+        $.ajax({
+            type: "GET",
+            url: url,
+            headers: { 'Authorization': 'Bearer ' + '@_tokan' },
+            dataType: "json",
+            success: function (data) {
+                var categories = data.categories || [];
+                CategoryData = categories;
+
+                // Apply client-side status filter
+                var filterStatus = $('#FilterStatusId').val();
+                if (filterStatus !== '') {
+                    var isActiveFilter = (filterStatus === 'true');
+                    categories = categories.filter(function (c) { return c.isActive === isActiveFilter; });
+                }
+
+                // Destroy existing table
+                if (categoryTable) {
+                    categoryTable.destroy();
+                    categoryTable = null;
+                    $("#dataTables_tbl_header").remove();
+                }
+
+                if (categories.length === 0) {
+                    $('#tableResponsive').hide();
+                    $('#NotificationGrid-empty').show();
+                    $('#emptyMessage').text('No categories have been configured yet.');
+                    $('#ajax_loader').hide();
+                    return;
+                }
+
+                $('#tableResponsive').show();
+                $('#NotificationGrid-empty').hide();
+
+                categoryTable = $('#tblCategory').DataTable({
+                    dom: _domCommon,
+                    language: _languageCommon,
+                    serverSide: false,
+                    searching: true,
+                    ordering: true,
+                    order: [[3, 'asc']],
+                    data: categories,
+                    columns: [
+                        {
+                            title: "CategoryId",
+                            data: "categoryId",
+                            visible: false,
+                            orderable: false
+                        },
+                        {
+                            title: "Sr No",
+                            data: null,
+                            orderable: false,
+                            width: "50px",
+                            render: function (data, type, row, meta) {
+                                return meta.row + 1;
+                            }
+                        },
+                        {
+                            title: "Category Name",
+                            data: "categoryName",
+                            render: function (data, type, row) {
+                                var html = escapeHtml(data);
+                                if (row.categoryDescription) {
+                                    var desc = row.categoryDescription.length > 80
+                                        ? row.categoryDescription.substring(0, 80) + '...'
+                                        : row.categoryDescription;
+                                    html += '<br><small class="text-muted">' + escapeHtml(desc) + '</small>';
+                                }
+                                return html;
+                            }
+                        },
+                        {
+                            title: "Display Order",
+                            data: "displayOrder",
+                            width: "100px"
+                        },
+                        {
+                            title: "Meals",
+                            data: "mealCount",
+                            orderable: false,
+                            width: "70px",
+                            render: function (data) {
+                                return data || 0;
+                            }
+                        },
+                        {
+                            title: "Status",
+                            data: "isActive",
+                            orderable: false,
+                            render: function (data) {
+                                if (data) {
+                                    return '<span class="green_font">Active</span>';
+                                } else {
+                                    return '<span class="red_font">Inactive</span>';
+                                }
+                            }
+                        },
+                        {
+                            title: "Action",
+                            data: null,
+                            orderable: false,
+                            createdCell: function (td) { $(td).css("min-width", "128px"); },
+                            render: function (data, type, row) {
+                                var str = "";
+                                if (isedit == "True") {
+                                    str = '<a class="editclass btn seagreen_btnnew tooltips" data-placement="top" data-original-title="Edit" onclick="updateCategory(' + row.categoryId + ')"> <i class="fa-regular fa-pen-to-square"></i> </a> ';
+
+                                    if (row.isActive) {
+                                        str += '<a class="Inactiveclass btn red_btnnew tooltips" data-placement="top" data-original-title="Inactive" onclick="statusChange(' + row.categoryId + ')"><i class="fa-solid fa-xmark"></i></a>';
+                                    } else {
+                                        str += '<a class="Activeclass btn green_btnnew tooltips" data-placement="top" data-original-title="Active" onclick="statusChange(' + row.categoryId + ')"><i class="fa-solid fa-check"></i></a>';
+                                    }
+                                }
+                                if (isdelete == "True") {
+                                    str += ' <a class="Deleteclass btn red_btnnew tooltips" data-placement="top" data-original-title="Delete" onclick="deleteCategory(' + row.categoryId + ')"><i class="fa-regular fa-trash-can"></i></a>';
+                                }
+                                return str;
+                            }
+                        }
+                    ],
+                    initComplete: function () {
+                        if ($('#buttons').length) {
+                            $("#buttons").empty();
+                        }
+                    },
+                    drawCallback: function () {
+                        $('.tooltips').tooltip();
+                        setTimeout(function () {
+                            $("#tblCategory_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+                        }, 100);
+                    }
+                });
+            },
+            error: function (xhr) {
+                var errorMsg = "Error during fetch data";
+                if (xhr.responseJSON && xhr.responseJSON.detail) {
+                    errorMsg = xhr.responseJSON.detail;
+                }
+                toastr.error(errorMsg);
+                $('#tableResponsive').hide();
+                $('#NotificationGrid-empty').show();
+                $('#emptyMessage').text('No categories have been configured yet.');
+            },
+            complete: function () {
+                $('#ajax_loader').hide();
+            }
+        });
+    }
+
+    function saveCategory(e) {
+        checkSession();
+        e.preventDefault();
+
+        var categoryId = $('#CategoryId').val();
+        var isUpdate = categoryId && categoryId !== "" && categoryId !== "0";
+
+        // Validate required fields
+        if (!validateField('CategoryName')) return;
+
+        // Canteen validation
+        var selectedCanteenId = $('#FilterCanteenId').val();
+        if (!selectedCanteenId) {
+            toastr.warning("Please select a Canteen");
+            return;
+        }
+
+        var catObj;
+        var url;
+        var method;
+
+        if (isUpdate) {
+            catObj = {
+                categoryName: $('#CategoryName').val().trim(),
+                categoryDescription: $('#CategoryDescription').val().trim() || null,
+                displayOrder: parseInt($('#DisplayOrder').val()) || 0
+            };
+            url = '@_webapiurl' + "categories/" + categoryId;
+            method = "PUT";
+        } else {
+            catObj = {
+                canteenId: parseInt(selectedCanteenId),
+                categoryName: $('#CategoryName').val().trim(),
+                categoryDescription: $('#CategoryDescription').val().trim() || null,
+                displayOrder: parseInt($('#DisplayOrder').val()) || 0,
+                isActive: true
+            };
+            url = '@_webapiurl' + "categories";
+            method = "POST";
+        }
+
+        $.ajax({
+            type: method,
+            url: url,
+            headers: { 'Authorization': 'Bearer ' + '@_tokan' },
+            data: JSON.stringify(catObj),
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            success: function (data) {
+                if (isUpdate) {
+                    toastr.success("Category updated successfully");
+                } else {
+                    toastr.success("Category created successfully");
+                }
+                $('#categoryModal').modal('hide');
+                FillTable();
+            },
+            error: function (xhr) {
+                var errorMsg = "Error during save";
+                if (xhr.responseJSON) {
+                    if (xhr.responseJSON.detail) {
+                        errorMsg = xhr.responseJSON.detail;
+                    }
+                    if (xhr.responseJSON.errors) {
+                        for (var field in xhr.responseJSON.errors) {
+                            errorMsg = xhr.responseJSON.errors[field].join(", ");
+                            break;
+                        }
+                    }
+                }
+                toastr.error(errorMsg);
+            }
+        });
+    }
+
+    function updateCategory(categoryId) {
+        checkSession();
+        frmClear();
+        removeFieldErrors();
+
+        var category = CategoryData.find(function (value) { return value.categoryId == categoryId; });
+        if (!category) {
+            toastr.error("Category not found");
+            return;
+        }
+
+        $('#CategoryId').val(category.categoryId);
+        $('#CategoryName').val(category.categoryName);
+        $('#CategoryDescription').val(category.categoryDescription || '');
+        $('#DisplayOrder').val(category.displayOrder || 0);
+
+        $('#modalTitle').text('Edit Category');
+        $('#categoryModal').modal('toggle');
+    }
+
+    function deleteCategory(categoryId) {
+        checkSession();
+
+        Swal.fire({
+            html: '<div class="swal_subtitle"><b>You want to delete this category?</b></div>',
+            title: "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_error.svg' alt=''>Are you sure?",
+            showCloseButton: true,
+            showCancelButton: true,
+            focusConfirm: false,
+            cancelButtonText: 'Cancel',
+            confirmButtonText: 'Yes, delete it!',
+            allowOutsideClick: false,
+            allowEscapeKey: false,
+            customClass: {
+                confirmButton: 'swal-confirm-button-class',
+                cancelButton: 'swal-cancel-button-class'
+            }
+        }).then(function (result) {
+            if (result.isConfirmed) {
+                $.ajax({
+                    type: "DELETE",
+                    url: '@_webapiurl' + "categories/" + categoryId,
+                    headers: { 'Authorization': 'Bearer ' + '@_tokan' },
+                    contentType: "application/json; charset=utf-8",
+                    success: function () {
+                        Swal.fire({
+                            html: '<div class="swal_subtitle"><b>Category has been deleted.</b></div>',
+                            title: "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_success.svg' alt=''>Deleted!",
+                            showCloseButton: true,
+                            confirmButtonText: 'OK',
+                            allowOutsideClick: false,
+                            allowEscapeKey: false,
+                            customClass: {
+                                confirmButton: 'swal-confirm-button-class'
+                            }
+                        });
+                        $('img[src="/assets/images/icons/swal_icon/icon_success.svg"]').parent().parent().parent().addClass('swal_success');
+                        FillTable();
+                    },
+                    error: function (xhr) {
+                        var errorMsg = "Error during delete";
+                        if (xhr.responseJSON && xhr.responseJSON.detail) {
+                            errorMsg = xhr.responseJSON.detail;
+                        }
+                        Swal.fire({
+                            html: '<div class="swal_subtitle"><b>' + errorMsg + '</b></div>',
+                            title: "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_error.svg' alt=''>Error!",
+                            showCloseButton: true,
+                            confirmButtonText: 'OK',
+                            allowOutsideClick: false,
+                            allowEscapeKey: false,
+                            customClass: {
+                                confirmButton: 'swal-confirm-button-class'
+                            }
+                        });
+                        $('img[src="/assets/images/icons/swal_icon/icon_error.svg"]').parent().parent().parent().addClass('swal_error');
+                    }
+                });
+            }
+        });
+        $('img[src="/assets/images/icons/swal_icon/icon_error.svg"]').parent().parent().parent().addClass('swal_error');
+    }
+
+    function statusChange(categoryId) {
+        checkSession();
+
+        var category = CategoryData.find(function (value) { return value.categoryId == categoryId; });
+        if (!category) {
+            toastr.error("Category not found");
+            return;
+        }
+
+        var newStatus = !category.isActive;
+        var actionText = newStatus ? "active" : "inactive";
+        var confirmIcon = newStatus ? 'icon_success.svg' : 'icon_error.svg';
+        var confirmClass = newStatus ? 'swal_success' : 'swal_error';
+        var impactText = newStatus ? '' : '<br><small class="text-danger">All active meals in this category must be deactivated first.</small>';
+
+        Swal.fire({
+            html: '<div class="swal_subtitle"><b>You want to ' + actionText + ' this category?</b>' + impactText + '</div>',
+            title: "<img class='margin-right-5' src='/assets/images/icons/swal_icon/" + confirmIcon + "' alt=''>Are you sure?",
+            showCloseButton: true,
+            showCancelButton: true,
+            focusConfirm: false,
+            cancelButtonText: 'Cancel',
+            confirmButtonText: 'Yes, ' + actionText + ' it!',
+            allowOutsideClick: false,
+            allowEscapeKey: false,
+            customClass: {
+                confirmButton: 'swal-confirm-button-class',
+                cancelButton: 'swal-cancel-button-class'
+            }
+        }).then(function (result) {
+            if (result.isConfirmed) {
+                $.ajax({
+                    type: "PATCH",
+                    url: '@_webapiurl' + "categories/" + categoryId + "/status",
+                    headers: { 'Authorization': 'Bearer ' + '@_tokan' },
+                    data: JSON.stringify({ isActive: newStatus }),
+                    contentType: "application/json; charset=utf-8",
+                    dataType: "json",
+                    success: function () {
+                        Swal.fire({
+                            html: '<div class="swal_subtitle"><b>Category has been ' + (newStatus ? "active" : "inactive") + '.</b></div>',
+                            title: "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_success.svg' alt=''>Success!",
+                            showCloseButton: true,
+                            confirmButtonText: 'OK',
+                            allowOutsideClick: false,
+                            allowEscapeKey: false,
+                            customClass: {
+                                confirmButton: 'swal-confirm-button-class'
+                            }
+                        });
+                        $('img[src="/assets/images/icons/swal_icon/icon_success.svg"]').parent().parent().parent().addClass('swal_success');
+                        FillTable();
+                    },
+                    error: function (xhr) {
+                        var errorMsg = "Error during status change";
+                        if (xhr.responseJSON && xhr.responseJSON.detail) {
+                            errorMsg = xhr.responseJSON.detail;
+                        }
+                        Swal.fire({
+                            html: '<div class="swal_subtitle"><b>' + errorMsg + '</b></div>',
+                            title: "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_error.svg' alt=''>Error!",
+                            showCloseButton: true,
+                            confirmButtonText: 'OK',
+                            allowOutsideClick: false,
+                            allowEscapeKey: false,
+                            customClass: {
+                                confirmButton: 'swal-confirm-button-class'
+                            }
+                        });
+                        $('img[src="/assets/images/icons/swal_icon/icon_error.svg"]').parent().parent().parent().addClass('swal_error');
+                    }
+                });
+            }
+        });
+        $('img[src="/assets/images/icons/swal_icon/' + confirmIcon + '"]').parent().parent().parent().addClass(confirmClass);
+    }
+
+    function escapeHtml(text) {
+        if (!text) return '';
+        var map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
+        return text.replace(/[&<>"']/g, function (m) { return map[m]; });
+    }
+
+    function validateField(fieldId) {
+        var value = $('#' + fieldId).val();
+        if (!value || value.trim() === "") {
+            $("#" + fieldId).addClass('field_error');
+            $("#" + fieldId).focus();
+            return false;
+        }
+        $("#" + fieldId).removeClass('field_error');
+        return true;
+    }
+
+    function removeFieldErrors() {
+        $("#CategoryName").removeClass('field_error');
+    }
+
+    function frmClear() {
+        $('#CategoryId').val("");
+        $('#CategoryName').val("");
+        $('#CategoryDescription').val("");
+        $('#DisplayOrder').val("0");
+    }
+
+    function checkSession() {
+        $.ajax({
+            type: "GET",
+            async: false,
+            url: "/ESS/checkSession",
+            contentType: "application/json; charset=utf-8",
+            success: function (data) {
+                if (data.isRedirect) {
+                    window.location.href = data.redirectUrl;
+                }
+            },
+            error: function (data) {
+                window.location.href = data;
+            }
+        });
+    }
+</script>
+
+@if (obj.CanView)
+{
+    <div class="page-bar">
+        @if (_RoleId == 1 || _RoleId == 6805 || _RoleId == 6806 || _RoleId == 6811)
+        {
+            <ul class="page-breadcrumb">
+                <li>
+                    @if (isClientDBMatchFlag == "True")
+                    {
+                        <a href="/Admin/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+                    }
+                    else
+                    {
+                        <a href="/Dashboard/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+                    }
+                </li>
+                <li>
+                    <span><i class="fa-light fa-angle-right"></i> Canteen Management</span>
+                </li>
+                <li>
+                    <span><i class="fa-light fa-angle-right"></i> Meal Categories</span>
+                </li>
+            </ul>
+        }
+        else
+        {
+            <ul class="page-breadcrumb">
+                <li>
+                    @if (isClientDBMatchFlag == "true")
+                    {
+                        <a href="/Admin/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+                    }
+                    else
+                    {
+                        <a href="/Dashboard/EmployeeDashboard"><i class="fa-regular fa-house"></i></a>
+                    }
+                </li>
+                <li>
+                    <span><i class="fa-light fa-angle-right"></i> Meal Categories</span>
+                </li>
+            </ul>
+        }
+        <div class="page-toolbar text-right">
+            <a href="javascript:;" class="btn icon_transparent_btn tooltips" id="Filter_search" data-placement="left" data-original-title="Filter"><i class="fa-light fa-filter"></i></a>
+            @if (obj.CanAdd)
+            {
+                <a id="AddCategory" class="btn icon_transparent_btn tooltips" data-placement="left" data-original-title="Add Category"><i class="fa-solid fa-plus"></i></a>
+            }
+        </div>
+    </div>
+
+    <div class="filter_portlet_wrapper full-width">
+
+        <!-- Datatable Block : Begin -->
+        <div class="portlet filter_portlet_tbl">
+            <div class="portlet-body">
+                <div class="row">
+                    <div class="col-lg-12">
+                        <div id="divtblCategory" class="table-scrollable">
+                            <div id="tblempty">
+                                <div class="table-responsive" id="tableResponsive" style="display:none;">
+                                    <table id="tblCategory" class="new_datatbl table table-striped table-bordered table-hover table-checkable order-column"></table>
+                                </div>
+                                <div id="NotificationGrid-empty" style="display: none">
+                                    <div class="datanotfound">
+                                        <img src="~/assets/images/emptyscreen_3.png" height="148" width="280" alt="No Data Found Icon">
+                                        <p class="datanotfound_title">No data found</p>
+                                        <p id="emptyMessage">No categories have been configured yet.</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Datatable Block : End -->
+        <!-- Filter Block : Begin -->
+        <div class="portlet filter_boxModal">
+            <div class="filterbox_header">
+                <div class="d-flex align-items-center justify-content-between">
+                    <h4 class="filter-title">Filters</h4>
+                    <button type="button" class="filterclose_btn"><i class="fa-light fa-xmark"></i></button>
+                </div>
+            </div>
+            <div class="filterbox_body">
+                <div class="col-lg-12">
+                    <div class="form-group">
+                        <label>Canteen</label>
+                        <select class="form-control" id="FilterCanteenId">
+                            <option value="">-- Select Canteen --</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="col-lg-12">
+                    <div class="form-group">
+                        <label>Status</label>
+                        <select class="form-control input-sm" id="FilterStatusId">
+                            <option value="">All</option>
+                            <option value="true">Active</option>
+                            <option value="false">Inactive</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="filterbox_footer">
+                <div class="text-right">
+                    <button type="button" id="Clear_OPration" class="btn clear_btn margin-left-5 tooltips" data-placement="top" data-original-title="Clear filters"><i class="fa-regular fa-eraser"></i></button>
+                    <button type="button" id="Search_OPration" class="btn icon_btn margin-left-5 tooltips" data-placement="top" data-original-title="Search filters"><i class="fa-solid fa-magnifying-glass"></i></button>
+                </div>
+            </div>
+        </div>
+        <!-- Filter Block : End -->
+
+    </div>
+
+    <div class="col-lg-12">
+        <div id='ajax_loader' class="modal_bg loading">
+            <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading" />
+        </div>
+    </div>
+
+    <!-- Add/Edit Modal -->
+    <div id="categoryModal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog w-500">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    <h4 class="modal-title" id="modalTitle">Add Category</h4>
+                </div>
+                <div class="modal-body">
+                    <div class="modal-card">
+                        <fieldset>
+                            <div class="row">
+                                <div class="col-lg-12" hidden>
+                                    <div class="form-group">
+                                        <input type="hidden" id="CategoryId" value="">
+                                    </div>
+                                </div>
+
+                                <div class="col-lg-12">
+                                    <div class="form-group">
+                                        <label>Category Name <span class="required" style="color:red;"> * </span></label>
+                                        <input type="text" class="form-control input-sm" id="CategoryName" placeholder="Enter category name" maxlength="100">
+                                    </div>
+                                </div>
+
+                                <div class="col-lg-12">
+                                    <div class="form-group">
+                                        <label>Display Order</label>
+                                        <input type="text" class="form-control input-sm" id="DisplayOrder" placeholder="0" maxlength="5" value="0">
+                                    </div>
+                                </div>
+
+                                <div class="col-lg-12">
+                                    <div class="form-group">
+                                        <label>Description</label>
+                                        <textarea class="form-control input-sm" id="CategoryDescription" rows="2" placeholder="Enter category description" maxlength="255"></textarea>
+                                    </div>
+                                </div>
+                            </div>
+                        </fieldset>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <div class="row">
+                        <div class="col-lg-12 text-right">
+                            <button type="button" class="btn clear_btn" data-dismiss="modal"><i class="fa-light fa-xmark"></i> Cancel</button>
+                            <button type="button" id="btnCategorySubmit" class="btn save_btn"><i class="fa-light fa-floppy-disk"></i> Save</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    <div class="alert alert-danger">
+        <strong>Unauthorized Access.</strong> You do not have permission to view this page.
+    </div>
+}

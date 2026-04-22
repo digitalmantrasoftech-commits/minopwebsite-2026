@@ -1,0 +1,784 @@
+@using System.Configuration;
+@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@using System.Data;
+@{
+    ViewBag.Title = "Payroll Dashboard";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    int _UserId = Convert.ToInt32(HttpContext.Current.Session["UserId"]);
+    int _cmpid = Convert.ToInt32(HttpContext.Current.Session["CompanyId"]);
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytimePayroll"].ToString();
+    string _webapiurlBase = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    string _UserImg = HttpContext.Current.Session["photo"].ToString();
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+    string _companyid = "0";
+    string _empid = "0";
+    string _empName = "0";
+    int DepartmentId = Convert.ToInt32(HttpContext.Current.Session["DepartmentId"]);
+    if (_RoleId != 1 && _RoleId != 6805 && _RoleId != 6806)
+    {
+        _empid = HttpContext.Current.Session["EmpId"].ToString();
+        _empName = HttpContext.Current.Session["EmpName"].ToString();
+    }
+    string _branchid = "0";
+    if (_RoleId == 6805)
+    {
+        _companyid = HttpContext.Current.Session["ClientCompanyId"].ToString();
+    }
+    if (_RoleId == 6806)
+    {
+        _companyid = HttpContext.Current.Session["ClientCompanyId"].ToString();
+        _branchid = HttpContext.Current.Session["BranchId"].ToString();
+    }
+    string _isdateformat = HttpContext.Current.Session["IsDateFormat"].ToString();
+    string _CountryCode = HttpContext.Current.Session["CountryCode"].ToString();
+    string _AreaCode = HttpContext.Current.Session["AreaCode"].ToString();
+    string _dbName = HttpContext.Current.Session["DbName"].ToString();
+    string _isPlanId = HttpContext.Current.Session["planId"].ToString();
+    string isClientDBMatchFlag = HttpContext.Current.Session["IsClientDBMatch"] != null
+        ? HttpContext.Current.Session["IsClientDBMatch"].ToString()
+        : "false";
+}
+
+<style>
+    .highcharts-figure,
+    .highcharts-data-table table {
+        max-width: 100%;
+        margin: 10px auto;
+    }
+</style>
+
+<script>
+    $(document).ready(function () {
+        var _UID = '@_UserId';
+        var _ComID = '@_companyid';
+        var _BranchID = '@_branchid';
+        var _DepID = '@DepartmentId';
+        var _empIdnew = '@_empid';
+        var _RoleIDnew = '@_RoleId';
+        var _Token = '@_tokan';
+
+        // Load dashboard data
+        loadPayrollMonitor();
+        loadPayrollOverview();
+        loadRecentPayslips();
+        loadPendingApprovals();
+
+        $("#PayrollMonitorFilter").change(function () {
+            loadPayrollMonitor();
+        });
+
+        $("#payrollMonth").change(function () {
+            loadRecentPayslips();
+        });
+
+        $("#payrollMonths, #payrollDepartment").change(function () {
+            loadPendingApprovals();
+        });
+
+        function loadPayrollMonitor() {
+            var filterType = parseInt($("#PayrollMonitorFilter").val());
+            var request = {
+                empId: parseInt(_empIdnew),
+                roleId: parseInt(_RoleIDnew),
+                companyId: _ComID,
+                branchId: _BranchID,
+                departmentId: _DepID,
+                filterType: filterType
+            };
+            $.ajax({
+                url: '@_webapiurl' + 'Payroll/GetPayrollMonitor',
+                type: "POST",
+                contentType: "application/json",
+                headers: {
+                    "Authorization": "Bearer " + _Token
+                },
+                data: JSON.stringify(request),
+                success: function (res) {
+                    $("#TotalEmployeesCount").text(res.totalEmployees || 0);
+                    $("#ProcessedCount").text(res.processed || 0);
+                    $("#PendingCount").text(res.pending || 0);
+                    $("#TotalSalaryCount").text(formatCurrency(res.totalSalary || 0));
+                    $("#DeductionsCount").text(formatCurrency(res.deductions || 0));
+                    $("#NetPayableCount").text(formatCurrency(res.netPayable || 0));
+                },
+                error: function (xhr) {
+                    console.error("Payroll Monitor API Error", xhr.status, xhr.responseText);
+                }
+            });
+        }
+
+        function formatCurrency(amount) {
+            return new Intl.NumberFormat('en-IN', {
+                style: 'currency',
+                currency: 'INR',
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 0
+            }).format(amount);
+        }
+
+        function loadPayrollOverview() {
+            var request = {
+                empId: parseInt(_empIdnew),
+                roleId: parseInt(_RoleIDnew),
+                companyId: _ComID,
+                branchId: _BranchID,
+                departmentId: _DepID
+            };
+            $.ajax({
+                url: '@_webapiurl' + 'Payroll/GetPayrollOverview',
+                type: "POST",
+                contentType: "application/json",
+                headers: {
+                    "Authorization": "Bearer " + _Token
+                },
+                data: JSON.stringify(request),
+                success: function (res) {
+                    if (res && res.payrollItems && res.payrollItems.length > 0) {
+                        $("#Payroll_Overview").show();
+                        $("#Payroll_Empty").hide();
+                        preparePayrollOverview(res.payrollItems);
+                    } else {
+                        $("#Payroll_Overview").hide();
+                        $("#Payroll_Empty").show();
+                    }
+                },
+                error: function () {
+                    $("#Payroll_Overview").hide();
+                    $("#Payroll_Empty").show();
+                }
+            });
+        }
+
+        function preparePayrollOverview(data) {
+            var categories = [];
+            var salaries = [];
+            var deductions = [];
+            data.forEach(function (item) {
+                categories.push(item.monthName);
+                salaries.push(Number(item.totalSalary));
+                deductions.push(Number(item.totalDeductions));
+            });
+            drawPayrollChart(categories, salaries, deductions);
+        }
+
+        function drawPayrollChart(categories, salaries, deductions) {
+            Highcharts.chart('PayrollOverviewChart', {
+                chart: {
+                    type: 'column'
+                },
+                title: {
+                    text: ''
+                },
+                xAxis: {
+                    categories: categories
+                },
+                yAxis: {
+                    min: 0,
+                    title: {
+                        text: ''
+                    },
+                    labels: {
+                        formatter: function () {
+                            return (this.value / 1000) + 'K';
+                        }
+                    }
+                },
+                tooltip: {
+                    useHTML: true,
+                    formatter: function () {
+                        return `
+                            <b>${this.x}</b><br/>
+                            ${this.series.name}: <b>${formatCurrency(this.y)}</b>
+                        `;
+                    }
+                },
+                plotOptions: {
+                    column: {
+                        pointPadding: 0.2,
+                        borderWidth: 0
+                    }
+                },
+                series: [{
+                    name: 'Gross Salary',
+                    data: salaries,
+                    color: '#6366F1'
+                }, {
+                    name: 'Deductions',
+                    data: deductions,
+                    color: '#EF4444'
+                }],
+                credits: { enabled: false }
+            });
+        }
+
+        function loadRecentPayslips() {
+            var request = {
+                empId: parseInt(_empIdnew),
+                roleId: parseInt(_RoleIDnew),
+                companyId: _ComID,
+                branchId: _BranchID,
+                month: parseInt($("#payrollMonth").val())
+            };
+            $.ajax({
+                url: '@_webapiurl' + 'Payroll/GetRecentPayslips',
+                type: "POST",
+                contentType: "application/json",
+                headers: {
+                    "Authorization": "Bearer " + _Token
+                },
+                data: JSON.stringify(request),
+                success: function (res) {
+                    $("#RecentPayslips_Empty").hide();
+                    $("#RecentPayslips_List").hide();
+                    if (!res || !res.payslips || res.payslips.length === 0) {
+                        $("#RecentPayslips_Empty").show();
+                        return;
+                    }
+                    $("#RecentPayslips_List").show();
+                    bindRecentPayslips(res.payslips);
+                },
+                error: function () {
+                    $("#RecentPayslips_Empty").show();
+                    $("#RecentPayslips_List").hide();
+                }
+            });
+        }
+
+        function bindRecentPayslips(payslips) {
+            var container = $("#recentPayslipsContainer");
+            var html = '';
+            $.each(payslips, function (i, item) {
+                var statusClass = item.status === 'Processed' ? 'badge-success' : 'badge-warning';
+                html += `
+                <div class="myrequest_trip_block d-flex justify-content-between margin-bottom-10">
+                    <div class="tripdetail_main">
+                        <div class="tripdetail_title">
+                            <img src="${item.photo || '/assets/images/icons/icon_profile.svg'}" alt="" style="width:35px; height:35px; border-radius:50%; margin-right:10px;">
+                            <span>${item.employeeName}</span>
+                            <span class="badge ${statusClass}">${item.status}</span>
+                        </div>
+                        <div class="tripdetail">
+                            <span class="margin-right-15"><i class="fa fa-calendar"></i> ${item.monthYear}</span>
+                            <span class="margin-right-15"><i class="fa fa-rupee-sign"></i> Net: ${formatCurrency(item.netSalary)}</span>
+                        </div>
+                    </div>
+                    <div class="tripactionbtn">
+                        <a href="javascript:;" class="btn blue_btnnew" onclick="viewPayslip(${item.payslipId})">
+                            <i class="fa-solid fa-eye"></i>
+                        </a>
+                    </div>
+                </div>`;
+            });
+            container.html(html);
+        }
+
+        function loadPendingApprovals() {
+            var request = {
+                empId: parseInt(_empIdnew),
+                roleId: parseInt(_RoleIDnew),
+                companyId: _ComID,
+                branchId: _BranchID,
+                departmentId: parseInt($("#payrollDepartment").val()),
+                month: parseInt($("#payrollMonths").val())
+            };
+            $("#PendingApprovals_List").hide();
+            $("#PendingApprovals_Empty").hide();
+            $("#pendingApprovalsContainer").empty();
+            $.ajax({
+                url: '@_webapiurl' + 'Payroll/GetPendingApprovals',
+                type: "POST",
+                contentType: "application/json",
+                headers: {
+                    "Authorization": "Bearer " + _Token
+                },
+                data: JSON.stringify(request),
+                success: function (res) {
+                    if (!res || !Array.isArray(res.approvals) || res.approvals.length === 0) {
+                        $("#PendingApprovals_List").hide();
+                        $("#PendingApprovals_Empty").show();
+                        return;
+                    }
+                    $("#PendingApprovals_Empty").hide();
+                    $("#PendingApprovals_List").show();
+                    renderPendingApprovals(res.approvals);
+                },
+                error: function () {
+                    $("#PendingApprovals_List").hide();
+                    $("#PendingApprovals_Empty").show();
+                }
+            });
+        }
+
+        function renderPendingApprovals(items) {
+            var html = '';
+            $.each(items, function (i, item) {
+                html += `
+                <div class="pending_request_block d-flex justify-content-between margin-bottom-10">
+                    <div class="tripdetail_main">
+                        <div class="reqby">Employee: <span>${item.employeeName}</span></div>
+                        <div class="tripdetail">${item.requestType}: ${formatCurrency(item.amount)}</div>
+                        <div class="text-muted small">Requested: ${formatDate(item.requestDate)}</div>
+                    </div>
+                    <div class="tripactionbtn">
+                        <a href="javascript:;" class="btn green_btnnew approve"
+                           onclick="updatePayrollApproval(${item.requestId}, 'Approve')"><i class="fa-solid fa-check"></i></a>
+                        <a href="javascript:;" class="btn red_btnnew reject"
+                           onclick="updatePayrollApproval(${item.requestId}, 'Reject')"><i class="fa-solid fa-xmark"></i></a>
+                    </div>
+                </div>`;
+            });
+            $("#pendingApprovalsContainer").html(html);
+        }
+
+        function formatDate(dateStr) {
+            if (!dateStr) return '';
+            var date = new Date(dateStr);
+            return date.toLocaleDateString('en-GB');
+        }
+
+        window.updatePayrollApproval = function (requestId, action) {
+            var request = {
+                RequestId: requestId,
+                UserId: parseInt(_empIdnew),
+                Action: action
+            };
+            $.ajax({
+                url: '@_webapiurl' + 'Payroll/UpdateApprovalStatus',
+                type: "POST",
+                contentType: "application/json",
+                headers: { "Authorization": "Bearer " + _Token },
+                data: JSON.stringify(request),
+                success: function (res) {
+                    toastr.success(res.message || 'Request ' + action + 'd successfully');
+                    loadPendingApprovals();
+                    loadPayrollMonitor();
+                },
+                error: function (xhr) {
+                    console.error("Approval API Error", xhr.status, xhr.responseText);
+                    alert("Failed to update request.");
+                }
+            });
+        };
+
+        window.viewPayslip = function (payslipId) {
+            window.open('/Payroll/ViewPayslip?id=' + payslipId, '_blank');
+        };
+
+        // Fill department dropdown
+        fillDepartment();
+        function fillDepartment() {
+            $.ajax({
+                url: '@_webapiurlBase' + "/Master/DepartmentGetAll",
+                method: "GET",
+                contentType: "application/json; charset=utf-8",
+                headers: {
+                    "Authorization": "Bearer " + _Token
+                },
+                success: function (data) {
+                    var $deptDropdown = $("#payrollDepartment");
+                    $deptDropdown.empty();
+                    $deptDropdown.append('<option value="0">All Departments</option>');
+                    $.each(data, function (i, dept) {
+                        $deptDropdown.append('<option value="' + dept.DepartmentId + '">' + dept.DepartmentName + '</option>');
+                    });
+                },
+                error: function (err) {
+                    console.error("Error loading departments", err);
+                }
+            });
+        }
+
+        // Custom widget save
+        $("#widgetSave").on("click", function () {
+            $(".widget-checkbox").each(function () {
+                var widgetKey = $(this).data("widget");
+                var $dashboardWidget = $(
+                    ".row[data-widget='" + widgetKey + "'], " +
+                    ".col-lg-6[data-widget='" + widgetKey + "']"
+                ).not("#customwidget_modal *");
+                if ($(this).is(":checked")) {
+                    $dashboardWidget.show();
+                } else {
+                    $dashboardWidget.hide();
+                }
+            });
+            $("#customwidget_modal").modal("hide");
+        });
+
+        // Update product display
+        if ($('#currentProductDisplay').length) {
+            $('#currentProductDisplay').text('Payroll');
+        }
+    });
+</script>
+
+@if (obj.CanView)
+{
+    <div class="page-bar">
+        <ul class="page-breadcrumb">
+            <li>
+                <a href="/MinopProduct/PayrollDashboard"><i class="fa-regular fa-house"></i></a>
+            </li>
+            <li>
+                <span> <i class="fa fa-angle-right"> </i> Payroll Dashboard</span>
+            </li>
+        </ul>
+        <div class="filter_search pull-right">
+            <button id="customwidget_btn" class="btn icon_transparent_btn tooltips margin-right-5" type="button" data-toggle="modal" data-target="#customwidget_modal" data-placement="left" data-original-title="Custom Widget"><i class="fa-light fa-objects-column"></i></button>
+            <button id="Filter_search" class="btn icon_transparent_btn tooltips" type="button" data-placement="bottom" data-original-title="Filter"><i class="fa-light fa-filter"></i></button>
+        </div>
+    </div>
+
+    <div class="body_section">
+
+        <div class="row" data-widget="payrollMonitor">
+            <!-- Payroll Monitor Block : Begin -->
+            <div class="col-lg-12">
+                <div class="card_box margin-bottom-20">
+                    <div class="card_header">
+                        <div class="d-flex align-items-center">
+                            <img class="margin-right-8" src="~/assets/images/icons/icon_activitymonitor.svg" alt="" width="25" height="24">
+                            <p class="card-title margin-right-10">Payroll Monitor</p>
+                            <img class="tooltips" src="/assets/images/icons/icon_info.svg" alt="" width="12" height="12" data-placement="right" data-original-title="Track payroll processing status">
+                            <div class="dropdown_box margin-left-15">
+                                <div class="form-group margin-bottom-0">
+                                    <select id="PayrollMonitorFilter" class="btn blue btn-outline select2" data-width="100%">
+                                        <option value="1">This Month</option>
+                                        <option value="2">Last Month</option>
+                                        <option value="3">This Quarter</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card_summarylist">
+                        <div class="row">
+                            <div class="col-lg-2 col-sm-4 col-xs-6">
+                                <div class="activity_block">
+                                    <a href="javascript:;">
+                                        <img src="~/assets/images/icons/icon_team.svg" alt="" width="48" height="48">
+                                        <div>
+                                            <p>Total Employees</p>
+                                            <div class="activity_count" id="TotalEmployeesCount">0</div>
+                                        </div>
+                                    </a>
+                                </div>
+                            </div>
+                            <div class="col-lg-2 col-sm-4 col-xs-6">
+                                <div class="activity_block">
+                                    <a href="javascript:;">
+                                        <img src="~/assets/images/icons/icon_approvedrequest.svg" alt="" width="48" height="48">
+                                        <div>
+                                            <p>Processed</p>
+                                            <div class="activity_count" id="ProcessedCount">0</div>
+                                        </div>
+                                    </a>
+                                </div>
+                            </div>
+                            <div class="col-lg-2 col-sm-4 col-xs-6">
+                                <div class="activity_block">
+                                    <a href="javascript:;">
+                                        <img src="~/assets/images/icons/icon_pendingrequest.svg" alt="" width="48" height="48">
+                                        <div>
+                                            <p>Pending</p>
+                                            <div class="activity_count" id="PendingCount">0</div>
+                                        </div>
+                                    </a>
+                                </div>
+                            </div>
+                            <div class="col-lg-2 col-sm-4 col-xs-6">
+                                <div class="activity_block">
+                                    <a href="javascript:;">
+                                        <img src="~/assets/images/icons/icon_checkin.svg" alt="" width="48" height="48">
+                                        <div>
+                                            <p>Total Salary</p>
+                                            <div class="activity_count" id="TotalSalaryCount" style="font-size: 16px;">0</div>
+                                        </div>
+                                    </a>
+                                </div>
+                            </div>
+                            <div class="col-lg-2 col-sm-4 col-xs-6">
+                                <div class="activity_block">
+                                    <a href="javascript:;">
+                                        <img src="~/assets/images/icons/icon_notcheckin.svg" alt="" width="48" height="48">
+                                        <div>
+                                            <p>Deductions</p>
+                                            <div class="activity_count" id="DeductionsCount" style="font-size: 16px;">0</div>
+                                        </div>
+                                    </a>
+                                </div>
+                            </div>
+                            <div class="col-lg-2 col-sm-4 col-xs-6">
+                                <div class="activity_block">
+                                    <a href="javascript:;">
+                                        <img src="~/assets/images/icons/icon_profile.svg" alt="" width="48" height="48">
+                                        <div>
+                                            <p>Net Payable</p>
+                                            <div class="activity_count" id="NetPayableCount" style="font-size: 16px;">0</div>
+                                        </div>
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Payroll Monitor Block : End -->
+        </div>
+
+        <div class="row">
+            <!-- Payroll Overview Block : Begin -->
+            <div class="col-lg-6" data-widget="payrollOverview">
+                <div class="card_box margin-bottom-20 h-380">
+                    <div class="card_header d-flex align-items-center justify-content-between">
+                        <div class="d-flex align-items-center">
+                            <img class="margin-right-8" src="/assets/images/icons/icon_attoverview.svg" alt="" width="22" height="22">
+                            <p class="card-title margin-right-10">Payroll Overview</p>
+                            <img class="tooltips" src="/assets/images/icons/icon_info.svg" alt="" width="12" height="12" data-placement="right" data-original-title="Monthly payroll trend">
+                        </div>
+                    </div>
+                    <div class="card_summarylist">
+                        <div id="Payroll_Overview">
+                            <figure class="highcharts-figure">
+                                <div id="PayrollOverviewChart" style="height: 320px;"></div>
+                            </figure>
+                        </div>
+                        <div id="Payroll_Empty" style="display:none">
+                            <div class="empty_block no_record">
+                                <img src="~/assets/images/emptyscreen_3.png" height="122" width="230" alt="No Records Found">
+                                <p>No records found.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Payroll Overview Block : End -->
+
+            <!-- Recent Payslips Block : Begin -->
+            <div class="col-lg-6" data-widget="recentPayslips">
+                <div class="card_box margin-bottom-20 h-380">
+                    <div class="card_header d-flex align-items-center justify-content-between">
+                        <div class="d-flex align-items-center">
+                            <img class="margin-right-8" src="/assets/images/icons/icon_myattendance.svg" alt="" width="22" height="22">
+                            <p class="card-title margin-right-10">Recent Payslips</p>
+                            <img class="tooltips" src="/assets/images/icons/icon_info.svg" alt="" width="12" height="12" data-placement="right" data-original-title="Recently generated payslips">
+                        </div>
+                        <div class="dropdown_box">
+                            <div class="form-group margin-bottom-0">
+                                <select id="payrollMonth" class="btn blue btn-outline select2" data-width="100%">
+                                    <option value="1">January</option>
+                                    <option value="2">February</option>
+                                    <option value="3">March</option>
+                                    <option value="4">April</option>
+                                    <option value="5">May</option>
+                                    <option value="6">June</option>
+                                    <option value="7">July</option>
+                                    <option value="8">August</option>
+                                    <option value="9">September</option>
+                                    <option value="10">October</option>
+                                    <option value="11">November</option>
+                                    <option value="12">December</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card_summarylist myscrollbar" style="max-height: 310px; overflow-y: auto;">
+                        <div id="RecentPayslips_List">
+                            <div id="recentPayslipsContainer"></div>
+                        </div>
+                        <div id="RecentPayslips_Empty" style="display:none">
+                            <div class="empty_block no_record">
+                                <img src="~/assets/images/emptyscreen_3.png" height="122" width="230" alt="No Records Found">
+                                <p>No payslips found.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Recent Payslips Block : End -->
+        </div>
+
+        <div class="row">
+            <!-- Pending Approvals Block : Begin -->
+            <div class="col-lg-6" data-widget="pendingApprovals">
+                <div class="card_box margin-bottom-20 h-380">
+                    <div class="card_header d-flex align-items-center justify-content-between">
+                        <div class="d-flex align-items-center">
+                            <img class="margin-right-8" src="/assets/images/icons/icon_pendingrequests.svg" alt="" width="22" height="22">
+                            <p class="card-title margin-right-10">Pending Approvals</p>
+                            <img class="tooltips" src="/assets/images/icons/icon_info.svg" alt="" width="12" height="12" data-placement="right" data-original-title="Requests awaiting approval">
+                        </div>
+                        <div class="dropdown_box">
+                            <div class="form-group margin-bottom-0 d-flex">
+                                <select id="payrollMonths" class="btn blue btn-outline select2 margin-right-5" data-width="100%">
+                                    <option value="0">All</option>
+                                    <option value="1">January</option>
+                                    <option value="2">February</option>
+                                    <option value="3">March</option>
+                                    <option value="4">April</option>
+                                    <option value="5">May</option>
+                                    <option value="6">June</option>
+                                    <option value="7">July</option>
+                                    <option value="8">August</option>
+                                    <option value="9">September</option>
+                                    <option value="10">October</option>
+                                    <option value="11">November</option>
+                                    <option value="12">December</option>
+                                </select>
+                                <select id="payrollDepartment" class="btn blue btn-outline select2" data-width="100%">
+                                    <option value="0">All Departments</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card_summarylist myscrollbar" style="max-height: 310px; overflow-y: auto;">
+                        <div id="PendingApprovals_List">
+                            <div id="pendingApprovalsContainer"></div>
+                        </div>
+                        <div id="PendingApprovals_Empty" style="display:none">
+                            <div class="empty_block no_record">
+                                <img src="~/assets/images/emptyscreen_3.png" height="122" width="230" alt="No Records Found">
+                                <p>No pending approvals found.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Pending Approvals Block : End -->
+
+            <!-- Quick Actions Block : Begin -->
+            <div class="col-lg-6" data-widget="quickActions">
+                <div class="card_box margin-bottom-20 h-380">
+                    <div class="card_header d-flex align-items-center justify-content-between">
+                        <div class="d-flex align-items-center">
+                            <img class="margin-right-8" src="/assets/images/icons/icon_add.svg" alt="" width="22" height="22">
+                            <p class="card-title margin-right-10">Quick Actions</p>
+                        </div>
+                    </div>
+                    <div class="card_summarylist">
+                        <div class="row">
+                            <div class="col-lg-4 col-sm-6 col-xs-6 margin-bottom-15">
+                                <a href="/Payroll/ProcessPayroll" class="quick_action_btn">
+                                    <img src="/assets/images/icons/icon_checkin.svg" alt="" width="40" height="40">
+                                    <span>Process Payroll</span>
+                                </a>
+                            </div>
+                            <div class="col-lg-4 col-sm-6 col-xs-6 margin-bottom-15">
+                                <a href="/Payroll/GeneratePayslips" class="quick_action_btn">
+                                    <img src="/assets/images/icons/icon_myattendance.svg" alt="" width="40" height="40">
+                                    <span>Generate Payslips</span>
+                                </a>
+                            </div>
+                            <div class="col-lg-4 col-sm-6 col-xs-6 margin-bottom-15">
+                                <a href="/Payroll/AdvanceSalary" class="quick_action_btn">
+                                    <img src="/assets/images/icons/icon_pendingrequest.svg" alt="" width="40" height="40">
+                                    <span>Advance Salary</span>
+                                </a>
+                            </div>
+                            <div class="col-lg-4 col-sm-6 col-xs-6 margin-bottom-15">
+                                <a href="/Payroll/Reimbursements" class="quick_action_btn">
+                                    <img src="/assets/images/icons/icon_approvedrequest.svg" alt="" width="40" height="40">
+                                    <span>Reimbursements</span>
+                                </a>
+                            </div>
+                            <div class="col-lg-4 col-sm-6 col-xs-6 margin-bottom-15">
+                                <a href="/Payroll/TaxReports" class="quick_action_btn">
+                                    <img src="/assets/images/icons/icon_attoverview.svg" alt="" width="40" height="40">
+                                    <span>Tax Reports</span>
+                                </a>
+                            </div>
+                            <div class="col-lg-4 col-sm-6 col-xs-6 margin-bottom-15">
+                                <a href="/Payroll/SalaryStructure" class="quick_action_btn">
+                                    <img src="/assets/images/icons/icon_team.svg" alt="" width="40" height="40">
+                                    <span>Salary Structure</span>
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Quick Actions Block : End -->
+        </div>
+
+    </div>
+
+    <!-- Custom Widget Modal : Begin -->
+    <div class="modal fade" id="customwidget_modal" tabindex="-1" role="dialog" aria-labelledby="customwidget_modal_title" aria-hidden="true">
+        <div class="modal-dialog modal-md" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="customwidget_modal_title">Custom Widget</h5>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-lg-6">
+                            <div class="form-group">
+                                <label class="custom-checkbox">
+                                    <input type="checkbox" class="widget-checkbox" data-widget="payrollMonitor" checked>
+                                    <span class="checkmark"></span> Payroll Monitor
+                                </label>
+                            </div>
+                        </div>
+                        <div class="col-lg-6">
+                            <div class="form-group">
+                                <label class="custom-checkbox">
+                                    <input type="checkbox" class="widget-checkbox" data-widget="payrollOverview" checked>
+                                    <span class="checkmark"></span> Payroll Overview
+                                </label>
+                            </div>
+                        </div>
+                        <div class="col-lg-6">
+                            <div class="form-group">
+                                <label class="custom-checkbox">
+                                    <input type="checkbox" class="widget-checkbox" data-widget="recentPayslips" checked>
+                                    <span class="checkmark"></span> Recent Payslips
+                                </label>
+                            </div>
+                        </div>
+                        <div class="col-lg-6">
+                            <div class="form-group">
+                                <label class="custom-checkbox">
+                                    <input type="checkbox" class="widget-checkbox" data-widget="pendingApprovals" checked>
+                                    <span class="checkmark"></span> Pending Approvals
+                                </label>
+                            </div>
+                        </div>
+                        <div class="col-lg-6">
+                            <div class="form-group">
+                                <label class="custom-checkbox">
+                                    <input type="checkbox" class="widget-checkbox" data-widget="quickActions" checked>
+                                    <span class="checkmark"></span> Quick Actions
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" id="widgetSave">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Custom Widget Modal : End -->
+}
+else
+{
+    <span style="color:red">@PayTimeWebClient.Resource.Resource.UnauthorizedAccess .</span>
+}

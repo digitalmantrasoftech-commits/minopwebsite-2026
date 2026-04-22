@@ -1,0 +1,1267 @@
+﻿@using System.Configuration;
+@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@{
+    ViewBag.Title = "Custom Report Template";
+    //Layout = "~/Views/Shared/_Layout.cshtml";
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    string _companyCode = HttpContext.Current.Session["cmpcode"].ToString();
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+    string _dbName = HttpContext.Current.Session["DbName"].ToString();
+}
+<script src="~/Scripts/timeme.js"></script>
+<script src="~/AssetsNew/js/CommonValidation.js"></script>
+<script src="~/Scripts/Helpers/noDataHandler.js"></script>
+<script type="text/javascript">
+    var selecteditemArray = [];
+    var _seletedtbllist = "";
+    var _seletedtbllistcustom = "";
+    function Rowenable(ctl) {
+
+        if ($('#chkselect_t' + ctl).prop('checked') == true) {
+
+            $('#chkgroup_' + ctl + '').prop('disabled', false);
+            $('#chkorder_' + ctl + '').prop('disabled', false);
+            $('#txtgroup_' + ctl + '').prop('disabled', false);
+        }
+        else {
+            $('#chkgroup_' + ctl + '').prop('checked', false);
+            $('#chkorder_' + ctl + '').prop('checked', false);
+            $('#txtgroup_' + ctl + '').val(0);
+            $('#txtorder_' + ctl + '').val(0);
+            $('#chkgroup_' + ctl + '').prop('disabled', true);
+            $('#chkorder_' + ctl + '').prop('disabled', true);
+            $('#txtgroup_' + ctl + '').prop('disabled', true);
+            $('#txtorder_' + ctl + '').prop('disabled', true);
+            var index = $.inArray(ctl, selecteditemArray);
+            if (index != -1) {
+                selecteditemArray.splice(index, 1);
+            }
+        }
+
+        $("#hdnfieldList").val(selecteditemArray);
+    }
+    function chkgrpchange(ctl) {
+        if ($('#chkgroup_' + ctl + '').prop('checked') == true) {
+            $('#txtgroup_' + ctl + '').prop('disabled', false);
+
+        }
+        else {
+            $('#txtgroup_' + ctl + '').val(0);
+            $('#txtgroup_' + ctl + '').prop('disabled', true);
+        }
+    }
+
+    function chkorderchange(ctl) {
+        if ($('#chkorder_' + ctl + '').prop('checked') == true) {
+            $('.chkordby').prop('checked', false);
+            $('#chkorder_' + ctl + '').prop('checked', true);
+        }
+        else {
+            $('#txtorder_' + ctl + '').val(0);
+        }
+    }
+    function fillmasterlst() {
+        var $select = $("#Masterlst").multiselect({
+            selectAllValue: 'multiselect-all',
+            enableCaseInsensitiveFiltering: true,
+            includeSelectAllOption: false,
+            allSelectedText: 'All Select',
+            enableFiltering: true,
+            maxHeight: '300',
+            buttonWidth: '100%',
+            enableClickableOptGroups: false,
+
+        });
+
+        var $select1 = $("#Customlst").multiselect({
+            selectAllValue: 'multiselect-all',
+            enableCaseInsensitiveFiltering: true,
+            includeSelectAllOption: false,
+            allSelectedText: 'All Select',
+            enableFiltering: true,
+            maxHeight: '300',
+            buttonWidth: '100%',
+            enableClickableOptGroups: true
+        });
+
+        $('#Masterlst').empty();
+        $('#Customlst').empty();
+
+
+        $.ajax(
+            {
+                type: "GET",
+                headers: { 'Authorization': '@_tokan' },
+                url: '@_webapiurl' + 'Report/Gettblmasterlist',
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                beforeSend: function () {
+                    $("#ajax_loader").show();
+                },
+                success: function (data) {
+                    if (data.isRedirect) {
+                        window.location.href = data.redirectUrl;
+                    }
+                    $("#Masterlst").append("<option data-role='divider' class='selectpicker'></option>");
+                    $("#Masterlst").append("<optgroup label='Master' data-role='divider'></optgroup>");
+                    for (var x = 0; x < data.length; x++) {
+                        if (data[x].flg == 0)
+                            $("#Masterlst").append("<option value=" + data[x].ReporttablesId + ">" + data[x].Reporttablealias.replace("Master", "") + "</option>");
+                    }
+
+                    $("#Masterlst").append("<option data-role='divider' class='selectpicker'></option>");
+                    $("#Masterlst").append("<optgroup label='Transaction' data-role='divider'></optgroup>");
+                    $("#Masterlst").append("<option value=0>Transaction</option>");
+
+                    var y = 0;
+
+                    for (var x = 0; x < data.length; x++) {
+                        if (data[x].flg == 1) {
+
+                            if (y == 0) {
+                                $("#Masterlst").append("<option data-role='divider' class='selectpicker'></option>");
+                                $("#Masterlst").append("<optgroup label='Custom'></optgroup>");
+                                y = 1;
+                            }
+
+                            $("#Masterlst").append("<option value=" + data[x].ReporttablesId + ">" + data[x].Reporttablealias + "</option>");
+                        }
+                    }
+                    $select.multiselect('rebuild');
+                    $(document.body).on('change', '#Masterlst', function () {
+                        $(".popMsg").hide();
+                        var deptid = $('#Masterlst option:selected');
+                        var DeptArray = [];
+                        $(Masterlst).each(function (index, deptid) {
+                            DeptArray.push($(this).val());
+                        });
+                        _seletedtbllist = DeptArray.join(',');
+                    });
+                    $("#ajax_loader").hide();
+                },
+                error: function (xhr, ajaxOptions, thrownError) {
+                    $("#ajax_loader").hide();
+                    if (jqXHR.status == 500) { //InternalServerError = 500,
+                        toastr.error("InternalServerError");
+                    } else if (jqXHR.status == 400) { //BadRequest = 400,
+                        toastr.error("BadRequest");
+                    } else if (jqXHR.status == 401) {
+                        window.location.href = "/PayTime/LoginPage";
+                    }
+
+                }
+            });
+    }
+    $(document).ready(function () {
+        /*timeMeInitialize function is  a javascript library which displays a timer to display how long you are actively viewing the current webpage.*/
+        timeMeInitialize();
+        var count = 0;
+        var form = "Custom Report Template";
+        var operation = "";
+        $('input[type="text"]').on('keydown', function (e) {
+            if ((e.ctrlKey || e.metaKey) && e.keyCode == 86) {
+                e.preventDefault();
+                return false;
+            }
+        });
+        $('#ReportName').keydown(function (e) {
+            if (this.value.length === 0 && e.which === 32) e.preventDefault();
+        });
+        $('#ReportHeaderName').keydown(function (e) {
+            if (this.value.length === 0 && e.which === 32) e.preventDefault();
+        });
+        $('#ReportName').on("keyup paste", function (e) {
+            var txtValue = $(this).val();
+            if (/^[a-zA-Z0-9- ]*$/.test(txtValue) == false) {
+                $(this).val('');
+            }
+        });
+        $('#ReportHeaderName').on("keyup paste", function (e) {
+            var txtValue = $(this).val();
+            if (/^[a-zA-Z0-9- ]*$/.test(txtValue) == false) {
+                $(this).val('');
+            }
+        });
+        $("#ReportName").on('keypress', function () {
+            var num = $("#ReportName").val();
+            var num1 = num.length;
+            if (num1 >= 50) {
+                var num1 = $('#ReportName').val().substring(0, 50);
+                return false;
+            }
+        });
+        $("#ReportHeaderName").on('keypress', function () {
+            var num = $("#ReportHeaderName").val();
+            var num1 = num.length;
+            if (num1 >= 50) {
+                var num1 = $('#ReportHeaderName').val().substring(0, 50);
+                return false;
+            }
+        });
+        document.oncontextmenu = function () { return false; };
+        $(document).mousedown(function (e) {
+            if (e.button == 2) {
+                return false;
+            }
+            return true;
+        });
+
+
+        fillmasterlst();
+        var t = $('#tblCustomrepotemplate').DataTable(
+            {
+                dom: _domCommon,
+                language: _languageCommon,
+			    "responsive": true,
+			    "colReorder": true,
+			    "processing": true,
+			    "ajax": {
+			        url: '@_webapiurl' + 'Report/ReportdynamictemplateGetall',
+                    type: "GET",
+                    "data": JSON.stringify(),
+			        headers: { 'Authorization': '@_tokan' },
+                    dataSrc: function (json) {
+                        if (json != null) {
+                            const mp = json;
+                            handleGridVisibility("tblempty", "NotificationGrid-empty", mp, {
+                                imageUrl: "emptyscreen_3.png",
+                                subText: "No matching records found for the selected filters."
+                            });
+                            return mp; 
+                        }
+                        
+                    },       
+			    },
+			    "columns": [
+                    { "data": null, visible:false },
+					{ "data": "ReportName" },
+					{ "data": "ReportHeaderName" }, 
+                    { "data": "ReportId", visible: false },
+                    { "data": "ReportType", visible: false },
+			    ],
+			    "columnDefs": [
+                    //{
+                    //    "targets": [1, 2],
+                    //    "visible": false
+                    //},
+
+					{
+					    "targets": 5,
+					    "data": null,
+					    "render": function (data, type, full, meta) {
+					        if ('@obj.CanEdit.ToString()' == 'True') {
+					            data = "<a class='btn editclass seagreen_btnnew tooltips' data-placement='top' data-original-title='Edit Report'><i class='fa-regular fa-pen-to-square'></i></a><a title='View Report' class='btn viewclass blue_btnnew tooltips' data-placement='top' data-original-title='View Report'><i class='fa-regular fa-eye'></i></a>";
+					            $('.tooltips').tooltip();
+					        }
+					        else {
+					            data = "";
+					        }
+					        return data;
+					    }
+
+					},
+					 {
+					     "searchable": false,
+					     "orderable": false,
+					     "targets": 0
+					 }],
+			    "order": [[1, 'asc']],
+			}
+        );
+        setTimeout(function () {
+            $("#" + "tblCustomrepotemplate" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+            $('.tooltips').tooltip();
+        }, 100);
+        t.on('order.dt search.dt', function () {
+            t.column(0, { search: 'applied', order: 'applied' }).nodes().each(function (cell, i) {
+                cell.innerHTML = i + 1;
+            });
+        }).draw();
+
+        $("#Add").on('click', function () {
+            count++;
+            operation = "Add Form";
+            hidemsg();
+            frmClear();
+            //Bindcolumntable();
+            $(".spMasterlst").text('');
+            $('#Masterlst').val(0);
+            $('#Customlst').val(0);
+            $("#Add").attr("data-toggle", "modal");
+            $("#Add").attr("data-target", "#frmpopup");
+
+            $("#btnClear").css("display", "none");
+            $("#tblcol").css("display", "none");
+            $("#btnsave").css("display", "none")
+            $("#btnGo").css("display", "");
+            $("#Masterlst").multiselect("enable");
+            $('#Masterlst').multiselect('deselectAll', false);
+            $('#Masterlst').multiselect('updateButtonText');
+        });
+
+        $("#btnGo").on('click', function () {
+            hidemsg();
+            $(".spMasterlst").text('');
+            if ($("#ReportName").val() == '' || $("#ReportName").val() == null) {
+                $("#ReportName").addClass('field_error');
+                return false;
+            }
+            if ($("#ReportName").val() != '') {
+                var num = $("#ReportName").val();
+                var num1 = num.length;
+                if (num1 > 50) {
+                    var num1 = $('#ReportName').val().substring(0, 50);
+                    return false;
+                }
+            }
+            if ($("#ReportHeaderName").val() != '') {
+                var num = $("#ReportHeaderName").val();
+                var num1 = num.length;
+                if (num1 > 50) {
+                    var num1 = $('#ReportHeaderName').val().substring(0, 50);
+                    return false;
+                }
+            }
+
+            if ($("#Masterlst").val() == "" || $("#Masterlst").val() == null) {
+                toastr.remove();
+                toastr.error("Please select at least one option.");
+                $("#Masterlst").focus();
+
+                return false;
+            }
+            else {
+                var _Masterlstflag = 0;
+                if ($("#Masterlst option:selected").text().indexOf("Transaction") != "-1") {
+                    $("#Masterlst option:selected").each(function () {
+                        var $this = $(this);
+                        if ($this.length) {
+                            var selText = $this.text().trim();
+                            if (selText == "Employee") {
+                                _Masterlstflag = 1;
+                            }
+                        }
+                    });
+
+                    if (_Masterlstflag == 0) {
+                        $('#err').text("Transaction select then employee select compulsory.");
+                        showmsg();
+                        return false;
+                    }
+
+                }
+
+
+                GetMultitableCloumnsList();
+                $("#btnClear").css("display", "");
+                $("#tblcol").css("display", "");
+                $("#btnsave").css("display", "");
+                $("#btnGo").css("display", "none");
+                $("#Masterlst").multiselect("disable");
+            }
+        });
+
+        $("#btnClear").on('click', function () {
+            hidemsg();
+            $(".spMasterlst").text('');
+            $("#btnClear").css("display", "none");
+            $("#tblcol").css("display", "none");
+            $("#btnsave").css("display", "none")
+            $("#btnGo").css("display", "");
+            $('#tblcolbody').empty('');
+            $('#Masterlst').multiselect('deselectAll', false);
+            $('#Masterlst').multiselect('updateButtonText');
+            $("#Masterlst").multiselect("enable");
+
+        });
+
+
+        $("#Masterlst").change(function () {
+            $("#Masterlst option:selected").each(function () {
+                var $this = $(this);
+                if ($this.length) {
+                    var selText = $this.text().trim();
+                    if (selText == "Transaction") {
+                        $("#Masterlst option").each(function () {
+                            var optionValue = $(this).val();
+                            var optionText = $(this).text();
+                            if (optionText.trim() == "Employee") {
+                                $("#Masterlst").find("option[value='" + optionValue + "']").prop("selected", "selected");
+                                $("#Masterlst").multiselect("refresh");
+                            }
+                            if (optionText.trim() == "Company" || optionText.trim() == "Branch" || optionText.trim() == "Department" || optionText.trim() == "Designation") {
+                                $("#Masterlst").find("option[value='" + optionValue + "']").prop("selected", false);
+                                $("#Masterlst").multiselect("refresh");
+                            }
+                        });
+                    }
+                    if (selText == "Employee") {
+                        $("#Masterlst option").each(function () {
+                            var optionValue = $(this).val();
+                            var optionText = $(this).text();
+                            if (optionText.trim() == "Company" || optionText.trim() == "Branch" || optionText.trim() == "Department" || optionText.trim() == "Designation") {
+                                $("#Masterlst").find("option[value='" + optionValue + "']").prop("selected", false);
+                                $("#Masterlst").multiselect("refresh");
+                            }
+                        });
+                    }
+                }
+            });
+        });
+
+        $("#Customlst").change(function () {
+            //GetMultitableCloumnsList();
+        });
+
+        function GetMultitableCloumnsList() {
+            var _Masterlst = "";
+            var _Customlst = "";
+            var _Master_Customlst = 0;
+            if ($("#Masterlst").val() != null) {
+                _Masterlst = $("#Masterlst").val();
+            }
+
+            if ($("#Customlst").val() != null) {
+                _Customlst = $("#Customlst").val();
+            }
+
+            if (_Masterlst != "") {
+                _Master_Customlst = $("#Masterlst").val();
+                if (_Customlst != "") {
+                    _Master_Customlst += "," + $("#Customlst").val();
+                }
+            }
+            else {
+                if (_Customlst != "") {
+                    _Master_Customlst = $("#Customlst").val();
+                }
+            }
+            var _urlcmp = '@_webapiurl' + 'Report/GetMultitableCloumnsList';
+            $.ajax({
+                type: 'GET',
+                headers: { 'Authorization': '@_tokan' },
+                url: _urlcmp,
+                data: { 'CloumnsList': "'" + _Master_Customlst + "'" },
+                contentType: "application/json",
+                dataType: 'json',
+                async: false,
+                cache: false,
+                timeout: 30000,
+                beforeSend: function () {
+                    $("#ajax_loader").show();
+                },
+                success: function (data) {
+                    document.getElementById('tblcolbody').innerHTML = '';
+                    $("#ajax_loader").hide();
+                    var tr;
+                    var coldt = data;
+                    for (var i = 0; i < coldt.length; i++) {
+                        tr = '<tr>';
+                        tr += ("<td> <input type='checkbox' onchange=Rowenable('" + coldt[i].COLUMN_NAME + "');  id='chkselect_t" + coldt[i].COLUMN_NAME + "' class='chkselectcol' name='chkselect_" + coldt[i].COLUMN_NAME + "' value='" + coldt[i].COLUMN_NAME + "'></td>");
+                        tr += ("<td id='srno'>" + (i + 1) + "</td>");
+                        tr += ("<td hidden>" + (i + 1) + "</td>");
+                        tr += ("<td id='colname' hidden>" + coldt[i].COLUMN_NAME + "</td>");
+                        tr += ("<td id='coldisp'>" + coldt[i].COLUMN_COMMENT.replace('`', '').replace('`', '') + "<a data-placement='right'><i class='fa-regular fa-circle-info tooltips' title='" + coldt[i].frmdisplayname + "' style='color: #295097;'></i></a></td>");
+                        tr += ("<td> <input type='text' id='txtalias_" + coldt[i].COLUMN_NAME + "' class='form-control input-sm input-small input-inline' name=txtAlias_" + coldt[i].COLUMN_NAME + " maxlength='15' value=''></td>");
+                        tr += ("<td hidden> <input type='checkbox' id='chkgroup_" + coldt[i].COLUMN_NAME + "' onchange=chkgrpchange('" + coldt[i].COLUMN_NAME + "');  class='chkgrpby' name=chkgroup_" + coldt[i].COLUMN_NAME + "  value=" + coldt[i].COLUMN_NAME + "></td>");
+                        tr += ("<td> <input type='checkbox' id='chkorder_" + coldt[i].COLUMN_NAME + "'   onchange=chkorderchange('" + coldt[i].COLUMN_NAME + "'); class='chkordby' name='chkorder' value=" + coldt[i].COLUMN_NAME + "></td>");
+                        tr += ("<td> <input type='number' id='txtgroup_" + coldt[i].COLUMN_NAME + "'  class='numgrpby' name=txtgroup_" + coldt[i].COLUMN_NAME + " min='0' max='" + coldt.length + "' step='1' value='0' size='2' onkeypress='checkpositive(event);' style='border-radius: 5px; border: 0.5px solid gray;'></td>");
+                        tr += ("<td hidden> <input type='number' id='txtorder_" + coldt[i].COLUMN_NAME + "' class='numorderby' name=txtorder_" + coldt[i].COLUMN_NAME + " min='0' max='10' step='1' value='0' size='2'></td>");
+                        tr += '</tr>';
+                        $('#tblcolbody').append(tr);
+                    }
+
+                    var _transactionfld = "Attn_Dt,InTime,OutTime,TotHour,FinalStatus,OTHr"
+                    _transactionfld = _transactionfld.split(",")
+
+                    if (_Masterlst.indexOf("0") != "-1") {
+                        var j = coldt.length + 1;
+                        for (var i = 0; i < _transactionfld.length; i++) {
+                            tr = '<tr>';
+                            tr += ("<td> <input type='checkbox' onchange=Rowenable('" + _transactionfld[i] + "');  id='chkselect_t" + _transactionfld[i] + "' class='chkselectcol' name='chkselect_" + _transactionfld[i] + "' value='" + _transactionfld[i] + "'></td>");
+                            tr += ("<td id='srno'>" + (j) + "</td>");
+                            tr += ("<td hidden>" + (j) + "</td>");
+                            tr += ("<td id='colname' hidden>" + _transactionfld[i] + "</td>");
+                            if (_transactionfld[i] == "Attn_Dt") {
+                                tr += ("<td id='coldisp'>Attendance Date <a data-placement='right'><i class='fa-regular fa-circle-info tooltips' title='Transaction' style='color: #295097;'></i></a></td>");
+                                tr += ("<td> <input type='text' id='txtalias_" + _transactionfld[i] + "'  class='form-control input-sm input-small input-inline' name=txtAlias_" + _transactionfld[i] + " maxlength='15' value='Attendance Date'></td>");
+                            }
+                            else if (_transactionfld[i] == "FinalStatus") {
+                                tr += ("<td id='coldisp'>Final Status <a data-placement='right'><i class='fa-regular fa-circle-info tooltips' title='Transaction' style='color: #295097;'></i></a></td>");
+                                tr += ("<td> <input type='text' id='txtalias_" + _transactionfld[i] + "'  class='form-control input-sm input-small input-inline' name=txtAlias_" + _transactionfld[i] + " maxlength='15' value='Attendance Status'></td>");
+                            }
+                            else if (_transactionfld[i] == "OTHr") {
+                                tr += ("<td id='coldisp'>Over Time <a data-placement='right'><i class='fa-regular fa-circle-info tooltips' title='Transaction' style='color: #295097;'></i></a></td>");
+                                tr += ("<td> <input type='text' id='txtalias_" + _transactionfld[i] + "'  class='form-control input-sm input-small input-inline' name=txtAlias_" + _transactionfld[i] + " maxlength='15' value='Over Time'></td>");
+                            }
+                            else if (_transactionfld[i] == "TotHour") {
+                                tr += ("<td id='coldisp'>Total hour <a data-placement='right'><i class='fa-regular fa-circle-info tooltips' title='Transaction' style='color: #295097;'></i></a></td>");
+                                tr += ("<td> <input type='text' id='txtalias_" + _transactionfld[i] + "'  class='form-control input-sm input-small input-inline' name=txtAlias_" + _transactionfld[i] + " maxlength='15' value='Total hour'></td>");
+                            }
+                            else {
+                                tr += ("<td id='coldisp'>" + _transactionfld[i] + " <a data-placement='right'><i class='fa-regular fa-circle-info tooltips' title='Transaction' style='color: #295097;'></i></a></td>");
+                                tr += ("<td> <input type='text' id='txtalias_" + _transactionfld[i] + "'  class='form-control input-sm input-small input-inline' name=txtAlias_" + _transactionfld[i] + " maxlength='15' value='" + _transactionfld[i] + "'></td>");
+                            }
+                            //tr += ("<td> <input type='text' id='txtalias_" + _transactionfld[i] + "'  class='form-control input-sm input-small input-inline' name=txtAlias_" + _transactionfld[i] + " maxlength='15' value=''></td>");
+                            tr += ("<td hidden> <input type='checkbox' id='chkgroup_" + _transactionfld[i] + "' onchange=chkgrpchange('" + _transactionfld[i] + "');  class='chkgrpby' name=chkgroup_" + _transactionfld[i] + "  value=" + _transactionfld[i] + "></td>");
+                            tr += ("<td> <input type='checkbox' id='chkorder_" + _transactionfld[i] + "'   onchange=chkorderchange('" + _transactionfld[i] + "'); class='chkordby' name='chkorder' value=" + _transactionfld[i] + "></td>");
+                            tr += ("<td> <input type='number' id='txtgroup_" + _transactionfld[i] + "'  class='numgrpby' name=txtgroup_" + _transactionfld[i] + " min='0' max='18' step='1' value='0' size='2' onkeypress='checkpositive(event);' style='border-radius: 5px; border: 0.5px solid gray;'></td>");
+                            tr += ("<td hidden> <input type='number' id='txtorder_" + _transactionfld[i] + "' class='numorderby' name=txtorder_" + _transactionfld[i] + " min='0' max='10' step='1' value='0' size='2'></td>");
+                            tr += '</tr>';
+                            $('#tblcolbody').append(tr);
+                            j = j + 1;
+                        }
+                    }
+
+                    $('.chkgrpby').prop('disabled', true);
+                    $('.chkordby').prop('disabled', true);
+                    $('.numgrpby').prop('disabled', true);
+                    $('.numorderby').prop('disabled', true);
+
+                },
+                error: function () {
+                    $("#ajax_loader").hide();
+                }
+            });
+        }
+
+        $('#ReportType').on('change', function () {
+            var optsel = $('#ReportType option:selected').val();
+            document.getElementById('tblcolbody').innerHTML = '';
+            if ($('#ReportType option:selected').val() != '') {
+                valid('ReportType');
+                if (optsel == 'Daily Report') {
+                    bindcoltable('Getreportfields?rptid=1');
+                }
+                else if (optsel == 'Monthly Report') {
+                    bindcoltable('Getreportfields?rptid=2');
+                }
+                else if (optsel == 'Summary Report') {
+                    bindcoltable('Getreportfields?rptid=3');
+                }
+            }
+            else {
+                Invalid('ReportType');
+            }
+
+        });
+
+
+        $("#tblCustomrepotemplate").on('click', '.editclass', function () {
+            count++;
+            operation = "Edit Form";
+            hidemsg();
+            valid("ReportName");
+            $(".spMasterlst").text('');
+            $("#Masterlst").multiselect("disable");
+            $("#btnClear").css("display", "");
+            $("#tblcol").css("display", "");
+            $("#btnsave").css("display", "");
+            $("#btnGo").css("display", "none");
+            var reportid = t.row($(this).parent('td').parent('tr')).data()["ReportId"];
+            var reporttype = t.row($(this).parent('td').parent('tr')).data()["ReportType"];
+            var reportname = t.row($(this).parent('td').parent('tr')).data()["ReportName"];
+            var reportheadername = t.row($(this).parent('td').parent('tr')).data()["ReportHeaderName"];
+
+
+            $("#ReportId").val(reportid);
+            $("#ReportName").val(reportname);
+            $("#ReportHeaderName").val(reportheadername);
+            document.getElementById('tblcolbody').innerHTML = '';
+            $("Masterlst").multiselect({
+                selectedText: "# of # selected"
+            });
+            $("Customlst").multiselect({
+                selectedText: "# of # selected"
+            });
+            var selectedOptions = reporttype.split(",").join("");
+            for (var i in selectedOptions) {
+                var optionVal = selectedOptions[i];
+                $("Masterlst").find("option[value=" + optionVal + "]").prop("selected", "selected");
+                $("Customlst").find("option[value=" + optionVal + "]").prop("selected", "selected");
+            }
+            _seletedtbllist = reporttype;
+            var dataarray = reporttype.split(",");
+            $("#Masterlst").val(dataarray);
+            $("#Masterlst").multiselect("refresh");
+
+            $("#Customlst").val(dataarray);
+            $("#Customlst").multiselect("refresh");
+            Editmasterlist(reporttype);
+
+            bindcoltablewithdata('@_webapiurl' + 'Report/DynamicReportfieldsSelectbyreport?ReportId=' + reportid + '');
+            $(".editclass").attr("data-toggle", "modal");
+            $(".editclass").attr("data-target", "#frmpopup");
+            $("#ajax_loader").hide();
+        });
+
+        $("#tblCustomrepotemplate").on('click', '.viewclass', function () {
+            count++;
+            hidemsg();
+            var reportid = t.row($(this).parent('td').parent('tr')).data()["ReportId"];
+            var reporttype = t.row($(this).parent('td').parent('tr')).data()["ReportType"];
+            var reportname = t.row($(this).parent('td').parent('tr')).data()["ReportName"];
+            var reportheadername = t.row($(this).parent('td').parent('tr')).data()["ReportHeaderName"];
+
+            $("#ReportId").val(reportid);
+            $("#SearchCriteria").val('');
+            $("#ReportHead").val(reportheadername);
+
+
+
+            var obj = {
+                "ReportID": reportid,
+                "SearchCriteria": "",
+                "ReportHead": reportheadername,
+                "reportflage": "1"
+            }
+
+            $('#frmrpt').submit();
+            return true;
+
+        });
+
+        $('#ReportName').change(function () {
+            if ($("#ReportHeaderName").val() == "") {
+                $("#ReportHeaderName").val($('#ReportName').val());
+            }
+        });
+        $('#ReportName').on('keyup keypress blur change', function (e) {
+            var keyCode = e.which;
+            var Responce = validateKeyPress(keyCode);
+            if (Responce == true) {
+            }
+            else { e.preventDefault(); }
+
+            if ($('#ReportName').val().trim() != '') {
+                if ($('#ReportName').length > 50) {
+                    Invalid('ReportName');
+                    $('#err').text('Report name maximum 50 char.');
+                    showmsg();
+                }
+                else {
+                    valid('ReportName');
+                }
+            }
+            else {
+                Invalid('ReportName');
+            }
+
+        });
+        $('#ReportHeaderName').on('keyup keypress blur change', function (e) {
+
+            var keyCode = e.which;
+            var Responce = validateKeyPress(keyCode);
+            if (Responce == true) {
+            }
+            else { e.preventDefault(); }
+        });
+
+        function Bindcolumntable() {
+            document.getElementById('tblcolbody').innerHTML = '';
+            bindcoltable('Getreportfields?rptid=1');
+        }
+
+        function Invalid(ctlname) {
+
+            $('#' + ctlname + '').addClass('field_error');
+            $('#' + ctlname + '').focus();
+            return false;
+        }
+
+        function valid(ctlname) {
+            $('#' + ctlname + '').removeClass('field_error');
+        }
+
+        $('#chkallcolumn').on('click', function () {  //on click
+            $('.chkselectcol').prop('checked', this.checked);
+            $('.chkgrpby').prop('disabled', !this.checked);
+            $('.chkordby').prop('disabled', !this.checked);
+            $('.numgrpby').prop('disabled', !this.checked);
+            $('.numorderby').prop('disabled', !this.checked);
+
+        });
+
+        $('#btnsave').on('click', function () {
+            if ($("#ReportName").val() != '') {
+                var num = $("#ReportName").val();
+                var num1 = num.length;
+                if (num1 > 50) {
+                    var num1 = $('#ReportName').val().substring(0, 50);
+                    return false;
+                }
+            }
+            if ($("#ReportHeaderName").val() != '') {
+                var num = $("#ReportHeaderName").val();
+                var num1 = num.length;
+                if (num1 > 50) {
+                    var num1 = $('#ReportHeaderName').val().substring(0, 50);
+                    return false;
+                }
+            }
+            var _tblselectlst = "";
+            if (_seletedtbllist == "") {
+                if (_seletedtbllistcustom != "") {
+                    _tblselectlst = _seletedtbllistcustom;
+                }
+            }
+            else {
+                if (_seletedtbllistcustom == "") {
+                    _tblselectlst = _seletedtbllist;
+                }
+                else {
+                    _tblselectlst = _seletedtbllist + "," + _seletedtbllistcustom;
+                }
+            }
+
+            $(".spMasterlst").text('');
+            var token = '@_tokan';
+            var ReportId = $("#ReportId").val();
+            var Masterlst = _tblselectlst; //_seletedtbllist;
+            var ReportType = $("#ReportType").val();
+            var ReportName = $("#ReportName").val();
+            var ReportHeaderName = $("#ReportHeaderName").val();
+            var fieldList = $("#hdnfieldList").val();
+            var ercnt = 0;
+            selecteditemArray = [];
+            $("#tblcol .chkselectcol").each(function () {
+                if ($(this).is(':checked') == true) {
+                    var ctlid = $(this).attr("id");
+                    var ctldisp = $(this).parent('td').parent('tr').find('#coldisp').text();
+                    var ctl = ctlid.split('_t')[1];
+                    var _alias = $('#txtalias_' + ctl + '').val();
+                    var ctldispalias = "";
+                    if (_alias == "") {
+
+                        ctldispalias = ctldisp; //ctlid.split('_t')[1];
+
+                    }
+                    else {
+                        ctldispalias = _alias;
+                    }
+                    var colldisporder = $('#txtgroup_' + ctl + '').val();
+                    if (colldisporder == '') {
+                        ercnt++;
+                        $('#txtgroup_' + ctl + '').val(0);
+
+                    }
+
+                    var selecteditem = { "ReportfieldName": ctl, "ReportfieldType": ctldisp, "Reportalias": ctldispalias, "IsGroupby": true, "IsOrderby": $('#chkorder_' + ctl).prop('checked'), "Groupbyorder": $('#txtgroup_' + ctl + '').val(), "Orderbyorder": $('#txtorder_' + ctl + '').val() };
+                    selecteditemArray.push(selecteditem);
+                }
+
+            });
+
+            var _fldname = "";
+            for (var k = 0; k < selecteditemArray.length; k++) {
+                _fldname += JSON.stringify(selecteditemArray[k].ReportfieldName);
+            }
+
+            if (_tblselectlst.indexOf("0") != "-1") {
+
+                if (_fldname.indexOf("Attn_Dt") == "-1" && _fldname.indexOf("InTime") == "-1" && _fldname.indexOf("OutTime") == "-1" && _fldname.indexOf("TotHour") == "-1" && _fldname.indexOf("FinalStatus") == "-1" && _fldname.indexOf("OTHr") == "-1") {
+                }
+                else {
+                    if (_fldname.indexOf("Empcode") == "-1") {
+                        var selecteditem = { "ReportfieldName": "Empcode", "ReportfieldType": "Empcode", "Reportalias": "Employee code", "IsGroupby": true, "IsOrderby": false, "Groupbyorder": "0", "Orderbyorder": "0" };
+                        selecteditemArray.push(selecteditem);
+                    }
+
+                }
+            }
+
+            if (ReportName == '' || ReportName == null) {
+                toastr.remove();
+                toastr.error("Enter report name.");
+                return false;
+            }
+
+            if (selecteditemArray.length == 0) {
+                toastr.remove();
+                toastr.error("Please select report field.");
+                return false;
+            }
+            if (ercnt > 0) {
+                toastr.remove();
+                toastr.error("Display order value should not be empty.");
+                return false;
+            }
+
+            var objcls = {
+                "ReportId": ReportId,
+                "ReportType": '',
+                "ReportName": ReportName,
+                "ReportHeaderName": ReportHeaderName,
+                "fieldList": JSON.stringify(selecteditemArray),
+                "ReporttablesId": Masterlst
+            }
+
+            $.ajax({
+                type: 'POST',
+                url: '@_webapiurl' + "/Report/ReporttemplateDtnamicInsert",
+                data: JSON.stringify(objcls),
+                contentType: "application/json",
+                dataType: 'json',
+                async: false,
+                cache: false,
+                timeout: 30000,
+                beforeSend: function (xhr) {
+                    xhr.setRequestHeader("Authorization", token);
+                    $("#ajax_loader").show();
+                },
+                success: function (data) {
+                    $("#ajax_loader").hide();
+                    if (data.MsgSts == "error") {
+                        toastr.remove();
+                        toastr.error(data.Msg);
+                        return false;
+                    }
+                    else {
+                        if (data.isRedirect) {
+                            window.location.href = data.redirectUrl;
+                        }
+                        toastr.remove();
+                        toastr.success("Report template added.");
+                        var url = '@Url.Action("DynamicReportTemplate", "Report")';
+                        window.location.href = url;
+                        return true;
+                    }
+
+                },
+                error: function (data) {
+                    $("#ajax_loader").hide();
+                    var url = '@Url.Action("DynamicReportTemplate", "Report")';
+                    window.location.href = url;
+                },
+            });
+        });
+
+        function bindcoltable(_url) {
+            $.ajax({
+                type: 'GET',
+                url: _url,
+                contentType: "application/json",
+                dataType: 'json',
+                async: false,
+                cache: false,
+                timeout: 30000,
+                success: function (data) {
+                    var tr;
+                    var coldt = JSON.parse(data);
+                    for (var i = 0; i < coldt.length; i++) {
+                        tr = '<tr/>';
+                        tr += ("<td> <input type='checkbox' onchange=Rowenable('" + coldt[i].colname + "');  id='chkselect_t" + coldt[i].colname + "' class='chkselectcol' name='chkselect_" + coldt[i].colname + "' value='" + coldt[i].colname + "'></td>");
+                        tr += ("<td id='srno'>" + (i + 1) + "</td>");
+                        tr += ("<td hidden>" + coldt[i].colid + "</td>");
+                        tr += ("<td id='colname' hidden>" + coldt[i].colname + "</td>");
+                        tr += ("<td id='coldisp'>" + coldt[i].coldisplay.replace('`', '').replace('`', '') + "<a data-placement='right'><i class='fa-regular fa-circle-info tooltips' title='" + coldt[i].frmdisplayname + "' style='color: #295097;'></i></a></td>");
+                        tr += ("<td> <input type='text' id='txtgroup_" + coldt[i].colname + "'  class='form-control input-sm input-small input-inline' name=txtAlias_" + coldt[i].colname + " maxlength='15' value=''></td>");
+                        tr += ("<td hidden> <input type='checkbox' id='chkgroup_" + coldt[i].colname + "' onchange=chkgrpchange('" + coldt[i].colname + "');  class='chkgrpby' name=chkgroup_" + coldt[i].colname + "  value=" + coldt[i].colname + "></td>");
+                        tr += ("<td> <input type='checkbox' id='chkorder_" + coldt[i].colname + "'   onchange=chkorderchange('" + coldt[i].colname + "'); class='chkordby' name='chkorder' value=" + coldt[i].colname + "></td>");
+                        tr += ("<td> <input type='number' id='txtgroup_" + coldt[i].colname + "'  class='numgrpby' name=txtgroup_" + coldt[i].colname + " min='0' max='" + coldt.length + "' step='1' value='0' size='2' onkeypress='checkpositive(event);' style='border-radius: 5px; border: 0.5px solid gray;'></td>");
+                        tr += ("<td hidden> <input type='number' id='txtorder_" + coldt[i].colname + "' class='numorderby' name=txtorder_" + coldt[i].colname + " min='0' max='10' step='1' value='0' size='2'></td>");
+                        tr += '</tr>';
+                        $('#tblcolbody').append(tr);
+                    }
+
+                    $('.chkgrpby').prop('disabled', true);
+                    $('.chkordby').prop('disabled', true);
+                    $('.numgrpby').prop('disabled', true);
+                    $('.numorderby').prop('disabled', true);
+                }
+            });
+
+
+        }
+
+        function bindcoltablewithdata(_url) {
+            var token = '@_tokan'
+            $.ajax(
+             {
+                 type: "GET",
+                 async: false,
+                 url: _url,
+                 contentType: "application/json;",
+                 dataType: "json",
+                 cache: false,
+                 timeout: 30000,
+                 beforeSend: function (xhr) {
+                     xhr.setRequestHeader("Authorization", token)
+                 },
+                 success: function (result, status) {
+                     var obj = JSON.parse(result);
+                     $("#tblcol > tbody > tr").each(function () {
+                         var currentRow = $(this);
+                         var col3_value = currentRow.find("td:eq(3)").text();
+                         for (var j = 0; j < obj.length; j++) {
+                             if (col3_value == obj[j].ReportfieldName);
+                             {
+                                 currentRow.find("#chkselect_t" + obj[j].ReportfieldName).prop('checked', true);
+                                 currentRow.find("#chkorder_" + obj[j].ReportfieldName).prop('disabled', false);
+                                 currentRow.find("#txtgroup_" + obj[j].ReportfieldName).prop('disabled', false);
+                                 currentRow.find("#txtorder_" + obj[j].ReportfieldName).prop('disabled', false);
+                                 currentRow.find("#chkorder_" + obj[j].ReportfieldName).prop('checked', obj[j].IsOrderby);
+                                 currentRow.find("#txtgroup_" + obj[j].ReportfieldName).val(obj[j].Groupbyorder);
+                                 currentRow.find("#txtorder_" + obj[j].ReportfieldName).val(obj[j].Orderbyorder);
+                                 currentRow.find("#txtalias_" + obj[j].ReportfieldName).val(obj[j].ReportfieldType);
+                             }
+                         }
+                         $('.tooltips').tooltip();
+
+                     });
+                 },
+                 error: function (jqXHR, ajaxOptions, thrownError) {
+                     if (jqXHR.status == 500) { //InternalServerError = 500,
+                         toastr.error("InternalServerError");
+                     } else if (jqXHR.status == 400) { //BadRequest = 400,
+                         toastr.error("BadRequest");
+                     } else if (jqXHR.status == 401) {
+                         window.location.href = "/PayTime/LoginPage";
+                     }
+                 }
+             });
+        }
+
+        function frmClear() {
+            $("#ReportId").val(0);
+            $('#ReportType').prop('selectedIndex', 0);
+            valid('ReportType');
+            $("#ReportName").val("");
+            $("#ReportName").attr("placeholder", "Enter Report Name");
+            valid('ReportName');
+            $("#ReportHeaderName").val("");
+            $("#ReportHeaderName").attr("placeholder", "Enter Report Header");
+            $('#chkallcolumn').prop('checked', false);
+            document.getElementById('tblcolbody').innerHTML = '';
+        }
+        function showmsg() {
+            var _msg = $('#msg').text();
+            var _err = $('#err').text();
+
+            if (_msg != "") {
+                toastr.remove();
+                toastr.success("_msg");
+            }
+            if (_err != "") {
+                toastr.remove();
+                toastr.error("_err");
+            }
+        }
+
+        function hidemsg() {
+            $(".alert").hide();
+            $('#msg').text('');
+            $('#err').text('');
+        }
+
+        function Editmasterlist(ID) {
+            var _urlcmp = '@_webapiurl' + 'Report/GetMultitableCloumnsList';
+            $.ajax({
+                type: 'GET',
+                headers: { 'Authorization': '@_tokan' },
+                url: _urlcmp,
+                data: { 'CloumnsList': "'" + ID + "'" },
+                contentType: "application/json",
+                dataType: 'json',
+                async: false,
+                cache: false,
+                timeout: 30000,
+                beforeSend: function () {
+                    $("#ajax_loader").show();
+                },
+                success: function (data) {
+                    document.getElementById('tblcolbody').innerHTML = '';
+                    $("#ajax_loader").hide();
+                    var tr;
+                    var coldt = data;
+                    for (var i = 0; i < coldt.length; i++) {
+                        tr = '<tr>';
+                        tr += ("<td> <input type='checkbox' onchange=Rowenable('" + coldt[i].COLUMN_NAME + "');  id='chkselect_t" + coldt[i].COLUMN_NAME + "' class='chkselectcol' name='chkselect_" + coldt[i].COLUMN_NAME + "' value='" + coldt[i].COLUMN_NAME + "'></td>");
+                        tr += ("<td id='srno'>" + (i + 1) + "</td>");
+                        tr += ("<td hidden>" + (i + 1) + "</td>");
+                        tr += ("<td id='colname' hidden>" + coldt[i].COLUMN_NAME + "</td>");
+                        tr += ("<td id='coldisp'>" + coldt[i].COLUMN_COMMENT.replace('`', '').replace('`', '') + "<a data-placement='right'><i class='fa-regular fa-circle-info tooltips' title='" + coldt[i].frmdisplayname + "' style='color: #295097;'></i></a></td>");
+                        tr += ("<td> <input type='text' id='txtalias_" + coldt[i].COLUMN_NAME + "'  class='form-control input-sm input-small input-inline' name=txtAlias_" + coldt[i].COLUMN_NAME + " maxlength='15' value=''></td>");
+                        tr += ("<td hidden> <input type='checkbox' id='chkgroup_" + coldt[i].COLUMN_NAME + "' onchange=chkgrpchange('" + coldt[i].COLUMN_NAME + "');  class='chkgrpby' name=chkgroup_" + coldt[i].COLUMN_NAME + "  value=" + coldt[i].COLUMN_NAME + "></td>");
+                        tr += ("<td> <input type='checkbox' id='chkorder_" + coldt[i].COLUMN_NAME + "'   onchange=chkorderchange('" + coldt[i].COLUMN_NAME + "'); class='chkordby' name='chkorder' value=" + coldt[i].COLUMN_NAME + "></td>");
+                        tr += ("<td> <input type='number' id='txtgroup_" + coldt[i].COLUMN_NAME + "'  class='numgrpby' name=txtgroup_" + coldt[i].COLUMN_NAME + " min='0' max='" + coldt.length + "' step='1' value='0' size='2' onkeypress='checkpositive(event);' style='border-radius: 5px; border: 0.5px solid gray;'></td>");
+                        tr += ("<td hidden> <input type='number' id='txtorder_" + coldt[i].COLUMN_NAME + "' class='numorderby' name=txtorder_" + coldt[i].COLUMN_NAME + " min='0' max='10' step='1' value='0' size='2'></td>");
+                        tr += '</tr>';
+                        $('#tblcolbody').append(tr);
+                    }
+
+                    var _transactionfld = "Attn_Dt,InTime,OutTime,TotHour,FinalStatus,OTHr"
+                    _transactionfld = _transactionfld.split(",")
+
+                    if (ID.indexOf("0") != "-1") {
+                        var j = coldt.length + 1;
+                        for (var i = 0; i < _transactionfld.length; i++) {
+                            tr = '<tr>';
+                            tr += ("<td> <input type='checkbox' onchange=Rowenable('" + _transactionfld[i] + "');  id='chkselect_t" + _transactionfld[i] + "' class='chkselectcol' name='chkselect_" + _transactionfld[i] + "' value='" + _transactionfld[i] + "'></td>");
+                            tr += ("<td id='srno'>" + (j) + "</td>");
+                            tr += ("<td hidden>" + (j) + "</td>");
+                            tr += ("<td id='colname' hidden>" + _transactionfld[i] + "</td>");
+                            if (_transactionfld[i] == "Attn_Dt") {
+                                tr += ("<td id='coldisp'>Attendance Date <a data-placement='right'><i class='fa-regular fa-circle-info tooltips' title='Transaction' style='color: #295097;'></i></a></td>");
+                            }
+                            else if (_transactionfld[i] == "FinalStatus") {
+                                tr += ("<td id='coldisp'>Attendance Status<a data-placement='right'><i class='fa-regular fa-circle-info tooltips' title='Transaction' style='color: #295097;'></i></a></td>");
+                            }
+                            else if (_transactionfld[i] == "OTHr") {
+                                tr += ("<td id='coldisp'>Over Time <a data-placement='right'><i class='fa-regular fa-circle-info tooltips' title='Transaction' style='color: #295097;'></i></a></td>");
+                            }
+                            else if (_transactionfld[i] == "TotHour") {
+                                tr += ("<td id='coldisp'>Total hour <a data-placement='right'><i class='fa-regular fa-circle-info tooltips' title='Transaction' style='color: #295097;'></i></a></td>");
+                            }
+                            else {
+                                tr += ("<td id='coldisp'>" + _transactionfld[i] + "<a data-placement='right'><i class='fa-regular fa-circle-info tooltips' title='Transaction' style='color: #295097;'></i></a></td>");
+                            }
+                            tr += ("<td> <input type='text' id='txtalias_" + _transactionfld[i] + "'  class='form-control input-sm input-small input-inline' name=txtAlias_" + _transactionfld[i] + " maxlength='15' value=''></td>");
+                            tr += ("<td hidden> <input type='checkbox' id='chkgroup_" + _transactionfld[i] + "' onchange=chkgrpchange('" + _transactionfld[i] + "');  class='chkgrpby' name=chkgroup_" + _transactionfld[i] + "  value=" + _transactionfld[i] + "></td>");
+                            tr += ("<td> <input type='checkbox' id='chkorder_" + _transactionfld[i] + "'   onchange=chkorderchange('" + _transactionfld[i] + "'); class='chkordby' name='chkorder' value=" + _transactionfld[i] + "></td>");
+                            tr += ("<td> <input type='number' id='txtgroup_" + _transactionfld[i] + "'  class='numgrpby' name=txtgroup_" + _transactionfld[i] + " min='0' max='18' step='1' value='0' size='2' onkeypress='checkpositive(event);' style='border-radius: 5px; border: 0.5px solid gray;'></td>");
+                            tr += ("<td hidden> <input type='number' id='txtorder_" + _transactionfld[i] + "' class='numorderby' name=txtorder_" + _transactionfld[i] + " min='0' max='10' step='1' value='0' size='2'></td>");
+                            tr += '</tr>';
+                            $('#tblcolbody').append(tr);
+                            j = j + 1;
+                        }
+                    }
+
+                    $('.chkgrpby').prop('disabled', true);
+                    $('.chkordby').prop('disabled', true);
+                    $('.numgrpby').prop('disabled', true);
+                    $('.numorderby').prop('disabled', true);
+
+                },
+                error: function () {
+                    $("#ajax_loader").hide();
+                }
+            });
+        }
+
+        window.onload = function () {
+            timeSpentOnPage();
+        }
+        $(window).on("beforeunload", function () {
+            if (operation == "" || operation == null || operation == '') {
+                operation = "View Custom Report Template";
+            }
+            var url = '@_webapiurl' + '/DashBoard/AddAnalyticsUser';
+            var timeSpent = timeSpentOnPage();
+            analyticsDataUsage(url, '@_dbName', form, '@_tokan', count, operation, timeSpent)
+        })
+
+    });
+    function hidemsg() {
+        $(".alert").hide();
+        $('#msg').text('');
+        $('#err').text('');
+    }
+    function checkpositive(event) {
+        var k;
+        if (event.keyCode > 0) {
+            k = event.keyCode;
+        }
+        else if (typeof (event.charCode) != "undefined") {
+            k = event.charCode;
+        }
+        return (k ? (k == 69 ? false : k >= 48 && k <= 57 || k == 8) : ((k >= 48 && k <= 57) || k == 8)) ? true : event.preventDefault();
+    }
+</script>
+<div class="page-bar">
+    @if (_RoleId == 1 || _RoleId == 6805 || _RoleId == 6806)
+    {
+        <ul class="page-breadcrumb">
+            <li>
+                <a href="/Dashboard/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> @PayTimeWebClient.Resource.Resource.CustomReport</span>
+            </li>
+        </ul>
+    }
+    else
+    {
+        <ul class="page-breadcrumb">
+            <li>
+                <a href="/Dashboard/EmployeeDashboard"><i class="fa-regular fa-house"></i></a>
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> @PayTimeWebClient.Resource.Resource.CustomReport</span>
+            </li>
+        </ul>
+    }
+
+
+    <div class="page-toolbar">
+        @if (obj.CanAdd)
+        {
+            <div class=" text-right">
+                <a href="~/Report/DynamicReportDashboard" id="ALL" class="btn icon_btn tooltips" data-placement="left" data-original-title="All Reports" style="display:none;"><i class="fa-light fa-copy"></i></a>
+                <a href="javascript:void(0)" id="Add" class="btn icon_transparent_btn tooltips" data-placement="left" data-original-title="Add Report"><i class="fa-solid fa-plus"></i> </a>
+            </div>
+        }
+    </div>
+</div>
+
+
+@if (obj.CanView)
+{
+    <div id='ajax_loader' class="modal_bg loading" aria-hidden="true">
+        <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading"/>
+    </div>
+    <form method="post" action="DynamicReportTemplate" id="frmrpt" name="frmrpt">
+        <input type="hidden" id="ReportId" name="ReportId" />
+        <input type="hidden" id="hdnfieldList" name="hdnfieldList" />
+        <input type="hidden" id="ReportHead" name="ReportHead" />
+        <input type="hidden" id="SearchCriteria" name="SearchCriteria" />
+
+        <div class="portlet">
+            <div class="portlet-body">
+                <div class="row">
+                    <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                        <div id="tblempty">
+                            <div class="table-responsive" id="tableResponsive">
+                                <table id="tblCustomrepotemplate" class="new_datatbl table table-striped table-bordered table-hover table-checkable order-column">
+                                    <thead>
+                                        <tr>
+                                            <th style="display:none;">Sr. No</th>
+                                            <th>Report Name</th>
+                                            <th>Report HeaderName</th>
+                                            <th>ReportId</th>
+                                            <th>Report Type</th>
+                                            <th style="width: 10%;">Action</th>
+                                        </tr>
+                                    </thead>
+                                </table>
+                            </div>
+                        </div>
+                        <div id="NotificationGrid-empty" style="display:none;">
+                            <div class="datanotfound">
+                                <img src="~/assets/images/emptyscreen_3.png" width="280" height="148" alt="Nodata Found Icon">
+                                <p class="datanotfound_title">No data found</p> <!-- titleText -->
+                                <p class="">No matching records found for the selected filters.</p><!-- subText -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="frmpopup" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <button type="button" class="close" data-dismiss="modal">&times;</button>
+                        <h4 class="modal-title">Custom Report Template</h4>
+                    </div>
+                    <div class="modal-body">
+                        <div class="modal-card">
+                            <div class="row">
+                                <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                    <fieldset>
+                                        <div class="form-group" hidden>
+                                            <label>Report Type<span class="required" aria-required="true"> * </span></label>
+                                            @Html.DropDownList("ReportType", new SelectList(new[] { "Daily Report" }), "Select ReportType", new { @class = "form-control input-sm" })
+                                        </div>
+                                        <div class="form-group">
+                                            <label>Report Name <span class="required" aria-required="true"> * </span></label>
+                                            @Html.Editor("ReportName", new { htmlAttributes = new { @class = "form-control input-sm", @maxlength = 100 } })
+                                        </div>
+                                    </fieldset>
+                                </div>
+                                <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                    <fieldset>
+                                        <div class="form-group">
+                                            <label>Report HeaderName</label>
+                                            @Html.Editor("ReportHeaderName", new { htmlAttributes = new { @class = "form-control input-sm" } })
+                                        </div>
+                                    </fieldset>
+                                </div>
+                                <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                    <div class="form-group">
+                                        <label>Option list <span class="required" aria-required="true"> * </span></label>
+                                        <select id="Masterlst" class="mt-multiselect btn-sm btn blue btn-outline " aria-haspopup="true" aria-expanded="false" multiple="multiple" data-width="100%"></select>
+                                        <div class="spMasterlst" style="color:red"></div>
+                                    </div>
+                                </div>
+                                <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12 text-right padding-top-20">                                    
+                                    <input type="button" class="btn clear_btn" style="display: none;" value="Clear" id="btnClear" />
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                                <div class="important_note">
+                                    Note:All other masters will become disable when Employee Master Option is selected and All other masters will enabled when Employee Master Option is not selected.
+                                </div>
+                            </div>                                
+                            <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12" style="display:none;">
+                                <div class="form-group">
+                                    <label>Custom Form list@*<span class="required" aria-required="true"> * </span>*@</label>
+                                    <select id="Customlst" class="mt-multiselect btn-sm btn blue btn-outline " aria-haspopup="true" aria-expanded="false" multiple="multiple" data-width="100%"></select>
+                                </div>
+                            </div>
+                            <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                                <fieldset>
+                                    <div class="form-group table_data_tblcol">
+                                        <table id="tblcol" class="table table-striped table-bordered table-hover table-checkable order-column">
+                                            <thead>
+                                                <tr>
+                                                    <th><input type='checkbox' class="chkallselectall" id="chkallcolumn" name="chkallcolumn" value="chkallcolumn" /></th>
+                                                    <th>Sr no</th>
+                                                    <th hidden>colid</th>
+                                                    <th>
+                                                        Report Columns Name <a class="tooltips" data-placement="right" title="columns name"><i class="fa-regular fa-circle-info"></i></a>
+                                                    </th>
+                                                    <th>
+                                                        Report Columns Alias <a class="tooltips" data-placement="right" title="You can set alias(pet) name for column"><i class="fa-regular fa-circle-info"></i></a>
+                                                    </th>
+                                                    <th hidden>IsGroupby</th>
+                                                    <th>
+                                                        IsOrderby <a class="tooltips" data-placement="right" title="You can use to set data sorting order."><i class="fa-regular fa-circle-info"></i></a>
+
+                                                    </th>
+                                                    <th>
+                                                        Display Order <a class="tooltips" data-placement="top" title="sequence or position of a component."><i class="fa-regular fa-circle-info"></i></a>
+                                                    </th>
+                                                    <th hidden>Orderby At</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="tblcolbody"></tbody>
+                                        </table>
+                                    </div>                                        
+                                </fieldset>
+                            </div>
+                        </div>                        
+                    </div>
+                    <div class="modal-footer">
+                        <div class="row">
+                            <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                                <input type="button" class="btn save_btn" value="Go" id="btnGo" />
+                                <button type="button" id="btnsave" class="btn save_btn"><i class="fa-light fa-floppy-disk"></i> Save</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </form>
+}
+else
+{
+    <span style="color:red">@PayTimeWebClient.Resource.Resource.UnauthorizedAccess</span>
+}

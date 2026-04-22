@@ -1,0 +1,950 @@
+﻿@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@using System.Configuration;
+@using EMSWebClient;
+@{
+    ViewBag.Title = "ReviewTrip";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+
+
+    string _Message = ViewBag.msg;
+    string _error = ViewBag.error;
+    //string _flgempover = ViewBag.flgempover;
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    int _UserId = Convert.ToInt32(HttpContext.Current.Session["UserId"]);
+    int _cmpid = Convert.ToInt32(HttpContext.Current.Session["CompanyId"]);
+    //int _islimit = ViewBag.Islimit;
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiEMSURL = ConfigurationManager.AppSettings["WebApiEMS"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    string _accountcd = HttpContext.Current.Session["cmpcode"].ToString();
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+    //bool _isReligion = ViewBag.isReligion;
+    //bool _hasSMS = ViewBag.HasSMS;
+    //bool _IsEss = ViewBag.IsEss;
+    string _companyid = "0";
+    string _empid = "0";
+
+    if (_RoleId != 1 && _RoleId != 6805 && _RoleId != 6806)
+    {
+        _empid = HttpContext.Current.Session["EmpId"].ToString();
+    }
+    string _branchid = "0";
+    if (_RoleId == 6805)
+    {
+        _companyid = HttpContext.Current.Session["ClientCompanyId"].ToString();
+    }
+    if (_RoleId == 6806)
+    {
+        _companyid = HttpContext.Current.Session["ClientCompanyId"].ToString();
+        _branchid = HttpContext.Current.Session["BranchId"].ToString();
+    }
+    string _isdateformat = HttpContext.Current.Session["IsDateFormat"].ToString();
+    //if (_flgempover == "true")
+    //{
+    //    obj.CanAdd = false;
+
+    //}
+    string _CountryCode = HttpContext.Current.Session["CountryCode"].ToString();
+    string _AreaCode = HttpContext.Current.Session["AreaCode"].ToString();
+    string _dbName = HttpContext.Current.Session["DbName"].ToString();
+    //int _IsVerification = ViewBag.IsVerification;
+    string _isPlanId = HttpContext.Current.Session["planId"].ToString();
+
+    string isClientDBMatchFlag = HttpContext.Current.Session["IsClientDBMatch"] != null
+? HttpContext.Current.Session["IsClientDBMatch"].ToString()
+: "false"; // Default to "false" if the session is null
+
+
+}
+
+<link href="/Newlayout/css/payrollstructure.css" rel="stylesheet">
+<link href="/Newlayout/css/emsstructure.css" rel="stylesheet">
+<script src="~/Newlayout/js/sweet_alert_payroll.js"></script>
+
+<style type="text/css">
+    .dataTables_wrapper .dataTables_filter {
+        display: none !important;
+    }
+
+    .dataTables_wrapper {
+        padding: 0px 0 0px 0;
+    }
+
+    .page-footer {
+        display: block;
+    }
+</style>
+
+<script>
+    $(document).ready(function () {
+
+        // Create search inputs in footer
+        $("#ExpReview_tbl tfoot th").each(function () {
+            var title = $(this).text();
+            $(this).html('<input type="text" class="search_input" placeholder="Search" /><i class="clm-search" id=""></i>');
+        });
+
+
+        // DataTable initialisation
+        var table = $("#ExpReview_tbl").DataTable({
+            dom: "<'row'<'col-lg-3 col-sm-5 col-xs-12'<'record_btn_main'l,><'dt-buttons'Bf>><'col-lg-9 col-sm-7 col-xs-12 mb_margin_bottom_15'>>" +
+                "<'row'<'col-sm-12 margin-bottom-10'<'customforms_table ER_tbl_scroll'tr'>>>" +
+                "<'row'<'col-md-5 col-sm-5'i><'col-md-7 col-sm-7'p>>",
+            paging: true,
+            autoWidth: true,
+            ordering: false,
+            buttons: [
+                "excelHtml5",
+            ],
+            initComplete: function (settings, json) {
+                var footer = $("#ExpReview_tbl tfoot tr");
+                $("#ExpReview_tbl thead").append(footer);
+            }
+        });
+
+
+        // Apply the column Search
+        $("#ExpReview_tbl thead").on("keyup", "input", function () {
+            table.column($(this).parent().index())
+                .search(this.value)
+                .draw();
+        });
+
+
+        // Filter Click Hid/Show Div
+        $("#Filsearch_btn").click(function () {
+            $("#filtercolumn_block").toggle();
+        });
+
+
+        // Approve Button Click Show Perticular Data Expense
+        $("#Approve_Btn").click(function () {
+            $("#ExpReview_block").hide();
+            $("#Filsearch_btn").hide();
+            $("#closebtn").show();
+            $("#ExpAction_Details").show();
+        });
+
+        $("#closebtn").click(function () {
+            $("#ExpReview_block").show();
+            $("#Filsearch_btn").show();
+            $("#closebtn").hide();
+            $("#ExpAction_Details").hide();
+        });
+
+        // Send Approval Button Click Open Swal Modal
+        $("#Send_Approve_Btn").on('click', function () {
+            Swal.fire({
+                html: '<div class="swal_title text-left">Approve Trip</div><div class="swal_subtitle grey_font">Are you sure you want to approve this trip?</div><div class="swal_thirdtitle f-12">By approving, you confirm that the trip details are accurate and ready for processing.</div><div class="margin-top-10 text-left"><div class="form-group margin-bottom-0"><label>Reason<span class="required" aria-required="true">*</span></label><textarea class="form-control" name="" id="" placeholder="Enter Reason" maxlength="250"></textarea></div></div>',
+                closeOnConfirm: true,
+                showCloseButton: false,
+                showCancelButton: true,
+                focusConfirm: false,
+                cancelButtonColor: '#d33',
+                cancelButtonText: 'Cancel',
+                confirmButtonColor: '#107E3E',
+                confirmButtonText: 'Approve',
+                allowOutsideClick: false,
+                allowEscapeKey: false,
+                customClass: {
+                    confirmButton: 'swal-confirm-button-class',
+                    cancelButton: 'swal-cancel-button-class'
+                }
+            });
+        });
+
+        // Send On Hold Button Click Open Swal Modal
+        $("#Send_Hold_Btn").on('click', function () {
+            Swal.fire({
+                html: '<div class="swal_title">On-hold Trip</div><div class="swal_subtitle grey_font">Are you sure you want to put this trip on hold?</div><div class="swal_thirdtitle f-12">Putting this trip on hold will pause the processing. Trip will not move forward until further action is taken.</div><div class="margin-top-10 text-left"><div class="form-group margin-bottom-0"><label>Reason<span class="required" aria-required="true">*</span></label><textarea class="form-control" name="" id="" placeholder="Enter Reason" maxlength="250"></textarea></div></div>',
+                closeOnConfirm: true,
+                showCloseButton: false,
+                showCancelButton: true,
+                focusConfirm: false,
+                cancelButtonColor: '#d33',
+                cancelButtonText: 'Cancel',
+                confirmButtonColor: '#E9730C',
+                confirmButtonText: 'On Hold',
+                allowOutsideClick: false,
+                allowEscapeKey: false,
+                customClass: {
+                    confirmButton: 'swal-confirm-button-class',
+                    cancelButton: 'swal-cancel-button-class'
+                }
+            });
+        });
+
+        // Send Decline Button Click Open Swal Modal
+        $("#Send_Decline_Btn").on('click', function () {
+            Swal.fire({
+                html: '<div class="swal_title">Decline Trip</div><div class="swal_subtitle grey_font">Are you sure you want to decline this trip?</div><div class="swal_thirdtitle f-12">Declining this trip will reject the submission.</div><div class="margin-top-10 text-left"><div class="form-group margin-bottom-0"><label>Reason<span class="required" aria-required="true">*</span></label><textarea class="form-control" name="" id="" placeholder="Enter Reason" maxlength="250"></textarea></div></div>',
+                closeOnConfirm: true,
+                showCloseButton: false,
+                showCancelButton: true,
+                focusConfirm: false,
+                cancelButtonColor: '#d33',
+                cancelButtonText: 'Cancel',
+                confirmButtonColor: '#CC3535',
+                confirmButtonText: 'Decline',
+                allowOutsideClick: false,
+                allowEscapeKey: false,
+                customClass: {
+                    confirmButton: 'swal-confirm-button-class',
+                    cancelButton: 'swal-cancel-button-class'
+                }
+            });
+        });
+    });
+</script>
+
+<div class="page-bar">
+
+    @if (_RoleId == 1 || _RoleId == 6805 || _RoleId == 6806)
+    {
+        <ul class="page-breadcrumb" style="float: none">
+            <li>
+                @if (isClientDBMatchFlag == "True")
+                {
+                    <a href="/Admin/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+                }
+                else
+                {
+                    <a href="/Dashboard/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+                }
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i>Review Trip</span>
+            </li>
+        </ul>
+    }
+    else
+    {
+        <ul class="page-breadcrumb">
+            <li>
+                @if (isClientDBMatchFlag == "true")
+                {
+                    <a href="/Admin/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+                }
+                else
+                {
+                    <a href="/Dashboard/EmployeeDashboard"><i class="fa-regular fa-house"></i></a>
+                }
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i>Review Trip</span>
+            </li>
+        </ul>
+    }
+    <div class="emptotalcount">
+        <div class="empcount_title">Review Trip</div>
+        <div class="page-toolbar page-toolbar_payroll">
+            <div class="emp_btn_block">
+                <div class="text-right">
+                    <a href="javascript:;" class="btn add_btn" id="Filsearch_btn"><i class="fa-light fa-filter" aria-hidden="true"></i> Filter</a>
+                    <a href="javascript:;" class="btn add_btn" id="closebtn" style="display: none;"> Close</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+@if (obj.CanView)
+{
+
+    <!-- Filter Block : Begin -->
+    <div class="portlet light bordered margin-bottom-10" id="filtercolumn_block" style="display: none">
+        <div class="list-content">
+            <div class="collapse in" aria-expanded="true">
+                <div class="portlet-body form">
+                    <div class="row">
+                        <div class="col-sm-3 col-xs-12">
+                            <div class="form-group">
+                                <label>Employee</label>
+                                <select class="form-control input-sm select2" id="Emp_filter">
+                                    <option value="1">All</option>
+                                    <option value="2">Kashyap Dave</option>
+                                    <option value="3">Hardik Darji</option>
+                                    <option value="4">Arpit Patel</option>
+                                    <option value="5">Jayesh Goswami</option>
+                                    <option value="6">Balvant Katariya</option>
+                                    <option value="7">Samit Patel</option>
+                                    <option value="7">Anshuman Sutariya</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-sm-3 col-xs-12">
+                            <div class="form-group">
+                                <label>Month-Year</label>
+                                <select class="form-control input-sm" id="Year_filter">
+                                    <option value="1">All</option>
+                                    <option value="2">2020</option>
+                                    <option value="3">2021</option>
+                                    <option value="4">2022</option>
+                                    <option value="5">2023</option>
+                                    <option value="6">2024</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-sm-3 col-xs-12">
+                            <div class="form-group">
+                                <label>Status</label>
+                                <select class="form-control input-sm" id="Status_filter">
+                                    <option value="0">All</option>
+                                    <option value="1">Submitted</option>
+                                    <option value="2">Approved</option>
+                                    <option value="3">On Hold</option>
+                                    <option value="4">Declined</option>
+                                    <option value="5">Reimbursed</option>
+                                    <option value="6">Approved & Declined</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-sm-3 col-xs-12">
+                            <div class="form-grop">
+                                <label>&nbsp;</label>
+                                <div class="text-right">
+                                    <button type="submit" id="clear_operation" class="btn mt-clipboard btn-sm clear_btn">  Clear</button>
+                                    <button type="submit" id="btnSubmit" class="btn mt-clipboard btn-sm blue"> Apply </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Filter Block : End -->
+
+    <div id="ExpReview_block">
+        <div class="portlet" style="margin-bottom: 16px;">
+            <div class="portlet-body">
+                <div class="row">
+                    <div class="EMS_details_table">
+                        <!-- Datatable : Begin -->
+                        <table id="ExpReview_tbl" class="table table-striped table-bordered tbl_middle table-hover tbl_newdatatbl serch_datatable table-checkable order-column">
+                            <thead>
+                                <tr>
+                                    <th style="min-width: 100px">Trip ID</th>
+                                    <th style="min-width: 400px">Trip Details</th>
+                                    <th style="min-width: 250px">Employee Name</th>
+                                    <th style="min-width: 100px">Current Status</th>
+                                    <th style="min-width: 100px">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td class="text-center">0001</td>
+                                    <td class="trip_detail">
+                                        <p>Corporate Summit</p>
+                                        <p>29 Nov 2023 - 02 Dec 2023</p>
+                                    </td>
+                                    <td class="emp_box">
+                                        <img src="/assets/images/avtar.png" alt="User icon" class="user_img">
+                                        <span><p class="emp_name">Mikhail Kotov</p><p class="emp_name">Mikhail.Kotov@mantratec.com</p></span>
+                                    </td>
+                                    <td class="text-center blue_font">Submitted</td>
+                                    <td>
+                                        <a href="javascript:;" class="btn btn-xs tooltips approve_btn" id="Approve_Btn" title="Approve">Approve</a>
+                                        <a href="javascript:;" class="btn btn-xs tooltips clm_view_btn" id="" title="View"><i class="fa-regular fa-eye"></i></a>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td class="text-center">002</td>
+                                    <td class="trip_detail">
+                                        <p>Executive Tour</p>
+                                        <p>12 Dec 2023</p>
+                                    </td>
+                                    <td class="emp_box">
+                                        <img src="/assets/images/avtar.png" alt="User icon" class="user_img">
+                                        <span><p class="emp_name">Mikhail Kotov</p><p class="emp_name">Mikhail.Kotov@mantratec.com</p></span>
+                                    </td>
+                                    <td class="text-center green_font">Approved</td>
+                                    <td>
+                                        <a href="javascript:;" class="btn btn-xs tooltips approve_btn disabled" id="" title="Approve">Approve</a>
+                                        <a href="javascript:;" class="btn btn-xs tooltips clm_view_btn" id="" title="View"><i class="fa-regular fa-eye"></i></a>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td class="text-center">003</td>
+                                    <td class="trip_detail">
+                                        <p>Professional Quest</p>
+                                        <p>29 Nov 2023 - 02 Dec 2023</p>
+                                    </td>
+                                    <td class="emp_box">
+                                        <img src="/assets/images/avtar.png" alt="User icon" class="user_img">
+                                        <span><p class="emp_name">Mikhail Kotov</p><p class="emp_name">Mikhail.Kotov@mantratec.com</p></span>
+                                    </td>
+                                    <td class="text-center orange_font">On Hold</td>
+                                    <td>
+                                        <a href="javascript:;" class="btn btn-xs tooltips approve_btn" id="" title="Approve">Approve</a>
+                                        <a href="javascript:;" class="btn btn-xs tooltips clm_view_btn" id="" title="View"><i class="fa-regular fa-eye"></i></a>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td class="text-center">004</td>
+                                    <td class="trip_detail">
+                                        <p>Innovation Journey</p>
+                                        <p>12 Dec 2023</p>
+                                    </td>
+                                    <td class="emp_box">
+                                        <img src="/assets/images/avtar.png" alt="User icon" class="user_img">
+                                        <span><p class="emp_name">Mikhail Kotov</p><p class="emp_name">Mikhail.Kotov@mantratec.com</p></span>
+                                    </td>
+                                    <td class="text-center red_font">Declined</td>
+                                    <td>
+                                        <a href="javascript:;" class="btn btn-xs tooltips approve_btn disabled" id="" title="Approve">Approve</a>
+                                        <a href="javascript:;" class="btn btn-xs tooltips clm_view_btn" id="" title="View"><i class="fa-regular fa-eye"></i></a>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td class="text-center">005</td>
+                                    <td class="trip_detail">
+                                        <p>Leadership Voyage</p>
+                                        <p>29 Nov 2023 - 02 Dec 2023</p>
+                                    </td>
+                                    <td class="emp_box">
+                                        <img src="/assets/images/avtar.png" alt="User icon" class="user_img">
+                                        <span><p class="emp_name">Mikhail Kotov</p><p class="emp_name">Mikhail.Kotov@mantratec.com</p></span>
+                                    </td>
+                                    <td class="text-center orange_font">On Hold</td>
+                                    <td>
+                                        <a href="javascript:;" class="btn btn-xs tooltips approve_btn" id="" title="Approve">Approve</a>
+                                        <a href="javascript:;" class="btn btn-xs tooltips clm_view_btn" id="" title="View"><i class="fa-regular fa-eye"></i></a>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td class="text-center">006</td>
+                                    <td class="trip_detail">
+                                        <p>Global Trek</p>
+                                        <p>12 Dec 2023</p>
+                                    </td>
+                                    <td class="emp_box">
+                                        <img src="/assets/images/avtar.png" alt="User icon" class="user_img">
+                                        <span><p class="emp_name">Mikhail Kotov</p><p class="emp_name">Mikhail.Kotov@mantratec.com</p></span>
+                                    </td>
+                                    <td class="text-center green_font">Approved</td>
+                                    <td>
+                                        <a href="javascript:;" class="btn btn-xs tooltips approve_btn disabled" id="" title="Approve">Approve</a>
+                                        <a href="javascript:;" class="btn btn-xs tooltips clm_view_btn" id="" title="View"><i class="fa-regular fa-eye"></i></a>
+                                    </td>
+                                </tr>
+                            </tbody>
+                            <tfoot>
+                                <tr>
+                                    <th>Trip ID</th>
+                                    <th>Trip Details</th>
+                                    <th>Employee Name</th>
+                                    <th>Current Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </tfoot>
+                        </table>
+                        <!-- Datatable : End -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="ExpAction_Details" style="display: none">
+        <div class="portlet" style="margin-bottom: 16px;">
+            <div class="portlet-body">
+
+                <div class="row">
+                    <div class="col-lg-12">
+                        <div class="d-flex justify-content-between">
+                            <div class="serch_datatable exp_review_userdetail">
+                                <div class="emp_box">
+                                    <img src="/assets/images/avtar.png" alt="User icon" class="user_img">
+                                    <span><p class="emp_name">Mikhail Kotov</p><p class="emp_name">Mikhail.Kotov@mantratec.com</p></span>
+                                </div>
+                            </div>
+                            <div class="exp_review_amount text-right">
+                                <div class="amt_word">Duration : 29 Nov 2023 - 01 Dec 2023 (3 Days)</div>
+                                <div class="amt_total">Amount Summary : Rs <span>300.00</span></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-lg-12">
+                        <div class="row">
+                            <div class="col-lg-8">
+
+                                <div class="expensereview__heightcard">
+                                    <div class="expense_detailblock">
+                                        <h3 class="expense_title">Details</h3>
+                                        <div class="expense_bodydata">
+                                            <div class="row">
+                                                <div class="col-sm-4 col-xs-4">
+                                                    <p class="expense_head">Trip Name</p>
+                                                    <div class="expense_value">Corporate Summit (0001)</div>
+                                                </div>
+                                                <div class="col-sm-8 col-xs-12">
+                                                    <p class="expense_head">Business Purpose</p>
+                                                    <div class="expense_value">Lorem Ipsum Lorem Ipsum Lorem Ipsum Lorem Ipsum Lorem Ipsum</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="expense_detailblock expense_bill_block">
+                                        <div class="d-flex align-items-center justify-content-between">
+                                            <h3 class="expense_title">Depart & Destinations <span class="red_font">(After approving the travel, you can decline till the expenses are not added to the travel)</span></h3>
+                                        </div>
+                                        <div class="expense_bodydata">
+                                            <div class="expense_bill_line">
+                                                <div class="row">
+                                                    <div class="col-sm-3 col-xs-6">
+                                                        <p class="expense_head">Client Name</p>
+                                                        <div class="mb-0 expense_value">Earl Lesch</div>
+                                                    </div>
+                                                    <div class="col-sm-3 col-xs-6">
+                                                        <p class="expense_head">Departure date</p>
+                                                        <div class="mb-0 expense_value">29 Nov 2023 09:00</div>
+                                                    </div>
+                                                    <div class="col-sm-5 col-xs-6">
+                                                        <div class="row">
+                                                            <div class="col-lg-5 text-right">
+                                                                <p class="expense_head">Departure</p>
+                                                                <div class="mb-0 expense_value">Ahmedabad</div>
+                                                            </div>
+                                                            <div class="col-lg-2">
+                                                                <div class="text-center margin-top-5"><img src="/assets/images/arrow_right_icon.svg" alt="Arrow Right" width="24" height="24"></div>
+                                                            </div>
+                                                            <div class="col-lg-5">
+                                                                <p class="expense_head">Arrival</p>
+                                                                <div class="mb-0 expense_value">Rajkot</div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <div class="col-sm-1 col-xs-6">
+                                                        <div class="text-center margin-top-5">
+                                                            <a href="javascript:;"><img src="/assets/images/delete_icon.svg" alt="Arrow Right" width="16" height="16"></a>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="expense_bill_line">
+                                                <div class="row">
+                                                    <div class="col-sm-3 col-xs-6">
+                                                        <p class="expense_head">Client Name</p>
+                                                        <div class="mb-0 expense_value">Earl Lesch</div>
+                                                    </div>
+                                                    <div class="col-sm-3 col-xs-6">
+                                                        <p class="expense_head">Departure date</p>
+                                                        <div class="mb-0 expense_value">30 Nov 2023 05:30</div>
+                                                    </div>
+                                                    <div class="col-sm-5 col-xs-6">
+                                                        <div class="row">
+                                                            <div class="col-lg-5 text-right">
+                                                                <p class="expense_head">Departure</p>
+                                                                <div class="mb-0 expense_value">Rajkot</div>
+                                                            </div>
+                                                            <div class="col-lg-2">
+                                                                <div class="text-center margin-top-5"><img src="/assets/images/arrow_right_icon.svg" alt="Arrow Right" width="24" height="24"></div>
+                                                            </div>
+                                                            <div class="col-lg-5">
+                                                                <p class="expense_head">Arrival</p>
+                                                                <div class="mb-0 expense_value">Delhi</div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <div class="col-sm-1 col-xs-6">
+                                                        <div class="text-center margin-top-5">
+                                                            <a href="javascript:;"><img src="/assets/images/delete_icon.svg" alt="Arrow Right" width="16" height="16"></a>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="expense_bill_line">
+                                                <div class="row">
+                                                    <div class="col-sm-3 col-xs-6">
+                                                        <p class="expense_head">Client Name</p>
+                                                        <div class="mb-0 expense_value">Earl Lesch</div>
+                                                    </div>
+                                                    <div class="col-sm-3 col-xs-6">
+                                                        <p class="expense_head">Departure date</p>
+                                                        <div class="mb-0 expense_value">01 Dec 2023 11:00</div>
+                                                    </div>
+                                                    <div class="col-sm-5 col-xs-6">
+                                                        <div class="row">
+                                                            <div class="col-lg-5 text-right">
+                                                                <p class="expense_head">Departure</p>
+                                                                <div class="mb-0 expense_value">Delhi</div>
+                                                            </div>
+                                                            <div class="col-lg-2">
+                                                                <div class="text-center margin-top-5"><img src="/assets/images/arrow_right_icon.svg" alt="Arrow Right" width="24" height="24"></div>
+                                                            </div>
+                                                            <div class="col-lg-5">
+                                                                <p class="expense_head">Arrival</p>
+                                                                <div class="mb-0 expense_value">Ahmedabad</div>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <div class="col-sm-1 col-xs-6">
+                                                        <div class="text-center margin-top-5">
+                                                            <a href="javascript:;"><img src="/assets/images/delete_icon.svg" alt="Arrow Right" width="16" height="16"></a>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="expense_footer_btn d-flex align-items-center justify-content-between margin-top-10">
+                                    <a href="javascript:;" class="btn theme-btn red_font" id="Send_Decline_Btn">Decline</a>
+                                    <a href="javascript:;" class="btn theme-btn orange_font" id="Send_Hold_Btn">On Hold</a>
+                                    <a href="javascript:;" class="btn theme-btn green_font" id="Send_Approve_Btn">Approve</a>
+                                </div>
+
+                            </div>
+
+                            <!-- Approvers Block : Begin -->
+                            <div class="col-lg-4">
+                                <div class="er_details appr_block">
+                                    <div class="col-lg-12">
+                                        <div class="er_details__title margin-top-10 margin-bottom-10 blue_font">Trip Status</div>
+                                    </div>
+                                    <div class="er_details__box expensereview__heightcard">
+                                        <!-- Timeline Approver Flow Design : Begin -->
+                                        <div class="custom-timeline-box">
+                                            <div class="timeline-list">
+                                                <ul class="custom-timeline">
+                                                    <li>
+                                                        <div class="timeline-badge"></div>
+                                                        <div class="timeline-panel bubble-msg-box">
+                                                            <div class="timeline-heading d-flex align-items-center justify-content-between margin-bottom-10">
+                                                                <p class="margin-0">Approver 1</p>
+                                                                <span class="font-weight-bold green_font">Approved</span>
+                                                            </div>
+                                                            <div class="timeline-details d-flex">
+                                                                <img src="/assets/images/avtar.png" alt="UserImage" width="20" height="20">
+                                                                <div>
+                                                                    <span class="aprrover-name margin-left-5">Alejandro Wilkinson</span>
+                                                                    <p class="margin-left-5 margin-0">Approve. please process.</p>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </li>
+                                                    <li>
+                                                        <div class="timeline-badge"></div>
+                                                        <div class="timeline-panel bubble-msg-box">
+                                                            <div class="timeline-heading d-flex align-items-center justify-content-between margin-bottom-10">
+                                                                <p class="margin-0">Approver 2</p>
+                                                                <span class="font-weight-bold grey_font">Pending</span>
+                                                            </div>
+                                                            <div class="timeline-details d-flex">
+                                                                <img src="/assets/images/avtar.png" alt="UserImage" width="20" height="20">
+                                                                <div>
+                                                                    <span class="aprrover-name margin-left-5">Alejandro Wilkinson</span>
+                                                                    <p class="margin-left-5 margin-0">--</p>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </li>
+                                                    <li>
+                                                        <div class="timeline-badge"></div>
+                                                        <div class="timeline-panel bubble-msg-box">
+                                                            <div class="timeline-heading d-flex align-items-center justify-content-between margin-bottom-10">
+                                                                <p class="margin-0">Approver 3</p>
+                                                                <span class="font-weight-bold grey_font">Pending</span>
+                                                            </div>
+                                                            <div class="timeline-details d-flex">
+                                                                <img src="/assets/images/avtar.png" alt="UserImage" width="20" height="20">
+                                                                <div>
+                                                                    <span class="aprrover-name margin-left-5">Alejandro Wilkinson</span>
+                                                                    <p class="margin-left-5 margin-0">--</p>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </li>
+                                                </ul>
+                                            </div>
+                                        </div>
+                                        <!-- Timeline Approver Flow Design : End -->
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Approvers Block : End -->
+
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+}
+else
+{
+    <script>
+        Swal.fire({
+            title:
+                "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_info.svg' alt=''> Unauthorized Access",
+            html:
+                "<div class='swal_subtitle'>" +
+                "<b>Access denied. You don’t have the required permissions to view this page.</b>" +
+                "<p>Please contact your administrator if you believe this is a mistake.</p>" +
+                "</div>",
+            showCloseButton: true,
+            showCancelButton: false,
+            focusConfirm: false,
+            cancelButtonText: 'Close',
+            confirmButtonText: 'Go to Dashboard',
+            allowOutsideClick: false,
+            allowEscapeKey: false,
+            customClass: {
+                popup: 'swal_info',                     // <<-- Add class directly to popup
+                confirmButton: 'swal-confirm-button-class',
+                cancelButton: 'swal-cancel-button-class'
+            }
+        }).then(function (result) {
+            if (result.isConfirmed) {
+                window.location.href = "/Dashboard/EmployeeDashboard";
+            }
+        });
+    </script>
+}
+<!-- Employee Total Payout Modal : Begin -->
+<div id="ExpRequest_modal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal">×</button>
+                <h4 class="modal-title">Expense Request</h4>
+            </div>
+            <div class="modal-body">
+                <div class="stepwizard">
+                    <div class="stepwizard-row setup-panel">
+                        <div class="stepwizard-step">
+                            <a href="#step-1" id="step1" type="button" class="btn btn-primary btn-circle"><i class="fa-regular fa-file-lines"></i> Details</a>
+                        </div>
+                        <div class="stepwizard-step">
+                            <a href="#step-2" id="step2" type="button" class="btn btn-circle"><i class="fa-solid fa-check"></i> Expense Status</a>
+                        </div>
+
+                    </div>
+                </div>
+                <div class="setup-content" id="step-1">
+                    <fieldset>
+                        <div class="er_details">
+                            <div class="row">
+                                <div class="col-lg-6 padding-top-10 padding-bottom-10">
+                                    <div class="Ems_filldata">
+                                        <div class="col-lg-12">
+                                            <div class="form-group data_picker_box">
+                                                <label>Expense date<span class="required" aria-required="true">*</span></label>
+                                                <div class="input-group input-group-sm date date-picker" id="">
+                                                    <span class="input-group-btn">
+                                                        <button class="btn default" type="button">
+                                                            <i class="fa-light fa-calendar-days"></i>
+                                                        </button>
+                                                    </span>
+                                                    <input type="text" placeholder="Select Date" class="form-control" id="" name="">
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="col-lg-12">
+                                            <div class="form-group amount_box">
+                                                <span class="currency-symbol">₹</span>
+                                                <label class="control-label">Amount<span class="required" aria-required="true">*</span></label>
+                                                <input class="form-control" id="" type="text" value="" placeholder="Enter Amount">
+                                            </div>
+                                        </div>
+                                        <div class="col-lg-12">
+                                            <div class="form-group">
+                                                <label>Description</label>
+                                                <textarea class="form-control" name="Description" id="" placeholder="Enter Description" maxlength="150"></textarea>
+                                            </div>
+                                        </div>
+                                        <div class="col-lg-12">
+                                            <div class="form-group radio_box">
+                                                <label class="control-label">Location<span class="required" aria-required="true">*</span></label>
+                                                <label class="mt-radio mt-radio-outline">
+                                                    HO
+                                                    <input value="False" name="Location" id="Location_Head" type="radio">
+                                                    <span></span>
+                                                </label>
+                                                <label class="mt-radio mt-radio-outline">
+                                                    Site Location
+                                                    <input value="True" name="Location" id="Location_Site" type="radio" checked="">
+                                                    <span></span>
+                                                </label>
+                                            </div>
+                                        </div>
+                                        <div id="sitelocation_block">
+                                            <div class="col-lg-12">
+                                                <div class="form-group">
+                                                    <label>State<span class="required" aria-required="true">*</span></label>
+                                                    <select class="form-control input-sm" id="">
+                                                        <option value="1">Please Select</option>
+                                                        <option value="2">Gujarat</option>
+                                                        <option value="3">Rajasthan</option>
+                                                        <option value="4">Delhi</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <div class="col-lg-12">
+                                                <div class="form-group">
+                                                    <label>City<span class="required" aria-required="true">*</span></label>
+                                                    <select class="form-control input-sm" id="">
+                                                        <option value="1">Please Select</option>
+                                                        <option value="2">Ahmedabad</option>
+                                                        <option value="3">Surat</option>
+                                                        <option value="4">Mahesana</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="col-lg-6">
+                                    <div class="text-center EMS_uploaddocs">
+                                        <!-- Upload File Block : Begin -->
+                                        <form class="upload-file-wrapper" id="" method="post" action="">
+                                            <div class="upload-files-container">
+                                                <div class="steper_file_upload text-left">
+                                                    <p class="file-upload-title">Attach Receipt</p>
+                                                    <p>Supported format: pdf, png, jpg, jpeg</p>
+                                                </div>
+                                                <!-- ... other form elements ... -->
+                                                <div class="drag-file-area" id="fileupload">
+                                                    <label class="label">
+                                                        <img src="~/assets/images/upload_icon.svg">
+                                                        <span class="browse-files">
+                                                            <input type="file" class="default-file-input" name="Uploadempokrdoc" id="" multiple>
+                                                            <span class="browse-files-text">Drag & drop files or </br><b>Browse</b></span>
+                                                        </span>
+                                                    </label>
+                                                </div>
+                                            </div>
+                                        </form>
+                                        <!-- Upload File Block : End -->
+                                        <!-- Uploaded Document : Begin -->
+                                        <div class="expense_docs" style="display:none;">
+                                            <img class="" src="https://s3-alpha-sig.figma.com/img/6015/1a30/ee124d8463e57e4960f1c3c7acbba9c5?Expires=1708300800&Key-Pair-Id=APKAQ4GOSFWCVNEHN3O4&Signature=aXzXzXMyYvmD59LeUvrxkss8VuMJzmLH5KNigxagsjeyloP64ZnKuHXwNY4WuzQ6DS8909C920Kb9SfrLPiqrOYbB7XGZiR6NVbEj6Vkxi6EMfh6MXMNMFs7icGzWAe~fS8yEzAKcgGxKV8opc7sgNB81ZuEX3pIhA8WvLjMSjS7W341f93n7S8mxrvQBxnszdwbw5Ww4uJgCVlRLQs8pc7Bxjc3icgujyvGuI7v2ASs5bCijx8LcCy1Fo2DuRT06HMTbqp0~QZfnmC2FAE1jqz26XTSdHXL~F1dhyPnkKbLrINJParBdMPpTvWL3s1gugESES6Z756dntou8zypVQ__" />
+                                            <div class="d-flex align-items-center justify-content-between margin-top-10">
+                                                <a href="javascript:;" class="btn theme-btn blue_font">Replace</a>
+                                                <a href="javascript:;" class="btn theme-btn red_font">Delete</a>
+                                            </div>
+                                        </div>
+                                        <!-- Uploaded Document : End -->
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </fieldset>
+                </div>
+                <div class="setup-content" id="step-2" style="display:none">
+                    <div class="e_status_block">
+                        <ul>
+                            <li>
+                                <div class="d-flex align-items-center justify-content-between">
+                                    <div class="ems_emp_box">
+                                        <img src="/assets/images/avtar.png" alt="User icon" class="user_img">
+                                        <div>
+                                            <p class="emp_name">Arpit Patel <span>09-12-2023</span></p>
+                                            <p class="emp_name">Reimbursed. will reflect within 5 days.</p>
+                                        </div>
+                                    </div>
+                                    <div class="ems_emp_status">
+                                        <p class="green_font">Reimbursed</p>
+                                    </div>
+                                </div>
+                            </li>
+                            <li>
+                                <div class="d-flex align-items-center justify-content-between">
+                                    <div class="ems_emp_box">
+                                        <img src="/assets/images/avtar.png" alt="User icon" class="user_img">
+                                        <div>
+                                            <p class="emp_name">Kashyap Dave <span>09-12-2023</span></p>
+                                            <p class="emp_name">On Hold. will reflect within 5 days.</p>
+                                        </div>
+                                    </div>
+                                    <div class="ems_emp_status">
+                                        <p class="orange_font">On Hold</p>
+                                    </div>
+                                </div>
+                            </li>
+                            <li>
+                                <div class="d-flex align-items-center justify-content-between">
+                                    <div class="ems_emp_box">
+                                        <img src="/assets/images/avtar.png" alt="User icon" class="user_img">
+                                        <div>
+                                            <p class="emp_name">Jayeshgiri Goswami <span>09-12-2023</span></p>
+                                            <p class="emp_name">Declined your expense request because you not allow this type expense please request again expense and verify them.</p>
+                                        </div>
+                                    </div>
+                                    <div class="ems_emp_status">
+                                        <p class="red_font">Declined</p>
+                                    </div>
+                                </div>
+                            </li>
+                            <li>
+                                <div class="d-flex align-items-center justify-content-between">
+                                    <div class="ems_emp_box">
+                                        <img src="/assets/images/avtar.png" alt="User icon" class="user_img">
+                                        <div>
+                                            <p class="emp_name">Hardik Darji <span>09-12-2023</span></p>
+                                            <p class="emp_name">Approved your Expense Request will reflect within 10-15 days.</p>
+                                        </div>
+                                    </div>
+                                    <div class="ems_emp_status">
+                                        <p class="green_font">Approved</p>
+                                    </div>
+                                </div>
+                            </li>
+                            <li>
+                                <div class="d-flex align-items-center justify-content-between">
+                                    <div class="ems_emp_box">
+                                        <img src="/assets/images/avtar.png" alt="User icon" class="user_img">
+                                        <div>
+                                            <p class="emp_name">Dharmik Shah <span>09-12-2023</span></p>
+                                            <p class="emp_name">please review again.</p>
+                                        </div>
+                                    </div>
+                                    <div class="ems_emp_status">
+                                        <p class="blue_font">Submitted</p>
+                                    </div>
+                                </div>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <div class="row">
+                    <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                        <input type="button" class="btn cancel_filter_btn_emp" data-dismiss="modal" value="Cancel" />
+                        <button class="btn next_btn" type="button" id="ExpRequest_btn">Expense Request</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Employee Total Payout Modal : End -->
+<!-- No Data Block Design : Begin -->
+<div class="expense_nodata_block no_recoed" style="display: none">
+    <img src="/assets/images/nodata_block.png" height="161" width="162" alt="No Data Icon">
+    <p>There's no data yet</p>
+    <span>When there is, you’ll see it here.</span>
+</div>
+
+
+

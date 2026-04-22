@@ -1,0 +1,479 @@
+﻿@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@using System.Data;
+@using System.Linq;
+@{
+    ViewBag.Title = "AttendanceSheet";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    string _Message = ViewBag.msg;
+    string _error = ViewBag.error;
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+
+    string isClientDBMatchFlag = HttpContext.Current.Session["IsClientDBMatch"] != null
+     ? HttpContext.Current.Session["IsClientDBMatch"].ToString()
+     : "false"; // Default to "false" if the session is null
+
+}
+
+<script type="text/javascript">
+    var token = '@_tokan';
+    var comidlst = 0;
+    var branchidlst = 0;
+    var deptidlst = 0;
+    $(document).ready(function () {
+      //  $('#tblattendancesheet').DataTable();
+        $("#maindivtag").hide();
+        //for branch
+        var $select = $("#BranchId").multiselect({
+            selectAllValue: 'multiselect-all',
+            enableCaseInsensitiveFiltering: true,
+            includeSelectAllOption: true,
+            allSelectedText: 'All Select',
+            enableFiltering: true,
+            maxHeight: '300',
+            buttonWidth: '100%',
+            enableClickableOptGroups: true
+        });
+        $select.multiselect('disable'); //disable it initially
+
+        $("#DepartmentID").multiselect({
+            selectAllValue: 'multiselect-all',
+            enableCaseInsensitiveFiltering: true,
+            includeSelectAllOption: true,
+            allSelectedText: 'All Select',
+            enableFiltering: true,
+            disable: 'disable',
+            maxHeight: '300',
+            buttonWidth: '100%',
+            enableClickableOptGroups: true
+        });
+        $("#DepartmentID").multiselect('disable');
+        $(document.body).on('change', '#DepartmentID', function () {
+            var deptid = $('#DepartmentID option:selected');
+            var DeptArray = [];
+            $(deptid).each(function (index, deptid) {
+                DeptArray.push([$(this).val()]);
+            });
+            if (DeptArray == "") {
+                $("#txt3").val(0);
+            }
+            else {
+                $("#txt3").val(DeptArray);
+            }
+            var deptarry = $("#txt3").val();
+            deptidlst = deptarry;
+
+        });
+
+        $("#companyID").multiselect({
+            selectAllValue: 'multiselect-all',
+            enableCaseInsensitiveFiltering: true,
+            includeSelectAllOption: true,
+            allSelectedText: 'All Select',
+            enableFiltering: true,
+            maxHeight: '300',
+            buttonWidth: '100%',
+            enableClickableOptGroups: true
+        });
+        $(document.body).on('change', '#companyID', function () {
+            $("#spvalidation").hide();
+            var comid = $('#companyID option:selected');
+            var comarray = [];
+            $(comid).each(function (index, comid) {
+                comarray.push([$(this).val()]);
+            });
+            if (comarray == "") {
+                $("#txt1").val(0);
+            }
+            else {
+                $("#txt1").val(comarray);
+            }
+            if ($("#txt1").val() != 0) {
+                comidlst = $("#txt1").val();
+                $("#BranchId").empty();
+                $.ajax({
+                    type: "GET",
+                    url: "/MasterData/FillBranchesbyCompanyChange",
+                    data: { comidlst: comidlst },
+                    contentType: "application/json; charset=utf-8",
+                    dataType: "json",
+                    beforeSend: function () {
+                        //  $("#ajax_loaderCompany").show();
+                        $(".loading").show();
+                    },
+                    success: function (response) {
+                        if (response.isRedirect) {
+                            window.location.href = response.redirectUrl;
+                        }
+                        if (response != "") {
+                            var obj = JSON.stringify(response);
+                            $select.multiselect('enable');
+                            $("#DepartmentID").multiselect('enable');
+
+                            $("#BranchId").empty();
+                            for (var i = 0; i < response.length; i++) {
+                                $('#BranchId').append('<option value=" ' + response[i].BranchId + ' ">' + response[i].BranchName + '</option>');
+                            }
+                            $select.multiselect('rebuild');
+                         
+                            $(".loading").hide();
+                            $(document.body).on('change', '#BranchId', function () {
+                                var brid = $('#BranchId option:selected');
+                                var Brancharray = [];
+                                $(brid).each(function (index, brid) {
+                                    Brancharray.push([$(this).val()]);
+                                });
+                                if (Brancharray == "") {
+                                    $("#txt2").val(0);
+                                }
+                                else {
+                                    $("#txt2").val(Brancharray);
+                                }
+                                var ArrBranch = $("#txt2").val();
+                                branchidlst = ArrBranch;
+
+                            });
+                        }
+                        else {
+                            $(".loading").hide();
+                            $select.multiselect('disable'); //disable it initially
+                            $("#DepartmentID").multiselect('disable');
+
+
+                        }
+                    },
+                    error: function () {
+                        // $("#ajax_loaderCompany").hide();
+                        $(".loading").hide();
+                        alert('No Data');
+                    }
+                });
+            }
+            else {
+                $("#companyID option:selected").prop("selected", false);
+                $("#companyID").multiselect('refresh');
+                $("#BranchId option:selected").prop("selected", false);
+                $("#BranchId").multiselect('refresh');
+                $("#BranchId").empty();
+                $("#BranchId").multiselect('disable');
+                $("#DepartmentID option:selected").prop("selected", false);
+                $("#DepartmentID").multiselect('refresh');
+                $("#DepartmentID").multiselect('disable');
+                $("#txt1").val(0);
+                $("#txt2").val(0);
+                $("#txt3").val(0);
+                return false;
+            }
+        });
+
+
+        $("#fromdate").change(function () {
+
+            $("#fromdate").removeClass('field_error');
+            $("#todate").val("");
+            var fromDate = $("#fromdate").val();
+            var newdate = new Date(fromDate);
+            $('#todate').datepicker("remove");
+            $("#todate").datepicker({
+                startDate: newdate,
+                autoclose: true
+            }).on('changeDate', function (ev) {
+                $("#todate").removeClass('field_error');
+            }).data('datepicker');
+        });
+
+        $('#Btnclear').click(function () {
+            ClearAllControls();
+        });
+
+
+        $("#BtnApply").click(function () {
+            var empid = "";
+            var companyid = $("#txt1").val();
+            var branchid = $("#txt2").val();
+            var departmentid = $("#txt3").val();
+            var fromDate = $("#fromdate").val();
+            var toDate = $("#todate").val();
+
+            $.ajax({
+                type: "POST",
+                url: "/PayTime/AttendanceSheetData?empid=" + empid + "&companyid=" + companyid + "&branchid=" + branchid + "&departmentid=" + departmentid + "&fromDate=" + fromDate + "&toDate=" + toDate + "",
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                beforeSend: function (xhr) {
+                    xhr.setRequestHeader("Authorization", token);
+                },
+                success: function (response) {
+                    if (response.isRedirect) {
+                        window.location.href = response.redirectUrl;
+                    }
+                    var table = "";
+                    if (response != null) {
+                        $("#maindivtag").show();
+                       var obj = JSON.parse(response);
+                        for (var i = 0; i < obj.length; i++) {
+                            var tbl = "<tr class='odd gradeX'>";
+                            tbl = tbl + "<td>" + obj[i].EmpName;
+                            tbl = tbl + "</td>";
+                            tbl = tbl + "<td>" + obj[i].Attn_Dt;
+                            tbl = tbl + "</td>";
+                            if (obj[i].Shiftid != null)
+                            {
+                                tbl = tbl + "<td><span class='label label-sm label-success'>"+ obj[i].ShiftName;
+                                tbl = tbl + "</span></td>";
+                            }
+                            else if (obj[i].Shiftgroupid != null ) {
+                                tbl = tbl + "<td> <span class='label label-sm label-info'>"+ obj[i].ShiftGroupName;
+                                tbl = tbl + "</span></td>";
+                            }
+
+
+
+                            //tbl = tbl + "<td>" + obj[i].ShiftGroupName;
+                            //tbl = tbl + "</td>";
+                            tbl = tbl + "<td>" + obj[i].PolicyName;
+                            tbl = tbl + "</td>";
+                            if (obj[i].In_time == null)
+                            {
+                                tbl = tbl + "<td>" + "";
+                                tbl = tbl + "</td>";
+                            }
+                            else {
+                                tbl = tbl + "<td>" + obj[i].In_time;
+                                tbl = tbl + "</td>";
+                            }
+                            if (obj[i].Out_Time == null) {
+                                tbl = tbl + "<td>" + "";
+                                tbl = tbl + "</td>";
+                            }
+                            else {
+                                tbl = tbl + "<td>" + obj[i].Out_Time;
+                                tbl = tbl + "</td>";
+                            }
+                            if (obj[i].Total_Hours == null) {
+                                tbl = tbl + "<td>" + "";
+                                tbl = tbl + "</td>";
+                            }
+                            else {
+                                tbl = tbl + "<td>" + obj[i].Total_Hours;
+                                tbl = tbl + "</td>";
+                            }
+                            tbl = tbl + "</tr>";
+                            table += tbl;
+                        }
+                    }
+                    $("#tblattendancesheet").destroy;
+                    $("#tblattendancesheet").append(table);
+                    $("#tblattendancesheet").dataTable({
+                        // "data": data.d,
+                        "destroy": true,
+                        "columns": [
+                            { "title": "Employee" },
+                              { "title": "Date" },
+                             { "title": "Shift or Shift Group" },
+                          //{ "title": "Shift Group" },
+                            { "title": "Policy" },
+                              { "title": "IN Time" },
+                            { "title": "OUT Time" },
+                            { "title": "Total Hours" }
+
+
+
+                        ]
+                    });
+
+                },
+                error: function (jqXHR, ajaxOptions, thrownError) {
+                    $('.loading').hide();
+
+                    if (jqXHR.status == 500) { //InternalServerError = 500,
+                        toastr.error("InternalServerError");
+                    } else if (jqXHR.status == 400) { //BadRequest = 400,
+                        toastr.error("BadRequest");
+                    } else if (jqXHR.status == 401) {
+                        window.location.href = "/PayTime/LoginPage";
+                    }
+                },
+            });
+
+
+        });
+
+
+    });
+    function ClearAllControls() {
+        $("#todate").val("");
+        $("#fromdate").val("");
+        $("#companyID option:selected").prop("selected", false);
+        $("#companyID").multiselect('refresh');
+        $("#BranchId option:selected").prop("selected", false);
+        $("#BranchId").multiselect('refresh');
+        $("#BranchId").empty();
+        $("#BranchId").multiselect('disable');
+        $("#DepartmentID option:selected").prop("selected", false);
+        $("#DepartmentID").multiselect('refresh');
+        $("#DepartmentID").multiselect('disable');
+        $("#txt1").val(0);
+        $("#txt2").val(0);
+        $("#txt3").val(0);
+        comidlst = 0;
+        branchidlst = 0;
+        deptidlst = 0;
+    }
+</script>
+
+<div class="page-bar">
+    @if (_RoleId == 1)
+    {
+        <ul class="page-breadcrumb">
+            <li>
+                <a href="@(isClientDBMatchFlag == "True" ? "/Admin/AdminDashboard" : "/Dashboard/AdminDashboard")"><i class="fa-regular fa-house"></i></a>
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> Attendance Sheet</span>
+            </li>
+        </ul>
+    }
+    else
+    {
+        <ul class="page-breadcrumb">
+            <li>
+                <a href="/Dashboard/EmployeeDashboard"><i class="fa-regular fa-house"></i></a>
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> Attendance Sheet</span>
+            </li>
+        </ul>
+    }
+
+</div>
+<div class="m-heading-1 border-blue m-bordered">
+    <h3>ATTENDANCE SHEET</h3>
+    <p>
+        View all employee attendance data in this tab. The live attendance data is available for a period of 2-year only,
+        and all the data past this period will be moved to the archive section.
+    </p>
+
+    <div class="row ">
+        <div class="form-group col-md-3">
+            <label><b>From </b></label>
+            <div class="input-group input-group-sm date date-picker" data-date="@DateTime.Now" data-date-format="yyyy-mm-dd" data-date-viewmode="years">
+                <span class="input-group-btn">
+                    <button class="btn default" type="button">
+                        <i class="fa-light fa-calendar-days"></i>
+                    </button>
+                </span>
+                <input type="text" class="form-control" id="fromdate" name="fromdate" placeholder="YYYY-MM-DD">
+            </div>
+        </div>
+
+        <div class="form-group col-md-3">
+            <label><b>To</b> </label>
+            <div class="input-group  input-group-sm date date-picker" data-date="@DateTime.Now" data-date-format="yyyy-mm-dd" data-date-viewmode="years">
+                <span class="input-group-btn">
+                    <button class="btn default" type="button">
+                        <i class="fa-light fa-calendar-days"></i>
+                    </button>
+                </span>
+                <input type="text" class="form-control" id="todate" name="todate" data-date-format="yyyy-mm-dd" placeholder="YYYY-MM-DD">
+            </div>
+        </div>
+
+    </div>
+    <div class="row">
+        <div class="col-md-3">
+            <div class="form-group">
+                <label class="control-label"><b>Companies</b></label>
+
+                <div class="row">
+                    <div class="col-md-12">
+                        <input type="text" id="txt1" value="0" hidden />
+                        @if (ViewBag.Companyslist != null)
+                        {
+                            <select class="mt-multiselect btn blue btn-outline" multiple="multiple" id="companyID" data-width="100%">
+                                @foreach (var i in ViewBag.Companyslist)
+                                {
+                                    <option value="@i.CompanyID">@i.CompanyName</option>
+                                }
+                            </select>
+                        }
+                    </div>
+                </div>
+            </div>
+
+        </div>
+        <div class="col-md-3">
+            <div class="form-group">
+                <label class="control-label"><b>Branches</b></label>
+                <input type="text" id="txt2" value="0" hidden />
+                <select id="BranchId" class="mt-multiselect btn blue btn-outline" multiple="multiple" data-width="100%">
+                    @*<optgroup label="TSG INFO">
+                            <option value="1-2" selected="selected">HO</option>
+                            <option value="1-3" selected="selected">TSG -Delhi</option>
+                        </optgroup>
+                        <optgroup label="TSG Store">
+                            <option value="2-2">HO</option>
+                            <option value="2-3">TSG Store - Delhi</option>
+                        </optgroup>*@
+                    @*<option></option>*@
+                </select>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="form-group">
+                <label class="control-label"><b>Departments</b></label>
+                <input type="text" id="txt3" value="0" hidden />
+                @if (ViewBag.DepartmentList != null)
+                {
+                    <select class="mt-multiselect btn blue btn-outline" multiple="multiple" id="DepartmentID" data-width="100%">
+                        @foreach (var i in ViewBag.DepartmentList)
+                        {
+                            <option value="@i.DepartmentId">@i.DepartmentName</option>
+                        }
+                    </select>
+                }
+            </div>
+
+        </div>
+
+        <div class="col-md-3 margin-top-20">
+            <div class="form-actions text-right">
+                <button type="button" id="Btnclear" class="btn blue">Clear</button>
+                <button type="button" id="BtnApply" class="btn blue">Apply Filter</button>
+            </div>
+        </div>
+
+    </div>
+
+</div>
+
+<div class="row">
+    <div class="col-md-12">
+        <!-- BEGIN EXAMPLE TABLE PORTLET-->
+        <div class="portlet box blue">
+            <div class="portlet-title">
+                <div class="caption">
+                    <i class="fa-solid fa-chart-area"></i>Attendance Sheet
+                </div>
+                @*<div class="actions">
+                        <a href="javascript:;" class="btn btn-default btn-sm">
+                            <i class="fa-solid fa-plus"></i> Add
+                        </a>
+                        <a href="javascript:;" class="btn btn-default btn-sm">
+                            <i class="fa-regular fa-print"></i> Print
+                        </a>
+                    </div>*@
+            </div>
+            <div class="portlet-body" id="maindivtag">
+                <div>
+                    <table id="tblattendancesheet" class="table table-striped table-bordered table-hover table-checkable order-column"></table>
+                </div>
+
+                <label><b>Note :</b><span class="label label-sm label-success">Shift</span>     <span class="label label-sm label-info">Shift Group</span> </label>
+            </div>
+        </div>
+        <!-- END EXAMPLE TABLE PORTLET-->
+    </div>
+</div>

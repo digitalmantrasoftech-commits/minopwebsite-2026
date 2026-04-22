@@ -1,0 +1,1571 @@
+@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@using System.Configuration;
+@{
+    ViewBag.Title = "Policy Allocation";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    string _Message = ViewBag.msg;
+    string _error = ViewBag.error;
+    string _success = ViewBag.success;
+    int _UserId = Convert.ToInt32(HttpContext.Current.Session["UserId"]);
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapicms"].ToString();
+    string _webapiurlMain = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    string _ChunkSize = HttpContext.Current.Session["DataDropDownThreShold"] != null
+        ? HttpContext.Current.Session["DataDropDownThreShold"].ToString()
+        : "500";
+
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    string _companyCode = HttpContext.Current.Session["cmpcode"] != null
+        ? HttpContext.Current.Session["cmpcode"].ToString()
+        : "";
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+
+    string isClientDBMatchFlag = HttpContext.Current.Session["IsClientDBMatch"] != null
+        ? HttpContext.Current.Session["IsClientDBMatch"].ToString()
+        : "false";
+
+    int _cmpid = 0;
+    int _branchid = 0;
+    string _companyid = "0";
+    string _branchidStr = "0";
+
+    if (_RoleId == 6805)
+    {
+        _cmpid = Convert.ToInt32(HttpContext.Current.Session["ClientCompanyId"]);
+        _companyid = HttpContext.Current.Session["ClientCompanyId"].ToString();
+    }
+    if (_RoleId == 6806)
+    {
+        _cmpid = Convert.ToInt32(HttpContext.Current.Session["ClientCompanyId"]);
+        _branchid = Convert.ToInt32(HttpContext.Current.Session["BranchId"]);
+        _companyid = HttpContext.Current.Session["ClientCompanyId"].ToString();
+        _branchidStr = HttpContext.Current.Session["BranchId"].ToString();
+    }
+}
+
+<script src="~/Scripts/timeme.js"></script>
+<script src="~/Pages_JS/VirtuallScroll/NormalDropDownVirtualClientServer.js"></script>
+<script src="~/Pages_JS/VirtuallScroll/ServerSideMultiSelectDropDown.js"></script>
+
+<div class="page-bar">
+    @if (_RoleId == 1 || _RoleId == 6805 || _RoleId == 6806)
+    {
+        <ul class="page-breadcrumb">
+            <li>
+                <a href="@(isClientDBMatchFlag == "True" ? "/Admin/AdminDashboard" : "/Dashboard/AdminDashboard")"><i class="fa-regular fa-house"></i></a>
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> Canteen Management</span>
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> Policy Allocation</span>
+            </li>
+        </ul>
+    }
+    else
+    {
+        <ul class="page-breadcrumb">
+            <li>
+                <a href="/Dashboard/EmployeeDashboard"><i class="fa-regular fa-house"></i></a>
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> Canteen Management</span>
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> Policy Allocation</span>
+            </li>
+        </ul>
+    }
+    @if (obj.CanView)
+    {
+        <div class="page-toolbar">
+            <a href="javascript:;" class="btn icon_transparent_btn tooltips" id="Filter_search" data-placement="left" data-original-title="Filter"><i class="fa-light fa-filter"></i></a>
+            @if (obj.CanEdit)
+            {
+                <a href="javascript:;" class="btn icon_transparent_btn tooltips" id="AddAllocation" data-original-title="Assign CMS policy to employees" data-placement="bottom"><i class="fa-solid fa-plus" aria-hidden="true"></i></a>
+            }
+        </div>
+    }
+</div>
+
+@if (obj.CanView)
+{
+    <div id='ajax_loader' class="modal_bg loading" aria-hidden="true">
+        <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading" />
+    </div>
+
+    <div class="filter_portlet_wrapper full-width">
+        <!-- Data Table Block : Begin -->
+        <div class="portlet filter_portlet_tbl">
+            <div class="portlet-body">
+                <div class="row">
+                    <div class="col-lg-12">
+                        <div id="tblAllocationBlock" style="display:none;">
+                            <div class="table-responsive" id="tableResponsive">
+                                <table id="tblAllocation" class="new_datatbl table table-striped table-bordered table-hover table-checkable order-column">
+                                    <thead>
+                                    </thead>
+                                    <tbody>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div id="NotificationGrid-empty" style="display:none;">
+                            <div class="datanotfound">
+                                <img src="~/assets/images/emptyscreen_3.png" height="148" width="280" alt="No Data Found Icon">
+                                <p class="datanotfound_title">No policy allocations found</p>
+                                <p class="">No matching records found. Please assign policies to employees.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Data Table Block : End -->
+        <!-- Filter Block : Begin -->
+        <div class="portlet filter_boxModal">
+            <div class="filterbox_header">
+                <div class="d-flex align-items-center justify-content-between">
+                    <h4 class="filter-title">Filters</h4>
+                    <button type="button" class="filterclose_btn"><i class="fa-light fa-xmark"></i></button>
+                </div>
+            </div>
+            <div class="filterbox_body">
+                @if (_RoleId == 1)
+                {
+                    <div class="col-lg-12">
+                        <div class="form-group">
+                            <label>Company</label>
+                            <select class="form-control" id="FilterCompanyId"></select>
+                        </div>
+                    </div>
+                }
+                @if (_RoleId == 1 || _RoleId == 6805)
+                {
+                    <div class="col-lg-12">
+                        <div class="form-group">
+                            <label>Branch</label>
+                            <select class="form-control" id="FilterBranchId"></select>
+                        </div>
+                    </div>
+                }
+                <div class="col-lg-12">
+                    <div class="form-group">
+                        <label>Department</label>
+                        <select class="form-control" id="FilterDepartmentId"></select>
+                    </div>
+                </div>
+                <div class="col-lg-12">
+                    <div class="form-group">
+                        <label>Policy</label>
+                        <select class="form-control input-sm" id="FilterPolicyId">
+                            <option value="">All</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="filterbox_footer">
+                <div class="text-right">
+                    <button type="button" id="Clear_OPration" class="btn clear_btn margin-left-5 tooltips" data-placement="top" data-original-title="Clear filters"><i class="fa-regular fa-eraser"></i></button>
+                    <button type="button" id="Search_OPration" class="btn icon_btn margin-left-5 tooltips" data-placement="top" data-original-title="Search filters"><i class="fa-solid fa-magnifying-glass"></i></button>
+                </div>
+            </div>
+        </div>
+        <!-- Filter Block : End -->
+    </div>
+
+    <!-- Assign/Edit Modal -->
+    <div id="myModal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog w-500">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    <h4 class="modal-title" id="modalTitle">Assign Policy</h4>
+                </div>
+                <div class="modal-body">
+                    <div class="modal-card">
+                        <fieldset>
+                            <div class="row">
+                                <input type="hidden" id="ModalEmpId" value="">
+
+                                <!-- Employee Filter & Select (Assign mode) -->
+                                <div id="empSelectGroup">
+                                    @if (_RoleId == 1)
+                                    {
+                                        <div class="col-lg-12">
+                                            <div class="form-group">
+                                                <label>Company <span class="required" style="color:red;"> * </span></label>
+                                                <select class="form-control" id="ModalCompanyId"></select>
+                                            </div>
+                                        </div>
+                                    }
+                                    @if (_RoleId != 6806)
+                                    {
+                                        <div class="col-lg-12">
+                                            <div class="form-group">
+                                                <label>Branch</label>
+                                                <div id="ModalBranchIdsContainer">
+                                                    <select id="ModalBranchIds" multiple="multiple"></select>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    }
+                                    <div class="col-lg-12">
+                                        <div class="form-group">
+                                            <label>Department</label>
+                                            <div id="ModalDeptIdsContainer">
+                                                <select id="ModalDeptIds" multiple="multiple"></select>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-lg-12">
+                                        <div class="form-group">
+                                            <label>Select Employee(s) <span class="required" style="color:red;"> * </span></label>
+                                            <div id="ModalEmployeeIdsContainer">
+                                                <select id="ModalEmployeeIds" multiple="multiple"></select>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Employee Display (Edit mode) -->
+                                <div class="col-lg-12" id="empDisplayGroup" style="display:none;">
+                                    <div class="form-group" style="margin-bottom: 0;">
+                                        <label>Employee : </label>
+                                        <p class="form-control-static" id="ModalEmpName" style="font-weight: 500; padding: 0;"></p>
+                                    </div>
+                                </div>
+
+                                <div class="col-lg-12">
+                                    <div class="form-group">
+                                        <label>Policy <span class="required" style="color:red;"> * </span></label>
+                                        <select class="form-control input-sm" id="ModalPolicyId">
+                                            <option value="">Select Policy</option>
+                                        </select>
+                                        <div id="inactivePolicyWarning" class="alert alert-warning" style="display:none; margin-top:5px; padding:6px 10px; font-size:12px;">
+                                            <i class="fa fa-exclamation-triangle"></i> Current policy is inactive. Please assign a new active policy.
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Canteen Assignment (separate from policy) -->
+                                <div class="col-lg-12" id="canteenAssignSection">
+                                    <hr style="margin: 10px 0;" />
+                                    <label style="font-weight:600;">Canteen Assignment</label>
+                                    <div class="form-group" style="margin-top:5px;">
+                                        <label>Canteens <small class="text-muted">(Select one or more)</small></label>
+                                        <div id="ModalCanteenIdsContainer">
+                                            <div id="canteenCheckboxList" style="max-height: 180px; overflow-y: auto; border: 1px solid #ddd; border-radius: 4px; padding: 8px;">
+                                                <p class="text-muted" style="margin:0;">Loading canteens...</p>
+                                            </div>
+                                            <div id="inactiveCanteenWarning" class="alert alert-info" style="display:none; margin-top:5px; padding:6px 10px; font-size:12px;">
+                                                <i class="fa fa-info-circle"></i> Some assigned canteens are inactive and cannot be selected for new orders.
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </fieldset>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <div class="row">
+                        <div class="col-lg-12 text-right">
+                            <button type="button" class="btn clear_btn" data-dismiss="modal"><i class="fa-light fa-xmark"></i> Cancel</button>
+                            <button type="button" id="btnAllocationSubmit" class="btn save_btn"><i class="fa-light fa-floppy-disk"></i> Save</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    <span style="color:red">Unauthorized Access.</span>
+}
+
+<script type="text/javascript">
+    var form = "Policy Allocation";
+    var operation = "";
+    var count = 0;
+    var _webapiurl = '@_webapiurl';
+    var _webapiurlMain = '@_webapiurlMain';
+    var _tokan = '@_tokan';
+    var _UserId = '@_UserId';
+    var _CompanyId = '@_companyid';
+    var _BranchId = '@_branchidStr';
+    var _RoleId = '@_RoleId';
+
+    var AllocationData = [];
+    var allocationTable = null;
+    var currentCompanyId = '@_companyid';
+    var activePolicyIds = [];
+    var activeCanteenIds = [];
+    var ModalCompanyDropdown = null;
+    var ModalBranchDropdown = null;
+    var ModalDeptDropdown = null;
+    var EmployeeDropdown = null;
+    var CompanyFilterDropdown = null;
+    var BranchFilterDropdown = null;
+    var DepartmentFilterDropdown = null;
+    var isAssignMode = true;
+    var isedit = '@obj.CanEdit';
+    var isdelete = '@obj.CanDelete';
+
+    var sortColumnMap = {
+        1: 'empName',
+        2: 'empCode',
+        3: 'policyName',
+        4: 'departmentName'
+    };
+
+    $(document).ready(function () {
+        $(window).on("load", function () {
+            if (_RoleId == '1') {
+                ModalCompanyDropdown = new Select2Dropdown({
+                    dropdownId: "ModalCompanyId",
+                    apiUrl: _webapiurlMain + "DataDropDownOptimize/GetCompanyDropDownPaginated",
+                    dataKey: "Id",
+                    labelKey: "Name",
+                    chunkSize: '@_ChunkSize',
+                    token: '@_tokan',
+                    extraParams: { RoleId: '@_RoleId', CompanyID: '@_cmpid' }
+                });
+            }
+            // Initialize filter dropdowns
+            initializeFilterDropdown();
+        });
+
+        ModalBranchDropdown = new ServerVirtualDropdown({
+                dropdownId: "ModalBranchIds",
+                apiUrl: _webapiurlMain + "DataDropDownOptimize/GetBranchMultiselectDropDownPaginated",
+                chunkSize: '@_ChunkSize',
+                dataKey: "Id",
+                labelKey: "Name",
+                tokan: '@_tokan',
+                selectAll: false
+        });
+
+        EmployeeDropdown = new ServerVirtualDropdown({
+                dropdownId: "ModalEmployeeIds",
+                apiUrl: _webapiurlMain + "DataDropDownOptimize/GetEmployeeCmpBranchPaginatDropDown",
+                chunkSize: '@_ChunkSize',
+                dataKey: "Id",
+                labelKey: "Name",
+                tokan: '@_tokan',
+                selectAll: false
+        });
+
+        ModalDeptDropdown = new ServerVirtualDropdown({
+            dropdownId: "ModalDeptIds",
+            apiUrl: _webapiurlMain + "DataDropDownOptimize/GetDepartmentDropDown_MulBranch_Paginated",
+            chunkSize: '@_ChunkSize',
+            dataKey: "Id",
+            labelKey: "Name",
+            tokan: '@_tokan',
+            selectAll: false
+        });
+
+        // Modal cascading: Company change → reload Branch, Dept, Employee, Policy, Canteen
+        $("#ModalCompanyId").change(function () {
+            var selectedCompanyId = $(this).val();
+            if (selectedCompanyId && selectedCompanyId !== '') {
+                currentCompanyId = selectedCompanyId;
+                loadModalCascadeDropdowns(selectedCompanyId);
+                loadModalPolicyDropdown(selectedCompanyId);
+                loadModalCanteenCheckboxes(selectedCompanyId);
+            } else {
+                currentCompanyId = '0';
+                if (ModalBranchDropdown) ModalBranchDropdown.empty();
+                if (ModalDeptDropdown) ModalDeptDropdown.empty();
+                if (EmployeeDropdown) EmployeeDropdown.empty();
+                $('#ModalPolicyId').html('<option value="">Select Policy</option>');
+                $('#canteenCheckboxList').html('<p class="text-muted" style="margin:0;">Select a company first.</p>');
+            }
+        });
+
+        // Modal cascading: Branch change → reload Department + clear Employee
+        $(document).on('change', '#ModalBranchIds', function () {
+            var selectedBranchId = $(this).val();
+            
+            var branchIds = '';
+            var selectAll = 0;
+            var companyId = 0;
+
+            if (ModalBranchDropdown) {
+                branchIds = ModalBranchDropdown.Result();
+            }
+
+            if (ModalDeptDropdown) {
+                ModalDeptDropdown.data = { CompanyID: currentCompanyId, BranchID: branchIds, SelectAll: selectAll };
+                ModalDeptDropdown.loadInitialData();
+            }
+
+            if (selectedBranchId && selectedBranchId != '') {
+                if (EmployeeDropdown) {
+
+                    EmployeeDropdown.apiUrl = _webapiurlMain + "DataDropDownOptimize/GetEmployeeCmpBranchPaginatDropDown";
+                    EmployeeDropdown.data = { CompanyID: currentCompanyId, BranchID: branchIds, SelectAll: selectAll, IsActive: 1 };
+                    EmployeeDropdown.loadInitialData();
+
+                }
+            }
+            else {
+                if (EmployeeDropdown) EmployeeDropdown.empty();
+            }
+
+            
+        });
+
+        // Modal cascading: Department change → reload Employee
+        $(document).on('change', '#ModalDeptIds', function () {
+            var deptIds = '';
+            var branchIds = '';
+            var selectAll = 0;
+            if (ModalBranchDropdown) {
+                branchIds = ModalBranchDropdown.Result();
+            }
+
+            if (ModalDeptDropdown && ModalDeptDropdown.allSelected) {
+                selectAll = 1;
+            } else if (ModalBranchDropdown) {
+                deptIds = ModalDeptDropdown.Result();
+            }
+
+
+
+            if (EmployeeDropdown) {
+                EmployeeDropdown.apiUrl = _webapiurlMain + "DataDropDownOptimize/GetEmployeeCmpBranchPaginatDropDown";
+                EmployeeDropdown.data = { CompanyID: currentCompanyId, BranchID: branchIds, DepartID: deptIds, SelectAll: selectAll, IsActive: 1 };
+                EmployeeDropdown.loadInitialData();
+            }
+        });
+
+        // ==========================================
+        // Filter Panel
+        // ==========================================
+        $("#Filter_search").click(function () {
+            var wrapper = $(".filter_portlet_wrapper");
+            wrapper.toggleClass("full-width");
+            var screenWidth = $(window).width();
+            if (screenWidth >= 300 && screenWidth <= 600) {
+                $('.filter_portlet_tbl').toggle();
+                $('.filter_portlet_wrapper .filter_boxModal').css('width', '100%');
+            }
+        });
+
+        $(".filterclose_btn").click(function () {
+            var wrapper = $(".filter_portlet_wrapper");
+            wrapper.addClass("full-width");
+            var screenWidth = $(window).width();
+            if (screenWidth >= 300 && screenWidth <= 600) {
+                $(".filter_portlet_tbl").css("display", "block");
+            }
+        });
+
+        // Filter Company change → reload Branch, Department, Policy
+        $("#FilterCompanyId").change(function () {
+            var companyId = $(this).val();
+            $("#FilterBranchId").val(null).trigger("change");
+            if (BranchFilterDropdown) {
+                BranchFilterDropdown.extraParams = { CompanyID: companyId, BranchID: '@_branchid', RoleId: '@_RoleId' };
+                $("#FilterBranchId").select2('close');
+                $("#FilterBranchId").trigger('change');
+            }
+            //if (DepartmentFilterDropdown) {
+            //    DepartmentFilterDropdown.extraParams = { CompanyID: companyId };
+            //    $("#FilterDepartmentId").val(null).trigger("change");
+            //    $("#FilterDepartmentId").select2('close');
+            //    $("#FilterDepartmentId").trigger('change');
+            //}
+            // Reload policy filter dropdown and active canteen IDs
+            loadFilterPolicyDropdown(companyId);
+            loadActiveCanteenIds(companyId);
+        });
+
+        // Filter Branch change → reload Department
+        $("#FilterBranchId").change(function () {
+            var branchId = $(this).val();
+            var companyId = _RoleId == '1' ? $('#FilterCompanyId').val() : _CompanyId;
+            //if (DepartmentFilterDropdown) {
+            //    var params = { CompanyID: companyId };
+            //    if (branchId) params.BranchID = branchId;
+            //    DepartmentFilterDropdown.extraParams = params;
+            //    $("#FilterDepartmentId").val(null).trigger("change");
+            //    $("#FilterDepartmentId").select2('close');
+            //    $("#FilterDepartmentId").trigger('change');
+            //}
+        });
+
+        // Search button
+        $("#Search_OPration").click(function () {
+            FillTable();
+        });
+
+        // Clear button
+        $("#Clear_OPration").click(function () {
+            if (CompanyFilterDropdown) CompanyFilterDropdown.clearDropdown();
+            if (BranchFilterDropdown) BranchFilterDropdown.clearDropdown();
+            if (DepartmentFilterDropdown) DepartmentFilterDropdown.clearDropdown();
+            $("#FilterPolicyId").val("");
+            initializeFilterDropdown();
+            FillTable();
+        });
+
+        // Assign Policy button
+        $('#AddAllocation').click(function () {
+            checkSession();
+            openAssignModal();
+        });
+
+        // Save button
+        $('#btnAllocationSubmit').click(saveAllocation);
+
+        // Page analytics
+        window.onload = function () {
+            timeSpentOnPage();
+        }
+
+        $(window).on("beforeunload", function () {
+            if (operation === "" || operation === null || operation === '') {
+                operation = "View Policy Allocation";
+            }
+            var url = _webapiurlMain + '/DashBoard/AddAnalyticsUser';
+            var timeSpent = timeSpentOnPage();
+            analyticsDataUsage(url, '@HttpContext.Current.Session["DbName"]', form, _tokan, count, operation, timeSpent);
+        });
+
+        // Initialize page
+        initializePage();
+    });
+
+    // ==========================================
+    // Initialize Page
+    // ==========================================
+    function initializePage() {
+        timeMeInitialize();
+
+        // Show messages
+        if ("@_Message" != "") {
+            toastr.remove();
+            toastr.success("@_Message");
+        }
+        if ('@_error' != "") {
+            toastr.remove();
+            toastr.error("@_error");
+        }
+
+
+
+        // Load table for all roles
+        FillTable();
+    }
+
+    // ==========================================
+    // Filter Dropdowns
+    // ==========================================
+    function initializeFilterDropdown() {
+        if (_RoleId == '1') {
+            CompanyFilterDropdown = new Select2Dropdown({
+                dropdownId: "FilterCompanyId",
+                apiUrl: _webapiurlMain + "DataDropDownOptimize/GetCompanyDropDownPaginated",
+                dataKey: "Id",
+                labelKey: "Name",
+                chunkSize: '@_ChunkSize',
+                token: '@_tokan',
+                extraParams: { RoleId: '@_RoleId', CompanyID: '@_cmpid' }
+            });
+
+            BranchFilterDropdown = new Select2Dropdown({
+                dropdownId: "FilterBranchId",
+                apiUrl: _webapiurlMain + "DataDropDownOptimize/GetBranchDropDownPaginated",
+                dataKey: "Id",
+                labelKey: "Name",
+                chunkSize: '@_ChunkSize',
+                token: '@_tokan'
+            });
+        } else if (_RoleId == '6805') {
+            BranchFilterDropdown = new Select2Dropdown({
+                dropdownId: "FilterBranchId",
+                apiUrl: _webapiurlMain + "DataDropDownOptimize/GetBranchDropDownPaginated",
+                dataKey: "Id",
+                labelKey: "Name",
+                chunkSize: '@_ChunkSize',
+                token: '@_tokan',
+                extraParams: { CompanyID: '@_companyid', BranchID: '@_branchid', RoleId: '@_RoleId' }
+            });
+        }
+
+        DepartmentFilterDropdown = new Select2Dropdown({
+            dropdownId: "FilterDepartmentId",
+            apiUrl: _webapiurlMain + "DataDropDownOptimize/GetAllDepartmentPaginated",
+            dataKey: "DepartmentId",
+            labelKey: "DepartmentName",
+            chunkSize: '@_ChunkSize',
+            token: '@_tokan'
+        });
+
+        if (_RoleId != '1') {
+            // Load policy filter dropdown and active canteen IDs
+            loadFilterPolicyDropdown('@_companyid');
+            loadActiveCanteenIds('@_companyid');
+        }
+
+    }
+
+    function loadFilterPolicyDropdown(companyId) {
+        var url = _webapiurl + 'allocations/policies/dropdown';
+        if (companyId && companyId !== '0') url += '?companyId=' + companyId;
+
+        $.ajax({
+            type: "GET",
+            url: url,
+            headers: { 'Authorization': 'Bearer ' + _tokan },
+            success: function (response) {
+                var options = '<option value="">All</option>';
+                activePolicyIds = [];
+                if (response && response.length > 0) {
+                    $.each(response, function (i, item) {
+                        activePolicyIds.push(item.policyId);
+                        options += '<option value="' + item.policyId + '">' + item.policyName + '</option>';
+                    });
+                }
+                $('#FilterPolicyId').html(options);
+            },
+            error: function () {
+                $('#FilterPolicyId').html('<option value="">All</option>');
+            }
+        });
+    }
+
+    function loadActiveCanteenIds(companyId) {
+        var url = _webapiurl + 'allocations/canteens/dropdown';
+        if (companyId && companyId !== '0') url += '?companyId=' + companyId;
+
+        $.ajax({
+            type: "GET",
+            url: url,
+            headers: { 'Authorization': 'Bearer ' + _tokan },
+            success: function (response) {
+                activeCanteenIds = [];
+                if (response && response.length > 0) {
+                    $.each(response, function (i, item) {
+                        activeCanteenIds.push(item.canteenId);
+                    });
+                }
+            }
+        });
+    }
+
+    // ==========================================
+    // DataTable
+    // ==========================================
+    function FillTable() {
+        checkSession();
+
+        // Show loading indicator
+        $("#ajax_loader").show();
+        $('#tblAllocationBlock').hide();
+        $('#NotificationGrid-empty').hide();
+
+        // Destroy existing table if exists
+        if (allocationTable) {
+            allocationTable.destroy();
+            allocationTable = null;
+        }
+        $("#dataTables_tbl_header").remove();
+
+        allocationTable = $('#tblAllocation').DataTable({
+            dom: _domCommon,
+            language: _languageCommon,
+            serverSide: true,
+            searching: true,
+            searchDelay: 500,
+            ordering: true,
+            order: [[1, 'asc']],
+            ajax: {
+                url: _webapiurl + "allocations",
+                type: "GET",
+                headers: { 'Authorization': 'Bearer ' + _tokan },
+                data: function (d) {
+                    var sortBy = 'empName';
+                    if (d.order && d.order.length > 0) {
+                        var colIdx = d.order[0].column;
+                        if (sortColumnMap[colIdx]) {
+                            sortBy = sortColumnMap[colIdx];
+                        }
+                    }
+
+                    var params = {
+                        pageNumber: Math.floor(d.start / d.length) + 1,
+                        pageSize: d.length,
+                        sortBy: sortBy,
+                        sortDirection: (d.order && d.order.length > 0) ? d.order[0].dir : 'asc'
+                    };
+
+                    if (d.search && d.search.value) {
+                        params.searchTerm = d.search.value;
+                    }
+
+                    // Filter params
+                    var companyId = $('#FilterCompanyId').val();
+                    if (companyId) {
+                        params.companyId = companyId;
+                    }
+
+                    var branchId = $('#FilterBranchId').val();
+                    if (branchId) {
+                        params.branchId = branchId;
+                    }
+
+                    var departmentId = $('#FilterDepartmentId').val();
+                    if (departmentId) {
+                        params.departmentId = departmentId;
+                    }
+
+                    var policyId = $('#FilterPolicyId').val();
+                    if (policyId) {
+                        params.policyId = policyId;
+                    }
+
+                    return params;
+                },
+                dataFilter: function (rawData) {
+                    var json = JSON.parse(rawData);
+                    var dtResponse = {
+                        recordsTotal: json.totalCount || 0,
+                        recordsFiltered: json.totalCount || 0,
+                        data: json.allocations || []
+                    };
+                    return JSON.stringify(dtResponse);
+                },
+                complete: function () {
+                    $('#ajax_loader').hide();
+                },
+                dataSrc: function (response) {
+                    var allocations = response.data || [];
+                    AllocationData = allocations;
+                    var hasSearch = allocationTable && allocationTable.search();
+                    if (response.recordsTotal === 0 && !hasSearch) {
+                        $('#tblAllocationBlock').hide();
+                        $('#NotificationGrid-empty').show();
+                    } else {
+                        $('#tblAllocationBlock').show();
+                        $('#NotificationGrid-empty').hide();
+                    }
+
+                    return allocations;
+                },
+                error: function (xhr) {
+                    $('#ajax_loader').hide();
+                    $('#tblAllocationBlock').hide();
+                    $('#NotificationGrid-empty').show();
+
+                    var errorMsg = "Error loading allocations";
+                    if (xhr.responseJSON && xhr.responseJSON.detail) {
+                        errorMsg = xhr.responseJSON.detail;
+                    }
+                    toastr.error(errorMsg);
+
+                    if (xhr.status === 401) {
+                        toastr.error("Session expired. Please login again.");
+                        setTimeout(function () {
+                            window.location.href = "/PayTime/LoginPage";
+                        }, 2000);
+                    } else if (xhr.status === 403) {
+                        toastr.error("You don't have permission to view policy allocations.");
+                        $('#NotificationGrid-empty .datanotfound_title').text('Access Denied');
+                        $('#NotificationGrid-empty p:last').text('You do not have permission to view policy allocations.');
+                    }
+                }
+            },
+            columns: [
+                {
+                    title: "Sr No",
+                    data: null,
+                    visible: false,
+                    orderable: false,
+                    render: function (data, type, row, meta) {
+                        return meta.row + 1;
+                    }
+                },
+                { title: "Employee Name", data: "empName", createdCell: function (td) { $(td).css("min-width", "120px");} },
+                { title: "Employee Code", data: "empCode" },
+                {
+                    title: "Policy Name",
+                    data: "policyName",
+                    render: function (data, type, row) {
+                        if (!data || data === 'Not Assigned') {
+                            return '<span class="text-muted">Not Assigned</span>';
+                        }
+                        var isInactive = row.policyId && activePolicyIds.length > 0 && activePolicyIds.indexOf(row.policyId) === -1;
+                        if (isInactive) {
+                            return escapeHtml(data) + ' <span class="label label-sm label-danger" style="font-size:10px;">Inactive</span>';
+                        }
+                        return escapeHtml(data);
+                    }
+                },
+                {
+                    title: "Department",
+                    data: "departmentName",
+                    createdCell: function (td) { $(td).css("min-width", "120px"); },
+                    render: function (data) { return data || '-'; }
+                },
+                {
+                    title: "Canteens",
+                    data: "canteens",
+                    orderable: false,
+                    render: function (data) {
+                        if (!data || data.length === 0) {
+                            return '<span class="text-muted">None</span>';
+                        }
+                        return data.map(function (c) {
+                            var isInactive = activeCanteenIds.length > 0 && activeCanteenIds.indexOf(c.canteenId) === -1;
+                            var labelClass = isInactive ? 'label-danger' : 'label-info';
+                            var suffix = isInactive ? ' (Inactive)' : '';
+                            return '<span class="label label-sm ' + labelClass + '" style="margin-right:3px; display:inline-block; margin-bottom:2px;">' + escapeHtml(c.canteenName) + suffix + '</span>';
+                        }).join(' ');
+                    }
+                },
+                { title: "Breakfast", data: "breakfast", orderable: false, render: function (d) { return d || '-'; } },
+                { title: "Lunch", data: "lunch", orderable: false, createdCell: function (td) { $(td).css("min-width", "120px"); }, render: function (d) { return d || '-'; } },
+                { title: "Snacks", data: "snacks", orderable: false, createdCell: function (td) { $(td).css("min-width", "120px"); }, render: function (d) { return d || '-'; } },
+                { title: "Dinner", data: "dinner", orderable: false, createdCell: function (td) { $(td).css("min-width", "120px"); }, render: function (d) { return d || '-'; } },
+                { title: "Monthly Limit", data: "monthlyLimit", orderable: false, render: function (d) { return d || '-'; } },
+                {
+                    title: "Action",
+                    data: null,
+                    orderable: false,
+                    searchable: false,
+                    createdCell: function (td) { $(td).css("min-width", "85px");},
+                    render: function (data, type, row) {
+                        var editBtn = "";
+                        var deleteBtn = "";
+
+                        if (isedit == 'True') {
+                            editBtn = "<a class='editclass btn blue_btnnew tooltips' data-placement='left' " +
+                                "onclick=\"openEditModal(" + row.empId + ")\" " +
+                                "data-original-title='Edit allocation'>" +
+                                "<i class='fa-regular fa-pen-to-square'></i></a> ";
+                        }
+
+                        if (isdelete == 'True' && row.allocationId > 0) {
+                            deleteBtn = "<a class='deleteclass btn blue_btnnew tooltips' data-placement='left' " +
+                                "onclick=\"deleteAllocation(" + row.allocationId + ", '" + row.empName.replace(/'/g, "\\'") + "')\" " +
+                                "data-original-title='Remove allocation'>" +
+                                "<i class='fa-solid fa-xmark'></i></a>";
+                        }
+
+                        return (editBtn + deleteBtn) || '-';
+                    }
+                },
+                { title: "AllocationId", data: "allocationId", visible: false, orderable: false },
+                { title: "EmpId", data: "empId", visible: false, orderable: false },
+                { title: "PolicyId", data: "policyId", visible: false, orderable: false }
+            ],
+            initComplete: function () {
+                var visibleTable = 'tblAllocation';
+
+                if ($('#buttons').length && visibleTable) {
+                    if ($('#buttons').children().length != 0) {
+                        $("#buttons").empty();
+                    }
+                    $("#buttons").append(
+                        '<div id="export-button1" class="export-button tooltips" data-placement="bottom" data-original-title="Download" data-table-id="' + visibleTable + '">' +
+                        '<img src="../Newlayout/images/download_icon.svg" alt="Download icon">' +
+                        '</div>'
+                    );
+                }
+
+                // Custom debounce: unbind default search and add 500ms delay
+                var searchTimer = null;
+                var $searchInput = $('#tblAllocation_wrapper .dataTables_filter input');
+                $searchInput.unbind();
+                $searchInput.on('keyup search input paste cut', function () {
+                    var value = this.value;
+                    clearTimeout(searchTimer);
+                    searchTimer = setTimeout(function () {
+                        allocationTable.search(value).draw();
+                    }, 500);
+                });
+                $searchInput.on('keypress', function (e) {
+                    if (e.keyCode === 13) return false;
+                });
+            },
+            drawCallback: function () {
+                $('.tooltips').tooltip();
+                setTimeout(function () {
+                    $("#tblAllocation_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+                    $('.tooltips').tooltip();
+                }, 100);
+            }
+        });
+
+        $(document).off('click', '#export-button1').on('click', '#export-button1', function (e) {
+            e.stopImmediatePropagation();
+            GenerateAllocationExcelFile();
+        });
+    }
+
+    function GenerateAllocationExcelFile() {
+        checkSession();
+        if (!allocationTable) return;
+
+        var searchTerm = allocationTable.search() || "";
+        var companyId = $('#FilterCompanyId').val() || "";
+        var branchId = $('#FilterBranchId').val() || "";
+        var departmentId = $('#FilterDepartmentId').val() || "";
+        var policyId = $('#FilterPolicyId').val() || "";
+
+        var mainObj = {
+            companyId: companyId,
+            branchId: branchId,
+            departmentId: departmentId,
+            policyId: policyId,
+            searchTerm: searchTerm
+        };
+
+        $.ajax({
+            url: '/cms/ExportAllocationsExcel',
+            type: 'POST',
+            data: JSON.stringify(mainObj),
+            contentType: 'application/json',
+            beforeSend: function () {
+                $("#ajax_loader").show();
+            },
+            success: function (response) {
+                if (response.success && response.filePath) {
+                    window.location.href = response.filePath;
+                } else {
+                    toastr.error(response.message || "Failed to generate export file.");
+                }
+            },
+            error: function () {
+                toastr.error("An error occurred while exporting data.");
+            },
+            complete: function () {
+                $("#ajax_loader").hide();
+            }
+        });
+    }
+
+    // ==========================================
+    // Modal Functions
+    // ==========================================
+    function openAssignModal() {
+        isAssignMode = true;
+        frmClear();
+        $('#modalTitle').text('Assign Policy & Canteens');
+        $('#empSelectGroup').show();
+        $('#empDisplayGroup').hide();
+        $('#canteenAssignSection').show();
+
+        if (_RoleId != '1') {
+
+            loadModalCascadeDropdowns(currentCompanyId);
+            loadModalPolicyDropdown(currentCompanyId);
+            loadModalCanteenCheckboxes(currentCompanyId);
+        }
+
+        $('#myModal').modal('toggle');
+    }
+
+    function openEditModal(empId) {
+        checkSession();
+        isAssignMode = false;
+        frmClear();
+        $('#modalTitle').text('Edit Allocation');
+        $('#empSelectGroup').hide();
+        $('#empDisplayGroup').show();
+        $('#canteenAssignSection').show();
+
+        var emp = AllocationData.find(function (a) { return a.empId === empId; });
+        if (!emp) {
+            $.ajax({
+                type: "GET",
+                url: _webapiurl + "allocations/employee/" + empId,
+                headers: { 'Authorization': 'Bearer ' + _tokan },
+                beforeSend: function () { $(".loading").show(); },
+                success: function (response) {
+                    $(".loading").hide();
+                    populateEditModal(response);
+                    $('#myModal').modal('toggle');
+                },
+                error: function (xhr) {
+                    $(".loading").hide();
+                    handleApiError(xhr, "Error loading allocation details");
+                }
+            });
+            return;
+        }
+
+        populateEditModal(emp);
+        $('#myModal').modal('toggle');
+    }
+
+    function populateEditModal(emp) {
+        $('#ModalEmpId').val(emp.empId);
+        $('#ModalEmpName').text(emp.empName + ' (' + emp.empCode + ')');
+
+        // Use employee's companyId if available, otherwise fall back to currentCompanyId
+        var companyId = emp.companyId || currentCompanyId;
+
+        loadModalPolicyDropdown(companyId, function () {
+            if (emp.policyId) {
+                $('#ModalPolicyId').val(emp.policyId);
+            }
+        }, emp.policyId, emp.policyName);
+
+        // Load canteen checkboxes and pre-check existing canteens (including inactive ones)
+        var existingCanteens = [];
+        if (emp.canteens && emp.canteens.length > 0) {
+            existingCanteens = emp.canteens.map(function (c) { return { canteenId: c.canteenId, canteenName: c.canteenName }; });
+        }
+        loadModalCanteenCheckboxes(companyId, existingCanteens);
+    }
+
+    // Initialize Branch → Department → Employee cascading dropdowns
+    function loadModalCascadeDropdowns(companyId) {
+        // Initialize Branch multiselect (cascading parent)
+        if (ModalBranchDropdown) {
+            ModalBranchDropdown.data = { CompanyID: companyId, RoleId: _RoleId };
+            ModalBranchDropdown.loadInitialData();
+        } @*else {
+            ModalBranchDropdown = new ServerVirtualDropdown({
+                dropdownId: "ModalBranchIds",
+                apiUrl: _webapiurlMain + "DataDropDownOptimize/GetBranchMultiselectDropDownPaginated",
+                chunkSize: '@_ChunkSize',
+                dataKey: "Id",
+                labelKey: "Name",
+                data: { CompanyID: companyId, RoleId: _RoleId },
+                tokan: '@_tokan',
+                selectAll: true
+            });
+            ModalBranchDropdown.loadInitialData();
+        }*@
+
+        ModalDeptDropdown.data = { CompanyID: companyId};
+        ModalDeptDropdown.loadInitialData();
+
+
+        // Initialize Department multiselect (empty until Branch selected)
+        @*if (!ModalDeptDropdown) {
+            ModalDeptDropdown = new ServerVirtualDropdown({
+                dropdownId: "ModalDeptIds",
+                apiUrl: _webapiurlMain + "DataDropDownOptimize/GetDepartmentDropDown_MulBranch_Paginated",
+                chunkSize: '@_ChunkSize',
+                dataKey: "Id",
+                labelKey: "Name",
+                data: { CompanyID: companyId },
+                tokan: '@_tokan',
+                selectAll: true
+            });
+        } else {
+            ModalDeptDropdown.empty();
+        }*@
+
+        //EmployeeDropdown.data = { CompanyID: companyId, BranchID: "", DepartID:"", IsActive: 1};
+        //EmployeeDropdown.loadInitialData();
+
+
+        // Initialize Employee multiselect (empty until Department selected)
+        @*if (!EmployeeDropdown) {
+            EmployeeDropdown = new ServerVirtualDropdown({
+                dropdownId: "ModalEmployeeIds",
+                apiUrl: _webapiurlMain + "DataDropDownOptimize/GetEmployeeSimpleDropDownData",
+                chunkSize: '@_ChunkSize',
+                dataKey: "Id",
+                labelKey: "Name",
+                data: { CompanyID: companyId },
+                tokan: '@_tokan',
+                selectAll: true
+            });
+        } else {
+            EmployeeDropdown.empty();
+        }*@
+
+        // Branch Admin: auto-load Department for their branch
+        if (_RoleId == '6806' && _BranchId && _BranchId !== '0') {
+            ModalDeptDropdown.data = { CompanyID: companyId, BranchID: _BranchId, SelectAll: 0 };
+            ModalDeptDropdown.loadInitialData();
+        }
+    }
+
+    function loadModalPolicyDropdown(companyId, callback, currentPolicyId, currentPolicyName) {
+        var url = _webapiurl + 'allocations/policies/dropdown';
+        if (companyId && companyId !== '0') url += '?companyId=' + companyId;
+
+        $.ajax({
+            type: "GET",
+            url: url,
+            headers: { 'Authorization': 'Bearer ' + _tokan },
+            success: function (response) {
+                var options = '<option value="">Select Policy</option>';
+                var foundCurrent = false;
+                if (response && response.length > 0) {
+                    $.each(response, function (i, item) {
+                        options += '<option value="' + item.policyId + '">' + item.policyName + '</option>';
+                        if (currentPolicyId && item.policyId == currentPolicyId) foundCurrent = true;
+                    });
+                }
+                // If current policy is not in the active list, add it as disabled option
+                if (currentPolicyId && !foundCurrent && currentPolicyName) {
+                    options += '<option value="' + currentPolicyId + '" disabled>' + escapeHtml(currentPolicyName) + ' (Inactive)</option>';
+                }
+                $('#ModalPolicyId').html(options);
+                // Show warning if current policy is inactive
+                if (currentPolicyId && !foundCurrent) {
+                    $('#inactivePolicyWarning').show();
+                } else {
+                    $('#inactivePolicyWarning').hide();
+                }
+                if (callback) callback();
+            },
+            error: function () {
+                $('#ModalPolicyId').html('<option value="">Select Policy</option>');
+                $('#inactivePolicyWarning').hide();
+                if (callback) callback();
+            }
+        });
+    }
+
+    function loadModalCanteenCheckboxes(companyId, preSelectedCanteens) {
+        preSelectedCanteens = preSelectedCanteens || [];
+        var preSelectedIds = preSelectedCanteens.map ? preSelectedCanteens.map(function (c) { return typeof c === 'object' ? c.canteenId : c; }) : preSelectedCanteens;
+        var url = _webapiurl + 'allocations/canteens/dropdown';
+        if (companyId && companyId !== '0') url += '?companyId=' + companyId;
+
+        $.ajax({
+            type: "GET",
+            url: url,
+            headers: { 'Authorization': 'Bearer ' + _tokan },
+            success: function (response) {
+                var html = '';
+                var activeIds = [];
+                var hasInactive = false;
+                if (response && response.length > 0) {
+                    $.each(response, function (i, item) {
+                        activeIds.push(item.canteenId);
+                        var checked = preSelectedIds.indexOf(item.canteenId) !== -1 ? ' checked' : '';
+                        html += '<label style="display:block; padding:4px 0; cursor:pointer; font-weight:normal;">' +
+                            '<input type="checkbox" class="canteen-checkbox" value="' + item.canteenId + '"' + checked + ' style="margin-right:6px;" />' +
+                            escapeHtml(item.canteenName) + '</label>';
+                    });
+                }
+                // Add inactive pre-selected canteens as disabled checkboxes
+                if (preSelectedCanteens && preSelectedCanteens.length > 0) {
+                    $.each(preSelectedCanteens, function (i, c) {
+                        var cId = typeof c === 'object' ? c.canteenId : c;
+                        var cName = typeof c === 'object' ? c.canteenName : ('Canteen #' + c);
+                        if (activeIds.indexOf(cId) === -1) {
+                            hasInactive = true;
+                            html += '<label style="display:block; padding:4px 0; cursor:not-allowed; font-weight:normal; opacity:0.7;">' +
+                                '<input type="checkbox" class="canteen-checkbox-inactive" value="' + cId + '" checked disabled style="margin-right:6px;" />' +
+                                '<span class="text-danger">' + escapeHtml(cName) + ' (Inactive)</span></label>';
+                        }
+                    });
+                }
+                if (!html) {
+                    html = '<p class="text-muted" style="margin:0;">No canteens available.</p>';
+                }
+                $('#canteenCheckboxList').html(html);
+                if (hasInactive) {
+                    $('#inactiveCanteenWarning').show();
+                } else {
+                    $('#inactiveCanteenWarning').hide();
+                }
+            },
+            error: function () {
+                $('#canteenCheckboxList').html('<p class="text-muted" style="margin:0;">Error loading canteens.</p>');
+                $('#inactiveCanteenWarning').hide();
+            }
+        });
+    }
+
+    function getSelectedCanteenIds() {
+        var ids = [];
+        $('#canteenCheckboxList .canteen-checkbox:checked').each(function () {
+            ids.push(parseInt($(this).val()));
+        });
+        return ids;
+    }
+
+    // ==========================================
+    // Save Allocation
+    // ==========================================
+    function saveAllocation() {
+        checkSession();
+        count++;
+        operation = "Save Allocation";
+
+        var policyId = $('#ModalPolicyId').val();
+        var selectedCanteenIds = getSelectedCanteenIds();
+
+        if (!policyId) {
+            toastr.warning("Please select a policy.");
+            return;
+        }
+
+        if (isAssignMode) {
+            // Super Admin must select a company
+            if (_RoleId == '1') {
+                var modalCompanyId = $('#ModalCompanyId').val();
+                if (!modalCompanyId || modalCompanyId === '') {
+                    toastr.warning("Please select a company.");
+                    return;
+                }
+            }
+
+            // ServerVirtualDropdown returns CSV via .Result(), not jQuery .val()
+            var selectedCSV = EmployeeDropdown ? EmployeeDropdown.Result() : '';
+            if (!selectedCSV || selectedCSV === '') {
+                toastr.warning("Please select at least one employee.");
+                return;
+            }
+
+            var empIds = selectedCSV.split(',').map(function (id) { return parseInt(id.trim()); });
+
+            if (empIds.length === 1) {
+                // Single assign: policy first, then canteens
+                var requestBody = {
+                    empId: empIds[0],
+                    policyId: parseInt(policyId)
+                };
+
+                $.ajax({
+                    type: "POST",
+                    url: _webapiurl + "allocations/assign",
+                    headers: { 'Authorization': 'Bearer ' + _tokan },
+                    contentType: "application/json; charset=utf-8",
+                    data: JSON.stringify(requestBody),
+                    beforeSend: function () { $(".loading").show(); },
+                    success: function () {
+                        // After policy assign, assign canteens if any selected
+                        if (selectedCanteenIds.length > 0) {
+                            assignCanteensToEmployee(empIds[0], selectedCanteenIds, function () {
+                                $(".loading").hide();
+                                $('#myModal').modal('hide');
+                                toastr.success("Policy and canteens assigned successfully.");
+                                FillTable();
+                            });
+                        } else {
+                            $(".loading").hide();
+                            $('#myModal').modal('hide');
+                            toastr.success("Policy assigned successfully.");
+                            FillTable();
+                        }
+                    },
+                    error: function (xhr) {
+                        $(".loading").hide();
+                        handleApiError(xhr, "Failed to assign policy");
+                    }
+                });
+            } else {
+                // Bulk assign: policy only (canteens need per-employee call)
+                var requestBody = {
+                    empIds: empIds,
+                    policyId: parseInt(policyId)
+                };
+
+                $.ajax({
+                    type: "POST",
+                    url: _webapiurl + "allocations/bulk-assign",
+                    headers: { 'Authorization': 'Bearer ' + _tokan },
+                    contentType: "application/json; charset=utf-8",
+                    data: JSON.stringify(requestBody),
+                    beforeSend: function () { $(".loading").show(); },
+                    success: function (response) {
+                        var msg = response.message || ("Policy assigned to " + response.successCount + " employee(s).");
+                        if (response.failedCount > 0) {
+                            msg += " " + response.failedCount + " failed.";
+                        }
+
+                        // Bulk assign canteens if any selected
+                        if (selectedCanteenIds.length > 0) {
+                            $.ajax({
+                                type: "POST",
+                                url: _webapiurl + "allocations/bulk-assign-canteens",
+                                headers: { 'Authorization': 'Bearer ' + _tokan },
+                                contentType: "application/json; charset=utf-8",
+                                data: JSON.stringify({ empIds: empIds, canteenIds: selectedCanteenIds }),
+                                success: function () {
+                                    $(".loading").hide();
+                                    $('#myModal').modal('hide');
+                                    toastr.success(msg + " Canteens assigned.");
+                                    FillTable();
+                                },
+                                error: function (xhr) {
+                                    $(".loading").hide();
+                                    $('#myModal').modal('hide');
+                                    toastr.success(msg);
+                                    handleApiError(xhr, "Policy assigned but failed to assign canteens");
+                                    FillTable();
+                                }
+                            });
+                        } else {
+                            $(".loading").hide();
+                            $('#myModal').modal('hide');
+                            if (response.failedCount > 0) {
+                                toastr.warning(msg);
+                            } else {
+                                toastr.success(msg);
+                            }
+                            FillTable();
+                        }
+                    },
+                    error: function (xhr) {
+                        $(".loading").hide();
+                        handleApiError(xhr, "Failed to assign policy");
+                    }
+                });
+            }
+        } else {
+            // Edit mode: single employee
+            var empId = $('#ModalEmpId').val();
+            if (!empId) {
+                toastr.error("Employee not found.");
+                return;
+            }
+
+            var requestBody = {
+                empId: parseInt(empId),
+                policyId: parseInt(policyId)
+            };
+
+            $.ajax({
+                type: "POST",
+                url: _webapiurl + "allocations/assign",
+                headers: { 'Authorization': 'Bearer ' + _tokan },
+                contentType: "application/json; charset=utf-8",
+                data: JSON.stringify(requestBody),
+                beforeSend: function () { $(".loading").show(); },
+                success: function () {
+                    // After policy update, assign canteens
+                    if (selectedCanteenIds.length > 0) {
+                        assignCanteensToEmployee(parseInt(empId), selectedCanteenIds, function () {
+                            $(".loading").hide();
+                            $('#myModal').modal('hide');
+                            toastr.success("Allocation updated successfully.");
+                            FillTable();
+                        });
+                    } else {
+                        $(".loading").hide();
+                        $('#myModal').modal('hide');
+                        toastr.success("Allocation updated successfully.");
+                        FillTable();
+                    }
+                },
+                error: function (xhr) {
+                    $(".loading").hide();
+                    handleApiError(xhr, "Failed to update allocation");
+                }
+            });
+        }
+    }
+
+    function assignCanteensToEmployee(empId, canteenIds, callback) {
+        $.ajax({
+            type: "POST",
+            url: _webapiurl + "allocations/" + empId + "/canteens",
+            headers: { 'Authorization': 'Bearer ' + _tokan },
+            contentType: "application/json; charset=utf-8",
+            data: JSON.stringify({ canteenIds: canteenIds }),
+            success: function () {
+                if (callback) callback();
+            },
+            error: function (xhr) {
+                handleApiError(xhr, "Failed to assign canteens");
+                if (callback) callback();
+            }
+        });
+    }
+
+    // ==========================================
+    // Delete Allocation
+    // ==========================================
+    function deleteAllocation(allocationId, empName) {
+        checkSession();
+        count++;
+        operation = "Remove Allocation";
+
+        Swal.fire({
+            html: '<div class="swal_subtitle"><b>Are you sure you want to remove the policy allocation for "' + empName + '"?</b></div>',
+            title: "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_error.svg' alt=''>Remove Allocation",
+            showCloseButton: true,
+            showCancelButton: true,
+            focusConfirm: false,
+            cancelButtonText: 'No, cancel',
+            confirmButtonText: 'Yes, remove it!',
+            allowOutsideClick: false,
+            allowEscapeKey: false,
+            customClass: {
+                confirmButton: 'swal-confirm-button-class',
+                cancelButton: 'swal-cancel-button-class'
+            }
+        }).then(function (result) {
+            if (result.isConfirmed) {
+                $.ajax({
+                    type: "DELETE",
+                    url: _webapiurl + "allocations/" + allocationId,
+                    headers: { 'Authorization': 'Bearer ' + _tokan },
+                    beforeSend: function () { $(".loading").show(); },
+                    success: function () {
+                        $(".loading").hide();
+                        Swal.fire({
+                            html: '<div class="swal_subtitle"><b>Allocation removed successfully.</b></div>',
+                            title: "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_success.svg' alt=''>Removed!",
+                            showCloseButton: true,
+                            showCancelButton: false,
+                            confirmButtonText: 'OK',
+                            allowOutsideClick: false,
+                            allowEscapeKey: false,
+                            customClass: { confirmButton: 'swal-confirm-button-class' }
+                        });
+                        $('img[src="/assets/images/icons/swal_icon/icon_success.svg"]').parent().parent().parent().addClass('swal_success');
+                        FillTable();
+                    },
+                    error: function (xhr) {
+                        $(".loading").hide();
+                        if (xhr.status === 401) {
+                            Swal.fire({
+                                html: '<div class="swal_subtitle"><b>Please login again.</b></div>',
+                                title: "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_error.svg' alt=''>Session Expired",
+                                showCloseButton: true,
+                                confirmButtonText: 'OK',
+                                allowOutsideClick: false,
+                                allowEscapeKey: false,
+                                customClass: { confirmButton: 'swal-confirm-button-class' }
+                            });
+                            $('img[src="/assets/images/icons/swal_icon/icon_error.svg"]').parent().parent().parent().addClass('swal_error');
+                            setTimeout(function () {
+                                window.location.href = "/PayTime/LoginPage";
+                            }, 2000);
+                        } else if (xhr.status === 403) {
+                            Swal.fire({
+                                html: '<div class="swal_subtitle"><b>You don\'t have permission to remove policy allocations.</b></div>',
+                                title: "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_error.svg' alt=''>Access Denied",
+                                showCloseButton: true,
+                                confirmButtonText: 'OK',
+                                allowOutsideClick: false,
+                                allowEscapeKey: false,
+                                customClass: { confirmButton: 'swal-confirm-button-class' }
+                            });
+                            $('img[src="/assets/images/icons/swal_icon/icon_error.svg"]').parent().parent().parent().addClass('swal_error');
+                        } else if (xhr.status === 404) {
+                            Swal.fire({
+                                html: '<div class="swal_subtitle"><b>Allocation not found or already removed.</b></div>',
+                                title: "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_warning.svg' alt=''>Not Found",
+                                showCloseButton: true,
+                                confirmButtonText: 'OK',
+                                allowOutsideClick: false,
+                                allowEscapeKey: false,
+                                customClass: { confirmButton: 'swal-confirm-button-class' }
+                            });
+                            $('img[src="/assets/images/icons/swal_icon/icon_warning.svg"]').parent().parent().parent().addClass('swal_warning');
+                            FillTable();
+                        } else {
+                            Swal.fire({
+                                html: '<div class="swal_subtitle"><b>Failed to remove allocation. Please try again.</b></div>',
+                                title: "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_error.svg' alt=''>Error",
+                                showCloseButton: true,
+                                confirmButtonText: 'OK',
+                                allowOutsideClick: false,
+                                allowEscapeKey: false,
+                                customClass: { confirmButton: 'swal-confirm-button-class' }
+                            });
+                            $('img[src="/assets/images/icons/swal_icon/icon_error.svg"]').parent().parent().parent().addClass('swal_error');
+                        }
+                    }
+                });
+            }
+        });
+        $('img[src="/assets/images/icons/swal_icon/icon_error.svg"]').parent().parent().parent().addClass('swal_error');
+    }
+
+    // ==========================================
+    // Helper Functions
+    // ==========================================
+    function handleApiError(xhr, defaultMsg) {
+        var errorMsg = defaultMsg;
+        if (xhr.responseJSON) {
+            if (xhr.responseJSON.detail) {
+                errorMsg = xhr.responseJSON.detail;
+            }
+            if (xhr.responseJSON.errors) {
+                var errorDetails = [];
+                $.each(xhr.responseJSON.errors, function (field, messages) {
+                    errorDetails.push(messages.join(', '));
+                });
+                if (errorDetails.length > 0) {
+                    errorMsg += ': ' + errorDetails.join('; ');
+                }
+            }
+        }
+        if (xhr.status === 401 || xhr.status === 419) {
+            toastr.error("Session expired. Please login again.");
+            setTimeout(function () { window.location.href = "/PayTime/LoginPage"; }, 2000);
+            return;
+        }
+        if (xhr.status === 403) {
+            toastr.error("You don't have permission to perform this action.");
+            return;
+        }
+        toastr.error(errorMsg);
+    }
+
+    function frmClear() {
+        $('#ModalEmpId').val('');
+        $('#ModalEmpName').text('');
+        if (_RoleId == '1' && ModalCompanyDropdown) {
+            $('#ModalCompanyId').val(null).trigger('change');
+        }
+        if (ModalBranchDropdown) ModalBranchDropdown.empty();
+        if (ModalDeptDropdown) ModalDeptDropdown.empty();
+        if (EmployeeDropdown) EmployeeDropdown.empty();
+        $('#ModalPolicyId').html('<option value="">Select Policy</option>');
+        $('#canteenCheckboxList').html('<p class="text-muted" style="margin:0;">Loading canteens...</p>');
+        $('#inactivePolicyWarning').hide();
+        $('#inactiveCanteenWarning').hide();
+    }
+
+    function escapeHtml(text) {
+        if (!text) return '';
+        var div = document.createElement('div');
+        div.appendChild(document.createTextNode(text));
+        return div.innerHTML;
+    }
+
+    function checkSession() {
+        $.ajax({
+            type: "GET",
+            async: false,
+            url: "/ESS/checkSession",
+            contentType: "application/json; charset=utf-8",
+            success: function (data) {
+                if (data.isRedirect) {
+                    window.location.href = data.redirectUrl;
+                }
+            },
+            error: function (data) {
+                window.location.href = data;
+            }
+        });
+    }
+</script>
+
+<script>
+    $('.overlay').fadeIn('fast').delay(5000).fadeOut('slow');
+</script>

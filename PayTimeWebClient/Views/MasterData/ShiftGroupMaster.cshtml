@@ -1,0 +1,488 @@
+﻿@model PayTimeWebClient.Models.ShiftGroup
+@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@using System.Configuration;
+@{
+    ViewBag.Title = "Shift Group";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    string _Message = ViewBag.msg;
+    string _error = ViewBag.error;
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+    int _cmpid = 0;
+    int _branchid = 0;
+
+    if (_RoleId == 6805)
+    {
+        _cmpid = Convert.ToInt32(HttpContext.Current.Session["ClientCompanyId"]);
+    }
+    if (_RoleId == 6806)
+    {
+        _cmpid = Convert.ToInt32(HttpContext.Current.Session["ClientCompanyId"]);
+        _branchid = Convert.ToInt32(HttpContext.Current.Session["BranchId"]);
+    }
+    string _dbName = HttpContext.Current.Session["DbName"].ToString();
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+
+    string isClientDBMatchFlag = HttpContext.Current.Session["IsClientDBMatch"] != null
+     ? HttpContext.Current.Session["IsClientDBMatch"].ToString()
+     : "false"; // Default to "false" if the session is null
+}
+<script src="~/AssetsNew/js/CommonValidation.js"></script>
+<script src="~/Scripts/timeme.js"></script>
+<script type="text/javascript">
+    var count = 0;
+    var form = "ShiftGroup Master";
+    var operation = "";
+    $(document).ready(function () {
+        /*timeMeInitialize function is  a javascript library which displays a timer to display how long you are actively viewing the current webpage.*/
+        timeMeInitialize();
+        $(".alert").hide();
+        $("#ajax_loaderbranch").hide();
+        if ("@_Message" != "") {
+            toastr.remove();
+            toastr.success("@_Message");
+            $("#ajax_loaderbranch").hide();
+        }
+        if ('@_error' != "") {
+            toastr.remove();
+            toastr.error("@_error");
+            $("#ajax_loaderbranch").hide();
+        }
+        $("#ShiftGroupName").blur(function () {
+            var shiftGrpName = removeTags($("#ShiftGroupName").val());
+            $("#ShiftGroupName").val(shiftGrpName);
+        });
+        $('#ShiftGroupName').keydown(function (e) {
+            if (this.value.length === 0 && e.which === 32) e.preventDefault();
+        });
+        $('#ShiftGroupShortName').keydown(function (e) {
+            if (this.value.length === 0 && e.which === 32) e.preventDefault();
+        });
+        $('input[type="text"]').on('keydown', function (e) {
+            if ((e.ctrlKey || e.metaKey) && e.keyCode == 86) {
+                e.preventDefault();
+                return false;
+            }
+        });
+        document.oncontextmenu = function () { return false; };
+        $(document).mousedown(function (e) {
+            if (e.button == 2) {
+                return false;
+            }
+            return true;
+        });
+        $("#ShiftGroupName").keypress(function (e) {
+            var keyCode = e.which;
+            var Responce = validateKeyPress(keyCode);
+            if (Responce == true) {
+            }
+            else { e.preventDefault(); }
+        });
+        $("#ShiftGroupShortName").keypress(function (e) {
+            var keyCode = e.which;
+            var Responce = validateKeyPress(keyCode);
+            if (Responce == true) {
+            }
+            else { e.preventDefault(); }
+        });
+        $('#tblShiftGroup').DataTable({
+            //dom: 'lBfrtip',
+            dom: _domCommon,
+            language: _languageCommon,
+            buttons: [
+                {
+                    extend: 'excelHtml5',
+                    text: 'Excel',
+                    titleAttr: 'Excel',
+                    exportOptions: {
+                        columns: [2, 3]
+                    }
+                }
+            ],
+            "columnDefs": [
+                {
+                    "target": 4,
+                    orderable:false
+                }
+            ]
+        });
+
+        setTimeout(function () {
+            $("#" + "tblShiftGroup" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+            $('.tooltips').tooltip();
+        }, 100);
+
+        $("#AddShiftGroup").on('click', function () {
+            count++;
+            operation = "Add Form";
+            frmClear();
+            $("#AddShiftGroup").attr("data-toggle", "modal");
+            $("#AddShiftGroup").attr("data-target", "#frmpopup");
+        });
+
+        $("#btnShiftGroupSubmit").click(function (event) {
+            if ($("#ShiftGroupName").val().trim() == "") {
+                $("#ShiftGroupName").addClass('field_error');
+                event.preventDefault();//or return false
+                return false;
+            }
+            else {
+                $("#ShiftGroupName").removeClass('field_error');
+            }
+            if ($("#ShiftGroupShortName").val().trim() == "") {
+                $("#ShiftGroupShortName").addClass('field_error');
+                event.preventDefault();//or return false
+                return false;
+            }
+            else {
+
+                var shiftgrpid = $("#ShiftGroupId").val().trim();
+                $("#ShiftGroupShortName").removeClass('field_error');
+                if (shiftgrpid == '0') {
+                    var shiftgroupshortname = $("#ShiftGroupShortName").val().trim();
+                    $.ajax(
+                        {
+                            type: "GET",
+                            url: "/MasterData/GetShiftGroupShortName",
+                            data: { shiftgroupshortname: shiftgroupshortname },
+                            contentType: "application/json; charset=utf-8",
+                            dataType: "json",
+                            async: false,
+                            beforeSend: function () {
+                                $("#ajax_loaderbranch").show();
+                            },
+                            success: function (data) {
+                                $("#ajax_loaderbranch").hide();
+                                if (data.isRedirect) {
+                                    window.location.href = data.redirectUrl;
+                                }
+                                if (data != null) {
+                                    var obj = JSON.parse(data);
+                                    if (obj == "1") {
+                                        toastr.remove();
+                                        toastr.error("Shift group short name already exists.");
+                                        $("#ShiftGroupShortName").val("");
+                                        $("#ShiftGroupShortName").focus();
+                                        event.preventDefault();//or return false
+                                        return false;
+                                    }
+                                    else {
+                                        $("#spvalidation").hide();
+                                        $("#frmshiftgrp").submit();
+                                    }
+                                }
+                                else {
+                                    $("#spvalidation").hide();
+                                }
+                            },
+                            error: function (jqXHR, ajaxOptions, thrownError) {
+                                if (jqXHR.status == 500) { //InternalServerError = 500,
+                                    toastr.error("InternalServerError");
+                                } else if (jqXHR.status == 400) { //BadRequest = 400,
+                                    toastr.error("BadRequest");
+                                } else if (jqXHR.status == 401) {
+                                    window.location.href = "/PayTime/LoginPage";
+                                }
+                            }
+                        });
+                } else {
+                    $("#ajax_loaderbranch").hide();
+                    $("#spvalidation").hide();
+                    $("#frmshiftgrp").submit();
+                }
+
+            }
+            $("#ajax_loaderbranch").show();
+        });
+        $("#ShiftGroupName").keypress(function (e) {
+            $("#ShiftGroupName").removeClass('field_error');
+        });
+        $("#ShiftGroupShortName").keypress(function (e) {
+            $("#ShiftGroupShortName").removeClass('field_error');
+        });
+
+        $("#ShiftGroupShortName").keypress(function (event) {
+            if ($("#ShiftGroupShortName").val().length >= 3) {
+                event.preventDefault();//or return false
+                return false;
+            }
+            else {
+                $("#spShiftGroupShortName").hide();
+            }
+        });
+        $("#tblShiftGroup").on('click', '.editclass', function () {
+            count++;
+            operation = "Edit Form";
+            $("#ShiftGroupName").removeClass('field_error');
+            $("#ShiftGroupShortName").removeClass('field_error');
+            $("#ShiftGroupId").val($(this).parent('td').parent('tr').children(1)[1].innerText);
+            $("#ShiftGroupName").val($(this).parent('td').parent('tr').children(1)[2].innerText);
+            $("#ShiftGroupShortName").val($(this).parent('td').parent('tr').children(1)[3].innerText);
+            $(".editclass").attr("data-toggle", "modal");
+            $(".editclass").attr("data-target", "#frmpopup");
+        });
+
+        $('#ShiftGroupShortName').bind('cut copy paste', function (e) {
+            e.preventDefault(); //disable cut,copy,paste
+        });
+
+        $("#ShiftGroupShortName").change(function () {
+            var shiftgroupshortname = $("#ShiftGroupShortName").val().trim();
+            var url = "/MasterData/GetShiftGroupShortName";
+            $.get(url, { shiftgroupshortname: shiftgroupshortname }, function (data) {
+                if (data.isRedirect) {
+                    window.location.href = data.redirectUrl;
+                }
+                if (data != null) {
+                    var obj = JSON.parse(data);
+                    if (obj == "1") {
+                        toastr.remove();
+                        toastr.error("Shift group short name already exists.");
+                        $("#ShiftGroupShortName").val("");
+                        $("#ShiftGroupShortName").focus();
+                    }
+                    else {
+                        $("#spvalidation").hide();
+                    }
+                }
+                else {
+                    $("#spvalidation").hide();
+                }
+            });
+        });
+
+        //$("#tblShiftGroup").on('click', '.deleteclass', function () {
+        //    var flg = 0;
+        //    if (confirm("Are you sure?")) {
+        //        $("#ShiftGroupId").val($(this).parent('td').parent('tr').children(1)[1].innerText);
+
+        //        $.post("/MasterData/DeleteShiftGroup?id=" + $("#ShiftGroupId").val(), function (response) {
+        //            //alert($.parseJSON(response));
+        //            var _response = $.parseJSON(response);
+        //            if (_response == "OK") {
+        //                var strid = "Col_" + $("#ShiftGroupId").val().trim();
+        //                //alert(strid);
+        //                $("#" + strid + "").closest('tr').remove();
+        //                $('#tblShiftGroup').DataTable();
+        //            }
+        //            else {
+        //                alert("something wrong occures.");
+        //            }
+        //        });
+        //    }
+        //});
+        function frmClear() {
+            $("#ShiftGroupId").val(0);
+            $("#ShiftGroupName").val("");
+            $("#ShiftGroupName").attr("placeholder", "Enter Shift Group Name");
+            $("#ShiftGroupName").attr('required', true);
+            $("#ShiftGroupName").removeClass('field_error');
+            $("#ShiftGroupShortName").val("");
+            $("#ShiftGroupShortName").attr("placeholder", "Enter Short Group Name");
+            $("#ShiftGroupShortName").attr('required', true);
+            $("#ShiftGroupShortName").removeClass('field_error');
+            $("#spvalidation").hide();
+        }
+        window.onload = function () {
+            timeSpentOnPage();
+        }
+        $(window).on("beforeunload", function () {
+            if (operation == "" || operation == null || operation == '') {
+                operation = "View ShiftGroup Master";
+            }
+            var url = '@_webapiurl' + '/DashBoard/AddAnalyticsUser';
+            var timeSpent = timeSpentOnPage();
+            analyticsDataUsage(url, '@_dbName', form, '@_tokan', count, operation, timeSpent)
+        })
+    });
+</script>
+
+<div class="page-bar">
+    @if (_RoleId == 1 || _RoleId == 6805 || _RoleId == 6806)
+    {
+        <ul class="page-breadcrumb">
+            <li>
+                <a href="@(isClientDBMatchFlag == "True" ? "/Admin/AdminDashboard" : "/Dashboard/AdminDashboard")"><i class="fa-regular fa-house"></i></a>
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> Shift Group</span>
+            </li>
+        </ul>
+    }
+    else
+    {
+        <ul class="page-breadcrumb">
+            <li>
+                <a href="/Dashboard/EmployeeDashboard"><i class="fa-regular fa-house"></i></a>
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> Shift Group</span>
+            </li>
+        </ul>
+    }
+    <div class="page-toolbar">
+        @if (obj.CanAdd)
+        {
+            <div class="text-right">
+                <a href="javascript:void(0)" id="AddShiftGroup" class="btn icon_transparent_btn tooltips" data-placement="left" data-original-title="Add Shift Group"><i class="fa-solid fa-plus"></i></a>
+            </div>
+        }
+    </div>
+</div>
+<!-- END PAGE BAR -->
+<!-- END PAGE HEADER-->
+@if (obj.CanView)
+{
+    <div class="portlet">
+        <div class="portlet-body">
+            <div class="row">
+                <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                    @if (Model.ShiftGrouplist != null && Model.ShiftGrouplist.Count() > 0)
+                    {
+                        <div class="table-responsive" id="tableResponsive">
+                            <table id="tblShiftGroup" class="table new_datatbl table-striped table-bordered table-hover table-checkable order-column ">
+                                <thead>
+                                    <tr>
+                                        <th style="width:10%; display:none;">Sr. No</th>
+                                        <th hidden>ID</th>
+                                        <th>Shift Group Name</th>
+                                        <th>Short Group Name</th>
+                                        <th style="width:10%;">Action</th>
+                                    </tr>
+                                </thead>
+                                @{int n = 1;}
+                                <tbody>
+                                    @foreach (var item in Model.ShiftGrouplist)
+                                    {
+                                        <tr>
+                                            <td hidden>@n</td>
+                                            <td hidden>
+                                                @Html.DisplayFor(modelItem => item.ShiftGroupId)
+                                            </td>
+                                            <td>
+                                                @Html.DisplayFor(modelitem => item.ShiftGroupName)
+                                            </td>
+                                            <td>
+                                                @Html.DisplayFor(modelitem => item.ShiftGroupShortName)
+                                            </td>
+
+                                            <td id="Col_@item.ShiftGroupId">
+                                                @if (_RoleId == 1)
+                                                {
+                                                    <a class="editclass btn btn-xs seagreen_btnnew tooltips" title="Edit"><i class="fa-regular fa-pen-to-square"> </i></a>
+                                                }
+                                                else if (_RoleId == 6805 && obj.CanEdit && (item.CompanyID != 0 && item.CompanyID == _cmpid))
+                                                {
+                                                    <a class="editclass btn btn-xs seagreen_btnnew tooltips" title="Edit"><i class="fa-regular fa-pen-to-square"> </i></a>
+                                                }
+                                                else if (_RoleId == 6806 && obj.CanEdit && (item.CompanyID != 0 && item.BranchID == _branchid))
+                                                {
+                                                    <a class="editclass btn btn-xs seagreen_btnnew tooltips" title="Edit"><i class="fa-regular fa-pen-to-square"> </i></a>
+                                                }
+                                                @if (obj.CanDelete)
+                                                {
+                                                    <span>|</span><a style="font-weight: bold; text-decoration: none; pointer-events: painted; cursor: pointer" class="deleteclass btn btn-xs red tooltips" title="Delete">
+                                                        <i class="fa-regular fa-trash-can"></i>
+                                                    </a>
+                                                }
+                                            </td>
+                                        </tr>
+                                        n++;
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    else
+                    {
+                        <div id="NotificationGrid-empty">
+                            <div class="datanotfound">
+                                <img src="~/assets/images/emptyscreen_1.png" height="148" width="280" alt="Nodata Found Icon">
+                                <p class="datanotfound_title">No data found</p> <!-- titleText -->
+                                <p class="">No entries found. Please add a record to get started.</p><!-- subText -->
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+    <div id="ajax_loaderbranch" class="modal_bg loading" aria-hidden="true">
+        <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading" />
+    </div>
+    <div id="frmpopup" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog w-500">
+            <!-- Modal content-->
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    <h4 class="modal-title">Shift Group</h4>
+                </div>
+
+                @using (Html.BeginForm("ShiftGroupMaster", "MasterData", FormMethod.Post, new { id = "frmshiftgrp" }))
+                {
+                    <div class="modal-body">
+                        @Html.ValidationSummary(false)
+                        <div class="modal-card">
+                            <fieldset>
+                                <div class="row">
+                                    <div class="col-lg-12">
+                                        <div class="form-group">
+                                            <label>
+                                                @Html.HiddenFor(model => model.ShiftGroupId)
+                                                Shift Group Name <span class="required" aria-required="true"> * </span>
+                                            </label>
+                                            @Html.EditorFor(model => model.ShiftGroupName, new { htmlAttributes = new { @class = "form-control input-sm", @maxlength = 50 } })
+                                            <span class="help-block error_help_block" hidden id="spShiftGroupName"></span>
+                                        </div>
+                                    </div>
+                                    <div class="col-lg-12">
+                                        <div class="form-group">
+                                            <label>
+                                                Short Group Name <span class="required" aria-required="true"> * </span>
+                                            </label>
+                                            <a class="tooltips" data-placement="right" title="Short name to identify shift group, maximum 3 characters & it should be unique.">
+                                                <i class="fa-regular fa-circle-info"></i>
+                                            </a>
+                                            @Html.EditorFor(model => model.ShiftGroupShortName, new { htmlAttributes = new { @class = "form-control input-sm" } })
+                                            @*<span class="help-block" hidden id="spShiftGroupShortName"></span>*@
+                                            <span class="help-block error_help_block" hidden id="spvalidation"></span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </fieldset>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <div class="row">
+                            <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                                <button type="button" id="btnShiftGroupSubmit" class=" btn save_btn"><i class="fa-light fa-floppy-disk"></i> Save</button>
+                            </div>
+                        </div>
+                    </div>
+                }
+
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    <span style="color:red">Unauthorized Access.</span>
+}
+<script>
+    $('.overlay').fadeIn('fast').delay(5000).fadeOut('slow');
+</script>
+

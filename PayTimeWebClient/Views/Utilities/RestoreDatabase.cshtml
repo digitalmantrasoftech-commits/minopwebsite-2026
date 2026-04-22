@@ -1,0 +1,501 @@
+﻿@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@using System.Configuration;
+@{
+    ViewBag.Title = "RestoreClientDB";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    string _Message = ViewBag.msg;
+    string _error = ViewBag.error;
+    string _isfileUploaded = ViewBag.isfileuploaded;
+    string _fileName = ViewBag.FileName;
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    string IsSettingFlag = HttpContext.Current.Session["IsSetting"].ToString();
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+    string _dbName = HttpContext.Current.Session["DbName"].ToString();
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+
+    string isClientDBMatchFlag = HttpContext.Current.Session["IsClientDBMatch"] != null
+    ? HttpContext.Current.Session["IsClientDBMatch"].ToString()
+    : "false"; // Default to "false" if the session is null
+}
+<script src="~/Scripts/timeme.js"></script>
+<script src="~/AssetsNew/js/CommonValidation.js"></script>
+<script type="text/javascript">
+    var count = 0;
+    var form = "Restore Database";
+    var operation = "";
+    $(document).ready(function () {
+        /*timeMeInitialize function is  a javascript library which displays a timer to display how long you are actively viewing the current webpage.*/
+        timeMeInitialize();
+        var navListItems = $('div.setup-panel div a'),
+        allWells = $('.setup-content');
+        allWells.hide();
+        navListItems.click(function (e) {
+            e.preventDefault();
+            var $target = $($(this).attr('href')),
+                    $item = $(this);
+
+            if (!$item.hasClass('disabled')) {
+                navListItems.removeClass('btn-primary').addClass('btn-default');
+                $item.addClass('btn-primary');
+                allWells.hide();
+                $target.show();
+            }
+        });
+        $(".stepwizard").hide();
+        $(".setup-content").hide();
+        $("#spnFileName").hide();
+        $("#spnresponse").hide();
+        $("#Step1Nxt").hide();
+        $("#spnresponseMaster").hide();
+        $("#Step2Nxt").hide();
+        $("#Step3Nxt").hide();
+        $("#Finish").hide();
+        $(".alert").hide();
+        if ("@_Message" != "") {
+            toastr.remove();
+            toastr.success("@_Message");
+        }
+        if ('@_error' != "") {
+            toastr.remove();
+            toastr.error("@_error");
+        }
+        if ('@_isfileUploaded' != "") {
+            $("#btnUpload").hide();
+            $(".stepwizard").show();
+            $("#spnFileName").show();
+            $(".setup-content").show();
+            $('div.setup-panel div a.btn-primary').trigger('click');
+        }
+        $('#btnskip').click(function () {
+            var url = '@Url.Action("AdminDashboard", "Dashboard")';
+            window.location.href = url;
+        });
+
+        $('#FrmRestore').submit(function () {
+            $(".loading").show();
+        });
+
+        $("#btnUpload").click(function () {
+            count++;
+            operation = "Add Form";
+            if (document.getElementById("FileUpload").files.size <= 0) {
+                toastr.remove();
+                toastr.error("File size is zero bytes.");
+                event.preventDefault();
+                return false;
+            }
+            else if (document.getElementById("FileUpload").files.size > 1073741824) {
+                toastr.remove();
+                toastr.error("Max file size allowed is 1gb , Please contact administrator for the file bigger than 1gb.");
+                event.preventDefault();
+                return false;
+            }
+            else if (document.getElementById("FileUpload").files.length == 0) {
+                toastr.remove();
+                toastr.error("Please upload file.");
+                event.preventDefault();
+                return false;
+            }
+            else {
+                event.preventDefault();
+                swal({
+                    title: "Important Notice",
+                    text: "All your previous data would be deleted, do you want to proceed?",
+                    type: "warning",
+                    showCancelButton: true,
+                    confirmButtonClass: "btn-danger",
+                    confirmButtonText: "Yes, delete it!",
+                    closeOnConfirm: true
+                },
+           function (isConfirm) {
+               if (isConfirm) {
+                   $('#FrmRestore').submit();
+                   return true;
+               }
+               else {
+                   event.preventDefault();
+                   return false;
+               }
+           });
+
+            }
+
+        });
+        $("#FileUpload").change(function () {
+            if ($("#FileUpload").val() != null) {
+                var validExts = new Array(".bak");
+                var fileExt = $("#FileUpload").val();
+                if (fileExt != "") {
+                    fileExt = fileExt.substring(fileExt.lastIndexOf('.'));
+                    if (validExts.indexOf(fileExt) < 0) {
+                        toastr.remove();
+                        toastr.error("Invalid file selected, valid file type is " +
+                                 validExts.toString());
+                        $("#FileUpload").val("");
+                        return false;
+                    }
+                    else {
+                        $.ajax({
+                            type: "POST",
+                            url: "/Utilities/CheckFile?FileName=" + $("#FileUpload").val(),
+                            contentType: "application/json; charset=utf-8",
+                            datatype: "json",
+                            async: "false",
+                            success: function (response) {
+                                $(".loading").hide();
+                                if (response != null) {
+                                    if (response.isExist == true) {
+                                        toastr.remove();
+                                        toastr.success(response.msg.toString());
+                                        $("#btnUpload").hide();
+                                    } else {
+                                        $("#btnUpload").show();
+                                    }
+                                }
+                            },
+                            beforeSend: function () {
+                                $("#ajax_loader_Restore").show();
+                            },
+                            error: function () {
+                                $("#ajax_loader_Restore").hide();
+                            }
+                        });
+                    }
+                }
+            }
+
+        });
+
+
+        $("#btnRestoreDatabase").click(function () {
+            $.ajax({
+                type: "POST",
+                url: "/Utilities/RestoreDatabaseProcess?FileName=" + $("#spnFileName").text(),
+                contentType: "application/json; charset=utf-8",
+                datatype: "json",
+                async: "false",
+                success: function (response) {
+                    if (response.isRedirect) {
+                        window.location.href = response.redirectUrl;
+                    }
+                    $("#ajax_loader_Restore").hide();
+                    if (response != null) {
+                        $("#spnresponse").show();
+                        $("#spnresponse").text(response.Meg);
+                        if (response.MegSts == "ok") {
+                            $("#spnresponse").css('color', 'green');
+                            $("#Step1Nxt").show();
+                            $("#btnRestoreDatabase").attr("disabled", true);
+                        }
+                        else {
+                            $("#spnresponse").css('color', 'red');
+                        }
+                    }
+                },
+                beforeSend: function () {
+                    $("#ajax_loader_Restore").show();
+                },
+                error: function () {
+                    $("#ajax_loader_Restore").hide();
+                }
+            });
+        })
+
+        $("#btnImportMasterData").click(function () {
+            $.ajax({
+                type: "POST",
+                url: "/Utilities/ImportMasterData",
+                contentType: "application/json; charset=utf-8",
+                datatype: "json",
+                async: "false",
+                success: function (response) {
+                    if (response.isRedirect) {
+                        window.location.href = response.redirectUrl;
+                    }
+                    $("#ajax_loader_Restore").hide();
+                    if (response != null) {
+                        $("#spnresponseMaster").show();
+                        $("#spnresponseMaster").text(response.Meg);
+                        if (response.MegSts == "ok") {
+                            $("#spnresponseMaster").css('color', 'green');
+                            $("#Step2Nxt").show();
+                            $("#btnImportMasterData").attr("disabled", true);
+                        }
+                        else {
+                            $("#spnresponseMaster").css('color', 'red');
+                        }
+                    }
+                },
+                beforeSend: function () {
+                    $("#ajax_loader_Restore").show();
+                },
+                error: function () {
+                    $("#ajax_loader_Restore").hide();
+                }
+            });
+        })
+
+        $("#btnImportTransData").click(function () {
+            $.ajax({
+                type: "POST",
+                url: "/Utilities/ImportTransData",
+                contentType: "application/json; charset=utf-8",
+                datatype: "json",
+                async: "false",
+                success: function (response) {
+                    if (response.isRedirect) {
+                        window.location.href = response.redirectUrl;
+                    }
+                    $("#ajax_loader_Restore").hide();
+                    if (response != null) {
+                        $("#spnresponseTrans").show();
+                        $("#spnresponseTrans").text(response.Meg);
+                        if (response.MegSts == "ok") {
+                            $("#spnresponseTrans").css('color', 'green');
+                            $("#Step3Nxt").show();
+                            $("#btnImportTransData").attr("disabled", true);
+                        }
+                        else {
+                            $("#spnresponseTrans").css('color', 'red');
+                        }
+                    }
+                },
+                beforeSend: function () {
+                    $("#ajax_loader_Restore").show();
+                },
+                error: function () {
+                    $("#ajax_loader_Restore").hide();
+                }
+            });
+        })
+
+        $("#btnMigrateData").click(function () {
+            $.ajax({
+                type: "POST",
+                url: "/Utilities/MigrateData",
+                contentType: "application/json; charset=utf-8",
+                datatype: "json",
+                async: "false",
+                success: function (response) {
+                    if (response.isRedirect) {
+                        window.location.href = response.redirectUrl;
+                    }
+                    $("#ajax_loader_Restore").hide();
+                    if (response != null) {
+                        $("#spnresponseMigrate").show();
+                        $("#spnresponseMigrate").text(response.Meg);
+                        if (response.MegSts == "ok") {
+                            $("#spnresponseMigrate").css('color', 'green');
+                            $("#Finish").show();
+                            $("#btnMigrateData").attr("disabled", true);
+                        }
+                        else {
+                            $("#spnresponseMigrate").css('color', 'red');
+                        }
+                    }
+                },
+                beforeSend: function () {
+                    $("#ajax_loader_Restore").show();
+                },
+                error: function () {
+                    $("#ajax_loader_Restore").hide();
+                }
+            });
+        });
+
+        $("#Step1Nxt").click(function (event) {
+            var nextStepWizard = $('div.setup-panel div a[href="#Step2"]').parent().children("a");
+            nextStepWizard.removeClass('disabled').trigger('click');
+        });
+        $("#Step2Nxt").click(function (event) {
+            var nextStepWizard = $('div.setup-panel div a[href="#Step3"]').parent().children("a");
+            nextStepWizard.removeClass('disabled').trigger('click');
+        });
+        $("#Step3Nxt").click(function (event) {
+            var nextStepWizard = $('div.setup-panel div a[href="#Step4"]').parent().children("a");
+            nextStepWizard.removeClass('disabled').trigger('click');
+        });
+        $("#Finish").click(function () {
+            var url = '@Url.Action("AdminDashboard", "Dashboard")';
+            window.location.href = url;
+        });
+        window.onload = function () {
+            timeSpentOnPage();
+        }
+        $(window).on("beforeunload", function () {
+            if (operation == "" || operation == null || operation == '') {
+                operation = "View Restore DataBase";
+            }
+            var url = '@_webapiurl' + '/DashBoard/AddAnalyticsUser';
+            var timeSpent = timeSpentOnPage();
+            analyticsDataUsage(url, '@_dbName', form, '@_tokan', count, operation, timeSpent)
+        })
+
+    });
+
+</script>
+
+<div class="page-bar">
+    @if (_RoleId == 1)
+    {
+        <ul class="page-breadcrumb">
+            <li>
+                <a href="@(isClientDBMatchFlag == "True" ? "/Admin/AdminDashboard" : "/Dashboard/AdminDashboard")"><i class="fa-regular fa-house"></i></a>
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> Restore Database</span>
+            </li>
+        </ul>
+    }
+    else
+    {
+        <ul class="page-breadcrumb">
+            <li>
+                <a href="/Dashboard/EmployeeDashboard"><i class="fa-regular fa-house"></i></a>
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> Restore Database</span>
+            </li>
+        </ul>
+    }
+</div>
+
+@if (obj.CanView)
+{
+    <div class="row">
+        <div id='ajax_loader_Restore' class="modal_bg loading" aria-hidden="true">
+            <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading"/>
+        </div>
+    </div>
+    <div class="portlet">
+        <div class="portlet-body">
+
+            @using (Html.BeginForm("RestoreDatabase", "Utilities", FormMethod.Post, new { id = "FrmRestore", enctype = "multipart/form-data" }))
+            {
+
+                <div class="row">
+                    <div class="col-lg-3 col-md-3 col-sm-12 col-xs-12"></div>
+                    <div class="col-md-3 text-center">
+                        <div class="data_upload_img">
+                            <img class="img-responsive" width="300px;" src="~/assets/images/Data-upload.png" />
+                        </div>
+                    </div>
+                    <div class="col-lg-3 col-md-3 col-sm-12 col-xs-12 restore_databas_center">
+                        <h1 class="restore_database">Restore Database</h1>
+                        <p class="restore_database_sesc">The RESTORE DATABASE option allows you to restore either a full or partial data to the Server through uploading .mdb file.</p>
+                        <div class="form-group">
+                            <div class="fileinput fileinput-new" data-provides="fileinput">
+                                <div class="input-group">
+                                    <div class="form-control uneditable-input input-fixed input" data-trigger="fileinput">
+                                        <i class="fa-light fa-file"></i>&nbsp;
+                                        <span class="fileinput-filename"> </span>
+                                    </div>
+                                    <span class="input-group-addon btn blue btn-file select_file_database">
+                                        <span class="fileinput-new"> Select File </span>
+                                        <span class="fileinput-exists"> Change </span>
+                                        <input type="file" name="FileUpload" id="FileUpload">
+                                    </span>
+                                    <a href="javascript:;" class="input-group-addon btn red fileinput-exists" data-dismiss="fileinput"> Remove </a>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <button type="submit" id="btnUpload" class="btn save_btn"><i class="fa-regular fa-upload"></i> Upload</button>
+                            <button type="button" id="btnskip" class="btn gray save_btn ">Skip</button>
+                        </div>
+                        @*<label><b>Important Note :</b>your all previous data would be deleted, do you want to proceed ?</label>*@
+                    </div>
+                    <div class="col-lg-3 col-md-3 col-sm-12 col-xs-12"></div>
+                </div>
+
+            }
+
+            <div class="row" id="spnFileName">
+                <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                    <hr class="save_hr_line" />
+                    <h4 class="bold font-green-jungle margin-bottom-30">Uploaded file :@_fileName</h4>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                    <div class="stepwizard">
+                        <div class="stepwizard-row setup-panel">
+                            <div class="stepwizard-step">
+                                <a href="#Step1" type="button" id="lnkRestore" class="btn btn-primary btn-circle">Restore database</a>
+                            </div>
+                            <div class="stepwizard-step">
+                                <a href="#Step2" id="lnkImportMasterData" type="button" class="btn btn-default btn-circle disabled">Import Master Data</a>
+                            </div>
+                            <div class="stepwizard-step">
+                                <a href="#Step3" id="lnkImportTransData" type="button" class="btn btn-default btn-circle disabled">Import Transation Data</a>
+                            </div>
+                            <div class="stepwizard-step">
+                                <a href="#Step4" id="lnkMigrateData" type="button" class="btn btn-default btn-circle disabled">Migrate Data</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="row setup-content active" id="Step1">
+                <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                    <span id="spnresponse"></span>
+                </div>
+                <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                    <hr class="save_hr_line" />
+                    <button id="btnRestoreDatabase" type="button" class="btn save_btn">Start Restoring Database</button>
+                    <button id="Step1Nxt" class="btn next_btn">Next</button>
+                </div>
+            </div>
+            <div class="row setup-content" id="Step2">
+                <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                    <span id="spnresponseMaster"></span>
+                </div>
+                <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                    <hr class="save_hr_line" />
+                    <button id="btnImportMasterData" type="button" class="btn save_btn">Migrate Master Data</button>
+                    <button id="Step2Nxt" class="btn next_btn">Next</button>
+                </div>
+            </div>
+            <div class="row setup-content" id="Step3">
+                <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                    <span id="spnresponseTrans"></span>
+                </div>
+                <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                    <hr class="save_hr_line" />
+                    <button id="btnImportTransData" type="button" class="btn save_btn">Migrate Transaction Data</button>
+                    <button id="Step3Nxt" class="btn next_btn">Next</button>
+                </div>
+            </div>
+            <div class="row setup-content" id="Step4">
+                <div class="col-md-12 text-center">
+                    <span id="spnresponseMigrate"></span>
+                </div>
+                <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                    <hr class="save_hr_line" />
+                    <button id="btnMigrateData" type="button" class="btn save_btn">Process Data</button>
+                    <button id="Finish" class="btn next_btn">Finish</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    <span style="color:red">Unauthorized Access.</span>
+}
+<script>
+    $('.overlay').fadeIn('fast').delay(5000).fadeOut('slow');
+</script>
+

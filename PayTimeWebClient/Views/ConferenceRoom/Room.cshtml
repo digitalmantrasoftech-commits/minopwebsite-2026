@@ -1,0 +1,627 @@
+﻿@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@using System.Configuration;
+@{
+    ViewBag.Title = "Room Master";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+
+    //string _flgempover = ViewBag.flgempover;
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    int _UserId = Convert.ToInt32(HttpContext.Current.Session["UserId"]);
+    int _cmpid = Convert.ToInt32(HttpContext.Current.Session["CompanyId"]);
+    string _isdateformat = HttpContext.Current.Session["IsDateFormat"].ToString();
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+
+    string _companyid = "0";
+    string _empid = "0";
+
+    if (_RoleId != 1 && _RoleId != 6805 && _RoleId != 6806)
+    {
+        _empid = HttpContext.Current.Session["EmpId"].ToString();
+    }
+    string _branchid = "0";
+    if (_RoleId == 6805)
+    {
+        _companyid = HttpContext.Current.Session["ClientCompanyId"].ToString();
+    }
+    if (_RoleId == 6806)
+    {
+        _companyid = HttpContext.Current.Session["ClientCompanyId"].ToString();
+        _branchid = HttpContext.Current.Session["BranchId"].ToString();
+    }
+    string isClientDBMatchFlag = HttpContext.Current.Session["IsClientDBMatch"] != null
+    ? HttpContext.Current.Session["IsClientDBMatch"].ToString()
+    : "false"; // Default to "false" if the session is null
+
+}
+
+
+<script>
+
+    let EmpId = '@_empid';
+    let RoleId = '@_RoleId';
+    let isedit = '@obj.CanEdit';
+    let isdelete = '@obj.CanDelete';
+    let RoomData = "";
+    $(document).ready(function () {
+
+
+        FillTable();
+        fillAmenity();
+        $('#Amenities').multiselect({
+            selectAllValue: 'multiselect-all',
+            enableCaseInsensitiveFiltering: true,
+            includeSelectAllOption: true,
+            allSelectedText: 'All Select',
+            enableFiltering: true,
+            maxHeight: '300',
+            buttonWidth: '100%',
+            enableClickableOptGroups: true,
+            nonSelectedText: 'Select Amenity',
+        })
+        $('#RoomName').blur(function () {
+            if ($('#RoomName').val().trim() == "") {
+                $("#RoomName").addClass('field_error');
+            }
+            else {
+                $("#RoomName").removeClass('field_error');
+            }
+        });
+        $('#RoomLocation').blur(function () {
+            if ($('#RoomLocation').val().trim() == "") {
+                $("#RoomLocation").addClass('field_error');
+            }
+            else {
+                $("#RoomLocation").removeClass('field_error');
+            }
+        });
+        $('#Capacity').on({
+         "blur":function() {
+                if ($('#Capacity').val().trim() == "") {
+                    $("#Capacity").addClass('field_error');
+                }
+                else {
+                    $("#Capacity").removeClass('field_error');
+                }
+            },
+            "input": function (e) {
+                this.value = this.value.replace(/[^0-9]/g, '');
+             let min = parseInt(this.min, 10); // Get the minimum value
+             let max = parseInt(this.max, 10); // Get the maximum value
+             let value = parseInt(this.value, 10); // Get the entered value
+
+             // If the value is outside the allowed range, reset it
+             if (value < min) {
+                 this.value = min;
+             } else if (value > max) {
+                 this.value = max;
+             }
+           }
+        });
+
+        $('#btnAmntSubmit').click(AddRoom);
+        $('#AddRoom').click(function () {
+            checkSession();
+            frmClear();
+            $("#RoomName").removeClass('field_error');
+            $("#RoomLocation").removeClass('field_error');
+            $("#Capacity").removeClass('field_error');
+            $('#myModal').modal('toggle');
+        })
+
+    });
+
+    function FillTable() {
+        checkSession();
+        var isDateFormat = '@_isdateformat'
+    $.ajax({
+        type: "GET",
+        url: '@_webapiurl' +"RoomBook/GetAllRoomsList?id=0",
+        headers: { 'Authorization': '@_tokan' },
+        contentType: "application/json; charset=utf-8",
+        dataType: "json",
+        beforeSend: function () {
+            $("#ajax_loader").show();
+        },
+        success: function (data) {
+            if (data.length == 0) {
+                $('#tblempty').hide();  // Hide the empty message
+                $('#NotificationGrid-empty').show();
+            }
+            else if (data.length > 0) {
+
+                $('#tblempty').show();  // Hide the empty message
+                $('#NotificationGrid-empty').hide();
+                RoomData = data;
+                $("#dataTables_tbl_header").remove();
+                $('#tblRoom').DataTable({
+                    dom: _domCommon,
+                    language: _languageCommon,
+                    deferRender: true,
+                    data: data,
+                    order: [],
+                    destroy: true,
+                    initComplete: function () {
+                        const visibleTable = $('table:visible').attr('id');
+                        $("#buttons").append(`
+                            <div id="export-button" class="export-button tooltips" data-placement="bottom" data-original-title="Download" data-table-id="${visibleTable}">
+                                <img src="../Newlayout/images/download_icon.svg" alt="Download icon">
+                            </div>
+                        `);
+
+                    },
+                    columns: [
+                        {
+                            title: "Sr No",
+                            data: null,
+                            visible:false,
+                            render: function (data, type, row, meta) {
+                                // Generate the serial number based on the row index
+                                return meta.row + 1;
+                            }
+                        },
+
+                        { title: "RoomName", data: "RoomName" },
+                        { title: "Capacity", data: "Capacity" },
+                        { title: "Amenities", data: "Amenities", visible: false },
+                        { title: "RoomId", data: "RoomId", visible: false },
+                        { title: "RoomLocation", data: "RoomLocation", visible: false },
+                        {
+                            title: "CreatedDate",
+                            data: "CreatedDate",
+                            visible: false,
+                            render: function (data, type, row) {
+                                var value = "";
+                                if (row.CreatedDate != null) {
+                                    if ("@_isdateformat" == "dd-mm-yyyy") {
+                                        isDateFormat = "DD-MM-YYYY";
+                                    }
+                                    else if ("@_isdateformat" == "mm-dd-yyyy") {
+                                        isDateFormat = "MM-DD-YYYY";
+                                    }
+                                    else if ("@_isdateformat" == "yyyy-mm-dd") {
+                                        isDateFormat = "YYYY-MM-DD";
+                                    }
+                                    else if ("@_isdateformat" == "yyyy-M-dd") {
+                                        isDateFormat = "YYYY-MMM-DD";
+                                    }
+                                    else if ("@_isdateformat" == "M-dd-yyyy") {
+                                        isDateFormat = "MMM-DD-YYYY";
+                                    }
+                                    else if ("@_isdateformat" == "dd-M-yyyy") {
+                                        isDateFormat = "DD-MMM-YYYY";
+                                    }
+                                    value = moment(row.CreatedDate).format(isDateFormat);
+                                }
+                                return value;
+                            }
+                        },
+                        {
+                            title: "ModifyDate",
+                            data: "ModifyDate",
+                            visible: false,
+                            render: function (data, type, row) {
+                                var value = "";
+                                if (row.ModifyDate != null) {
+                                    if ("@_isdateformat" == "dd-mm-yyyy") {
+                                        isDateFormat = "DD-MM-YYYY";
+                                    }
+                                    else if ("@_isdateformat" == "mm-dd-yyyy") {
+                                        isDateFormat = "MM-DD-YYYY";
+                                    }
+                                    else if ("@_isdateformat" == "yyyy-mm-dd") {
+                                        isDateFormat = "YYYY-MM-DD";
+                                    }
+                                    else if ("@_isdateformat" == "yyyy-M-dd") {
+                                        isDateFormat = "YYYY-MMM-DD";
+                                    }
+                                    else if ("@_isdateformat" == "M-dd-yyyy") {
+                                        isDateFormat = "MMM-DD-YYYY";
+                                    }
+                                    else if ("@_isdateformat" == "dd-M-yyyy") {
+                                        isDateFormat = "DD-MMM-YYYY";
+                                    }
+                                    value = moment(row.ModifyDate).format(isDateFormat);
+                                }
+                                return value;
+                            }
+                        },
+                        {
+                            title: "Action",
+                            data: null,
+                            orderable: false,
+                            render: function (data, type, row) {
+                                let str = "";
+                                let visible = false;
+                                if (isedit == "True") {
+                                    row.IsActive
+                                        ? str = '<a class="editclass btn seagreen_btnnew tooltips" data-placement="top" data-original-title="Edit" onclick="updateRoom(' + row.RoomId + ')"> <i class="fa-regular fa-pen-to-square"> </i> </a> <span></span><a class="Inactiveclass btn red_btnnew tooltips" data-placement="top" data-original-title="Inactive" onclick="statusChange(' + row.RoomId + ')"><i class="fa-solid fa-xmark"></i></a>'
+                                        : str = '<a class="editclass btn seagreen_btnnew tooltips" data-placement="top" data-original-title="Edit" onclick="updateRoom(' + row.RoomId + ')"> <i class="fa-regular fa-pen-to-square"> </i> </a> <span> </span><a class="Activeclass btn green_btnnew tooltips" data-placement="top" data-original-title="Active" onclick="statusChange(' + row.RoomId + ')"><i class="fa-solid fa-check"></i></a>';
+                                }
+                                if (isdelete == "True" && visible) {
+                                    str += '<a class="Inactiveclass btn red_btnnew tooltips" data-placement="top" data-original-title="Delete" onclick="deleteRoom(' + row.RoomId + ')"><i class="fa-regular fa-trash-can"></i></a>'
+                                }
+                                return str;
+                            }
+                        }
+                    ],
+                    "preDrawCallback": function (settings) {
+                        $("#ajax_loader").hide();
+                    },
+                    drawCallback: function () {
+                        $('.tooltips').tooltip();
+                    }
+                });
+                setTimeout(function () {
+                    $("#" + "tblRoom" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+                    $('.tooltips').tooltip();
+                }, 100);
+            }
+        },
+        error: function (errormsg) {
+            toastr.error("Error during fetch Data");
+            $('#tblempty').hide();  // Hide the empty message
+            $('#NotificationGrid-empty').show();
+        }
+
+    });
+    }
+    function AddRoom(e) {
+        checkSession();
+        e.preventDefault();
+        if ($('#RoomName').val().trim() == "") {
+            $("#RoomName").addClass('field_error');
+            $("#RoomName").focus();
+            e.preventDefault();//or return false
+            return ;
+        }
+        if ($('#RoomLocation').val().trim() == "") {
+            $("#RoomLocation").addClass('field_error');
+            $("#RoomLocation").focus();
+            e.preventDefault();//or return false
+            return ;
+        }
+        if ($('#Capacity').val().trim() == "") {
+            $("#Capacity").addClass('field_error');
+            $("#Capacity").focus();
+            e.preventDefault();//or return false
+            return;
+        }
+
+
+        let obj = {
+            RoomId: $('#RoomId').val() || 0,
+            RoomName: $('#RoomName').val(),
+            RoomLocation: $('#RoomLocation').val(),
+            Capacity: $('#Capacity').val(),
+            Amenities: $('#Amenities').val() != null ? $('#Amenities').val().toString():"",
+        };
+
+     $.ajax({
+        type: "POST",
+        url: '@_webapiurl' +"RoomBook/AddRoom",
+        headers: { 'Authorization': '@_tokan' },
+        data: JSON.stringify(obj),
+        contentType: "application/json; charset=utf-8",
+        dataType: "json",
+         success: function (data) {
+             if (data.MegSts == 'ok') {
+                 toastr.success(data.Meg);
+             }
+             else if (data.MegSts == 'error') {
+                 toastr.error(data.Meg);
+             }
+             else {
+                 toastr.error("Error during insert and update");
+             }
+
+             $('#myModal').modal('toggle');
+             FillTable();
+
+         },
+         error: function (errormsg) {
+             toastr.error("Error during insert and update");
+             $('#myModal').modal('toggle');
+             FillTable();
+         }
+    });
+    }
+    function updateRoom(RoomId) {
+        checkSession();
+        frmClear();
+    let Room = RoomData.find((value) => value.RoomId == RoomId);
+
+        $('#RoomId').val(Room.RoomId);
+        $('#RoomName').val(Room.RoomName);
+        $('#RoomLocation').val(Room.RoomLocation);
+        $('#Capacity').val(Room.Capacity);
+        var AmenitiesVal= Room.Amenities||"";
+        AmenitiesVal = AmenitiesVal.split(",");
+        for (var i in AmenitiesVal) {
+            var optionVal = AmenitiesVal[i].trim(); // Ensure there are no leading/trailing spaces
+            // Check if optionVal is valid (not empty or undefined)
+            if (optionVal) {
+                // Proceed to select the option only if optionVal is valid
+                $("#Amenities").find("option[value=" + optionVal + "]").prop("selected", "selected");
+            }
+        }
+        $('#Amenities').multiselect('refresh');
+        $('#myModal').modal('toggle');
+    }
+    function deleteRoom(RoomId) {
+        checkSession();
+        $.ajax({
+        type: "GET",
+        url: '@_webapiurl' + "RoomBook/deleteRoom?id=" + RoomId,
+        headers: { 'Authorization': '@_tokan' },
+        contentType: "application/json; charset=utf-8",
+        dataType: "json",
+        success: function (data) {
+             if (data.MegSts == 'ok') {
+                 toastr.success(data.Meg);
+             }
+             else if (data.MegSts == 'error') {
+                 toastr.error(data.Meg);
+             }
+             else {
+                 toastr.error("Error during delete");
+             }
+
+             FillTable();
+
+         },
+         error: function (errormsg) {
+             toastr.error("Error during delete");
+             FillTable();
+         }
+    });
+
+    }
+    function statusChange(RoomId) {
+        checkSession();
+        let Room = RoomData.find((value) => value.RoomId == RoomId);
+
+        let obj = {
+            RoomId : Room.RoomId,
+            IsActive : !Room.IsActive,
+        }
+
+        $.ajax({
+        type: "POST",
+        url: '@_webapiurl' +"RoomBook/RoomStatusChange",
+        headers: { 'Authorization': '@_tokan' },
+        data: JSON.stringify(obj),
+        contentType: "application/json; charset=utf-8",
+        dataType: "json",
+         success: function (data) {
+             if (data.MegSts == 'ok') {
+                 toastr.success(data.Meg);
+             }
+             else if (data.MegSts == 'error') {
+                 toastr.error(data.Meg);
+             }
+             else {
+                 toastr.error("Error during status change");
+             }
+
+             FillTable();
+
+         },
+         error: function (errormsg) {
+             toastr.error("Error during status change");
+             FillTable();
+         }
+    });
+    }
+    function fillAmenity() {
+        $.ajax({
+        type: "GET",
+        url: '@_webapiurl' +"RoomBook/GetAmenityList",
+        headers: { 'Authorization': '@_tokan' },
+        contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            success: function (data) {
+                if (data != null && data.length > 0) {
+                    var options = ''; // Create an empty string to hold options
+                    data.forEach(function (item) {
+                        options += '<option value="' + item.AmenityId + '">' + item.AmenityName + '</option>';
+                    });
+
+                    // Append the options to the multiselect dropdown
+                    $('#Amenities').html(options);
+
+                    // Rebuild the multiselect to update it with the new options
+                    $('#Amenities').multiselect('rebuild');
+                }
+            }
+        })
+    }
+    function frmClear() {
+        $('#RoomId').val("");
+        $('#RoomName').val("");
+        $('#RoomLocation').val("");
+        $('#Capacity').val("");
+        $('#Amenities').val("");
+        $("#Amenities option[value = '0']").prop('selected', true);
+        $("#Amenities").multiselect('refresh');
+    }
+
+
+    function checkSession() {
+        $.ajax({
+            type: "GET",
+            async: false,
+            url: "/ESS/checkSession",
+            contentType: "application/json; charset=utf-8",
+            success: function (data) {
+                if (data.isRedirect) {
+                    window.RoomLocation.href = data.redirectUrl;
+                }
+            },
+            error: function (data) {
+                window.RoomLocation.href = data;
+            }
+        });
+    }
+</script>
+@if (obj.CanView)
+{
+    <div class="page-bar">
+
+        @if (_RoleId == 1 || _RoleId == 6805 || _RoleId == 6806)
+        {
+
+            <ul class="page-breadcrumb">
+                <li>
+                    @if (isClientDBMatchFlag == "True")
+                    {
+                        <a href="/Admin/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+                    }
+                    else
+                    {
+                        <a href="/Dashboard/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+                    }
+                </li>
+                <li>
+                    <span><i class="fa-light fa-angle-right"></i> Room</span>
+                </li>
+            </ul>
+        }
+        else
+        {
+            <ul class="page-breadcrumb">
+                <li>
+                    @if (isClientDBMatchFlag == "true")
+                    {
+                        <a href="/Admin/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+                    }
+                    else
+                    {
+                        <a href="/Dashboard/EmployeeDashboard"><i class="fa-regular fa-house"></i></a>
+                    }
+                </li>
+                <li>
+                    <span><i class="fa-light fa-angle-right"></i> Room</span>
+                </li>
+            </ul>
+        }
+        @if (obj.CanAdd)
+        {
+            <div class="page-toolbar">
+                <div class="text-right">
+                    <a id="AddRoom" class="btn icon_transparent_btn  tooltips" data-placement="left" data-original-title="Add Room"><i class="fa-solid fa-plus"></i></a>
+                </div>
+            </div>
+        }
+    </div>
+    <div class="portlet">
+        <div class="portlet-body">
+            <div class="row">
+                <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                    @*<input type="button" id="btnExport" value="Export All" class="btn btn-primary" />*@
+                    <div id="divtblRoom" class="table-scrollable">
+                        <div id="tblempty">
+                            <div class="table-responsive" id="tableResponsive">
+                                <table id="tblRoom" class="new_datatbl table table-striped table-bordered table-hover table-checkable order-column"></table>
+                            </div>
+                        </div>
+                        <div id="NotificationGrid-empty" style="display: none">
+                            <div class="datanotfound">
+                                <img src="~/assets/images/emptyscreen_3.png" height="148" width="280" alt="Nodata Found Icon">
+                                <p class="datanotfound_title">No data found</p> <!-- titleText -->
+                                <p class="">No matching records found for the selected filters.</p><!-- subText -->
+                            </div>
+                        </div>
+                        <table id="tblRoom1" class="table table-striped table-bordered table-hover table-checkable order-column" style="display:none;"></table>
+                    </div>
+                    @*<div class="nodata_block no_recoed" style="display: none; text-align: center;" id="no_data">
+                        <img src="/assets/images/Data_not_found.jpg" height="200" width="200" alt="No Data Icon">
+                    </div>*@
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+        <div id='ajax_loader' class="modal_bg loading">
+            <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading" />
+        </div>
+    </div>
+    <div id="myModal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog w-500">
+            <!-- Modal content-->
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    <h4 class="modal-title">Room</h4>
+                </div>
+                <div class="modal-body">
+                    <div class="modal-card">
+                        <fieldset>
+                            <div class="row">
+                                <div class="col-lg-12">
+                                    <span class="help-block" hidden id="spvalidation"></span>
+                                </div>
+                                <div class="col-lg-12" hidden>
+                                    <div class="form-group">
+                                        <label>Room ID</label>
+                                        <input type="text" class="form-control" name="RoomId" id="RoomId">
+                                    </div>
+                                </div>
+                                <div class="col-lg-12">
+                                    <div class="form-group">
+                                        <label>Room Name <span class="required" style="color:red;" aria-required="true"> * </span></label>
+                                        <input type="text" class="form-control input-sm" name="RoomName" id="RoomName" placeholder="Please Enter" required maxlength="50" onpaste="return false;" oncopy="return false;" oncut="return false;" oncontextmenu="return false;">
+                                    </div>
+                                </div>
+                                <div class="col-lg-12">
+                                    <div class="form-group">
+                                        <label>Location <span class="required" style="color:red;" aria-required="true"> * </span></label>
+                                        <input type="text" class="form-control input-sm" name="RoomLocation" id="RoomLocation" placeholder="Please Enter" required maxlength="200" onpaste="return false;" oncopy="return false;" oncut="return false;" oncontextmenu="return false;">
+                                    </div>
+                                </div>
+                                <div class="col-lg-12">
+                                    <div class="form-group">
+                                        <label>Capacity <span class="required" style="color:red;" aria-required="true"> * </span></label>
+                                        <input type="number" class="form-control input-sm" name="Capacity" id="Capacity" placeholder="Please Enter" required min="1" max="1000" onpaste="return false;" oncopy="return false;" oncut="return false;" oncontextmenu="return false;">
+                                    </div>
+                                </div>
+                                <div class="col-lg-12" id="divAmenities">
+                                    <div class="form-group">
+                                        <label>Amenity</label>
+                                        <select class="mt-multiselect btn blue btn-outline" multiple="multiple" data-width="100%" required id="Amenities"></select>
+                                    </div>
+                                </div>
+                            </div>
+                        </fieldset>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <div class="row">
+                        <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                            <button type="button" id="btnAmntSubmit" class=" btn save_btn"> <i class="fa-light fa-floppy-disk"></i> Save</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    <span style="color:red">Unauthorized Access.</span>
+}

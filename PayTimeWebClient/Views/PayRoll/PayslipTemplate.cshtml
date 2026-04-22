@@ -1,0 +1,749 @@
+﻿@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@using System.Configuration;
+@{
+    ViewBag.Title = "Payslip Template";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    string _webapiurlpayroll = ConfigurationManager.AppSettings["webapipaytimePayroll"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    string _PlanId = HttpContext.Current.Session["planId"].ToString();
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+    string _CheckCustomClientDBName = ConfigurationManager.AppSettings["CheckCustomClientDBName"].ToString();
+    string _dbName = HttpContext.Current.Session["DbName"].ToString();
+    int _CheckFastrackdb = 0;
+    if (_CheckCustomClientDBName.Contains(_dbName))
+    {
+        _CheckFastrackdb = 1;
+    }
+}
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.4.0/jspdf.umd.min.js"></script>
+<link href="/Newlayout/css/payrollstructure.css" rel="stylesheet">
+<script src="~/Scripts/Helpers/noDataHandler.js"></script>
+<style>
+    #export-button {
+        display: none;
+    }
+</style>
+<script>
+
+    var is_update = 0;
+
+    $(document).ready(function () {
+
+        function formclear() {
+            $('#LogoID').val("");
+            $('#companylogo').val("");
+            $("#altTextImage").val('');
+            $("#headerText").val('');
+            $("#footerText").val('');
+            $('#template_select').val(0);
+
+            $('#companylogo').removeClass('field_error');
+            $('#template_select').removeClass('field_error');
+            $('.fileinput-filename').text('');
+        }
+
+        $(".changeFile").hide();
+        $("#clearlogo").hide();
+
+        $("#companylogo").on("change", function () {
+
+            var filePath = $(this).val();
+            var file = this.files[0];
+            var allowedExtensions = /(\.jpg|\.jpeg|\.png|\.gif)$/i;
+
+            if ((file.size) / (1024 * 1024) > 1) {
+                toastr.remove();
+                toastr.error("Image Size should not exceed more than 1 MB.");
+                return false;
+            }
+
+            if (!allowedExtensions.exec(filePath)) {
+                toastr.error('Please upload a file with extensions .jpeg/.jpg/.png only.');
+                $(this).val('');
+                $(".changeFile").hide();
+                $("#clearlogo").hide();
+                $('.fileinput-filename').text("");
+                return false;
+            }
+            else {
+
+                $(".selectFile").hide();
+                $(".changeFile").show();
+                $("#clearlogo").show();
+                $('.fileinput-filename').text(file.name);
+            }
+
+        });
+
+        $("#clearlogo").click(function () {
+            $(".changeFile").hide();
+            $("#clearlogo").hide();
+            $(".selectFile").show();
+            $('.fileinput-filename').text("");
+        });
+
+        @*function dataTableLogoBind() {
+
+            var table = "";
+            var logo_tbl = $('#companyLogotable').DataTable();
+            logo_tbl.destroy();
+
+
+            //Datatable call
+            //checkSession();
+            $.ajax({
+                type: "GET",
+                headers: { 'Authorization': '@_tokan' },
+                url: '@_webapiurlpayroll' + 'PayslipTemplate/GetCompanyLogo',
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                beforeSend: function () {
+                    $("#ajax_loader").show();
+                },
+                success: function (response) {
+                    var emp_count = 0;
+                    if (response.length > 0) {
+                        for (var i = 0; i < response.length; i++) {
+
+                            var tbl = "<tr>";
+
+                            tbl = tbl + "<td hidden class=''><input type='text' id='logoID' value='" + response[i].logoID + "'/>";
+                            tbl = tbl + "</td>";
+
+
+                            tbl = tbl + "<td hidden class='logo_filename'><img  height='50' src= '" + response[i].logo_filepath + "' alt='Random Image' />";
+                            tbl = tbl + "</td>";
+
+                            tbl = tbl + "<td class='logo_image'><img height='30' id='imageFile' src= '" + response[i].Image + "' alt='Random Image' /><span hidden>" + i + "</span>";
+                            tbl = tbl + "</td>";
+
+                            tbl = tbl + "<td class='alt_text'>" + response[i].alt_text;
+                            tbl = tbl + "</td>";
+
+                            tbl = tbl + "<td class='header_text'>" + response[i].header_text;
+                            tbl = tbl + "</td>";
+
+                            tbl = tbl + "<td class='footer_text'>" + response[i].footer_text;
+                            tbl = tbl + "</td>";
+
+                            tbl = tbl + "<td class='template_id'>" + response[i].template_id;
+                            tbl = tbl + "</td>";
+
+
+
+                            if (response[i].is_active == true) {
+
+                                tbl = tbl + "<td class='status'>Active</td>";
+
+                                tbl = tbl + "<td> <button id='' class='btn btn-sm blue btnEditLogo'>Edit</button>"
+                                tbl = tbl + "<button id='' class='btn btn-sm red btnInactive'>Inactive</button><span hidden>" + i + "</span>"
+                            }
+                            else {
+
+                                tbl = tbl + "<td class='status'>InActive</td>";
+
+                                tbl = tbl + "<td> <button id='' class='btn btn-sm blue btnEditLogo'>Edit</button>"
+                                tbl = tbl + "<button id='' class='btn btn-sm blue btnActive'>Active</button><span hidden>" + i + "</span>"
+                            }
+                            tbl = tbl + "</td>";
+
+                            tbl = tbl + "</tr>";
+                            table += tbl;
+                        }
+
+                        $("#companyLogotable tbody").empty();
+                        $("#companyLogotable tbody").append(table);
+                        $('#companyLogotable').destroy;
+
+                        // DataTable initialisation
+                        logo_tbl = $("#companyLogotable").DataTable({
+                            dom: "<'row'<'col-lg-3 col-sm-5 col-xs-12'<'record_btn_main'l>><'col-lg-9 col-sm-7 col-xs-12 mb_margin_bottom_15'<'selected_emp_main'<'tbl_text'>>>",
+                            processing: true,
+                            paging: false,
+                            autoWidth: true,
+                            ordering: true,
+                            destroy: false,
+                            //columns: [
+                            //    { title: "Logo Filepath" }, // Define column titles
+                            //    { title: "Alt Text" },
+                            //    { title: "Header Text" },
+                            //    { title: "Footer Text" },
+                            //    { title: "Template ID" }
+                            //]
+                        });
+
+
+                    } else {
+
+                        // DataTable initialisation
+                        logo_tbl = $("#companyLogotable").DataTable({
+                            dom: "<'row'<'col-lg-3 col-sm-5 col-xs-12'<'record_btn_main'l>><'col-lg-9 col-sm-7 col-xs-12 mb_margin_bottom_15'<'selected_emp_main'<'tbl_text'>>>",
+                            processing: true,
+                            paging: false,
+                            autoWidth: true,
+                            ordering: false,
+                            destroy: true,
+                            //buttons: [
+
+                            //],
+                        });
+                    }
+                },
+                complete: function () {
+                    $("#ajax_loader").hide();
+                }
+            });
+        }*@
+
+        function dataTableLogoBind() {
+
+            if ($.fn.dataTable.isDataTable('#companyLogotable')) {
+                $('#companyLogotable').DataTable().destroy();
+
+            }
+            $("#dataTables_tbl_header").remove();
+            var logo_tbl = $('#companyLogotable').DataTable({
+                dom: _domCommon,
+                language: _languageCommon,
+                paging: true, // Disable paging
+                searching: true, // Disable searching
+                "columnDefs": [
+                    {
+                        "targets": 6,
+                        orderable: false
+                    },
+                    ]
+            });
+            setTimeout(function () {
+                $("#" + "companyLogotable" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+                $('.tooltips').tooltip();
+            }, 100);
+            checkSession();
+            // Datatable call
+            // checkSession();
+            $.ajax({
+                type: "GET",
+                headers: { 'Authorization': '@_tokan' },
+                url: '@_webapiurlpayroll' + 'PayslipTemplate/GetCompanyLogo',
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                beforeSend: function () {
+                    $("#ajax_loader").show();
+                },
+                success: function (response) {
+                    if (response != null) {
+                        const payslip = response;
+                        handleGridVisibility("tblempty", "NotificationGrid-empty", payslip, {
+                            imageUrl: "emptyscreen_3.png",
+                            subText: "No matching records found for the selected filters."
+                        });
+                    }
+                    var emp_count = 0;
+                    if (response.length > 0) {
+                        // Clear existing table data
+                        logo_tbl.clear();
+
+                        // Add new rows to the table
+                        for (var i = 0; i < response.length; i++) {
+
+                            var tbl = "<tr>";
+
+                            tbl = tbl + "<td hidden class=''><input type='text' id='logoID' value='" + response[i].logoID + "'/>";
+                            tbl = tbl + "</td>";
+
+                            tbl = tbl + "<td hidden class='logo_filename'><img  height='50' src= '" + response[i].file_name + "' alt='Image' />";
+                            tbl = tbl + "</td>";
+
+                            if (response[i].Image == null || response[i].Image == "") { //Deafult logo if Image file not found
+                                response[i].Image = "https://app.minopcloud.com/AssetsNew/images/logo.png"
+                            }
+
+                            tbl = tbl + "<td class='logo_image'><img height='30' id='imageFile' src= '" + response[i].Image + "' alt='Random Image' /><span hidden>" + i + "</span>";
+                            tbl = tbl + "</td>";
+
+                            //tbl = tbl + "<td class='alt_text'>" + response[i].alt_text;
+                            //tbl = tbl + "</td>";
+
+                            //tbl = tbl + "<td class='header_text'>" + response[i].header_text;
+                            //tbl = tbl + "</td>";
+
+                            tbl = tbl + "<td class='footer_text'>" + response[i].footer_text;
+                            tbl = tbl + "</td>";
+
+                            tbl = tbl + "<td class='template_id'>" + response[i].template_id;
+                            tbl = tbl + "</td>";
+
+                            if (response[i].is_active == true) {
+                                tbl = tbl + "<td class='status'><span class='green_font'>Active</span></td>";
+                                if ('@obj.CanEdit' == "True") {
+
+                                    tbl = tbl + "<td> <button id='' class='btn seagreen_btnnew btnEditLogo tooltips' data-placement='top' data-original-title='Edit'><i class='fa-regular fa-pen-to-square'></i></button>"
+                                    tbl = tbl + "<button id='' class='btn red_btnnew btnInactive tooltips' data-placement='top' data-original-title='Inactive' style='border-radius: 3px !important;'><i class='fa-solid fa-xmark'></i></button><span hidden>" + i + "</span>"
+                                    tbl = tbl + "</td>";
+                                }
+                                else {
+                                    tbl += "<td></td>";
+                                }
+                            }
+
+                            else {
+                                tbl = tbl + "<td class='status'><span class='red_font'>InActive</span></td>";
+                                if ('@obj.CanEdit' == "True") {
+                                    tbl = tbl + "<td> <button id='' class='btn seagreen_btnnew btnEditLogo tooltips' data-placement='top' data-original-title='Edit'><i class='fa-regular fa-pen-to-square'></i></button>"
+                                    tbl = tbl + "<button id='' class='btn green_btnnew btnActive tooltips' data-placement='top' data-original-title='Active'><i class='fa-solid fa-check'></i></button><span hidden>" + i + "</span>"
+                                    tbl = tbl + "</td>";
+                                }
+                                else {
+                                    tbl += "<td></td>";
+                                }
+                            }
+
+
+                            tbl = tbl + "</tr>";
+                            logo_tbl.row.add($(tbl)).draw(false);
+                            $('.tooltips').tooltip();
+                        }
+
+                    } else {
+                        // Handle case when no data is returned
+                    }
+                },
+
+                complete: function () {
+                    $("#ajax_loader").hide();
+                }
+            });
+        }
+
+
+
+        dataTableLogoBind();
+
+        //Footter Test, header text validation
+        $("#footerText").on("keypress", function (e) {
+            var keycode = e.which;
+            if (keycode == 45 || keycode == 46 || keycode == 58) { }
+            else {
+                if ((keycode >= 65 && keycode <= 90) || (keycode >= 48 && keycode <= 57) || (keycode >= 97 && keycode <= 122) || keycode == 46) { }
+                else { e.preventDefault() }
+            }
+        });
+
+        //Table Edite Button CLick event
+        $("body").on("click", ".btnEditLogo", function () {
+            const wrapper = $(".filter_portlet_wrapper");
+            wrapper.removeClass("full-width");
+            is_update = 1;
+            var row = $(this).closest('tr')
+            var logoID = parseInt(row.find('#logoID').val());
+            var Base64file = row.find('#imageFile').attr('src').replace(/^data:image\/(png|jpg);base64,/, '');;
+            var fileName = row.find(".logo_filename img").attr('src');
+
+
+            //var altText = (row.find(".alt_text").text());
+            //var headerText = (row.find('.header_text').text());
+            var footerText = (row.find('.footer_text').text());
+            var templateID = (row.find('.template_id').text());
+
+
+            $("#LogoID").val(logoID);
+            //$("#altTextImage").val(altText);
+            //$("#headerText").val(headerText);
+            $("#footerText").val(footerText);
+            $("#template_select").val(templateID);
+
+
+
+            //Getting Orgianal file name
+            var fileNameWithoutGuid = fileName.substring(0, fileName.lastIndexOf('_')); // Removing last 36 characters before _
+            var extension = fileName.substring(fileName.lastIndexOf('.')); // Get the file extension
+
+            // Concatenate the filename without the GUID and the extension
+            var finalFileName = fileNameWithoutGuid + extension;
+
+            fileName = finalFileName;
+
+
+            // Convert base64 to binary
+            var binaryString = atob(Base64file);
+            var byteArray = new Uint8Array(binaryString.length);
+            for (var i = 0; i < binaryString.length; i++) {
+                byteArray[i] = binaryString.charCodeAt(i);
+            }
+
+            // Create a Blob from the binary data
+            var blob = new Blob([byteArray], { type: 'image/png' });
+
+            // Create a File object from the Blob
+            var file = new File([blob], fileName, { type: 'image/png' });
+            $('.fileinput-filename').text(fileName);
+
+            var fileList = new DataTransfer();
+            fileList.items.add(file);
+            $(".selectFile").hide();
+            $(".changeFile").show();
+            $("#clearlogo").show();
+
+            $("#companylogo").prop('files', fileList.files);
+
+        });
+
+        //Active and Inactive code
+        $("#companyLogotable").on("click", ".btnActive", function () {
+            var row = $(this).closest('tr')
+            var Id = parseInt(row.find('#logoID').val());
+            checkSession();
+            $.ajax({
+                //thucdbs
+                type: "POST",
+                headers: { 'Authorization': '@_tokan' },
+                url: "@_webapiurlpayroll" + 'PayslipTemplate/StatusUpdate?Id=' + Id + '&status=' + 1,
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                beforeSend: function () {
+                    $("#ajax_loader").show();
+                },
+                success: function (response) {
+                    if (response != "") {
+
+                        if (response.success) {
+                            toastr.remove();
+                            toastr.success(response.message);
+                            dataTableLogoBind();
+                        }
+                        else {
+                            toastr.remove();
+                            toastr.error(response.message);
+                        }
+                    }
+                },
+                complete: function () {
+                    $("#ajax_loader").hide();
+                }
+            });
+
+
+        });
+
+
+        $("#companyLogotable").on("click", ".btnInactive", function () {
+            var row = $(this).closest('tr')
+            var Id = parseInt(row.find('#logoID').val());
+            checkSession();
+            $.ajax({
+                //thucdbs
+                type: "POST",
+                headers: { 'Authorization': '@_tokan' },
+                url: "@_webapiurlpayroll" + 'PayslipTemplate/StatusUpdate?Id=' + Id + '&status=' + 0,
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                beforeSend: function () {
+                    $("#ajax_loader").show();
+                },
+                success: function (response) {
+                    if (response != "") {
+
+                        if (response.success) {
+                            toastr.remove();
+                            toastr.success(response.message);
+                            dataTableLogoBind();
+                        }
+                        else {
+                            toastr.remove();
+                            toastr.error(response.message);
+                        }
+                    }
+                },
+                complete: function () {
+                    $("#ajax_loader").hide();
+                }
+            })
+
+        });
+
+        $('#clearlogo').click(function () {
+            $('#companylogo').val('');
+        });
+        $('#btnClear').click(function () {
+            is_update = 0;
+            formclear();
+            $(".selectFile").show();
+            $(".changeFile").hide();
+            $("#clearlogo").hide();
+
+        });
+
+
+        $('#btnSave').click(function () {
+
+            if (is_update = 0) {
+            }
+
+            if ($('#companylogo').val() == "" || $('#companylogo').val() == null) {
+                toastr.remove();
+                toastr.error("Please select company logo to upload.");
+                $('#companylogo').addClass('field_error');
+                return false;
+            }
+            else {
+                $('#companylogo').removeClass('field_error');
+            }
+
+            if ($('#template_select').val() == 0) {
+                toastr.remove();
+                toastr.error("Please select Template");
+                $('#template_select').addClass('field_error');
+                return false;
+            }
+            else {
+                $('#template_select').removeClass('field_error');
+            }
+
+            var logoFile = $('#companylogo')[0].files[0];
+            if ((logoFile.size) / (1024 * 1024) > 1) {
+                toastr.remove();
+                toastr.error("Image Size should not exceed more than 1 MB.");
+                return false;
+            }
+
+            var logo_id = $("#LogoID").val();
+            //var altText = $("#altTextImage").val();
+            var headerText = $("#headerText").val();
+            var footerText = $("#footerText").val();
+            var templateID = $("#template_select").val();
+
+            if (logo_id == "" || logo_id == undefined) {
+                logo_id = 0;
+            }
+
+            if(templateID > 2){
+                toastr.remove();
+                toastr.error("Please select either Template 1 or Template 2.");
+                return false;
+            }
+
+            var formData = new FormData();
+            formData.append('file', logoFile);
+            //console.log(typeof (formData));
+            formData.append('Logo_id', logo_id);
+            //formData.append('Alt_text', altText);
+            formData.append('Header_text', headerText);
+            formData.append('Footer_text', footerText);
+            formData.append('Template_id', templateID);
+            checkSession();
+            $.ajax({
+                type: "POST",
+                headers: { 'Authorization': '@_tokan' },
+                url: "@_webapiurlpayroll" + "PayslipTemplate/UploadLogoandDetails",
+                data: formData,
+                contentType: false,
+                processData: false,
+                success: function (response) {
+                    const wrapper = $(".filter_portlet_wrapper");
+                    wrapper.addClass("full-width");
+                    var screenWidth = $(window).width();
+                    if (screenWidth >= 300 && screenWidth <= 600) {
+                        $(".filter_portlet_tbl").show();
+                    }
+                    if (response.success) {
+                        formclear();
+                        $(".selectFile").show();
+                        $(".changeFile").hide();
+                        $("#clearlogo").hide();
+                        dataTableLogoBind();
+                        //$('#companyLogotable').DataTable().ajax.reload();
+                        toastr.remove();
+                        toastr.success(response.message);
+                        //setTimeout(function () {
+                        //    location.reload();
+                        //}, 1000);
+
+                    }
+                    else {
+                        toastr.remove();
+                        toastr.error(response.message);
+                    }
+                },
+                error: function (xhr, status, error) {
+                    toastr.remove();
+                    toastr.error(response.message)
+                }
+            });
+        });
+
+        function checkSession() {
+
+            $.ajax({
+                type: "GET",
+                async: false,
+                url: "/ESS/checkSession",
+                contentType: "application/json; charset=utf-8",
+                success: function (data) {
+                    if (data.isRedirect) {
+                        window.location.href = data.redirectUrl;
+                    }
+                },
+                error: function (data) {
+                    window.location.href = data;
+                }
+            });
+        }
+
+        $("#Filter_search").click(function () {
+            const wrapper = $(".filter_portlet_wrapper");
+            wrapper.toggleClass("full-width");
+
+            var screenWidth = $(window).width();
+            if (screenWidth >= 300 && screenWidth <= 600) {
+                $('.filter_portlet_tbl').toggle();
+                $('.filter_portlet_wrapper .filter_boxModal').css('width', '100%');
+            }
+        });
+
+        // Close filter panel on close button click
+        $(".filterclose_btn").click(function () {
+            const wrapper = $(".filter_portlet_wrapper");
+            wrapper.addClass("full-width");
+
+            var screenWidth = $(window).width();
+            if (screenWidth >= 300 && screenWidth <= 600) {
+                $(".filter_portlet_tbl").css("display", "block");
+            }
+        });
+
+    });
+</script>
+
+@if (obj.CanView)
+{
+    <div class="page-bar">
+        <ul class="page-breadcrumb" style="float: none">
+            <li>
+                <a href="@(_CheckFastrackdb == 1 ? "/Admin/AdminDashboard" : "/Dashboard/AdminDashboard")"><i class="fa-regular fa-house"></i></a>
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> Salary Slip Logo Change</span>
+            </li>
+        </ul>
+        <div class="page-toolbar">
+            <div class="text-right">
+                <a href="javascript:;" class="btn icon_transparent_btn margin-right-5 tooltips" id="Filter_search" data-placement="left" data-original-title="Filter" data-toggle="tooltip"><i class="fa-light fa-filter" aria-hidden="true"></i> </a>
+            </div>
+        </div>
+    </div>
+
+    <div id="ajax_loader" class="modal_bg loading" aria-hidden="true" style="display:none">
+        <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading" />
+    </div>
+
+    <div class="filter_portlet_wrapper full-width">
+        <!-- Datatable Block : Begin -->
+        <div class="portlet filter_portlet_tbl">
+            <div class="portlet-body">
+                <!-- Datatable : Begin -->
+                <div id="tblempty">
+                    <div class="table-responsive" id="tableResponsive">
+                        <table id="companyLogotable" class="new_datatbl viewstructure table table-striped table-bordered table_box_border table-hover serch_datatable table-checkable order-column dataTable">
+                            <thead>
+                                <tr>
+                                    <th hidden style="min-width: 150px">LogoID</th>
+                                    <th hidden style="min-width: 150px">ImagFileName</th>
+                                    <th style="min-width: 180px">Logo</th>
+                                    @*<th style="min-width: 80px">Alt text</th>*@
+                                    @*<th style="min-width: 80px">Header text</th>*@
+                                    <th style="min-width: 160px">Footer Text</th>
+                                    <th style="min-width: 80px">Assigned Template</th>
+                                    <th style="min-width: 80px">Status </th>
+                                    <th style="min-width: 80px">Action </th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+                <!-- Datatable : End -->
+
+                <div id="NotificationGrid-empty" style="display: none">
+                    <div class="datanotfound">
+                        <img src="" height="148" width="280" alt="Nodata Found Icon">
+                        <p class="datanotfound_title"></p> <!-- titleText -->
+                        <p class=""></p><!-- subText -->
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Datatable Block : End -->
+        <!-- Filter Block : Begin -->
+        <div class="portlet filter_boxModal">
+            <div class="filterbox_header">
+                <div class="d-flex align-items-center justify-content-between">
+                    <h4 class="filter-title">Filters</h4>
+                    <button type="button" class="filterclose_btn"><i class="fa-light fa-xmark"></i></button>
+                </div>
+            </div>
+            <div class="filterbox_body">
+                <input type="text" class="form-control input-sm inp" pattern="" name="" id="LogoID" style="display: none;">
+                <div class="col-lg-12" id="">
+                    <label class="control-label">Select a file<span class="required" aria-required="true"> * </span></label>
+                    <div class="input-group form-group">
+                        <div class="form-control uneditable-input input-fixed input" data-trigger="fileinput" style="min-width: auto;">
+                            <i class="fa-light fa-file"></i>&nbsp;
+                            <span class="fileinput-filename" style="white-space: nowrap; width: 100px; text-overflow: ellipsis;"> </span>
+                        </div>
+                        <span class="input-group-addon btn blue btn-file" style="font-size: 13px;">
+                            <span class="fileinput-new selectFile"><i class="fa-regular fa-file" aria-hidden="true"></i></span>
+                            <span class="fileinput-exists changeFile"><i class="fa-regular fa-arrows-rotate" aria-hidden="true"></i></span>
+                            <input type="file" id="companylogo" name="file">
+                        </span>
+                        <a href="javascript:;" class="input-group-addon btn red fileinput-exists" id="clearlogo" data-dismiss="fileinput" style="border-radius: 3px !important; font-size: 13px;"><i class="fa-regular fa-trash-can" style="color: #fff;"></i></a>
+                        @*<button type="button" class="btn btn-xs red disreject" id="clearlogo">Remove</button><br>*@
+                    </div>
+                </div>
+                <div class="col-lg-12">
+                    <label class="control-label">Footer Text<span class="required" aria-required="true">  </span></label>
+                    <div class="form-group">
+                        <input type="text" class="form-control input-sm inp" pattern="" name="" id="footerText" placeholder="Enter Footer Text" maxlength="1000">
+                    </div>
+                </div>
+                <div class="col-lg-12" id="template_drop">
+                    <div class="form-group">
+                        <label class="control-label">Template <span class="required" aria-required="true"> * </span></label>
+                        <select id="template_select" class="form-control input-sm" data-width="100%">
+                            <option value="0">Select Template</option>
+                            <option value="1">Template 1</option>
+                            <option value="2">Template 2</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="filterbox_footer">
+                <div class="text-right">
+                    @if (obj.CanAdd)
+                    {
+                        <button id="btnClear" class="btn clear_btn tooltips" data-placement="top" data-original-title="Clear all field"><i class="fa-regular fa-eraser"></i></button>
+                        <button id="btnSave" class="btn icon_btn margin-left-5 tooltips" data-placement="top" data-original-title="Save Details"><i class="fa-light fa-floppy-disk"></i></button>
+                    }
+                </div>
+            </div>
+        </div>
+        <!-- Filter Block : End -->
+    </div>
+}
+else
+{
+    <span style="color:red">Unauthorized Access.</span>
+}

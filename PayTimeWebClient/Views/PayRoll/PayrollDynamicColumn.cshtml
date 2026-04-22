@@ -1,0 +1,498 @@
+﻿@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@using System.Configuration;
+@{
+    ViewBag.Title = "Payrollgeneratecolumn";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    string _webapiurlpayroll = ConfigurationManager.AppSettings["webapipaytimePayroll"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    string _PlanId = HttpContext.Current.Session["planId"].ToString();
+
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+    string _CheckCustomClientDBName = ConfigurationManager.AppSettings["CheckCustomClientDBName"].ToString();
+    string _dbName = HttpContext.Current.Session["DbName"].ToString();
+    int _CheckFastrackdb = 0;
+    if (_CheckCustomClientDBName.Contains(_dbName))
+    {
+        _CheckFastrackdb = 1;
+    }
+}
+@*<script src="~/Newlayout/js/sweet_alert_payroll.js"></script>*@
+<script src="~/Scripts/Helpers/noDataHandler.js"></script>
+<link href="/Newlayout/css/payrollstructure.css" rel="stylesheet">
+<style type="text/css">
+    .dataTables_wrapper .dataTables_filter {
+        display: none !important;
+    }
+
+    .dataTables_wrapper {
+        padding: 0px 0 0px 0;
+    }
+
+    .buttons-columns {
+        display: none !important;
+    }
+</style>
+<script src="~/AssetsNew/js/CommonValidation.js"></script>
+@if (obj.CanView)
+{
+    <script>
+        var t = "";
+        $(document).ready(function () {
+            $('input[type="text"]').on('keydown', function (e) {
+                if ((e.ctrlKey || e.metaKey) && e.keyCode == 86) {
+                    e.preventDefault();
+                    return false;
+                }
+
+            });
+
+            getAll();
+            ////$('div.tbl_text').html('<div class="dft_view">Default View</div>');
+            $('div.tbl_text').html('<div id="GetallColumntable_filter" class="dataTables_filter" style="display: block !important; position: relative; top: 2px; margin-top: 0;"><label>Search:<input type="search" class="form-control input-sm input-small input-inline" id="TableSearch" placeholder="" aria-controls="GetallColumntable"></label></div>');
+
+            //// Apply the Search
+            //$("#GetallColumntable").on("keyup", "input", function () {
+            //    t.column($(this).parent().index())
+            //    .search(this.value)
+            //    .draw();
+            //});
+
+            //Apply the Search
+            $('#TableSearch').on('keyup', function () {
+                var t = $("#GetallColumntable").DataTable();
+                var keyword = $(this).val().toLowerCase();
+                t.search(keyword).draw();
+            });
+
+            // Modal Open Close Code ================
+            $("#create_column").on('click', function () {
+                frmclear();
+                $("#create_column").attr("data-toggle", "modal");
+                $("#create_column").attr("data-target", "#create_newcolumn");
+                $("#Edit_head").hide();
+                $("#Create_head").show();
+
+            });
+            $("#Column_name").keypress(function (e) {
+                var keyCode = e.which;
+                if (keyCode === 32) {
+                    event.preventDefault(); // Prevent the space from being entered
+                }
+                var Responce = validateKeyPress(keyCode);
+                if (Responce == true) {
+                }
+                else { e.preventDefault(); }
+            });
+            $("#Column_name").blur(function () {
+                var CName = removeTags($("#Column_name").val());
+                $("#Column_name").val(CName);
+            });
+            //$('#Column_name').keydown(function (e) {
+            //    if (this.value.length === 0 && e.which === 32) e.preventDefault();
+            //});
+
+            //delete
+            $("#GetallColumntable").on('click', '.delete_clm_btn', function () {
+                frmclear();
+                var column_id = t.row($(this).parent('td').parent('tr')).data()["column_id"];
+                if (column_id > 0) {
+                    var obj = {
+                        columnid: column_id
+                    }
+                    Swal.fire({
+                        html: '<div class="swal_title"> Delete Generated Column </div><div class="swal_subtitle">Are you sure? do you want to delete generated column. </div><div class="swal_thirdtitle"></div>',
+                        title: "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_error.svg' alt=''>Delete",
+                        closeOnConfirm: true,
+                        showCloseButton: true,
+                        showCancelButton: true,
+                        focusConfirm: false,
+                        confirmButtonText: 'Yes',
+                        cancelButtonText: 'No',
+                        allowOutsideClick: false,
+                        allowEscapeKey: false,
+                        customClass: {
+                            confirmButton: 'swal-confirm-button-class',
+                            cancelButton: 'swal-cancel-button-class'
+                        }
+                    }).then(function (isConfirm) {
+                        if (isConfirm.isConfirmed == true) {
+                            checkSession();
+                            $.ajax({
+                                type: "POST",
+                                headers: { 'Authorization': '@_tokan' },
+                                url: '@_webapiurlpayroll' + 'PayrollDynamicColumns/DeleteGeneratepayrolldycolumns',
+                                data: JSON.stringify(obj),
+                                contentType: "application/json; charset=utf-8",
+                                dataType: "json",
+                                beforeSend: function () {
+                                    $("#ajax_loader").show();
+                                },
+                                success: function (response) {
+                                    if (response.success == true) {
+                                        toastr.remove();
+                                        toastr.success("Column " + response.message);
+                                        $('#GetallColumntable').DataTable().ajax.reload();
+                                    }
+                                },
+                                complete: function () {
+                                    $("#ajax_loader").hide();
+                                }
+                            });
+                        }
+                    });
+
+                }
+                $('img[src="/assets/images/icons/swal_icon/icon_error.svg"]').parent().parent().parent().addClass('swal_error');
+            });
+            //edit
+            $("#GetallColumntable").on('click', '.edit_clm_btn', function () {
+                frmclear();
+                var column_id = t.row($(this).parent('td').parent('tr')).data()["column_id"];
+                var Edit_Column_name = t.row($(this).parent('td').parent('tr')).data()["column_name"];
+                $("#Column_name").val(Edit_Column_name);
+                var column_type = t.row($(this).parent('td').parent('tr')).data()["column_type"];
+                $("#Column_Type").val(column_type);
+                $("#Column_id").val(column_id);
+
+                $(".edit_clm_btn").attr("data-toggle", "modal");
+                $(".edit_clm_btn").attr("data-target", "#create_newcolumn");
+                $("#Edit_head").show();
+                $("#Create_head").hide();
+
+            });
+
+            $("#btnsave").on('click', function () {
+                var IsFlage = 0;
+                if ($("#Column_name").val().trim() == "") {
+                    $("#Column_name").focus();
+                    $("#Column_name").addClass('field_error');
+                    toastr.remove();
+                    toastr.error("Please enter column name");
+                    IsFlage = 1;
+                    return false;
+                } else {
+                    $("#Column_name").removeClass('field_error');
+                }
+
+
+                if ($("#Column_Type").val() == 0) {
+                    $("#Column_Type").focus();
+                    $("#Column_Type").addClass('field_error');
+                    toastr.remove();
+                    toastr.error("Please select section type");
+                    IsFlage = 1;
+                    return false;
+                } else {
+                    $("#Column_Type").removeClass('field_error');
+                }
+
+                if (IsFlage == 0) {
+                    var obj = {
+                        columnid: $("#Column_id").val(),
+                        columnname: $("#Column_name").val(),
+                        columntype: $("#Column_Type").val()
+                    }
+                    if ($("#Column_id").val() == 0) {
+                        //create
+                        checkSession();
+                        $.ajax({
+                            type: "POST",
+                            headers: { 'Authorization': '@_tokan' },
+                            url: '@_webapiurlpayroll' + 'PayrollDynamicColumns/AddPayrollDynamicColumns',
+                            data: JSON.stringify(obj),
+                            contentType: "application/json; charset=utf-8",
+                            dataType: "json",
+                            beforeSend: function () {
+                                $("#ajax_loader").show();
+                            },
+                            success: function (response) {
+                                if (response.success == true && response.responseCode == 201) {
+                                    toastr.remove();
+                                    //toastr.success(response.message);
+                                    toastr.success("Column add successfully.");
+                                    $('#GetallColumntable').DataTable().ajax.reload();
+                                    $('#create_newcolumn').modal('toggle');
+                                }
+                                if (response.success == false && response.responseCode == 210) {
+                                    toastr.remove();
+                                    toastr.error(response.message);
+                                }
+                            },
+                            complete: function () {
+                                $("#ajax_loader").hide();
+                            }
+                        });
+                    } else {
+                        //Update
+                        checkSession();
+                        $.ajax({
+                            type: "POST",
+                            headers: { 'Authorization': '@_tokan' },
+                            url: '@_webapiurlpayroll' + 'PayrollDynamicColumns/UpdatePayrollDynamicColumns',
+                            data: JSON.stringify(obj),
+                            contentType: "application/json; charset=utf-8",
+                            dataType: "json",
+                            beforeSend: function () {
+                                $("#ajax_loader").show();
+                            },
+                            success: function (response) {
+                                if (response.success == true) {
+                                    toastr.remove();
+                                    toastr.success("Column " + response.message);
+                                    $('#GetallColumntable').DataTable().ajax.reload();
+                                    $('#create_newcolumn').modal('toggle');
+                                }
+                                if (response.success == false && response.responseCode == 210) {
+                                    toastr.remove();
+                                    toastr.error(response.message);
+                                }
+                            },
+                            complete: function () {
+                                $("#ajax_loader").hide();
+                            }
+                        });
+                    }
+                }
+            });
+
+        });
+        function frmclear() {
+            $("#Column_id").val(0);
+            $("#Column_name").val("");
+            $("#Column_Type").val(0);
+        }
+        function getAll() {
+            // DataTable initialisation
+            t = $("#GetallColumntable").DataTable({
+                //dom: "<'row'<'col-lg-3 col-sm-5 col-xs-12 recordbtn_end'<'record_btn_main'l,><'dt-buttons'Bf>><'col-lg-9 col-sm-7 col-xs-12 mb_margin_bottom_15'<'tbl_text'>>>" +
+                //      "<'row'<'col-sm-12 margin-bottom-10'<'customforms_table'tr'>>>" +
+                //      "<'row'<'col-md-5 col-sm-5'i><'col-md-7 col-sm-7'p>>",
+                dom: _domCommon,
+                language: _languageCommon,
+                paging: true,
+                "processing": true,
+                "ajax": {
+                    url: '@_webapiurlpayroll' + 'PayrollDynamicColumns/GetAllGeneratePayrollDynamicColumns',
+                    type: "GET",
+                    headers: { 'Authorization': '@_tokan' },
+                    dataSrc: '',
+                },
+                "columns": [
+                    { "data": "column_name" },
+                    { "data": "column_type" },
+                    { "data": "column_id" },
+                    { "data": null }
+                ],
+                autoWidth: true,
+                //ordering: false,
+                buttons: [
+
+                    //"excelHtml5",
+                    //{
+                    //    "className": "buttons-columns",
+                    //},
+                ],
+                "columnDefs": [
+                       {
+                           "targets": [3],
+                           "visible": false
+                       },
+                       {
+                           "targets": [1],
+                           "render": function (data, type, row) {
+                               if (row.column_type == 1) {
+                                   data = "Earning";
+                               } else if (row.column_type == 2) {
+                                   data = "Deduction";
+                               } else if (row.column_type == 3) {
+                                   data = "Reimbursement";
+                               }
+                               return data;
+                           }
+                       },
+                       {
+                           "targets": [2],
+                           orderable:false,
+                           "render": function (data, type, row) {
+                               if ('@obj.CanEdit' == 'True') {
+                                   data = '<a class="btn btn-xs tooltips edit_clm_btn seagreen_btnnew tooltips" id="edit_column_data" data-placement="top" data-original-title="Edit"><i class="fa-regular fa-pen-to-square"></i></a>';
+                                   $('.tooltips').tooltip();
+                                   //<a class="btn btn-xs tooltips //Diabled//delete_clm_btn" title="Delete"><i class="fa-regular fa-trash-can-o"></i></a>
+                               } else {
+                                   data = "";
+                               }
+                               return data;
+                           }
+                       }
+                ],
+                initComplete: function (settings, json) {
+                    // Actions to run after DataTable is initialized
+                    if (json != null) {
+                        const cc = json;
+                        handleGridVisibility("tblempty", "NotificationGrid-empty", cc, {
+                            imageUrl: "emptyscreen_1.png",
+                            subText: "No entries found. Please add a record to get started."
+                        });
+                    }
+                }
+            });
+            setTimeout(function () {
+                $("#" + "GetallColumntable" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+                $('.tooltips').tooltip();
+            }, 100);
+            //t.on('order.dt search.dt', function () {
+            //    t.column(0, { search: 'applied', order: 'applied' }).nodes().each(function (cell, i) {
+            //        cell.innerHTML = i + 1;
+            //    });
+            //}).draw();
+        }
+
+        function checkSession() {
+
+            $.ajax({
+                type: "GET",
+                async: false,
+                url: "/ESS/checkSession",
+                contentType: "application/json; charset=utf-8",
+                success: function (data) {
+                    if (data.isRedirect) {
+                        window.location.href = data.redirectUrl;
+                    }
+                },
+                error: function (data) {
+                    window.location.href = data;
+                }
+            });
+        }
+    </script>
+
+    <div class="page-bar">
+        <ul class="page-breadcrumb">
+            <li>
+                <a href="@(_CheckFastrackdb == 1 ? "/Admin/AdminDashboard" : "/Dashboard/AdminDashboard")"><i class="fa-regular fa-house"></i></a>
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> Payroll Generate Column</span>
+            </li>
+        </ul>
+        @if (obj.CanAdd)
+        {
+            <div class="page-toolbar">
+                <div class="emp_btn_block">
+                    <div class="text-right">
+                        <a href="#" id="create_column" class="btn icon_transparent_btn tooltips" data-placement="left" data-original-title="Create New Column"><i class="fa-solid fa-plus"></i></a>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+
+    <div class="portlet">
+        <div id="ajax_loader" class="modal_bg loading" aria-hidden="true" style="display:none">
+            <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading" />
+        </div>
+        <div class="portlet-body">
+            <div class="row">
+                <div class="col-lg-12">
+                    <div class="payroll_details_table">
+                        <!-- Datatable : Begin -->
+                        <div id="tblempty">
+                            <div class="table-responsive" id="tableResponsive">
+                                <table id="GetallColumntable" class="new_datatbl table table-striped table-bordered tbl_middle table-hover serch_datatable table-checkable order-column">
+                                    <thead>
+                                        <tr>
+                                            @*<th>SrNo.</th>*@
+                                            <th style="min-width: 80px;">Column Name</th>
+                                            <th style="">Type</th>
+                                            <th> Action</th>
+                                            <th hidden>column_id</th>
+                                        </tr>
+                                    </thead>
+                                </table>
+                                <!-- Datatable : End -->
+                            </div>
+                        </div>
+                        <div id="NotificationGrid-empty" style="display: none">
+                            <div class="datanotfound">
+                                <img src="" height="148" width="280" alt="Nodata Found Icon">
+                                <p class="datanotfound_title"></p> <!-- titleText -->
+                                <p class=""></p><!-- subText -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Create New Column Modal : Begin -->
+            <div id="create_newcolumn" class="modal fade popup_info_model" role="dialog" data-keyboard="false" data-backdrop="static">
+                <div class="modal-dialog w-500">
+
+                    <!-- Modal content -->
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <button type="button" class="close" data-dismiss="modal">&times;</button>
+                            <h4 class="modal-title" id="Create_head">Create New Column</h4>
+                            <h4 class="modal-title" id="Edit_head" style="display:none">Edit Column</h4>
+                        </div>
+                        <div class="modal-body">
+                            <div class="modal-card">
+                                <fieldset>
+                                    <div class="row">
+                                        <input class="form-control" id="Column_id" type="text" value="" placeholder="Enter Column Title" style="display:none">
+                                        <div class="col-lg-12">
+                                            <div class="form-group">
+                                                <label class="control-label">Column Name <span class="required" aria-required="true"> * </span></label>
+                                                <input class="form-control" id="Column_name" type="text" value="" placeholder="Enter Column Title" maxlength="50">
+                                            </div>
+                                        </div>
+
+                                        <div class="col-lg-12">
+                                            <div class="form-group">
+                                                <label class="control-label">Section Type <span class="required" aria-required="true"> * </span></label>
+                                                <select class="form-control input-sm" id="Column_Type">
+                                                    <option value="0">Select Section Type</option>
+                                                    <option value="1">Earning</option>
+                                                    <option value="2">Deduction</option>
+                                                    <option value="3">Reimbursement</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </fieldset>
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <div class="row">
+                                <div class="col-lg-12 text-right">
+                                    <button type="button" class="btn save_btn" id="btnsave"><i class="fa-light fa-floppy-disk"></i> Save</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+            <!-- Create New Column Modal : End -->
+        </div>
+    </div>
+
+}
+else
+{
+
+    <span style="color:red">Unauthorized Access.</span>
+
+}

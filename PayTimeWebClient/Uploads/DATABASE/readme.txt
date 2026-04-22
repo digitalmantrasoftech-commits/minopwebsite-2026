@@ -1,0 +1,1 @@
+This folders is used to upload database files from client

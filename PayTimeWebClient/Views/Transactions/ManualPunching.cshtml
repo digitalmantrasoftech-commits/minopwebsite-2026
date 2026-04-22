@@ -1,0 +1,2234 @@
+﻿@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@using System.Configuration;
+@{
+    ViewBag.Title = "ManualPunching";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    string _Message = ViewBag.msg;
+    string _error = ViewBag.error;
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    int _PlanId = Convert.ToInt32(HttpContext.Current.Session["PlanId"]);
+    int _ChunkSize = Convert.ToInt32(HttpContext.Current.Session["DataDropDownThreShold"]);
+    int _cmpid = 0;
+    int _branchid = 0;
+    int _empid = 0;
+    if (_RoleId == 6805)
+    {
+        _cmpid = Convert.ToInt32(HttpContext.Current.Session["ClientCompanyId"]);
+    }
+    if (_RoleId == 6806)
+    {
+        _cmpid = Convert.ToInt32(HttpContext.Current.Session["ClientCompanyId"]);
+        _branchid = Convert.ToInt32(HttpContext.Current.Session["BranchId"]);
+    }
+    if (_RoleId > 1 && _RoleId != 6805 && _RoleId != 6806)
+    {
+        _cmpid = Convert.ToInt32(HttpContext.Current.Session["ClientCompanyId"]);
+        _branchid = Convert.ToInt32(HttpContext.Current.Session["BranchId"]);
+        _empid = Convert.ToInt32(HttpContext.Current.Session["EmpId"].ToString());
+    }
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+    string _isdateformat = HttpContext.Current.Session["IsDateFormat"].ToString();
+    string _dbName = HttpContext.Current.Session["DbName"].ToString();
+    string _lockAttendanceDay = HttpContext.Current.Session["lockAttendanceDay"].ToString();
+    //int _lockAttendance_Day = Convert.ToInt32(HttpContext.Current.Session["lockAttendanceDay"]);
+
+    string isClientDBMatchFlag = HttpContext.Current.Session["IsClientDBMatch"] != null
+    ? HttpContext.Current.Session["IsClientDBMatch"].ToString()
+    : "false"; // Default to "false" if the session is null
+
+}
+<script src="~/Pages_JS/VirtuallScroll/NormalDropDownVirtualClientServer.js"></script>
+<script src="~/Pages_JS/VirtuallScroll/ServerSideMultiSelectDropDown.js"></script>
+<script src="~/Scripts/timeme.js"></script>
+<script src="~/AssetsNew/js/CommonValidation.js"></script>
+<script src="~/Scripts/Helpers/noDataHandler.js"></script>
+<script type="text/javascript">
+    var DeptIdlst = "";
+    var cDeptIdlst = "";
+    var token = '@_tokan';
+    var webapiurl = '@_webapiurl';
+    var isDateFormat = '@_isdateformat';
+    var count = 0;
+    var form = "Manual Punching";
+    var operation = "";
+    var isflagstep2 = false;
+    let CompanyDropdown = null;
+    let BranchDropdown = null;
+    $(document).ready(function () {
+        /*timeMeInitialize function is  a javascript library which displays a timer to display how long you are actively viewing the current webpage.*/
+        timeMeInitialize();
+
+        $(window).on("load", function () {
+             CompanyDropdown = new Select2Dropdown({
+                    dropdownId: "ddlCompany", // ID of the dropdown
+                    apiUrl: '@_webapiurl' + 'DataDropDownOptimize/GetCompanyDropDownPaginated', // API URL for fetching data
+                    dataKey: "Id", // Key for value
+                    labelKey: "Name", // Key for text
+                    token: '@_tokan', // Optional auth token
+                    chunkSize : Number('@_ChunkSize'),
+                    extraParams: { RoleId: '@_RoleId', CompanyID: '@_cmpid' }
+             });
+
+             BranchDropdown = new Select2Dropdown({
+                    dropdownId: "ddlBranch", // ID of the dropdown
+                    apiUrl: '@_webapiurl' + 'DataDropDownOptimize/GetBranchDropDownPaginated', // API URL for fetching data
+                    dataKey: "Id", // Key for value
+                    labelKey: "Name", // Key for text
+                    token: '@_tokan', // Optional auth token
+                    chunkSize : Number('@_ChunkSize')
+            });
+        });
+        $(function () {
+            var _date = new Date();
+            _date.setDate(_date.getDate());
+            var prevMonthFirstDate = new Date(_date.getFullYear() - (_date.getMonth() > 0 ? 0 : 1), (_date.getMonth() - 1 + 12) % 12, 1);
+            $("#fromdate").datepicker({ format: isDateFormat });
+            $("#fromdate").datepicker('setEndDate', new Date());
+            $("#fromdate").datepicker('setStartDate', prevMonthFirstDate);
+        });
+        $("#in_time").attr("readOnly", true);
+        $("#in_time").attr("disabled", true);
+        $("#btnIntime").attr("disabled", true);
+        $('#btnIntime').unbind("click");
+        $("#InDiv").attr("disabled", true);
+        $("#out_time").attr("readOnly", true);
+        $("#out_time").attr("disabled", true);
+        $("#btnouttime").attr("disabled", true);
+        $("#btnouttime").unbind("click");
+        $("#OutDiv").attr("disabled", true);
+        //$("#in_time").timepicker({
+        //    minuteStep: 1
+        //})
+        //$("#out_time").timepicker({
+        //    minuteStep: 1
+        //})
+
+        $(".alert").hide();
+        if ("@_Message" != "") {
+            toastr.remove();
+            toastr.success("@_Message");
+        }
+        if ('@_error' != "") {
+            toastr.remove();
+            toastr.error("@_error");
+        }
+        $('#FromDate').datepicker({
+            format: "@_isdateformat",
+            autoclose: true
+        });
+        $('#ToDate').datepicker({
+            format: "@_isdateformat",
+            autoclose: true
+        });
+        //var $select = $("#DeptIds").multiselect({
+        //    selectAllValue: 'multiselect-all',
+        //    enableCaseInsensitiveFiltering: true,
+        //    includeSelectAllOption: true,
+        //    allSelectedText: 'All Select',
+        //    enableFiltering: true,
+        //    maxHeight: '300',
+        //    buttonWidth: '100%',
+        //    enableClickableOptGroups: true,
+        //    nonSelectedText: 'Select Department',
+        //});
+                var $select = new ServerVirtualDropdown({
+                apiUrl: '@_webapiurl' + "DataDropDownOptimize/GetDepartmentSimpleDropDownData",
+                tokan: '@_tokan',
+                chunkSize : Number('@_ChunkSize'),
+                dropdownId: "DeptIds",
+                selectAll:true,
+                dataKey: "DepartmentId",
+                labelKey: "DepartmentName",
+        });
+        var $cselect = $("#cDeptIds").multiselect({
+            selectAllValue: 'multiselect-all',
+            enableCaseInsensitiveFiltering: true,
+            includeSelectAllOption: true,
+            allSelectedText: 'All Select',
+            enableFiltering: true,
+            maxHeight: '300',
+            buttonWidth: '100%',
+            enableClickableOptGroups: true,
+            nonSelectedText: 'Select Department',
+        });
+
+        // Popup code
+        var navListItems = $('div.setup-panel div a'),
+                allWells = $('.setup-content'),
+                allNextBtn = $('.nextBtn');
+        allPrevBtb = $('.prevbtn');
+        allWells.hide();
+        //navListItems.click(function (e) {
+        //    e.preventDefault();
+        //    var $target = $($(this).attr('href')),
+        //            $item = $(this);
+        //    if (!$item.hasClass('disabled')) {
+        //        navListItems.removeClass('btn-primary').addClass('btn-default');
+        //        $item.addClass('btn-primary');
+        //        allWells.hide();
+        //        $target.show();
+        //    }
+        //});
+
+        $("#Secondprev").click(function (event) {
+            isflagstep2 = true;
+            Step1ShowHide();
+            if (isflagstep2) {
+                $("#s2").removeClass("disabled");
+            }
+        });
+
+        $("#s1").click(function (event) {
+            Step1ShowHide();
+            if (isflagstep2) {
+                $("#s2").removeClass("disabled");
+            }
+        });
+
+        $("#s2").click(function (event) {
+            Step2ShowHide();
+        });
+
+        $("#frstNext").click(function (event) {
+            isflagstep2 = true;
+            if ($("#Inmode").is(':checked') == false && $("#Outmode").is(':checked') == false) {
+                toastr.remove();
+                toastr.error("Please select at least one mode.");
+                event.preventDefault();
+                return false;
+            }
+            if ($("#in_time").val() == "" && $("#out_time").val() == "") {
+                toastr.remove();
+                toastr.error("Please select time.");
+                event.preventDefault();
+                return false;
+            }
+            if ($("#Inmode").is(':checked') == true && $("#in_time").val() == "") {
+                toastr.remove();
+                toastr.error("Please select in time.");
+                event.preventDefault();
+                return false;
+            }
+            if ($("#Outmode").is(':checked') == true && $("#out_time").val() == "") {
+                toastr.remove();
+                toastr.error("Please select out time.");
+                event.preventDefault();
+                return false;
+            }
+            if ($("#fromdate").val() == "") {
+                $("#fromdate").attr('required', true);
+                $("#fromdate").addClass('field_error');
+                event.preventDefault();
+                return false;
+            } @*else if ($("#fromdate").val() != "" && '@_lockAttendanceDay' != "" && '@_PlanId' == '6') {
+                var _data = $("#fromdate").val();
+                var date = _data.split('-');
+                if ("@_isdateformat" == "dd-mm-yyyy") {
+                    var firstValue = date[2] + "-" + date[1] + "-" + date[0] //yyyy-mm-dd
+                }
+                else if ("@_isdateformat" == "yyyy-mm-dd") {
+                    var firstValue = date[0] + "-" + date[1] + "-" + date[2] //yyyy-mm-dd
+                }
+                else if ("@_isdateformat" == "mm-dd-yyyy") {
+                    var firstValue = date[2] + "-" + date[1] + "-" + date[0] //yyyy-mm-dd
+                }
+                else if ("@_isdateformat" == "yyyy-M-dd") {
+                    var _date = new Date(date[2] + " " + date[1] + " " + date[0]);
+                    var locale = "en-us";
+                    var month = _date.toLocaleString(locale, { month: "numeric" });
+                    var firstValue = date[0] + "-" + month + "-" + date[2] //yyyy-mm-dd
+                }
+                else if ("@_isdateformat" == "M-dd-yyyy") {
+                    var _date = new Date(date[1] + " " + date[0] + " " + date[2]);
+                    var locale = "en-us";
+                    var month = _date.toLocaleString(locale, { month: "numeric" });
+                    var firstValue = date[2] + "-" + month + "-" + date[1] //yyyy-mm-dd
+                }
+                else if ("@_isdateformat" == "dd-M-yyyy") {
+                    var _date = new Date(date[0] + " " + date[1] + " " + date[2]);
+                    var locale = "en-us";
+                    var month = _date.toLocaleString(locale, { month: "numeric" });
+                    var firstValue = date[2] + "-" + month + "-" + date[0] //yyyy-mm-dd
+                }
+                firstValue = firstValue.split('-');
+                var s_date = new Date();
+                var secondValue = (s_date.getFullYear() + "-" + (s_date.getMonth() + 1) + "-" + '@_lockAttendanceDay').split('-');
+                var firstDate = new Date();
+                firstDate.setFullYear(firstValue[0], (firstValue[1] - 1), firstValue[2]);
+                var secondDate = new Date();
+                secondDate.setFullYear(secondValue[0], (secondValue[1] - 1), 1);
+                var secondDate_pev_month = new Date();
+                secondDate_pev_month.setFullYear(secondValue[0], (secondValue[1] - 2), 1);
+                 var Current_date = new Date();
+                            var _Current_date = new Date(firstDate.getFullYear(), firstDate.getMonth(), 1);
+                            var Lock_date_day = new Date();
+                            var _lockAttendance_Day = '@_lockAttendance_Day';
+
+                            if (_lockAttendance_Day >= 25) {
+                                Lock_date_day.setFullYear(secondValue[0], firstDate.getMonth(), _lockAttendance_Day);
+                                if (firstDate < secondDate) {
+                                    if (firstDate >= _Current_date && firstDate <= Lock_date_day) {
+                                        toastr.remove();
+                                        toastr.error("Please change the date because your attendance is locked on this date");
+                                        event.preventDefault();
+                                        return false;
+                                    } else {
+                                    }
+                                }
+                            }
+                            else {
+                                Lock_date_day.setFullYear(secondValue[0], (secondValue[1] - 1), '@_lockAttendanceDay');
+                                if (firstDate < secondDate) {
+                                    if (firstDate >= secondDate_pev_month && Current_date <= Lock_date_day) {
+
+                                    } else {
+                                        toastr.remove();
+                                        toastr.error("Please change the date because your attendance is locked on this date");
+                                        event.preventDefault();
+                                        return false;
+                                    }
+                                }
+                            }
+            }*@
+            else if ($("#fromdate").val() != "" && '@_lockAttendanceDay' != "" && ('@_PlanId' == '6' || '@_PlanId' == '5' || '@_PlanId' == '3')) {
+                var _data = $("#fromdate").val();
+                var date = _data.split('-');
+                if ("@_isdateformat" == "dd-mm-yyyy") {
+                    var firstValue = date[2] + "-" + date[1] + "-" + date[0] //yyyy-mm-dd
+                }
+                else if ("@_isdateformat" == "yyyy-mm-dd") {
+                    var firstValue = date[0] + "-" + date[1] + "-" + date[2] //yyyy-mm-dd
+                }
+                else if ("@_isdateformat" == "mm-dd-yyyy") {
+                    var firstValue = date[2] + "-" + date[1] + "-" + date[0] //yyyy-mm-dd
+                }
+                else if ("@_isdateformat" == "yyyy-M-dd") {
+                    var _date = new Date(date[2] + " " + date[1] + " " + date[0]);
+                    var locale = "en-us";
+                    var month = _date.toLocaleString(locale, { month: "numeric" });
+                    var firstValue = date[0] + "-" + month + "-" + date[2] //yyyy-mm-dd
+                }
+                else if ("@_isdateformat" == "M-dd-yyyy") {
+                    var _date = new Date(date[1] + " " + date[0] + " " + date[2]);
+                    var locale = "en-us";
+                    var month = _date.toLocaleString(locale, { month: "numeric" });
+                    var firstValue = date[2] + "-" + month + "-" + date[1] //yyyy-mm-dd
+                }
+                else if ("@_isdateformat" == "dd-M-yyyy") {
+                    var _date = new Date(date[0] + " " + date[1] + " " + date[2]);
+                    var locale = "en-us";
+                    var month = _date.toLocaleString(locale, { month: "numeric" });
+                    var firstValue = date[2] + "-" + month + "-" + date[0] //yyyy-mm-dd
+                }
+                firstValue = firstValue.split('-');
+                var s_date = new Date();
+                var secondValue = (s_date.getFullYear() + "-" + (s_date.getMonth() + 1) + "-" + '@_lockAttendanceDay').split('-');
+                var firstDate = new Date();
+                firstDate.setFullYear(firstValue[0], (firstValue[1] - 1), firstValue[2]);
+                var secondDate = new Date();
+                secondDate.setFullYear(secondValue[0], (secondValue[1] - 1), 1);
+                var secondDate_pev_month = new Date();
+                secondDate_pev_month.setFullYear(secondValue[0], (secondValue[1] - 2), 1);
+                var Current_date = new Date();
+                var Lock_date_day = new Date();
+                Lock_date_day.setFullYear(secondValue[0], (secondValue[1] - 1), '@_lockAttendanceDay');
+                if (firstDate < secondDate) {
+                    if (firstDate >= secondDate_pev_month && Current_date <= Lock_date_day) {
+
+                    } else {
+                        toastr.remove();
+                        toastr.error("Please change the date because your attendance is locked on this date.");
+                        event.preventDefault();
+                        return false;
+                    }
+                }
+            }
+            if ($("#todate").val() == "") {
+                $("#todate").attr('required', true);
+                $("#todate").addClass('field_error');
+                event.preventDefault();
+                return false;
+            }
+            if ($("#DeptIds").val() == null) {
+                toastr.remove();
+                toastr.error("Please select at least one department.");
+                return false;
+            }
+
+            if ($("#fromdate").val() > $("#todate").val()) {
+                toastr.remove();
+                toastr.error("To date should be greater than from date.");
+                event.preventDefault();
+                return false;
+            }
+
+            //var allVals = [];
+            //$("#tblDept .ClsChkDept").each(function () {
+            //    if ($(this).is(':checked') == true) {
+            //        allVals.push($(this).attr("id"));
+            //    }
+            //});
+            //if (allVals.length == 0) {
+            //    $(".popMsg").text("Please select at least one Department").show();
+            //    event.preventDefault();
+            //    return false;
+            //}
+
+
+            $(".popMsg").hide();
+            getEmp();
+            //var nextStepWizard = $('#frmpopup div.setup-panel div a[href="#step-2"]').parent().children("a");
+            //nextStepWizard.removeAttr('disabled').trigger('click');
+            Step2ShowHide();
+        });
+
+        $("#cfrstNext").click(function (event) {
+            if ($("#cfromdate").val() == "") {
+                $("#cfromdate").attr('required', true);
+                $("#cfromdate").addClass('field_error');
+                event.preventDefault();
+                return false;
+            }
+            if ($("#ctodate").val() == "") {
+                $("#ctodate").attr('required', true);
+                $("#ctodate").addClass('field_error');
+                event.preventDefault();
+                return false;
+            }
+            if ($("#ctxt2").val() == 0) {
+                toastr.remove();
+                toastr.error("Please select at least one department.");
+                return false;
+            }
+
+            $(".popMsg").hide();
+            getcEmp();
+            var nextStepWizard2 = $('#frmcleardatapopup div.setup-panel div a[href="#cstep-2"]').parent().children("a");
+            nextStepWizard2.removeAttr('disabled').trigger('click');
+        });
+
+        allPrevBtb.click(function () {
+            var curStep = $(this).closest(".setup-content"),
+                curStepBtn = curStep.attr("id"),
+                nextStepWizard = $('div.setup-panel div a[href="#' + curStepBtn + '"]').parent().prev().children("a"),
+                isValid = true;
+            if (isValid)
+                nextStepWizard.removeAttr('disabled').trigger('click');
+        });
+        $('div.setup-panel div a.btn-primary').trigger('click');
+
+
+
+        $("#Inmode").change(function () {
+            if ($("#Inmode").is(':checked') == true) {
+                $(".popMsg").hide();
+                $("#in_time").attr("readOnly", false);
+                $("#in_time").attr("disabled", false);
+                $("#btnIntime").attr("disabled", false);
+                $('#btnIntime').bind("click");
+                $("#InDiv").attr("disabled", false);
+            }
+            else {
+                $("#in_time").attr("readOnly", true);
+                $("#in_time").attr("disabled", true);
+                $("#btnIntime").attr("disabled", true);
+                $('#btnIntime').unbind("click");
+                $("#InDiv").attr("disabled", true);
+                $("#in_time").val("");
+            }
+        });
+        $("#Outmode").change(function () {
+            if ($("#Outmode").is(':checked') == true) {
+                $(".popMsg").hide();
+                $("#out_time").attr("readOnly", false);
+                $("#out_time").attr("disabled", false);
+                $("#btnouttime").attr("disabled", false);
+                $("#btnouttime").bind("click");
+                $("#OutDiv").attr("disabled", false);
+            }
+            else {
+                $("#out_time").attr("readOnly", true);
+                $("#out_time").attr("disabled", true);
+                $("#btnouttime").attr("disabled", true);
+                $("#btnouttime").unbind("click");
+                $("#OutDiv").attr("disabled", true);
+                $("#out_time").val("");
+            }
+        });
+        $("#in_time").change(function () {
+            $(".popMsg").hide();
+
+        });
+        $("#out_time").change(function () {
+            $(".popMsg").hide();
+        });
+        $("#fromdate").change(function () {
+            $(".popMsg").hide();
+            $("#fromdate").removeClass('field_error');
+            $("#todate").val("");
+            if (isDateFormat == "dd-mm-yyyy") {
+                var fromDate = $("#fromdate").val().split("-");
+                var newdate = new Date(fromDate[2], fromDate[1] - 1, fromDate[0]);
+            }
+            else if (isDateFormat == "mm-dd-yyyy") {
+                var fromDate = moment($('#fromdate').val(), 'MM-DD-YYYY');
+                var newdate = new Date(fromDate);
+            }
+            else if (isDateFormat == "dd-M-yyyy") {
+                var fromDate = moment($('#fromdate').val(), 'DD-MMM-YYYY');
+                var newdate = new Date(fromDate);
+            }
+            else if (isDateFormat == "M-dd-yyyy") {
+                var fromDate = moment($('#fromdate').val(), 'MMM-DD-YYYY');
+                var newdate = new Date(fromDate);
+            }
+            else if (isDateFormat == "yyyy-M-dd") {
+                var fromDate = moment($('#fromdate').val(), 'YYYY-MMM-DD');
+                var newdate = new Date(fromDate);
+            }
+            else {
+                var fromDate = $("#fromdate").val();
+                var newdate = new Date(fromDate);
+            }
+            $('#todate').datepicker("remove");
+            var today = new Date();
+            $("#todate").datepicker({
+                startDate: newdate,
+                autoclose: true,
+                endDate: "today",
+                maxDate: today
+            }).on('changeDate', function (ev) {
+                $("#todate").removeClass('field_error');
+            }).data('datepicker');
+        });
+        $("#cfromdate").change(function () {
+            $(".popMsg").hide();
+            $("#cfromdate").removeClass('field_error');
+            $("#ctodate").val("");
+            if (isDateFormat == "dd-mm-yyyy") {
+                var fromDate = $("#cfromdate").val().split("-");
+                var newdate = new Date(fromDate[2], fromDate[1] - 1, fromDate[0]);
+            }
+            else {
+                var fromDate = $("#cfromdate").val();
+                var newdate = new Date(fromDate);
+            }
+            $('#ctodate').datepicker("remove");
+            $("#ctodate").datepicker({
+                startDate: newdate,
+                autoclose: true
+            }).on('changeDate', function (ev) {
+                $("#ctodate").removeClass('field_error');
+            }).data('datepicker');
+        });
+        $("#btnSave").click(function () {
+            save();
+        });
+        $("#btnClear").click(function () {
+            swal({
+                title: "Important Notice",
+                text: "Are you sure you want to remove all punch data of selected employee from  " + $("#cfromdate").val() + "  to  " + $("#ctodate").val() + " ?",
+                type: "warning",
+                showCancelButton: true,
+                confirmButtonClass: "btn-danger",
+                confirmButtonText: "Yes, delete it!",
+                closeOnConfirm: true
+            },
+       function (isConfirm) {
+           if (isConfirm) {
+               cleardata();
+               return true;
+           }
+           else {
+               event.preventDefault();
+               return false;
+           }
+       });
+
+
+
+        });
+
+        $('#btnAddManualPunch').attr("disabled", "disabled");
+        $('#btnAddManualPunch').unbind("click");
+
+        $('#btnClearData').attr("disabled", "disabled");
+        $('#btnClearData').unbind("click");
+
+
+        $("#ddlCompany").change(function () {
+            if ($("#ddlCompany").val() == "0" || $("#ddlCompany").val() == null) {
+                $("#tblManualPunch tbody").remove();
+                $('#btnAddManualPunch').attr("disabled", "disabled");
+                $("#btnAddManualPunch").unbind("click");
+                $("#divmanual").hide();
+                $("#ddlBranch").val(null).trigger("change");
+                BranchDropdown.extraParams = { CompanyID: $("#ddlCompany").val(), BranchID: '@_branchid', RoleId : '@_RoleId',Empid : '@_empid'};
+                $("#ddlBranch").select2('close');
+                $("#ddlBranch").trigger('change');
+                //$("#select2-ddlBranch-container").html("Select Branch");
+                //$("#select2-ddlBranch-container").attr("title", "Select Branch");
+            }
+
+            else {
+                $('#btnAddManualPunch').attr("disabled", "disabled");
+                $("#btnAddManualPunch").unbind("click");
+                $('#btnClearData').attr("disabled", "disabled");
+                $("#btnClearData").unbind("click");
+                $("#ddlBranch").empty();
+                $("#ajax_loaderCompany").show();
+                $("#ddlBranch").val(null).trigger("change");
+                BranchDropdown.extraParams = { CompanyID: $("#ddlCompany").val(), BranchID: '@_branchid', RoleId : '@_RoleId',Empid : '@_empid' };
+                $("#ddlBranch").select2('close');
+                $("#ddlBranch").trigger('change');
+                $("#ajax_loaderCompany").hide();
+                //$.post("/Transactions/FillBranch?id=" + $("#ddlCompany").val(), function (response) {
+                //    if (response.isRedirect) {
+                //        window.location.href = response.redirectUrl;
+                //    }
+                //    $("#ajax_loaderCompany").hide();
+                //    if (response != null) {
+                //        $("#ddlBranch").append("<option value='0'> Select Branch </option>");
+                //        for (var i = 0; i < response.length; i++) {
+                //            $("#ddlBranch").append("<option value='" + response[i].BranchId + "'>" + response[i].BranchName + "</option>");
+                //        }
+                //    }
+                //});
+            }
+        });
+        $("#Clear_OPration").click(function () {
+            $("#ddlCompany").val(0).trigger('change');
+            $("#ddlBranch").val(0).trigger('change');
+            $("#FromDate").val('');
+            $("#ToDate").val('');
+            $('#btnAddManualPunch').attr("disabled", "disabled");
+            $("#divmanual").hide();
+            $("#tblManualPunch tbody").remove();
+            $("#NotificationGrid-empty1").show();
+            $("#NotificationGrid-empty").hide();
+        });
+        $("#FromDate").change(function () {
+            $("#FromDate").removeClass('field_error');
+        });
+        $("#ToDate").change(function () {
+            $("#ToDate").removeClass('field_error');
+        });
+        $("#Search_OPration").click(function () {
+            if ($("#ddlCompany").val() == "0" || $("#ddlCompany").val() == null) {
+                toastr.remove();
+                toastr.error("Please select company.");
+                return false;
+            }
+            if ($("#ddlBranch").val() == "0" || $("#ddlBranch").val() == null) {
+                toastr.remove();
+                toastr.error("Please select branch.");
+                return false;
+            }
+            if ($("#FromDate").val() == "") {
+                $("#FromDate").addClass('field_error');
+                event.preventDefault();//or return false
+                return false;
+            }
+            else {
+                $("#FromDate").removeClass('field_error');
+            }
+            if ($("#ToDate").val() == "") {
+                $("#ToDate").addClass('field_error');
+                event.preventDefault();//or return false
+                return false;
+            }
+            else {
+                $("#ToDate").removeClass('filed_error');
+            }
+            var fromDate = $("#FromDate").val();
+            var toDate = $("#ToDate").val();
+            if (fromDate > toDate) {
+                toastr.remove();
+                toastr.error("To date should be greater than from date.");
+                return false;
+            }
+            var screenWidth = $(window).width();
+            if (screenWidth >= 300 && screenWidth <= 600) {
+                $(".filter_portlet_tbl").show();
+            }
+            const wrapper = $(".filter_portlet_wrapper");
+            wrapper.addClass("full-width");
+            $("#divmanual").show();
+            GetAllManualPunchData();
+        });
+        $("#ddlBranch").change(function () {
+            if ($("#ddlBranch").val() == "0" || $("#ddlBranch").val() == null) {
+                $('#btnAddManualPunch').attr("disabled", "disabled");
+                $("#btnAddManualPunch").unbind("click");
+                $('#btnClearData').attr("disabled", "disabled");
+                $("#btnClearData").unbind("click");
+            }
+            else {
+
+                $("#btnAddManualPunch").removeAttr("disabled");
+                $("#btnClearData").removeAttr("disabled");
+                $("#btnAddManualPunch").click(function () {
+                    count++;
+                    operation = "Add Form";
+                    // Clear();
+                    $("#mode").val(0);
+                    $("#todate").val("");
+                    $("#devicecode").val(0);
+                    $("#in_time").val("");
+                    $("#out_time").val("");
+                    $("#fromdate").val("");
+                    $("#ipaddress").val(0);
+                    $(".alert-danger").hide();
+                    $(".alert-success").hide();
+                    $("#tblEmp tbody").empty();
+                    $("#tblDept tbody").empty();
+                    $(".ClsChkAllDept").prop('checked', false);
+                    $(".ClsChkAllEmp").prop('checked', false);
+
+                    $("#Inmode").prop('checked', false);
+                    $("#Outmode").prop('checked', false);
+                    $("#fromdate").removeClass('field_error');
+                    $("#todate").removeClass('field_error');
+
+                    $("#in_time").attr("readOnly", true);
+                    $("#in_time").attr("disabled", true);
+                    $("#btnIntime").attr("disabled", true);
+                    $('#btnIntime').unbind("click");
+                    $("#InDiv").attr("disabled", true);
+
+                    $("#out_time").attr("readOnly", true);
+                    $("#out_time").attr("disabled", true);
+                    $("#btnouttime").attr("disabled", true);
+                    $("#btnouttime").unbind("click");
+                    $("#OutDiv").attr("disabled", true);
+
+                    Step1ShowHide();
+                    //var nextStepWizard = $('div.setup-panel div a[href="#step-1"]').parent().children("a");
+                    //nextStepWizard.removeAttr('disabled').trigger('click');
+
+                    $("#btnAddManualPunch").attr("data-toggle", "modal");
+                    $("#btnAddManualPunch").attr("data-target", "#frmpopup");
+
+
+                    $("#DeptIds").empty();
+                    $select.data = { BranchID: $("#ddlBranch").val() };
+                    $select.loadInitialData();
+                    $(document.body).on('change', '#DeptIds', function () {
+                        $(".popMsg").hide();
+                        var deptid = $('#DeptIds option:selected');
+                        var DeptArray = [];
+                        if ($("#DeptIdsContainer li").hasClass("multiselect-item multiselect-all active")) {
+                            DeptIdlst = "";
+                        }
+                        else {
+
+                            var ArrDept = $("#DeptIds").val();
+                            if (ArrDept != null)
+                                DeptIdlst = ArrDept.join(",");
+                            else
+                                DeptIdlst = null;
+                        }
+                        getEmp();
+                    });
+                    //$.ajax({
+                    //    type: "POST",
+                    //    url: "/Transactions/GetDeptbyBranch?BranchId=" + $("#ddlBranch").val(),
+                    //    contentType: "application/json; charset=utf-8",
+                    //    datatype: "json",
+                    //    async: "false",
+                    //    success: function (response) {
+                    //        if (response.isRedirect) {
+                    //            window.location.href = response.redirectUrl;
+                    //        }
+                    //        if (response != null) {
+                    //            response.sort(function (a, b) {
+                    //                return a.Text.localeCompare(b.Text);
+                    //            });
+                    //            $("#DeptIds").empty();
+                    //            for (var i = 0; i < response.length; i++) {
+                    //                $('#DeptIds').append('<option value=" ' + response[i].Value + ' ">' + response[i].Text + '</option>');
+                    //            }
+                    //            $select.multiselect('rebuild');
+                    //            $(document.body).on('change', '#DeptIds', function () {
+                    //                $(".popMsg").hide();
+                    //                var deptid = $('#DeptIds option:selected');
+                    //                var DeptArray = [];
+                    //                $(deptid).each(function (index, deptid) {
+                    //                    DeptArray.push([$(this).val()]);
+                    //                });
+                    //                if (DeptArray == "") {
+                    //                    $("#txt2").val(0);
+                    //                }
+                    //                else {
+                    //                    $("#txt2").val(DeptArray);
+                    //                    $("#spValidation").hide();
+                    //                }
+                    //                var ArrDept = $("#txt2").val();
+                    //                DeptIdlst = ArrDept;
+                    //                getEmp();
+                    //            });
+                    //        }
+                    //        $(".loading").hide();
+                    //    },
+                    //    beforeSend: function () {
+                    //        $(".loading").show();
+                    //    },
+                    //    error: function () {
+                    //        $(".loading").hide();
+                    //    }
+                    //});
+                });
+                $("#btnClearData").click(function () {
+                    $("#ctodate").val("");
+                    $("#cfromdate").val("");
+                    $(".alert-danger").hide();
+                    $(".alert-success").hide();
+                    $("#ctblEmp tbody").empty();
+                    $("#ctblDept tbody").empty();
+                    $(".ClsChkAllDept").prop('checked', false);
+                    $(".ClsChkAllEmp").prop('checked', false);
+
+                    $("#cfromdate").removeClass('field_error');
+                    $("#ctodate").removeClass('field_error');
+
+                    var nextStepWizard1 = $('div.setup-panel div a[href="#cstep-1"]').parent().children("a");
+                    nextStepWizard1.removeAttr('disabled').trigger('click');
+                    $("#btnClearData").attr("data-toggle", "modal");
+                    $("#btnClearData").attr("data-target", "#frmcleardatapopup");
+                    $("#cDeptIds").empty();
+                    $.ajax({
+                        type: "POST",
+                        url: "/Transactions/GetDeptbyBranch?BranchId=" + $("#ddlBranch").val(),
+                        contentType: "application/json; charset=utf-8",
+                        datatype: "json",
+                        async: "false",
+                        success: function (response) {
+                            if (response.isRedirect) {
+                                window.location.href = response.redirectUrl;
+                            }
+                            if (response != null) {
+                                for (var i = 0; i < response.length; i++) {
+                                    $('#cDeptIds').append('<option value=" ' + response[i].Value + ' ">' + response[i].Text + '</option>');
+                                }
+                                $cselect.multiselect('rebuild');
+                                $(document.body).on('change', '#cDeptIds', function () {
+                                    $(".popMsg").hide();
+                                    var cdeptid = $('#cDeptIds option:selected');
+                                    var cDeptArray = [];
+                                    $(cdeptid).each(function (index, cdeptid) {
+                                        cDeptArray.push([$(this).val()]);
+                                    });
+                                    if (cDeptArray == "") {
+                                        $("#ctxt2").val(0);
+                                    }
+                                    else {
+                                        $("#ctxt2").val(cDeptArray);
+                                        $("#cspValidation").hide();
+                                    }
+                                    var cArrDept = $("#ctxt2").val();
+                                    cDeptIdlst = cArrDept;
+                                    getcEmp();
+                                });
+                            }
+                            $(".loading").hide();
+                        },
+                        beforeSend: function () {
+                            $(".loading").show();
+                        },
+                        error: function () {
+                            $(".loading").hide();
+                        }
+                    });
+                });
+            }
+
+        });
+
+
+        //***********************************Instant ADD DeviceMaster for DeviceIP***********************************//
+        $("#DeviceADD").on('click', function () {
+            frmDeviceClear();
+            $("#DeviceADD").attr("data-toggle", "modal");
+            $("#DeviceADD").attr("data-target", "#frmDevicePopup");
+
+        });
+        $("#IsPushData").change(function () {
+            if (this.checked) {
+                $("#IsPushData").attr("value", 1);
+            }
+            else {
+                $("#IsPushData").attr("value", 0);
+            }
+        });
+        $("#btnDeviceSubmit").click(function () {
+            if ($("#DeviceName").val() == "") {
+                toastr.remove();
+                toastr.error("Please enter device name.");
+                $("#DeviceName").addClass('field_error');
+                event.preventDefault();//or return false
+                return false;
+            }
+            else {
+                $("#DeviceName").removeClass('field_error');
+            }
+            if ($("#DeviceIP1").val() == "") {
+                toastr.remove();
+                toastr.error("Please enter device ip.");
+                $("#DeviceIP1").addClass('field_error');
+                event.preventDefault();//or return false
+                return false;
+            }
+            else {
+                $("#DeviceIP1").removeClass('field_error');
+            }
+            if ($("#DevicePort").val() == "") {
+                toastr.remove();
+                toastr.error("Please enter device port.");
+                $("#DevicePort").addClass('field_error');
+                event.preventDefault();//or return false
+                return false;
+            }
+            else {
+                $("#DevicePort").removeClass('field_error');
+            }
+            if ($("#DeviceCode").val() == "") {
+                toastr.remove();
+                toastr.error("Please enter device code.");
+                $("#DeviceCode").addClass('field_error');
+                event.preventDefault();//or return false
+                return false;
+            }
+            else {
+                $("#DeviceCode").removeClass('field_error');
+            }
+            var DeviceCode = $("#DeviceCode").val();
+            var DeviceIP = $("#DeviceIP1").val();
+            var DevicePort = $("#DevicePort").val();
+            var DevicePassword = $("#DevicePassword").val();
+            var DeviceName = $("#DeviceName").val();
+            var Mode = $("#Mode1").val();
+            var DeviceTypeCode = $("#DeviceTypeCode").val();
+            var IsPushData = $("#IsPushData").val();
+            $.ajax({
+                type: 'POST',
+                url: webapiurl + "/Master/DeviceCreate",
+                data: '{"DeviceCode":"' + DeviceCode + '", "DeviceIP" : "' + DeviceIP + '", "DevicePort" : "' + DevicePort + '", "DevicePassword" : "' + DevicePassword + '", "DeviceName" : "' + DeviceName + '", "Mode" : "' + Mode + '", "DeviceTypeCode" : "' + DeviceTypeCode + '", "IsPushData" : "' + IsPushData + '", "IsActive" : "False"}',
+                contentType: "application/json",
+                dataType: 'json',
+                async: false,
+                cache: false,
+                timeout: 30000,
+                beforeSend: function (xhr) {
+                    xhr.setRequestHeader("Authorization", token);
+                },
+                success: function (data) {
+                    if (data.isRedirect) {
+                        window.location.href = data.redirectUrl;
+                    }
+                },
+                error: function (data) {
+                    alert(data.responseJSON.Meg);
+                },
+                complete: function () {
+                    $.post("/Transactions/FillDeviceForEmp", function (response) {
+                        if (response != null) {
+                            $("#DeviceIP").empty();
+                            $("#DeviceIP").append("<option value='0' selected>Select Device IP </option>");
+                            for (var i = 0; i < response.length; i++) {
+                                $("#DeviceIP").append("<option value='" + response[i].DeviceIP + "'>" + response[i].DeviceIP + "</option>");
+                            }
+                            $('#frmDevicePopup').modal('toggle');
+
+                        }
+                    });
+                },
+            });
+        });
+        $("#DeviceIP1").change(function () {
+            var ipaddress = $("#DeviceIP1").val();
+            if (/^(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/.test(ipaddress)) {
+                $("#spvalidation").hide();
+                return
+            }
+            else {
+                $("#spvalidation").html("You have entered an invalid IP address!").show();
+                return false;
+            }
+        });
+        $("#DeviceName").keypress(function (e) {
+            $("#DeviceName").removeClass('field_error');
+        });
+        $("#DeviceCode").keypress(function (e) {
+            $("#DeviceCode").removeClass('field_error');
+        });
+        $("#DeviceIP1").keypress(function (e) {
+            $("#DeviceIP1").removeClass('field_error');
+        });
+        $("#DevicePort").keypress(function (e) {
+
+            if (e.which != 8 && e.which != 0 && (e.which < 48 || e.which > 57)) {
+                return false;
+            }
+            else {
+                $("#DevicePort").removeClass('field_error');
+                return true;
+            }
+        });
+        window.onload = function () {
+            timeSpentOnPage();
+        }
+        $(window).on("beforeunload", function () {
+            if (operation == "" || operation == null || operation == '') {
+                operation = "View Manual Punching";
+            }
+            var url = '@_webapiurl' + '/DashBoard/AddAnalyticsUser';
+                var timeSpent = timeSpentOnPage();
+                analyticsDataUsage(url, '@_dbName', form, '@_tokan', count, operation, timeSpent)
+            })
+
+        //$("#Filter_search").click(function () {
+        //    $("#filter_open_div").toggle();
+        //});
+
+        $("#Filter_search").click(function () {
+            const wrapper = $(".filter_portlet_wrapper");
+            wrapper.toggleClass("full-width");
+
+            var screenWidth = $(window).width();
+            if (screenWidth >= 300 && screenWidth <= 600) {
+                $('.filter_portlet_tbl').toggle();
+                $('.filter_portlet_wrapper .filter_boxModal').css('width', '100%');
+            }
+        });
+
+        // Close filter panel on close button click
+        $(".filterclose_btn").click(function () {
+            const wrapper = $(".filter_portlet_wrapper");
+            wrapper.addClass("full-width");
+
+            var screenWidth = $(window).width();
+            if (screenWidth >= 300 && screenWidth <= 600) {
+                $(".filter_portlet_tbl").css("display", "block");
+            }
+        });
+
+    });
+
+    //***********************************frmattndpopup Model Steps Show/Hide with BtnTab for Fixed Footer***********************************//
+    function Step1ShowHide() {
+
+        //*****show/Hide setup-content perticular step*****//
+        $("#step-1").css("display", "block");
+        $("#step-2").css("display", "none");
+
+        //For Highlight pericualr stepwizard-step
+        $("#s1").addClass("btn-primary");
+        $("#s2").removeClass("btn-primary");
+
+        //For click perticular stepwizard-step
+        $("#s1").removeClass("disabled");
+        $("#s2").addClass("disabled");
+
+        //*****Show/Hide Step perticular step Btntab*****//
+        $("#FrstTabBtnDiv").css("display", "block");
+        $("#SecondTabBtnDiv").css("display", "none");
+    }
+
+    function Step2ShowHide() {
+
+        //*****show/Hide setup-content perticular step*****//
+        $("#step-2").css("display", "block");
+        $("#step-1").css("display", "none");
+
+        //For Highlight pericualr stepwizard-step
+        $("#s2").addClass("btn-primary");
+        $("#s1").removeClass("btn-primary");
+
+        //For click perticular stepwizard-step
+        $("#s2").removeClass("disabled");
+        $("#s1").removeClass("disabled");
+
+        //*****Show/Hide Step perticular step Btntab*****//
+        $("#SecondTabBtnDiv").css("display", "block");
+        $("#FrstTabBtnDiv").css("display", "none");
+    }
+
+    //For click perticular stepwizard-step
+    function AllstepsClicable() {
+        $("#s1").removeClass("disabled");
+        $("#s2").removeClass('disabled');
+    }
+    //******************************END********************************//
+
+    function GetAllManualPunchData() {
+        $("#NotificationGrid-empty1").hide();
+        var bID = $("#ddlBranch").val();
+        if ("@_isdateformat" == "dd-mm-yyyy") {
+            if ($("#FromDate").val() !== "" && $("#FromDate").val() !== "undefined" && $("#ToDate").val() !== "" && $("#ToDate").val() !== "undefined") {
+                var fromDate = $("#FromDate").val().split("-");
+                var _Fromdate = fromDate[2] + "-" + fromDate[1] + "-" + fromDate[0];
+                var toDate = $("#ToDate").val().split("-");
+                var _toDate = toDate[2] + "-" + toDate[1] + "-" + toDate[0];
+            }
+            else {
+                _Fromdate = "";
+                _toDate = "";
+            }
+        }
+        else if ("@_isdateformat" == "mm-dd-yyyy") {
+            if ($("#FromDate").val() !== "" && $("#FromDate").val() !== "undefined" && $("#ToDate").val() !== "" && $("#ToDate").val() !== "undefined") {
+                var fromDate = $("#FromDate").val().split("-");
+                var _Fromdate = fromDate[2] + "-" + fromDate[0] + "-" + fromDate[1];
+                var toDate = $("#ToDate").val().split("-");
+                var _toDate = toDate[2] + "-" + toDate[0] + "-" + toDate[1];
+            }
+            else {
+                _Fromdate = "";
+                _toDate = "";
+            }
+        }
+        else if ("@_isdateformat" == "yyyy-mm-dd") {
+            if ($("#FromDate").val() !== "" && $("#FromDate").val() !== "undefined" && $("#ToDate").val() !== "" && $("#ToDate").val() !== "undefined") {
+                var fromDate = $("#FromDate").val().split("-");
+                var _Fromdate = fromDate[0] + "-" + fromDate[1] + "-" + fromDate[2];
+                var toDate = $("#ToDate").val().split("-");
+                var _toDate = toDate[0] + "-" + toDate[1] + "-" + toDate[2];
+            }
+            else {
+                _Fromdate = "";
+                _toDate = "";
+            }
+        }
+        else if ("@_isdateformat" == "yyyy-M-dd") {
+            if ($("#FromDate").val() !== "" && $("#FromDate").val() !== "undefined" && $("#ToDate").val() !== "" && $("#ToDate").val() !== "undefined") {
+                var fromDate = $("#FromDate").val().split("-");
+                var getMonth = fromDate[1];
+                var _Fromdate = fromDate[0] + "-" + (GetMonthNumber(getMonth).toString().length > 1 ? GetMonthNumber(getMonth) : "0" + GetMonthNumber(getMonth)) + "-" + fromDate[2];
+                var toDate = $("#ToDate").val().split("-");
+                var getMonth = toDate[1];
+                var _toDate = toDate[0] + "-" + (GetMonthNumber(getMonth).toString().length > 1 ? GetMonthNumber(getMonth) : "0" + GetMonthNumber(getMonth)) + "-" + toDate[2];
+            }
+            else {
+                _Fromdate = "";
+                _toDate = "";
+            }
+        }
+        else if ("@_isdateformat" == "M-dd-yyyy") {
+            if ($("#FromDate").val() !== "" && $("#FromDate").val() !== "undefined" && $("#ToDate").val() !== "" && $("#ToDate").val() !== "undefined") {
+                var fromDate = $("#FromDate").val().split("-");
+                var getMonth = fromDate[0];
+                var _Fromdate = fromDate[2] + "-" + (GetMonthNumber(getMonth).toString().length > 1 ? GetMonthNumber(getMonth) : "0" + GetMonthNumber(getMonth)) + "-" + fromDate[1];
+                var toDate = $("#ToDate").val().split("-");
+                var getMonth = toDate[0];
+                var _toDate = toDate[2] + "-" + (GetMonthNumber(getMonth).toString().length > 1 ? GetMonthNumber(getMonth) : "0" + GetMonthNumber(getMonth)) + "-" + toDate[1];
+            }
+            else {
+                _Fromdate = "";
+                _toDate = "";
+            }
+        }
+        else if ("@_isdateformat" == "dd-M-yyyy") {
+            if ($("#FromDate").val() !== "" && $("#FromDate").val() !== "undefined" && $("#ToDate").val() !== "" && $("#ToDate").val() !== "undefined") {
+                var fromDate = $("#FromDate").val().split("-");
+                var getMonth = fromDate[1];
+                var _Fromdate = fromDate[2] + "-" + (GetMonthNumber(getMonth).toString().length > 1 ? GetMonthNumber(getMonth) : "0" + GetMonthNumber(getMonth)) + "-" + fromDate[0];
+                var toDate = $("#ToDate").val().split("-");
+                var getMonth = toDate[1];
+                var _toDate = toDate[2] + "-" + (GetMonthNumber(getMonth).toString().length > 1 ? GetMonthNumber(getMonth) : "0" + GetMonthNumber(getMonth)) + "-" + toDate[0];
+            }
+            else {
+                _Fromdate = "";
+                _toDate = "";
+            }
+        }
+        var obj = { "BranchID": bID, "fromdate": _Fromdate, "todate": _toDate };
+        $('#tblManualPunch').destroy;
+        $("#dataTables_tbl_header").remove()
+        $('#tblManualPunch').DataTable({
+            //processing: true,
+
+            serverSide: true,
+
+            "ajax": ({
+                "url": "/Transactions/GetAllManualPunch?jsondata=" + JSON.stringify(obj),
+                "data": JSON.stringify(obj),
+                "method": "POST",
+                "type": "json",
+                beforeSend: function () {
+                    $("#ajax_loaderCompany").show();
+                },
+                dataSrc: function (json) {                    
+                    if (json.data.length == 0) {
+                        const wrapper = $(".filter_portlet_wrapper");
+                        wrapper.removeClass("full-width");
+                    }
+                    if (json != null && json.data != null) {
+                        const mp = json.data;
+                        handleGridVisibility("tblempty", "NotificationGrid-empty", mp, {
+                            imageUrl: "emptyscreen_3.png",
+                            subText: "No matching records found for the selected filters."
+                        });
+                        return mp; // Must return data to populate the table
+                    }
+                    else {
+                        handleGridVisibility("tblempty", "NotificationGrid-empty", [], {
+                            imageUrl: "emptyscreen_1.png",
+                            subText: "No entries found. Please add a record to get started."
+                        }); 
+                        return []; // Return empty array to avoid DataTable errors
+                    }
+                    
+                },
+                complete: function () {
+                    $("#ajax_loaderCompany").hide();
+                }
+            }),
+            //"language": {
+            //    "search": "Search",
+            //    "searchplaceholder": "Search..."
+            //},
+
+            searching: true,
+            searchDelay: 500,
+            dom: _domCommon,
+            language: _languageCommon,
+            "bDestroy": true,
+            "columns": [
+                { "data": "Empcode" },
+                { "data": "EmpName" },
+                { "data": "In_Out_Time" },
+                { "data": "mode" }
+            ],
+            //initComplete: function () {
+            //    const visibleTable = $('table:visible').attr('id');
+            //    $("#buttons").append(`
+            //        <div id="export-button" class="export-button tooltips" data-placement="bottom" data-original-title="Download" data-table-id="${visibleTable}">
+            //            <img src="../Newlayout/images/download_icon.svg" alt="Download icon">
+            //        </div>
+            //     `);
+
+            //},
+        });
+        setTimeout(function () {
+            $("#" + "tblManualPunch" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+            $('.tooltips').tooltip();
+        }, 100);
+            $('.tooltips').tooltip();
+    }
+    //function GetAllManualPunchData() {
+    //    $("#tblManualPunch tbody").remove();
+    //    var bID = $("#ddlBranch").val();
+    //    $.post("/Transactions/GetAllManualPunch?BranchID=" + parseInt(bID), function (response) {
+
+        //        var table = "";
+        //        if (response != null) {
+        //            for (var i = 0; i < response.length; i++) {
+        //                var tbl = "<tr class='odd gradeX'>";
+        //                tbl = tbl + "<td>" + response[i].Empcode;
+        //                tbl = tbl + "</td>";
+        //                tbl = tbl + "<td>" + response[i].EmpName;
+        //                tbl = tbl + "</td>";
+        //                tbl = tbl + "<td>" + response[i].In_Out_Time;
+        //                tbl = tbl + "</td>";
+        //                tbl = tbl + "<td>" + response[i].mode;
+        //                tbl = tbl + "</td>";
+        //                tbl = tbl + "</tr>";
+        //                table += tbl;
+        //            }
+        //        }
+        //        $("#tblManualPunch").destroy;
+        //        $('#tblManualPunch').append(table);
+        //        $('#tblManualPunch').dataTable({
+        //            // "data": data.d,
+        //            "destroy": true,
+        //            "columns": [
+        //                 { "title": "Employee ID" },
+        //                { "title": "Employee Name" },
+        //                { "title": "IN OUT" },
+        //                { "title": "Mode" }
+        //            ]
+        //        });
+        //    });
+        //}
+        function valid() {
+            var allVals = [];
+            $("#tblEmp .ClsChkEmp").each(function () {
+                if ($(this).is(':checked') == true) {
+                    allVals.push($(this).attr("id"));
+                }
+            });
+            if (allVals.length == 0) {
+                toastr.remove();
+                toastr.error("Please  select employee.");
+                return false;
+            }
+            return true;
+        }
+        function cleardata() {
+            var allVals = [];
+            $("#ctblEmp .ClsChkEmp").each(function () {
+                if ($(this).is(':checked') == true) {
+                    allVals.push($(this).attr("id"));
+                }
+            });
+            var ClearData = {
+                "todate": $("#ctodate").val(),
+                "fromdate": $("#cfromdate").val(),
+                "cmpid": $("#ddlCompany").val(),
+                "branchid": $("#ddlBranch").val(),
+                "empidlst": allVals
+            };
+
+            $.ajax({
+                type: "POST",
+                url: "/Transactions/ClearData?empids=" + allVals + "&fromdate=" + $("#cfromdate").val() + "&todate=" + $("#ctodate").val(),
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                async: "false",
+                beforeSend: function () {
+                    $("#ajax_loaderCompany").show();
+                },
+                success: function (response) {
+                    if (response.isRedirect) {
+                        window.location.href = response.redirectUrl;
+                    }
+                    if (response != null) {
+                        //$.ajax({
+                        //    type: "POST",
+                        //    url: "/Utilities/InsertDevicecommand?deviceid=0&DeviceCode=0&Commandid=4&Commandpara=" + allVals + "&FromDate=" + $("#cfromdate").val() + "&ToDate=" + $("#ctodate").val() + "",
+                        //    contentType: "application/json; charset=utf-8",
+                        //    datatype: "json",
+                        //    success: function (response) {
+                        //        if (response.isRedirect) {
+                        //            window.location.href = response.redirectUrl;
+                        //        }
+                        //        $(".loading").hide();
+                        //    },
+                        //    beforeSend: function () {
+                        //        $(".loading").show();
+                        //    },
+                        //    error: function () {
+                        //        $(".loading").hide();
+                        //    }
+                        //});
+                        if (response.ad == "ok") {
+                            $('#frmcleardatapopup').modal('toggle');
+                            toastr.remove();
+                            toastr.success("Data deleted successfully.")
+                        }
+                    }
+                    $("#ajax_loaderCompany").hide();
+                },
+                error: function (response) {
+                    $("#ajax_loaderCompany").hide();
+                },
+            });
+        }
+        function save() {
+            if (valid()) {
+                var allVals = [];
+                $("#tblEmp .ClsChkEmp").each(function () {
+                    if ($(this).is(':checked') == true) {
+                        allVals.push($(this).attr("id"));
+                    }
+                });
+
+                var inoutmodes = [];
+                var inouttimes = [];
+                if ($("#Inmode").is(':checked') == true) {
+                    inoutmodes.push($("#Inmode").val());
+                    inouttimes.push($("#in_time").val());
+                }
+                if ($("#Outmode").is(':checked') == true) {
+                    inoutmodes.push($("#Outmode").val());
+                    inouttimes.push($("#out_time").val());
+                }
+                var ManualPunch = {
+                    "mode": inoutmodes,
+                    "todate": $("#todate").val(),
+                    "devicecode": 0,
+                    "In_Out_Time": inouttimes,
+                    "fromdate": $("#fromdate").val(),
+                    "IPaddress": $("#ipaddress").val(),
+                    "cmpid": $("#ddlCompany").val(),
+                    "branchid": $("#ddlBranch").val(),
+                    "empidlst": allVals
+                };
+
+                $.ajax({
+                    type: "POST",
+                    url: "/Transactions/ManualPunch?ManualPunch=" + JSON.stringify(ManualPunch),
+                    contentType: "application/json; charset=utf-8",
+                    dataType: "json",
+                    async: "false",
+                    beforeSend: function () {
+                        $("#ajax_loaderCompany").show();
+                    },
+                    success: function (response) {
+                        if (response.isRedirect) {
+                            window.location.href = response.redirectUrl;
+                        }
+                        if (response != null) {
+                            if (response.ad == "OK") {
+                                $('#frmpopup').modal('toggle');
+                                GetAllManualPunchData();
+                                Clear();
+                                toastr.remove();
+                                toastr.success("Manual Punch added successfully.");
+                            }
+                            else {
+                                toastr.remove();
+                                toastr.error(response);
+                            }
+                        }
+                        $("#ajax_loaderCompany").hide();
+                    },
+                    error: function (response) {
+                        $("#ajax_loaderCompany").hide();
+                    },
+                });
+            }
+        }
+        function getEmp() {
+            $("#lblemp").show();
+            //var allVals = [];
+
+            //$("#tblDept .ClsChkDept").each(function () {
+            //    if ($(this).is(':checked') == true) {
+            //        allVals.push($(this).attr("id"));
+            //    }
+            //});
+
+            $("#tblEmp").empty();
+            var bID = $("#ddlBranch").val();
+            let isSelectedAll = $("#DeptIdsContainer li").hasClass("multiselect-item multiselect-all active") == true ? 1 : 0;
+            if (isSelectedAll) {
+                DeptIdlst = "";
+            }
+            let searchTerm = "";
+            if ($("#DeptIdsContainer li input").hasClass("multiselect-search")) {
+                searchTerm = $("#DeptIdsContainer li .multiselect-search").val().trim();
+                if (searchTerm != "") DeptIdlst = "";
+            }
+            var obj = {
+                SelectAll: isSelectedAll,
+                SelectAllSearchTerm: searchTerm,
+                DepartID: DeptIdlst,
+                BranchID:bID
+            }
+            $.ajax({
+                type:"POST",
+                url: '@_webapiurl' + "DataGridOptimize/GetEmployeeDataOptimized",
+                 headers: { 'Authorization': '@_tokan' },
+                data: obj,
+                dataType: "json",
+                success: function (response) {
+                    if (response != null) {
+                        $("#tblEmp").DataTable({
+                            dom: _domCommon,
+                            language:_languageCommon,
+                            data: response, // Corrected "Data" to "data"
+                            destroy: true,
+                            bInfo: false,
+                            paging: false,
+                            bLengthChange: false,
+                            order: [[2, 'asc']],
+                            columnDefs: [
+                                {
+                                    targets: [0],
+                                    visible: false,
+                                    searchable: false,
+                                }
+                            ],
+                            columns: [
+                                { title: "Employee ID", data: "EmpId" },
+                                { title: "Code", data: "EmpCode" },
+                                { title: "Employee Name", data: "EmpName" },
+                                { title: "Punch ID", data: "EmpPunchId" },
+                                {
+                                    title: "<input type='checkbox' class='ClsChkAllDept' onchange='AllCheckedEmp(this)' />",
+                                    data: "EmpId",
+                                    render: function (data, type, row, meta) {
+                                        return "<input type='checkbox' onchange='checkedDept(this)' class='ClsChkEmp' id='" + data + "' />";
+                                    }
+                                }
+                            ]
+                        });
+                        setTimeout(function () {
+                            $("#" + "tblEmp" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive1"));
+                            $('.tooltips').tooltip();
+                        }, 100);
+                    }
+                },
+                error: function (error) {
+                    console.error("Error fetching employee data:", error);
+                }
+
+            })
+            //$.post("/Transactions/GetEmpByDept?empArr=" + DeptIdlst + ";" + bID, function (response) {
+            //    if (response.isRedirect) {
+            //        window.location.href = response.redirectUrl;
+            //    }
+            //    var table = "";
+            //    if (response != null) {
+            //        for (var i = 0; i < response.length; i++) {
+
+            //            var tbl = "<tr class='odd gradeX'>";
+            //            tbl = tbl + "<td id='eid' hidden>" + response[i].EmpId;
+            //            tbl = tbl + "</td>";
+            //            tbl = tbl + "<td id='ecode'>" + response[i].Empcode;
+            //            tbl = tbl + "</td>";
+            //            tbl = tbl + "<td id='enm'>" + response[i].EmpName;
+            //            tbl = tbl + "</td>";
+            //            tbl = tbl + "<td id='epid'>" + response[i].EmpPunchID;
+            //            tbl = tbl + "</td>";
+            //            tbl = tbl + "<td id=''><input type='checkbox' onchange='checkedDept(this)' class='ClsChkEmp' id='" + response[i].EmpId + "'/>";
+            //            //tbl = tbl + "<td id=''><input type='checkbox' class='ClsChkEmp' id='" + response[i].EmpId + "'/>";
+            //            tbl = tbl + "</td>";
+            //            tbl = tbl + "</tr>";
+            //            table += tbl;
+            //        }
+            //    }
+            //    $("#tblEmp").destroy;
+            //    $('#tblEmp').append(table);
+            //    $('#tblEmp').dataTable({
+            //        "columnDefs": [
+            //                            {
+            //                                "targets": [0],
+            //                                "visible": false,
+            //                                "searchable": false,
+            //                            }
+
+            //        ],
+            //        "destroy": true,
+            //        "bInfo": false,
+            //        "bPaginate": false,
+            //        "bLengthChange": false,
+            //        "columns": [
+            //            { "title": "Employee ID" },
+            //             { "title": "Code" },
+            //            { "title": "Employee Name" },
+            //            { "title": "Punch ID" },
+            //            { "title": "<input type='checkbox' class='ClsChkAllDept' onchange='AllCheckedEmp(this)' />" }
+            //        ],
+            //        "order": [[2, 'asc']]
+            //    });
+            //});
+        }
+        function getcEmp() {
+            $("#clblemp").show();
+            //var allVals = [];
+
+            //$("#tblDept .ClsChkDept").each(function () {
+            //    if ($(this).is(':checked') == true) {
+            //        allVals.push($(this).attr("id"));
+            //    }
+            //});
+
+            $("#ctblEmp").empty();
+            var bID = $("#ddlBranch").val();
+            $.post("/Transactions/GetEmpByDept?empArr=" + cDeptIdlst + ";" + bID, function (response) {
+                if (response.isRedirect) {
+                    window.location.href = response.redirectUrl;
+                }
+                var table = "";
+                if (response != null) {
+                    for (var i = 0; i < response.length; i++) {
+
+                        var tbl = "<tr class='odd gradeX'>";
+                        tbl = tbl + "<td id='eid' hidden>" + response[i].EmpId;
+                        tbl = tbl + "</td>";
+                        tbl = tbl + "<td id='ecode'>" + response[i].Empcode;
+                        tbl = tbl + "</td>";
+                        tbl = tbl + "<td id='enm'>" + response[i].EmpName;
+                        tbl = tbl + "</td>";
+                        tbl = tbl + "<td id='epid'>" + response[i].EmpPunchID;
+                        tbl = tbl + "</td>";
+                        tbl = tbl + "<td id=''><input type='checkbox' onchange='checkedDept(this)' class='ClsChkEmp' id='" + response[i].EmpId + "'/>";
+                        //tbl = tbl + "<td id=''><input type='checkbox' class='ClsChkEmp' id='" + response[i].EmpId + "'/>";
+                        tbl = tbl + "</td>";
+                        tbl = tbl + "</tr>";
+                        table += tbl;
+                    }
+                }
+                $("#ctblEmp").destroy;
+                $('#ctblEmp').append(table);
+                $('#ctblEmp').dataTable({
+                    "columnDefs": [
+                                        {
+                                            "targets": [0],
+                                            "visible": false,
+                                            "searchable": false,
+                                        }
+
+                    ],
+                    "destroy": true,
+                    "bInfo": false,
+                    "bPaginate": false,
+                    "bLengthChange": false,
+                    "columns": [
+                        { "title": "Employee ID" },
+                         { "title": "Code" },
+                        { "title": "Employee Name" },
+                        { "title": "Punch ID" },
+                        { "title": "<input type='checkbox' class='ClsChkAllDept' onchange='AllCheckedEmp(this)' />" }
+                    ]
+                });
+            });
+        }
+        function Clear() {
+            $("#mode").val(0);
+            $("#FromDate").val("");
+            $("#ToDate").val("");
+            $("#todate").val("");
+            $("#devicecode").val(0);
+            $("#in_out_time").val("");
+            $("#fromdate").val("");
+            $("#ipaddress").val(0);
+            $("#ddlCompany").val("0");
+            $("#select2-ddlCompany-container").html("Select Company");
+            $("#select2-ddlCompany-container").attr("title", "Select Company");
+            $("#ddlBranch").empty();
+            $("#ddlBranch").append("<option value='0' selected> Select Branch </option>");
+            $("#DepartmentID option:selected").prop("selected", false);
+            $("#DepartmentID").multiselect('refresh');
+            $("#DepartmentID").multiselect('disable');
+            $(".alert-danger").hide();
+            $(".alert-success").hide();
+            $("#tblEmp tbody").empty();
+            $("#tblDept tbody").empty();
+            $(".ClsChkAllDept").prop('checked', false);
+            $(".ClsChkAllEmp").prop('checked', false);
+            var nextStepWizard = $('div.setup-panel div a[href="#step-1"]').parent().children("a");
+            nextStepWizard.removeAttr('disabled').trigger('click');
+            $('#btnAddManualPunch').attr("disabled", "disabled");
+            $('#btnClearData').attr("disabled", "disabled");
+
+        }
+        function frmDeviceClear() {
+            $("#DeviceCode").val("");
+            $("#DeviceCode").removeClass('field_error');
+            $("#DeviceName").val("");
+            $("#DeviceName").removeClass('field_error');
+            $("#DeviceIP1").val("");
+            $("#DeviceIP1").removeClass('field_error');
+            $("#DevicePort").val("");
+            $("#DevicePort").removeClass('field_error');
+            $("#Mode1").val("0");
+            $("#IsPushData").prop('checked', false);
+            $("#spvalidation").text("");
+            $("#DevicePassword").val("");
+            $("#DeviceTypeCode").val("");
+        }
+        function AllCheckedDept(ths) {
+            $(".popMsg").hide();
+            if ($(ths).prop('checked') == true) {
+                $(".ClsChkDept").prop('checked', true);
+
+            }
+            else {
+                $(".ClsChkDept").prop('checked', false);
+            }
+
+        }
+        function AllCheckedEmp(ths) {
+            $(".popMsg").hide();
+            if ($(ths).prop('checked') == true) {
+                $(".ClsChkEmp").prop('checked', true);
+
+            }
+            else {
+                $(".ClsChkEmp").prop('checked', false);
+            }
+
+        }
+        function checkedDept(ths) {
+            $(".popMsg").hide();
+        }
+</script>
+
+<div class="page-bar">
+    @if (_RoleId == 1 || _RoleId == 6805 || _RoleId == 6806)
+    {
+        <ul class="page-breadcrumb">
+            <li>
+                <a href="@(isClientDBMatchFlag == "True" ? "/Admin/AdminDashboard" : "/Dashboard/AdminDashboard")"><i class="fa-regular fa-house"></i></a>
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> Manual Punching</span>
+            </li>
+        </ul>
+    }
+    else
+    {
+        <ul class="page-breadcrumb">
+            <li>
+                <a href="/Dashboard/EmployeeDashboard"><i class="fa-regular fa-house"></i></a>
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> Manual Punching</span>
+            </li>
+        </ul>
+    }
+
+    <div class="page-toolbar text-right">
+        <a href="javascript:;" class="btn icon_transparent_btn tooltips" id="Filter_search" data-placement="left" data-original-title="Filter" data-toggle="tooltip"><i class="fa-light fa-filter" aria-hidden="true"></i> </a>
+    </div>
+</div>
+
+@if (obj.CanView)
+{
+    <div id='ajax_loaderCompany' class="modal_bg loading">
+        <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading" />
+    </div>
+
+    <div class="filter_portlet_wrapper full-width">
+
+        <!-- Datatable Block : Begin -->
+        <div class="portlet filter_portlet_tbl">
+            <div class="portlet-body">
+                <div class="row">
+                    <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                        <div class="clsTable" id="divmanual">
+                            <div id="tblempty" style="display: none;">
+                                <div class="table-responsive" id="tableResponsive">
+                                    <table class="new_datatbl table table-striped table-bordered table-hover order-column" id="tblManualPunch">
+                                        <thead>
+                                            <tr>
+                                                <th>Emp Code</th>
+                                                <th>Emp Name</th>
+                                                <th>In Out Time <i class='fa-regular fa-circle-info tooltips' data-placement='bottom' title='Date format is : @_isdateformat.ToUpper()' style='color: #295097;'></i></th>
+                                                <th>Mode</th>
+                                            </tr>
+                                        </thead>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="NotificationGrid-empty" style="display: none">
+                            <div class="datanotfound">
+                                <img src="~/assets/images/emptyscreen_3.png" height="148" width="280" alt="Nodata Found Icon">
+                                <p class="datanotfound_title">No data found</p> <!-- titleText -->
+                                <p class="">No matching records found for the selected filters.</p><!-- subText -->
+                            </div>
+                        </div>
+                        <div id="NotificationGrid-empty1">
+                            <div class="datanotfound">
+                                <img src="~/assets/images/emptyscreen_3.png" height="148" width="280" alt="Nodata Found Icon">
+                                <p class="datanotfound_title">No data show</p> <!-- titleText -->
+                                <p class="">Start by applying a filter to view relevant data.</p><!-- subText -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Datatable Block : End -->
+        <!-- Filter Block : Begin -->
+        <div class="portlet filter_boxModal">
+            <div class="filterbox_header">
+                <div class="d-flex align-items-center justify-content-between">
+                    <h4 class="filter-title">Filters</h4>
+                    <button type="button" class="filterclose_btn"><i class="fa-light fa-xmark"></i></button>
+                </div>
+            </div>
+            <div class="filterbox_body">
+                <div class="col-lg-12">
+                    <div class="form-group">
+                        <label>Company<span class="required" aria-required="true"> * </span></label>
+                        <select class="form-control input-sm select2" id="ddlCompany" name="ddlCompany">
+                        </select>
+                    </div>
+                </div>
+                <div class="col-lg-12">
+                    <div class="form-group">
+                        <label>Branch<span class="required" aria-required="true"> * </span></label>
+                        <select class="form-control input-sm select2" id="ddlBranch" name="ddlBranch">
+                        </select>
+                    </div>
+                </div>
+                <div class="col-lg-12">
+                    <div class="form-group data_picker_box">
+                        <label>From Date<span class="required" aria-required="true"> * </span></label>
+                        <div class="input-group input-group-sm date date-picker" data-date="@DateTime.Now" data-date-format="@_isdateformat" data-date-end-date="0d" data-date-viewmode="years">
+                            <span class="input-group-btn">
+                                <button class="btn default btn-sm" type="button">
+                                    <i class="fa-light fa-calendar-days"></i>
+                                </button>
+                            </span>
+                            @if (@_isdateformat == "dd-M-yyyy" || @_isdateformat == "M-dd-yyyy" || @_isdateformat == "yyyy-M-dd")
+                            {
+                                <input class="form-control" id="FromDate" name="FromDate" type="text" placeholder="@_isdateformat.Replace("M","MMM")" autocomplete="off">
+                            }
+                            else
+                            {
+                                <input class="form-control" id="FromDate" name="FromDate" type="text" placeholder="@_isdateformat" autocomplete="off">
+                            }
+                        </div>
+                    </div>
+                </div>
+                <div class="col-lg-12">
+                    <div class="form-group data_picker_box">
+                        <label>To Date<span class="required" aria-required="true"> * </span></label>
+                        <div class="input-group input-group-sm date date-picker" data-date="@DateTime.Now" data-date-format="@_isdateformat" data-date-end-date="0d" data-date-viewmode="years">
+                            <span class="input-group-btn">
+                                <button class="btn default btn-sm" type="button">
+                                    <i class="fa-light fa-calendar-days"></i>
+                                </button>
+                            </span>
+                            @if (@_isdateformat == "dd-M-yyyy" || @_isdateformat == "M-dd-yyyy" || @_isdateformat == "yyyy-M-dd")
+                            {
+                                <input class="form-control" id="ToDate" name="ToDate" type="text" placeholder="@_isdateformat.Replace("M","MMM")" autocomplete="off">
+                            }
+                            else
+                            {
+                                <input class="form-control" id="ToDate" name="ToDate" type="text" placeholder="@_isdateformat" autocomplete="off">
+                            }
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="filterbox_footer">
+                <div class="text-right">
+                    <button type="button" id="Clear_OPration" class="btn clear_btn margin-left-5 tooltips" data-placement="top" data-original-title="Clear filters" style="display: inline-block;"><i class="fa-regular fa-eraser"></i></button>
+                    <button type="button" id="Search_OPration" class="btn icon_btn margin-left-5 tooltips" data-placement="top" data-original-title="Search filters" style="display: inline-block;"><i class="fa-solid fa-magnifying-glass"></i></button>
+                    @if (obj.CanAdd)
+                    {
+                        <a href="javascript:void(0)" id="btnAddManualPunch" class="btn icon_btn margin-left-5 tooltips" data-toggle="modal" data-placement="left" data-original-title="Add Manual Punch"><i class="fa-solid fa-plus"></i></a>
+                    }
+                </div>
+            </div>
+        </div>
+        <!-- Filter Block : End -->
+
+    </div>
+
+    <div id="frmpopup" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog">
+            <!-- Modal content-->
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    <h4 class="modal-title">Manual Punch</h4>
+                </div>
+                <div class="modal-body">
+                    <div class=" stepwizard">
+                        <div class="stepwizard-row setup-panel">
+                            <div class="stepwizard-step">
+                                <a href="#step-1" id="s1" type="button" class="btn btn-primary btn-circle disabled"><i class="fa-regular fa-sitemap"></i>  Select Department</a>
+                            </div>
+                            <div class="stepwizard-step">
+                                <a href="#step-2" id="s2" type="button" class="btn btn-default btn-circle disabled"><i class="fa-regular fa-user"></i> Select Employee</a>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="alert alert-danger popMsg" hidden>
+                        <a href="#" class="close" data-dismiss="alert">&times;</a>
+                        <strong id="strstg">Error ! </strong> @_error
+                    </div>
+                    <div class="setup-content" id="step-1">
+                        <div class="modal-card">
+                            <div class="row">
+                                <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12" id="DeptIdsContainer">
+                                    <div class="form-group">
+                                        <label class="control-label">Department</label>
+                                        @*<input type="text" id="txt2" value="0" hidden />*@
+                                        <select id="DeptIds" class="mt-multiselect btn-sm btn blue btn-outline " aria-haspopup="true" aria-expanded="false" multiple="multiple" data-width="100%"></select>
+                                    </div>
+                                </div>
+                                <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                    <div class="form-group padding-top-30">
+                                        <label class="check mt-checkbox mt-checkbox-outline">
+                                            <input name="Inmode" value="IN" type="checkbox" id="Inmode">IN Time
+                                            <span></span>
+                                        </label>
+                                        <label class="check mt-checkbox mt-checkbox-outline">
+                                            <input name="Outmode" value="OUT" type="checkbox" id="Outmode">OUT Time
+                                            <span></span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                    <fieldset>
+                                        <div class="form-group  data_picker_box">
+                                            <label>IN Time <span class="required" aria-required="true"> * (Set Time in 24hr Format) </span></label>
+                                            <div class="input-group input-group-sm" id="InDiv">
+                                                <input type="text" class="form-control timepicker timepicker-24" data-minute-step="1" id="in_time" name="in_time" placeholder="00:00" autocomplete="off">
+                                                <span class="input-group-btn">
+                                                    <button class="btn default" type="button" id="btnIntime">
+                                                        <i class="fa-regular fa-clock"></i>
+                                                    </button>
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </fieldset>
+                                </div>
+                                <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                    <fieldset>
+                                        <div class="form-group  data_picker_box">
+                                            <label>OUT Time <span class="required" aria-required="true"> * (Set Time in 24hr Format) </span></label>
+                                            <div class="input-group input-group-sm" id="OutDiv">
+                                                <input type="text" class="form-control timepicker timepicker-24" data-minute-step="1" id="out_time" name="out_time" placeholder="00:00" autocomplete="off">
+                                                <span class="input-group-btn">
+                                                    <button class="btn default" type="button" id="btnouttime">
+                                                        <i class="fa-regular fa-clock"></i>
+                                                    </button>
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </fieldset>
+                                </div>
+                                <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                    <fieldset>
+                                        <div class="form-group data_picker_box">
+                                            <label>From <span class="required" aria-required="true"> * </span></label>
+                                            <div class="input-group input-group-sm date date-picker" data-date="@DateTime.Now" data-date-format="@_isdateformat" data-date-viewmode="years">
+                                                <span class="input-group-btn">
+                                                    <button class="btn default" type="button">
+                                                        <i class="fa-light fa-calendar-days"></i>
+                                                    </button>
+                                                </span>
+                                                @if (_isdateformat == "dd-M-yyyy" || _isdateformat == "M-dd-yyyy" || _isdateformat == "yyyy-M-dd")
+                                                {
+                                                    <input type="text" class="form-control" id="fromdate" name="fromdate" placeholder="@_isdateformat.Replace("M","MMM")" readonly="readonly">
+                                                }
+                                                else
+                                                {
+                                                    <input type="text" class="form-control" id="fromdate" name="fromdate" placeholder="@_isdateformat" readonly="readonly">
+                                                }
+                                            </div>
+                                        </div>
+                                    </fieldset>
+                                </div>
+                                <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                    <fieldset>
+                                        <div class="form-group data_picker_box">
+                                            <label>To <span class="required" aria-required="true"> * </span></label>
+                                            <div class="input-group  input-group-sm date date-picker" data-date="@DateTime.Now" data-date-format="@_isdateformat" data-date-viewmode="years">
+                                                <span class="input-group-btn">
+                                                    <button class="btn default" type="button">
+                                                        <i class="fa-light fa-calendar-days"></i>
+                                                    </button>
+                                                </span>
+                                                @if (_isdateformat == "dd-M-yyyy" || _isdateformat == "M-dd-yyyy" || _isdateformat == "yyyy-M-dd")
+                                                {
+                                                    <input type="text" class="form-control" id="todate" name="todate" data-date-format="@_isdateformat" placeholder="@_isdateformat.Replace("M","MMM")" readonly="readonly" autocomplete="off">
+                                                }
+                                                else
+                                                {
+                                                    <input type="text" class="form-control" id="todate" name="todate" data-date-format="@_isdateformat" placeholder="@_isdateformat" readonly="readonly" autocomplete="off">
+                                                }
+                                            </div>
+                                        </div>
+                                    </fieldset>
+                                </div>
+                                <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12" hidden>
+                                    <fieldset>
+                                        <div class="form-group">
+                                            <label>Device IP</label>
+                                            <div class="input-group input-group-sm ">
+                                                @*<select class="form-control" id="ipaddress" name="ipaddress">
+                                                        <option value="0" selected>-- Select Device IP --</option>
+                                                        @foreach (var item in ViewBag.FillIPList as IEnumerable<SelectListItem>)
+                                                        {
+                                                            <option value="@item.Value">@item.Text</option>
+                                                        }
+                                                    </select>*@
+                                                @if (ViewBag.FillIPList != null)
+                                                {
+                                                    @Html.DropDownList("DeviceIP", new SelectList(ViewBag.FillIPList, "DeviceIP", "DeviceIP"), "Select Device IP", new { @class = "form-control input-sm" })
+                                                }
+                                                else
+                                                {
+                                                    @Html.DropDownList("DeviceIP", new SelectList(new[] { "" }), "Select Device IP", new { @class = "form-control input-sm" })
+                                                }
+                                                <span class="input-group-addon "><a class="btn_green tooltips font-green-seagreen" id="DeviceADD" title="ADD"><i class="fa-solid fa-plus"> </i></a></span>
+                                            </div>
+                                        </div>
+                                    </fieldset>
+                                </div>
+                                @*<div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                        <div class="form-group">
+                                            <label>Device</label>
+                                            <select class="form-control" id="devicecode" name="devicecode">
+                                                <option value="0" selected>-- Select Device --</option>
+                                                @foreach (var item in ViewBag.FillDevice as IEnumerable<SelectListItem>)
+                                                {
+                                                    <option value="@item.Value">@item.Text</option>
+                                                }
+                                            </select>
+                                        </div>
+                                    </div>*@
+                                @*<div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                                        <label>Department</label>
+                                        <div class="divDept">
+                                            <table class="table table-striped table-bordered table-hover  order-column" id="tblDept">
+                                                <thead>
+                                                    <tr>
+                                                        <th style="display:none">DepartmentId</th>
+                                                        <th>DepartmentName</th>
+                                                    </tr>
+                                                </thead>
+                                            </table>
+                                        </div>
+                                    </div>*@
+                                @*<div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                                        <button class="btn nextBtn next_btn" id="frstNext" type="button">Next <i class="fa-light fa-angle-right"></i></button>
+                                    </div>*@
+                            </div>
+                        </div>
+                    </div>
+                    <div class="setup-content" id="step-2">
+                        <fieldset>
+                            <div class="row">
+                                <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                                    <div class="divEmp">
+                                        <label id="lblemp" class="lbl_emp" hidden>Employee</label>
+                                        <div class="table-responsive" id="tableResponsive">
+                                            <table class="table new_datatbl table-striped table-bordered table-hover order-column" id="tblEmp">
+                                                @*<thead>
+                                                        <tr>
+                                                            <th id="tid">Emp ID</th>
+                                                            <th> Employee Name </th>
+                                                            <th> Punch ID </th>
+                                                            <th> <input type="checkbox" class="ClsChkAllEmp"/> </th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        <tr colspan="3" class="odd gradeX"></tr>
+                                                    </tbody>*@
+                                            </table>
+                                        </div>
+                                    </div>
+                                </div>
+                                <!-- <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                                    <button class="btn prevbtn prev_btn" type="button"><i class="fa-regular fa-angle-left"></i> Prev</button>
+                                    @*<button type="submit" class="btn green" onclick="Clear()">New</button>*@
+                                    @*<button type="submit" id="btnSave" class="btn blue">Save</button>*@
+                                    <button type="submit" class="btn save_btn" id="btnSave"> <i class="fa-light fa-floppy-disk"></i> Save</button>
+                                </div> -->
+                            </div>
+                        </fieldset>
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+
+                    <!-- First Tab Button -->
+                    <div class="row" id="FrstTabBtnDiv" style="display:none;">
+                        <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                            <button class="btn nextBtn next_btn" id="frstNext" type="button">Next <i class="fa-light fa-angle-right"></i></button>
+                        </div>
+                    </div>
+
+                    <!-- Second Tab Button -->
+                    <div class="row" id="SecondTabBtnDiv" style="display:none;">
+                        <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                            <button class="btn prevbtn prev_btn" type="button" id="Secondprev"><i class="fa-regular fa-angle-left"></i> Prev</button>
+                            @*<button type="submit" class="btn green" onclick="Clear()">New</button>*@
+                            @*<button type="submit" id="btnSave" class="btn blue">Save</button>*@
+                            <button type="submit" class="btn save_btn" id="btnSave"> <i class="fa-light fa-floppy-disk"></i> Save</button>
+                        </div>
+                    </div>
+
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <div id="frmDevicePopup" class="modal fade bs-modal-lg" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog  modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    <h4 class="modal-title">Device</h4>
+                </div>
+                <div class="modal-body">
+                    <div class="modal-card">
+                        <fieldset>
+                            <div class="row">
+                                <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                    <div class="form-group">
+                                        <label>Device Name <span class="required" aria-required="true"> * </span></label>
+                                        <input type="text" class="form-control input-sm" placeholder="Enter Device Name" id="DeviceName" name="DeviceName" required="">
+                                    </div>
+                                </div>
+                                <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                    <div class="form-group">
+                                        <label>Device IP <span class="required" aria-required="true"> * </span></label>
+                                        <input type="text" class="form-control input-sm" placeholder="Enter Device IP" id="DeviceIP1" name="DeviceIP1" required="" pattern="((^|\.)((25[0-5])|(2[0-4]\d)|(1\d\d)|([1-9]?\d))){4}$">
+                                        <span class="help-block error_help_block" hidden id="spvalidation"></span>
+                                    </div>
+                                </div>
+                                <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                    <div class="form-group">
+                                        <label>Device Port <span class="required" aria-required="true"> * </span></label>
+                                        <input type="text" class="form-control input-sm" placeholder="Enter Device Port Number" id="DevicePort" name="DevicePort" required="">
+                                    </div>
+                                </div>
+                                <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                    <div class="form-group">
+                                        <label>Device Mode</label>
+                                        <select class="form-control input-sm" id="Mode1" name="Mode1">
+                                            <option value="0" disabled selected>Select Device Mode</option>
+                                            <option value="IN">IN</option>
+                                            <option value="Out">Out</option>
+                                            <option value="Default">Default</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                    <div class="form-group">
+                                        <label>Device Code <span class="required" aria-required="true"> * </span></label>
+                                        <input type="text" class="form-control input-sm" placeholder="Enter Device Code" id="DeviceCode" name="DeviceCode" required>
+                                    </div>
+                                </div>
+                                <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                    <div class="form-group">
+                                        <label>Device Password</label>
+                                        <input type="password" class="form-control input-sm" placeholder="Enter Device Password" id="DevicePassword" name="DevicePassword">
+                                    </div>
+                                </div>
+                                <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                    <div class="form-group">
+                                        <label>Device Type</label>
+                                        @if (ViewBag.FillDeviceType != null)
+                                        {
+                                            @Html.DropDownList("DeviceTypeCode", new SelectList(ViewBag.FillDeviceType, "DeviceTypeCode", "DeviceType"), "Select Device Type", new { @class = "form-control input-sm" })
+                                        }
+                                        else
+                                        {
+                                            @Html.DropDownList("DeviceTypeCode", new SelectList(new[] { "" }), "Select Device Type", new { @class = "form-control input-sm" })
+                                        }
+                                    </div>
+                                </div>
+                                <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                    <div class="form-group padding-top-30">
+                                        <label class="check mt-checkbox mt-checkbox-outline">
+                                            <input name="IsPushData" type="checkbox" id="IsPushData">Push Data
+                                            <span></span>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </fieldset>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <div class="row">
+                        <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                            <button type="button" class="btn save_btn" id="btnDeviceSubmit"> <i class="fa-light fa-floppy-disk"></i> Save</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="frmcleardatapopup" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    <h4 class="modal-title">Clear Data</h4>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-danger popMsg" hidden>
+                        <a href="#" class="close" data-dismiss="alert">&times;</a>
+                        <strong id="strstg">Error ! </strong> @_error
+                    </div>
+                    <div class=" stepwizard">
+                        <div class="stepwizard-row setup-panel">
+                            <div class="stepwizard-step">
+                                <a href="#cstep-1" type="button" class="btn btn-primary btn-circle"><i class="fa-regular fa-sitemap"></i>  Select Department</a>
+                            </div>
+                            <div class="stepwizard-step">
+                                <a href="#cstep-2" type="button" class="btn btn-default btn-circle" disabled="disabled"><i class="fa-regular fa-user"></i> Select Employee</a>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="setup-content" id="cstep-1">
+                        <div class="row">
+                            <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                                <div class="form-group">
+                                    <label class="control-label">Department</label>
+                                    <input type="text" id="ctxt2" value="0" hidden />
+                                    <select id="cDeptIds" class="mt-multiselect btn-sm btn blue btn-outline " aria-haspopup="true" aria-expanded="false" multiple="multiple" data-width="100%"></select>
+                                </div>
+                            </div>
+                            <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                <fieldset>
+                                    <div class="form-group">
+                                        <label>From <span class="required" aria-required="true"> * </span></label>
+                                        <div class="input-group input-group-sm date date-picker" data-date="@DateTime.Now" data-date-format="yyyy-mm-dd" data-date-viewmode="years">
+                                            <span class="input-group-btn">
+                                                <button class="btn default" type="button">
+                                                    <i class="fa-light fa-calendar-days"></i>
+                                                </button>
+                                            </span>
+                                            <input type="text" class="form-control" id="cfromdate" name="cfromdate" placeholder="YYYY-MM-DD">
+                                        </div>
+                                    </div>
+                                </fieldset>
+                            </div>
+                            <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                <fieldset>
+                                    <div class="form-group">
+                                        <label>To <span class="required" aria-required="true"> * </span></label>
+                                        <div class="input-group  input-group-sm date date-picker" data-date="@DateTime.Now" data-date-format="@_isdateformat" data-date-viewmode="years">
+                                            <span class="input-group-btn">
+                                                <button class="btn default" type="button">
+                                                    <i class="fa-light fa-calendar-days"></i>
+                                                </button>
+                                            </span>
+                                            <input type="text" class="form-control" id="ctodate" name="ctodate" data-date-format="@_isdateformat" placeholder="@_isdateformat">
+                                        </div>
+                                    </div>
+                                </fieldset>
+                            </div>
+                            <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                                <button class="btn nextBtn next_btn" id="cfrstNext" type="button">Next <i class="fa-light fa-angle-right"></i></button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row setup-content" id="cstep-2">
+                        <fieldset>
+                            <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                                <div class="cdivEmp">
+                                    <label id="clblemp" class="lbl_emp" hidden>Employee</label>
+                                    <table class="table table-striped table-bordered table-hover order-column" id="ctblEmp"></table>
+                                </div>
+                            </div>
+                            <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                                <button type="submit" class=" btn save_btn" id="btnClear"> <i class="fa-regular fa-trash-can"></i> Clear Punch Data</button>
+                            </div>
+                        </fieldset>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    <span style="color:red">Unauthorized Access.</span>
+}
+<script>
+    $('.overlay').fadeIn('fast').delay(5000).fadeOut('slow');
+    // $('.overlay alert - success').fadeIn('fast').delay(5000).fadeOut('slow');
+
+</script>

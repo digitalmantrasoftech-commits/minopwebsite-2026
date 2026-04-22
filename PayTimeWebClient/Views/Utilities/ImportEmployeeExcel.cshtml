@@ -1,0 +1,2284 @@
+﻿@model PayTimeWebClient.Models.Importfaillog
+@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@using System.Configuration;
+@{
+    ViewBag.Title = "ImportEmployeeExcel";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    string _Message = ViewBag.msg;
+    string _error = ViewBag.error;
+    string _flgempover = ViewBag.flgempover;
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+
+    if (_flgempover == "true")
+    {
+        obj.CanAdd = false;
+    }
+    string _dbName = HttpContext.Current.Session["DbName"].ToString();
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    string _compcode = HttpContext.Current.Session["cmpcode"].ToString();
+    string _CheckBestsellerCustomClient = ConfigurationManager.AppSettings["BestSeller"].ToString();
+    int _UserId = Convert.ToInt32(HttpContext.Current.Session["UserId"]);
+}
+<style>
+    .progress {
+        position: relative;
+        height: 15px;
+        background-color: #e9ecef;
+    }
+
+    .progress-bar {
+        height: 100%;
+        background-color: #5C95FF;
+        border-radius: 3px !important;
+    }
+</style>
+<script src="~/Scripts/timeme.js"></script>
+<script src="~/AssetsNew/js/CommonValidation.js"></script>
+<script src="~/AssetsNew/js/exportexcel.js"></script>
+<script src="~/Scripts/Helpers/noDataHandler.js"></script>
+<script type="text/javascript">
+    var hrefValue = "";
+    var linkText = "";
+    var linkerrtext = "";
+    var tempclass = "";
+    var activeTableId = "";
+    var interval = "";
+    var compcode = '@_compcode';
+    var userid = '@_UserId';
+    var dbName = '@_dbName';
+    var customclientName = '@_CheckBestsellerCustomClient';
+
+    $(document).ready(function () {
+        window.history.replaceState(null, null, window.location.href);
+        if ("@_Message" != "") {
+            toastr.remove();
+            toastr.success("@_Message");
+        }
+        if ('@_error' != "") {
+            toastr.remove();
+            toastr.error("@_error");
+        }
+        tempclass = "@TempData["ddlClassMaster"]";
+        $("#compcode").val('@_compcode');
+        if (tempclass != null &&  tempclass != "") {
+            $("#ddlClassMaster").val(tempclass);
+        }
+        $("#gridEmployee, #gridCompany, #gridBranch, #gridDepartment, #gridDesignation").hide();
+        ["#tblEmployeeMaster", "#tblCompanyMaster", "#tblBranchMaster", "#tblDepartmentMaster", "#tblDesignationMaster"].forEach(function (table) {
+            if ($.fn.dataTable.isDataTable(table)) {
+                $(table).DataTable().destroy();
+                $(table + " tbody").empty();
+            }
+        });
+        $("#ddlCompany_block").hide();
+        var classValue = $("#ddlClassMaster").val();
+        if (classValue === "5") {
+            $("#ddlCompany_block").show();
+            $("#gridEmployee").show();
+            $("#gridCompany, #gridBranch, #gridDepartment, #gridDesignation").hide();
+            ["#tblCompanyMaster", "#tblBranchMaster", "#tblDepartmentMaster", "#tblDesignationMaster"].forEach(function (table) {
+                if ($.fn.dataTable.isDataTable(table)) {
+                    $(table).DataTable().destroy();
+                    $(table + " tbody").empty();
+                }
+            });
+            generateEmployeegriddata(userid);
+            generateprogressdata(classValue);
+        }
+        else if (classValue === "1") {
+            $("#ddlCompany_block").hide();
+            $("#gridCompany").show();
+            $("#gridEmployee, #gridBranch, #gridDepartment, #gridDesignation").hide();
+            ["#tblEmployeeMaster", "#tblBranchMaster", "#tblDepartmentMaster", "#tblDesignationMaster"].forEach(function (table) {
+                if ($.fn.dataTable.isDataTable(table)) {
+                    $(table).DataTable().destroy();
+                    $(table + " tbody").empty();
+                }
+            });
+            generateCompanygriddata(userid);
+            generateprogressdata(classValue);
+        }
+        else if (classValue === "2") {
+            $("#ddlCompany_block").hide();
+            $("#gridBranch").show();
+            $("#gridEmployee, #gridCompany, #gridDepartment, #gridDesignation").hide();
+            ["#tblEmployeeMaster", "#tblCompanyMaster", "#tblDepartmentMaster", "#tblDesignationMaster"].forEach(function (table) {
+                if ($.fn.dataTable.isDataTable(table)) {
+                    $(table).DataTable().destroy();
+                    $(table + " tbody").empty();
+                }
+            });
+            generateBranchgriddata(userid);
+            generateprogressdata(classValue);
+
+        }
+        else if (classValue === "3") {
+            $("#ddlCompany_block").hide();
+            $("#gridDepartment").show();
+            $("#gridEmployee, #gridCompany, #gridBranch, #gridDesignation").hide();
+            ["#tblEmployeeMaster", "#tblCompanyMaster", "#tblBranchMaster", "#tblDesignationMaster"].forEach(function (table) {
+                if ($.fn.dataTable.isDataTable(table)) {
+                    $(table).DataTable().destroy();
+                    $(table + " tbody").empty();
+                }
+            });
+            generateDepartmentgriddata(userid);
+            generateprogressdata(classValue);
+        }
+        else if (classValue === "4") {
+            $("#ddlCompany_block").hide();
+            $("#gridDesignation").show();
+            $("#gridEmployee, #gridCompany, #gridBranch, #gridDepartment").hide();
+            ["#tblEmployeeMaster", "#tblCompanyMaster", "#tblBranchMaster", "#tblDepartmentMaster"].forEach(function (table) {
+                if ($.fn.dataTable.isDataTable(table)) {
+                    $(table).DataTable().destroy();
+                    $(table + " tbody").empty();
+                }
+            });
+            generateDesignationgriddata(userid);
+            generateprogressdata(classValue);
+        }
+        linkText = "Select a Class to Download Sample Sheet";
+        $("a.linkexcel").attr("href", hrefValue).append('<i class="fa-regular fa-file-excel"></i> ' + linkText);
+        $("#ddlClassMaster").change(function () {
+            $("#gridEmployee, #gridCompany, #gridBranch, #gridDepartment, #gridDesignation").hide();
+            var classMasterValue = $("#ddlClassMaster").val();
+            if (classMasterValue == "5") {
+                $("#ddlCompany_block").show();
+                $("#gridEmployee").show();
+                $("#gridCompany, #gridBranch, #gridDepartment, #gridDesignation").hide();
+                ["#tblCompanyMaster", "#tblBranchMaster", "#tblDepartmentMaster", "#tblDesignationMaster"].forEach(function (table) {
+                    if ($.fn.dataTable.isDataTable(table)) {
+                        $(table).DataTable().destroy();
+                        $(table + " tbody").empty();
+                    }
+                });
+                generateEmployeegriddata(userid);
+                generateprogressdata(classMasterValue);
+            }
+            else if (classMasterValue == "1") {
+                $("#ddlCompany_block").hide();
+                $("#ddlCompany_block").hide();
+                $("#gridCompany").show();
+                $("#gridEmployee, #gridBranch, #gridDepartment, #gridDesignation").hide();
+                ["#tblEmployeeMaster", "#tblBranchMaster", "#tblDepartmentMaster", "#tblDesignationMaster"].forEach(function (table) {
+                    if ($.fn.dataTable.isDataTable(table)) {
+                        $(table).DataTable().destroy();
+                        $(table + " tbody").empty();
+                    }
+                });
+               generateCompanygriddata(userid);
+                generateprogressdata(classMasterValue);
+            }
+            else if (classMasterValue == "2") {
+                $("#ddlCompany_block").hide();
+                $("#gridBranch").show();
+                $("#gridEmployee, #gridCompany, #gridDepartment, #gridDesignation").hide();
+                ["#tblEmployeeMaster", "#tblCompanyMaster", "#tblDepartmentMaster", "#tblDesignationMaster"].forEach(function (table) {
+                    if ($.fn.dataTable.isDataTable(table)) {
+                        $(table).DataTable().destroy();
+                        $(table + " tbody").empty();
+                    }
+                });
+                generateBranchgriddata(userid);
+                generateprogressdata(classMasterValue);
+            }
+            else if (classMasterValue == "3") {
+                $("#ddlCompany_block").hide();
+                $("#gridDepartment").show();
+                $("#gridEmployee, #gridCompany, #gridBranch, #gridDesignation").hide();
+                ["#tblEmployeeMaster", "#tblCompanyMaster", "#tblBranchMaster", "#tblDesignationMaster"].forEach(function (table) {
+                    if ($.fn.dataTable.isDataTable(table)) {
+                        $(table).DataTable().destroy();
+                        $(table + " tbody").empty();
+                    }
+                });
+                generateDepartmentgriddata(userid);
+                generateprogressdata(classMasterValue);
+            }
+            else if (classMasterValue == "4") {
+                $("#ddlCompany_block").hide();
+                $("#gridDesignation").show();
+                $("#gridEmployee, #gridCompany, #gridBranch, #gridDepartment").hide();
+                ["#tblEmployeeMaster", "#tblCompanyMaster", "#tblBranchMaster", "#tblDepartmentMaster"].forEach(function (table) {
+                    if ($.fn.dataTable.isDataTable(table)) {
+                        $(table).DataTable().destroy();
+                        $(table + " tbody").empty();
+                    }
+                });
+                generateDesignationgriddata(userid);
+                generateprogressdata(classMasterValue);
+            }
+            else {
+                $("#ddlCompany_block").css("display", "none");
+            }
+            hrefValue = $('a.btn.green-dark').attr('href');
+            if (hrefValue != "") {
+                $("a.btn.green-dark").attr("href", "").append('<i class="fa-regular fa-file-excel"></i> ' + "");
+            }
+            switch (classMasterValue) {
+                case "1":
+                    hrefValue = "/SampleXlFile/Company.xls";
+                    linkText = "Company Sample Sheet";
+                    break;
+                case "2":
+                    hrefValue = "/SampleXlFile/Branch.xls";
+                    linkText = "Branch Sample Sheet";
+                    break;
+                case "3":
+                    hrefValue = "/SampleXlFile/Department.xls";
+                    linkText = "Department Sample Sheet";
+                    break;
+                case "4":
+                    hrefValue = "/SampleXlFile/Designation.xls";
+                    linkText = "Designation Sample Sheet";
+                    break;
+                case "5":
+                    hrefValue = (dbName == customclientName)
+                        ? "/SampleXlFile/Emp_Bestseller.xlsx"
+                        : "/SampleXlFile/Emp.xls";
+                    linkText = "Employee Sample Sheet";
+                    break;
+                default:
+                    hrefValue = "";
+                    linkText = "Select a Class to Download Sample Sheet";
+                    break;
+            }
+            $("a.btn.green-dark").attr("href", "").text("");
+            $("a.btn.green-dark").attr("href", hrefValue).append('<i class="fa-regular fa-file-excel"></i> ' + linkText);
+        });
+        $("#btnImport").click(function (event) {
+            checkSession();
+            var classMasterValue = $("#ddlClassMaster").val();
+            if (classMasterValue == "0") {
+                toastr.remove();
+                toastr.error("Please select Category.");
+                event.preventDefault();
+                return false;
+            } else if (classMasterValue == "5") {
+                if ($("#ddlCompany").val() == "0") {
+                    toastr.remove();
+                    toastr.error("Please select company.");
+                    event.preventDefault();
+                    return false;
+                }
+                if (document.getElementById("FileUpload").files.length == 0) {
+                    toastr.remove();
+                    toastr.error("Please upload file.");
+                    event.preventDefault();
+                    return false;
+                }
+            } else if (classMasterValue != "5") {
+                if (document.getElementById("FileUpload").files.length == 0) {
+                    toastr.remove();
+                    toastr.error("Please upload file.");
+                    event.preventDefault();
+                    return false;
+                }
+            }
+        });
+        $("#FileUpload").change(function () {
+            if ($("#FileUpload").val() != null) {
+                var validExts = new Array(".xlsx", ".xls", ".csv");
+                var fileExt = $("#FileUpload").val();
+                if (fileExt != "") {
+                    fileExt = fileExt.substring(fileExt.lastIndexOf('.'));
+                    if (validExts.indexOf(fileExt) < 0) {
+                        toastr.remove();
+                        toastr.error("Invalid file selected, valid files are of " + validExts.toString() + " types.");
+                        $("#FileUpload").val("");
+                        return false;
+                    }
+                }
+            }
+        });
+
+    });
+    function generateprogressdata(classValue) {
+          $(".loading1").show();
+          if (interval) {
+              clearInterval(interval);
+              interval = "";
+          }
+          activeTableId = classValue;
+          interval = setInterval(() => {
+              $.ajax({
+                  url: '@_webapiurl' + "Utility/GetProgressData?tableID=" + activeTableId + "&compcode=" + compcode,
+                  type: "GET",
+                  headers: { 'Authorization': '@_tokan' },
+                  contentType: "application/json; charset=utf-8",
+                  datatype: "json",
+                  success: function (data) {
+                      if (data != null) {
+                          const companylist = data;
+                          handleGridVisibility("tblempty1", "NotificationGrid-emptyCompany", companylist, {
+                              imageUrl: "emptyscreen_1.png",
+                              subText: "No entries found. Please add a record to get started."
+                          });
+                      }
+                      if (Array.isArray(data) && data.length > 0 && data[0].Progress !== undefined && data[0].Error !== undefined) {
+                             var progressValue = data[0].Progress;
+                              var responseCompcode = data[0].compcode;
+                              var responseerror = data[0].Error;
+                              if (responseCompcode === compcode) {
+                                  if (classValue == 1) {
+                                      $("#tblCompanyMaster tbody tr").each(function (index) {
+                                          var rowDiv = $(this).find("div[id^='row_']");
+                                          if (rowDiv.length) {
+                                              var rowId = rowDiv.attr("id").replace("row_", "");
+                                              var progressBar = $("#progress_company_bar_" + rowId);
+                                              var progressText = $("#progress_company_val_" + rowId);
+                                              if (responseerror == 101) {
+                                                  GetExcelFailedStatusCompanyGridData();
+                                              }
+                                              if (progressBar.length && progressText.length) {
+                                                  progressBar.css("width", progressValue + "%").attr("aria-valuenow", progressValue);
+                                                  progressText.text(progressValue + "%");
+                                              }
+                                          }
+                                      });
+                                  }
+                                  else if (classValue == 2) {
+                                      $("#tblBranchMaster tbody tr").each(function (index) {
+                                          var rowDiv = $(this).find("div[id^='row_']");
+                                          if (rowDiv.length) {
+                                              var rowId = rowDiv.attr("id").replace("row_", "");
+                                              var progressBar = $("#progress_Branch_bar_" + rowId);
+                                              var progressText = $("#progress_Branch_val_" + rowId);
+                                              if (responseerror == 101) {
+                                                  GetExcelFailedStatusBranchGridData();
+                                              }
+                                              if (progressBar.length && progressText.length) {
+                                                  progressBar.css("width", progressValue + "%").attr("aria-valuenow", progressValue);
+                                                  progressText.text(progressValue + "%");
+                                              }
+                                          }
+                                      });
+                                  }
+                                  else if (classValue == 3) {
+                                      $("#tblDepartmentMaster tbody tr").each(function (index) {
+                                          var rowDiv = $(this).find("div[id^='row_']");
+                                          if (rowDiv.length) {
+                                              var rowId = rowDiv.attr("id").replace("row_", "");
+                                              var progressBar = $("#progress_Dept_bar_" + rowId);
+                                              var progressText = $("#progress_Dept_val_" + rowId);
+                                              if (responseerror == 101) {
+                                                  GetExcelFailedStatusDepartmentGridData();
+                                              }
+                                              if (progressBar.length && progressText.length) {
+                                                  progressBar.css("width", progressValue + "%").attr("aria-valuenow", progressValue);
+                                                  progressText.text(progressValue + "%");
+                                              }
+                                          }
+                                      });
+                                  }
+                                  else if (classValue == 4) {
+                                      $("#tblDesignationMaster tbody tr").each(function () {
+                                          var rowDiv = $(this).find("div[id^='row_']");
+                                          if (rowDiv.length) {
+                                              var rowId = rowDiv.attr("id").replace("row_", "");
+                                              var progressBar = $("#progress_Desg_bar_" + rowId);
+                                              var progressText = $("#progress_Desg_val_" + rowId);
+                                              if (responseerror == 101) {
+                                                  GetExcelFailedStatusDesignationGridData();
+                                              }
+                                              if (progressBar.length && progressText.length) {
+                                                  progressBar.css("width", progressValue + "%").attr("aria-valuenow", progressValue);
+                                                  progressText.text(progressValue + "%");
+                                              }
+                                          }
+                                      });
+                                  }
+                                  else if (classValue == 5) {
+                                      $("#tblEmployeeMaster tbody tr").each(function () {
+                                          var rowDiv = $(this).find("div[id^='row_']");
+                                          if (rowDiv.length) {
+                                              var rowId = rowDiv.attr("id").replace("row_", "");
+                                              var progressBar = $("#progress_Emp_bar_" + rowId);
+                                              var progressText = $("#progress_Emp_val_" + rowId);
+                                              if (responseerror == 101) {
+                                                  GetExcelFailedStatusEmpGridData();
+                                              }
+                                              if (progressBar.length && progressText.length) {
+                                                  progressBar.css("width", progressValue + "%").attr("aria-valuenow", progressValue);
+                                                  progressText.text(progressValue + "%");
+                                              }
+                                          }
+                                      });
+                                  }
+                                  if (progressValue >= 100) {
+                                      clearInterval(interval);
+                                      $(".loading1").hide();
+
+                                      switch (parseInt(classValue)) {
+                                          case 5:
+                                              generateEmployeegriddata(userid);
+                                              break;
+                                          case 1:
+                                              generateCompanygriddata(userid);
+                                              break;
+                                          case 2:
+                                              generateBranchgriddata(userid);
+                                              break;
+                                          case 3:
+                                              generateDepartmentgriddata(userid);
+                                              break;
+                                          case 4:
+                                              generateDesignationgriddata(userid);
+                                              break;
+                                          default:
+                                              //console.warn("Invalid class master value.");
+                                              break;
+                                      }
+                                  }
+                              }
+                          }
+                  },
+                  error: function (jqXHR, ajaxOptions, thrownError) {
+                      if (jqXHR.status === 500) {
+                          toastr.error("Internal Server Error.");
+                      } else if (jqXHR.status === 400) {
+                          toastr.error("Bad Request.");
+                      } else if (jqXHR.status === 401) {
+                          window.location.href = "/PayTime/LoginPage";
+                      }
+                      clearInterval(interval); // Stop interval on error
+                      $(".loading1").hide(); // Hide loading indicator on error
+                  }
+              });
+          }, 3000);
+   }
+    function generateCompanygriddata(userid) {
+        $("#dataTables_tbl_header").remove();
+    $.ajax({
+        url: '@_webapiurl' + "Utility/GetExcelCompanyGridData?userid=" + userid,
+        type: "GET",
+        headers: { 'Authorization': '@_tokan' },
+        contentType: "application/json; charset=utf-8",
+        datatype: "json",
+        beforeSend: function () {
+            $("#ajax_loader_Import").show();
+        },
+        complete: function () {
+            $('#ajax_loader_Import').hide(); // Hide loader after request completes
+        },
+        success: function (response) {
+            if (response != null) {
+                const companylist = response;
+                handleGridVisibility("tblempty1", "NotificationGrid-emptyCompany", companylist, {
+                    imageUrl: "emptyscreen_1.png",
+                    subText: "No entries found. Please add a record to get started."
+                });
+            }
+            if (response && response.length > 0) {
+                $("#tblCompanyMaster").show();
+                if ($.fn.dataTable.isDataTable('#tblCompanyMaster')) {
+                    $('#tblCompanyMaster').DataTable().clear().destroy();
+                }
+                var tableData = [];
+                for (var i = 0; i < response.length; i++) {
+                    var row = [];
+                    row.push(i + 1);
+                    row.push(response[i].Startdate);
+
+                    if (response[i].Err === 1 && response[i].Status !== "Pending") {
+                        row.push("<div id='row_" + i + "' style='display: flex;'><span class='red_font'>Failed – Error record found.</span></div>");
+                    }
+                    else if (response[i].Status === "Success") {
+                        row.push("<div id='row_" + i + "' style='display: flex;'><span class='green_font'>" + response[i].Status + "</span></div>");
+                    }
+                    else if (response[i].Status === "Pending") {
+                        row.push(
+                            "<div id='row_" + i + "' style='display: flex;'>" +
+                            "<div class='orange_font' id='statusCompany_" + i + "'>" + response[i].Status + "</div>" +
+                            "<div class='loading1' style='width: 100px; margin: 0 8px;'>" +
+                            "<div class='progress' style='margin-bottom: 0;'>" +
+                            "<div class='progress-bar' id='progress_company_bar_" + i + "' role='progressbar' style='width: 0%;' aria-valuenow='0' aria-valuemin='0' aria-valuemax='100'></div>" +
+                            "</div>" +
+                            "</div>" +
+                            "<span class='progress-value' id='progress_company_val_" + i + "'>0%&nbsp;</span>" +
+                            "</div>"
+                        );
+                    }
+                    else {
+                        row.push(response[i].Status);
+                    }
+
+                   row.push(response[i].CreatedDtFlag);
+                   row.push(response[i].Err);
+                   if (response[i].Err == 1 && response[i].Status != "Pending") {
+                       row.push(
+                           "<a class='btnDownloadErrorList btn btn-xs seagreen_btnnew' " +
+                           "onclick='generateCompExcelFile(\"" + response[i].CreatedDtFlag + "\", \"" + $("#ddlClassMaster").val() + "\")'>" +
+                           "<i class='fa-regular fa-file-excel'></i></a>"
+                       );
+                   }
+                   else if (response[i].Status == "Success")
+                   {
+                       row.push("");
+                   }
+                   else {
+                       row.push(
+                           "<button class='btn btn-xs seagreen_btnnew' style='display:none;' id='regenerateCompany_" + i + "' " +
+                           "onclick='regenerateEntryCompany(\"" + response[i].CreatedDtFlag + "\", \"" + compcode + "\", this ," + i + ")'>" +
+                           "<i class='fa-light fa-rotate'></i></button>"
+                       );
+                   }
+                    tableData.push(row);
+                }
+                // Initialize DataTable
+                $('#tblCompanyMaster').DataTable({
+                    data: tableData,
+                    columns: [
+                        { title: "Sr No.",visible:false},
+                        { title: "StartDate"},
+                        { title: "Status"},
+                        { title: "CreatedDtFlag", visible: false },
+                        { title: "Err", visible: false },
+                        { title: "View Error File"}
+                    ],
+                    dom: _domCommon,
+                    language: _languageCommon,
+                    ordering: true,
+                    lengthChange: true,
+                    info: true,
+                    autoWidth: false,
+                    responsive: true,
+                    "initComplete": function () {
+                        const visibleTable = $('table:visible').attr('id');
+                        $("#buttons").append(`
+                            <div id="export-button" class="export-button tooltips" data-placement="bottom" data-original-title="Download" data-table-id="${visibleTable}">
+                                <img src="../Newlayout/images/download_icon.svg" alt="Download icon">
+                            </div>
+                        `);
+                    }
+                });
+                setTimeout(function () {
+                    $("#" + "tblCompanyMaster" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsiveCompany"));
+                    $('.tooltips').tooltip();
+                }, 100);
+                $("#ajax_loader_Import").hide();
+            }
+        },
+        error: function (xhr, ajaxOptions, thrownError) {
+            $("#ajax_loader_Import").hide();
+        },
+        complete: function () {
+            $("#ajax_loader_Import").hide();
+        }
+        });
+    }
+    function generateEmployeegriddata(userid) {
+        $("#dataTables_tbl_header").remove();
+        $.ajax({
+            url: '@_webapiurl' + "Utility/GetExcelEmpGridData?userid=" + userid,
+            type: "GET",
+            headers: { 'Authorization': '@_tokan' },
+            contentType: "application/json; charset=utf-8",
+            datatype: "json",
+            beforeSend: function () {
+                $("#ajax_loader_Import").show();
+            },
+            complete: function () {
+                $('#ajax_loader_Import').hide(); // Hide loader after request completes
+            },
+            success: function (response) {
+                if (response != null) {
+                    const employeeList = response;
+                    handleGridVisibility("tblempty", "NotificationGrid-empty", employeeList, {
+                        imageUrl: "emptyscreen_1.png",
+                        subText: "No entries found. Please add a record to get started."
+                    });
+                }
+                if (response && response.length > 0) {
+                    $("#tblEmployeeMaster").show();
+                    if ($.fn.dataTable.isDataTable('#tblEmployeeMaster')) {
+                        $('#tblEmployeeMaster').DataTable().clear().destroy();
+                    }
+                    var tableData = [];
+                    for (var i = 0; i < response.length; i++) {
+                        var row = [];
+                        row.push(i + 1);
+                        row.push(response[i].Startdate);
+                        if (response[i].Err === 1 && response[i].Status !== "Pending") {
+                            row.push("<div id='row_" + i + "' style='display: flex;'><span class='red_font'>Failed – Error record found.</span></div>");
+                        }
+                        else if (response[i].Status === "Success") {
+                            row.push("<div id='row_" + i + "' style='display: flex;'><span class='green_font'>" + response[i].Status + "</span></div>");
+                        }
+                        else if (response[i].Status === "Pending") {
+                            row.push(
+                                "<div id='row_" + i + "' style='display: flex;'>" +
+                                "<div class='orange_font' id='statusEmp_" + i + "'>" + response[i].Status + "</div>" +
+                                "<div class='loading1' style='width: 100px; margin: 0 8px;'>" +
+                                "<div class='progress' style='margin-bottom: 0;'>" +
+                                "<div class='progress-bar' id='progress_Emp_bar_" + i + "' role='progressbar' style='width: 0%;' aria-valuenow='0' aria-valuemin='0' aria-valuemax='100'></div>" +
+                                "</div>" +
+                                "</div>" +
+                                "<span class='progress-value' id='progress_Emp_val_" + i + "'>0%&nbsp;</span>" +
+                                "</div>"
+                            );
+                        }
+                        else {
+                            row.push(response[i].Status);
+                        }
+
+                        row.push(response[i].CreatedDtFlag);
+                        row.push(response[i].Err);
+                        if (response[i].Err == 1 && response[i].Status == "Success") {
+                            row.push(
+                                "<a class='btnDownloadErrorList btn btn-xs seagreen_btnnew' " +
+                                "onclick='generateExcelFile(\"" + response[i].CreatedDtFlag + "\", \"" + $("#ddlClassMaster").val() + "\")'>" +
+                                "<i class='fa-regular fa-file-excel'></i></a>"
+                            );
+                        }
+                        else if (response[i].Status == "Success")
+                        {
+                            row.push("");
+                        }
+                        else {
+                            row.push(
+                                "<button class='btn btn-xs seagreen_btnnew' style='display:none;' id='regenerate_" + i + "' " +
+                                "onclick='regenerateEntryEmployee(\"" + response[i].CreatedDtFlag + "\", \"" + compcode + "\",this, " + i + ")'>" +
+                                "<i class='fa-light fa-rotate'></i></button>"
+                            );
+                        }
+                        tableData.push(row);
+                    }
+                    $('#tblEmployeeMaster').DataTable({
+                        data: tableData,
+                        columns: [
+                            { title: "Sr No.", visible:false },
+                            { title: "StartDate" },
+                            { title: "Status" },
+                            { title: "CreatedDtFlag", visible: false },
+                            { title: "Err", visible: false },
+                            { title: "View Error File" }
+                        ],
+                        dom: _domCommon,
+                        language: _languageCommon,
+                        ordering: true,
+                        lengthChange: true,
+                        info: true,
+                        autoWidth: false,
+                        responsive: true,
+                    });
+                    setTimeout(function () {
+                        $("#" + "tblEmployeeMaster" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsiveEmployee"));
+                        $('.tooltips').tooltip();
+                    }, 100);
+                    $("#ajax_loader_Import").hide();
+                }
+            },
+            error: function (xhr, ajaxOptions, thrownError) {
+                $("#ajax_loader_Import").hide();
+            },
+            complete: function () {
+                $("#ajax_loader_Import").hide();
+            }
+        });
+    }
+    function generateBranchgriddata(userid) {
+        $("#dataTables_tbl_header").remove();
+        $.ajax({
+            url: '@_webapiurl' + "Utility/GetExcelBranchGridData?userid=" + userid,
+            type: "GET",
+            headers: { 'Authorization': '@_tokan' },
+            contentType: "application/json; charset=utf-8",
+            datatype: "json",
+            beforeSend: function () {
+                $("#ajax_loader_Import").show();
+            },
+            complete: function () {
+                $('#ajax_loader_Import').hide(); // Hide loader after request completes
+            },
+            success: function (response) {
+                if (response != null) {
+                    const branchlist = response;
+                    handleGridVisibility("tblempty2", "NotificationGrid-emptyBranch", branchlist, {
+                        imageUrl: "emptyscreen_1.png",
+                        subText: "No entries found. Please add a record to get started."
+                    });
+                }
+                if (response && response.length > 0) {
+                    $("#tblBranchMaster").show();
+                    if ($.fn.dataTable.isDataTable('#tblBranchMaster')) {
+                        $('#tblBranchMaster').DataTable().clear().destroy();
+                    }
+                    var tableData = [];
+                    for (var i = 0; i < response.length; i++) {
+                        var row = [];
+                        row.push(i + 1);
+                        row.push(response[i].Startdate);
+                        if (response[i].Err === 1 && response[i].Status !== "Pending") {
+                            row.push("<div id='row_" + i + "' style='display: flex;'><span class='red_font'>Failed – Error record found.</span></div>");
+                        }
+                        else if (response[i].Status === "Success") {
+                            row.push("<div id='row_" + i + "' style='display: flex;'><span class='green_font'>" + response[i].Status + "</span></div>");
+                        }
+                        else if (response[i].Status === "Pending") {
+                            row.push(
+                                "<div id='row_" + i + "' style='display: flex;'>" +
+                                "<div class='orange_font' id='statusBranch_" + i + "'>" + response[i].Status + "</div>" +
+                                "<div class='loading1' style='width: 100px; margin: 0 8px;'>" +
+                                "<div class='progress' style='margin-bottom: 0;'>" +
+                                "<div class='progress-bar' id='progress_Branch_bar_" + i + "' role='progressbar' style='width: 0%;' aria-valuenow='0' aria-valuemin='0' aria-valuemax='100'></div>" +
+                                "</div>" +
+                                "</div>" +
+                                "<span class='progress-value' id='progress_Branch_val_" + i + "'>0%&nbsp;</span>" +
+                                "</div>"
+                            );
+                        }
+                        else {
+                            row.push(response[i].Status);
+                        }
+
+                        row.push(response[i].CreatedDtFlag);
+                        row.push(response[i].Err);
+                        if (response[i].Err == 1 && response[i].Status != "Pending") {
+                            row.push(
+                                "<a class='btnDownloadErrorList btn btn-xs seagreen_btnnew' " +
+                                "onclick='generateBranchExcelFile(\"" + response[i].CreatedDtFlag + "\", \"" + $("#ddlClassMaster").val() + "\")'>" +
+                                "<i class='fa-regular fa-file-excel'></i></a>"
+                            );
+                        }
+                        else if (response[i].Status == "Success") {
+                            row.push("");
+                        }
+                        else {
+                            row.push(
+                                "<button class='btn btn-xs seagreen_btnnew' style='display:none;' id='regenerateBranch_" + i + "' " +
+                                "onclick='regenerateEntryBranch(\"" + response[i].CreatedDtFlag + "\", \"" + compcode + "\",this," + i + ")'>" +
+                                "<i class='fa-light fa-rotate'></i></button>"
+                            );
+                        }
+                        tableData.push(row);
+                    }
+
+                    $('#tblBranchMaster').DataTable({
+                        data: tableData,
+                        dom: _domCommon,
+                        language: _languageCommon,
+                        columns: [
+                            { title: "Sr No.",visible:false },
+                            { title: "StartDate" },
+                            { title: "Status" },
+                            { title: "CreatedDtFlag", visible: false },
+                            { title: "Err", visible: false },
+                            { title: "View Error File" }
+                        ],
+                        ordering: true,
+                        lengthChange: true,
+                        info: true,
+                        autoWidth: false,
+                        responsive: true,
+                        "initComplete": function () {
+                            const visibleTable = $('table:visible').attr('id');
+                            $("#buttons").append(`
+                                <div id="export-button" class="export-button tooltips" data-placement="bottom" data-original-title="Download" data-table-id="${visibleTable}">
+                                    <img src="../Newlayout/images/download_icon.svg" alt="Download icon">
+                                </div>
+                            `);
+                        }
+                    });
+                    setTimeout(function () {
+                        $("#" + "tblBranchMaster" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsiveBranch"));
+                        $('.tooltips').tooltip();
+                    }, 100);
+                    $("#ajax_loader").hide();
+                }
+            },
+            error: function (xhr, ajaxOptions, thrownError) {
+                $("#ajax_loader_Import").hide();
+            },
+            complete: function () {
+                $("#ajax_loader_Import").hide();
+            }
+        });
+    }
+    function generateDepartmentgriddata(userid) {
+        $("#dataTables_tbl_header").remove();
+       $.ajax({
+           url: '@_webapiurl' + "Utility/GetExcelDepartmentGridData?userid=" + userid,
+           type: "GET",
+           headers: { 'Authorization': '@_tokan' },
+           contentType: "application/json; charset=utf-8",
+           datatype: "json",
+           beforeSend: function ()
+           {
+               $("#ajax_loader_Import").show();
+           },
+           complete: function () {
+               $('#ajax_loader_Import').hide(); // Hide loader after request completes
+           },
+           success: function (response) {
+               if (response != null) {
+                   const companylist = response;
+                   handleGridVisibility("tblempty3", "NotificationGrid-emptyDep", companylist, {
+                       imageUrl: "emptyscreen_1.png",
+                       subText: "No entries found. Please add a record to get started."
+                   });
+               }
+               if (response && response.length > 0) {
+                   $("#tblDepartmentMaster").show();
+                   if ($.fn.dataTable.isDataTable('#tblDepartmentMaster')) {
+                       $('#tblDepartmentMaster').DataTable().clear().destroy();
+                   }
+                   var tableData = [];
+                   for (var i = 0; i < response.length; i++) {
+                       var row = [];
+                       row.push(i + 1);
+                       row.push(response[i].Startdate);
+                       if (response[i].Err === 1 && response[i].Status !== "Pending") {
+                           row.push("<div id='row_" + i + "' style='display: flex;'><span class='red_font'>Failed – Error record found.</span></div>");
+                       }
+                       else if (response[i].Status === "Success") {
+                           row.push("<div id='row_" + i + "' style='display: flex;'><span class='green_font'>" + response[i].Status + "</span></div>");
+                       }
+                       else if (response[i].Status === "Pending") {
+                           row.push(
+                               "<div id='row_" + i + "' style='display: flex;'>" +
+                               "<div class='orange_font' id='statusDepartment_" + i + "'>" + response[i].Status + "</div>" +
+                               "<div class='loading1' style='width: 100px; margin: 0 8px;'>" +
+                               "<div class='progress' style='margin-bottom: 0;'>" +
+                               "<div class='progress-bar' id='progress_Dept_bar_" + i + "' role='progressbar' style='width: 0%;' aria-valuenow='0' aria-valuemin='0' aria-valuemax='100'></div>" +
+                               "</div>" +
+                               "</div>" +
+                               "<span class='progress-value' id='progress_Dept_val_" + i + "'>0%&nbsp;</span>" +
+                               "</div>"
+                           );
+                       }
+                       else {
+                           row.push(response[i].Status);
+                       }
+
+                       row.push(response[i].CreatedDtFlag);
+                       row.push(response[i].Err);
+                       if (response[i].Err == 1 && response[i].Status != "Pending") {
+                           row.push(
+                               "<a class='btnDownloadErrorList btn btn-xs seagreen_btnnew' " +
+                               "onclick='generateDepartmentExcelFile(\"" + response[i].CreatedDtFlag + "\", \"" + $("#ddlClassMaster").val() + "\")'>" +
+                               "<i class='fa-regular fa-file-excel'></i></a>"
+                           );
+                       }
+                       else if (response[i].Status == "Success") {
+                           row.push("");
+                       }
+                       else {
+                           row.push(
+                               "<button class='btn btn-xs seagreen_btnnew' style='display:none;' id='regenerateDept_" + i + "' " +
+                               "onclick='regenerateEntryDepartment(\"" + response[i].CreatedDtFlag + "\", \"" + compcode + "\",this," + i + ")'>" +
+                               "<i class='fa-light fa-rotate'></i></button>"
+                           );
+                       }
+                       tableData.push(row);
+                   }
+
+                   $('#tblDepartmentMaster').DataTable({
+                       data: tableData,
+                       columns: [
+                           { title: "Sr No.",visible:false },
+                           { title: "StartDate" },
+                           { title: "Status" },
+                           { title: "CreatedDtFlag", visible: false },
+                           { title: "Err", visible: false },
+                           { title: "View Error File" }
+                       ],
+                       dom: _domCommon,
+                       language: _languageCommon,
+                       ordering: true,
+                       lengthChange: true,
+                       info: true,
+                       autoWidth: false,
+                       responsive: true,
+                       "initComplete": function () {
+                           const visibleTable = $('table:visible').attr('id');
+                           $("#buttons").append(`
+                                <div id="export-button" class="export-button tooltips" data-placement="bottom" data-original-title="Download" data-table-id="${visibleTable}">
+                                    <img src="../Newlayout/images/download_icon.svg" alt="Download icon">
+                                </div>
+                            `);
+                       }
+                   });
+                   setTimeout(function () {
+                       $("#" + "tblDepartmentMaster" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsiveDepartment"));
+                       $('.tooltips').tooltip();
+                   }, 100);
+                   $("#ajax_loader_Import").hide();
+               }
+
+           },
+           error: function (xhr, ajaxOptions, thrownError) {
+               $("#ajax_loader_Import").hide();
+           },
+           complete: function () {
+               $("#ajax_loader_Import").hide();
+           }
+       });
+    }
+
+    function generateDesignationgriddata(userid) {
+    $("#dataTables_tbl_header").remove();
+    $.ajax({
+        url: '@_webapiurl' + "Utility/GetExcelDesignationGridData?userid=" + userid,
+        type: "GET",
+        headers: { 'Authorization': '@_tokan' },
+        contentType: "application/json; charset=utf-8",
+        datatype: "json",
+        beforeSend: function () {
+            $("#ajax_loader_Import").show();
+        },
+        complete: function () {
+            $('#ajax_loader_Import').hide(); // Hide loader after request completes
+        },
+        success: function (response) {
+            if (response != null) {
+                const companylist = response;
+                handleGridVisibility("tblempty4", "NotificationGrid-emptyDes", companylist, {
+                    imageUrl: "emptyscreen_1.png",
+                    subText: "No entries found. Please add a record to get started."
+                });
+            }
+            if (response && response.length > 0) {
+                $("#tblDesignationMaster").show();
+                if ($.fn.dataTable.isDataTable('#tblDesignationMaster')) {
+                    $('#tblDesignationMaster').DataTable().clear().destroy();
+                }
+                var tableData = [];
+                for (var i = 0; i < response.length; i++) {
+                    var row = [];
+                    row.push(i + 1);
+                    row.push(response[i].Startdate);
+
+                    // If Err is 1 and status is not Pending, show Fail
+                    if (response[i].Err == 1 && response[i].Status !== "Pending") {
+                        row.push("<div id='row_" + i + "' style='display: flex;'><span class='red_font'>Failed – Error record found.</span></div>");
+                    }
+                    else if (response[i].Status === "Success") {
+                        row.push("<div id ='row_" + i +"' style='display: flex;'><span class='green_font'>" + response[i].Status + "</span></div>");
+                    } else if (response[i].Status === "Pending") {
+                        row.push(
+                            "<div style='display: flex;' id ='row_" + i +"'>"+
+                            "<div class='orange_font' id='statusDesignation_" + i +"'>" + response[i].Status + "</div>" +
+                            "<div class='loading1' style='width: 100px; margin: 0 8px;'>" +
+                            "<div class='progress' style='margin-bottom: 0;'>" +
+                            "<div class='progress-bar' id='progress_Desg_bar_" + i + "' role='progressbar' style='width: 0%;' aria-valuenow='0' aria-valuemin='0' aria-valuemax='100'></div>" +
+                            "</div>" +
+                            "</div>" +
+                            "<span class='progress-value' id='progress_Desg_val_" + i + "'>0%&nbsp;</span>" +
+                            "</div>"
+                        );
+                    } else {
+                        row.push(response[i].Status);
+                    }
+
+                    row.push(response[i].CreatedDtFlag);
+                    row.push(response[i].Err);
+
+                    if (response[i].Err == 1 && response[i].Status != "Pending") {
+                        row.push(
+                            "<a class='btnDownloadErrorList btn btn-xs seagreen_btnnew' " +
+                            "onclick='generateDesignationExcelFile(\"" + response[i].CreatedDtFlag + "\", \"" + $("#ddlClassMaster").val() + "\")'>" +
+                            "<i class='fa-regular fa-file-excel'></i></a>"
+                        );
+                    }
+                    else if (response[i].Status == "Success") {
+                        row.push("");
+                    }
+                    else {
+                        row.push(
+                            "<button class='btn btn-xs seagreen_btnnew' style='display:none;' id='regenerateDesg_" + i + "' " +
+                            "onclick='regenerateEntryDesignation(\"" + response[i].CreatedDtFlag + "\", \"" + compcode + "\",this, " + i + ")'>" +
+                            "<i class='fa-light fa-rotate'></i></button>"
+                        );
+                    }
+                    tableData.push(row);
+                }
+
+                $('#tblDesignationMaster').DataTable({
+                    data: tableData,
+                    columns: [
+                        { title: "Sr No.",visible:false },
+                        { title: "StartDate" },
+                        { title: "Status" },
+                        { title: "CreatedDtFlag", visible: false },
+                        { title: "Err", visible: false },
+                        { title: "View Error File" }
+                    ],
+                    dom: _domCommon,
+                    language: _languageCommon,
+                    ordering: true,
+                    lengthChange: true,
+                    info: true,
+                    autoWidth: false,
+                    responsive: true,
+                    "initComplete": function () {
+                        const visibleTable = $('table:visible').attr('id');
+                        $("#buttons").append(`
+                         <div id="export-button" class="export-button tooltips" data-placement="bottom" data-original-title="Download" data-table-id="${visibleTable}">
+                             <img src="../Newlayout/images/download_icon.svg" alt="Download icon">
+                         </div>
+                     `);
+                    }
+                });
+                setTimeout(function () {
+                    $("#" + "tblDesignationMaster" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsiveDesignation"));
+                    $('.tooltips').tooltip();
+                }, 100);
+                $("#ajax_loader_Import").hide();
+            }
+        },
+        error: function (xhr, ajaxOptions, thrownError) {
+            $("#ajax_loader_Import").hide();
+        },
+        complete: function () {
+            $("#ajax_loader_Import").hide();
+        }
+    });
+}
+
+    function generateCompExcelFile(_Date, classMasterValue) {
+        checkSession();
+        var DtFlag = _Date
+        $.ajax({
+            url: "/Utilities/DownloadCompErrList",
+            type: "GET",
+            headers: { 'Authorization': '@_tokan' },
+            data: { DtFlag: _Date , classMasterValue: classMasterValue },
+            contentType: "application/json; charset=utf-8",
+            datatype: "json",
+            success: function (data) {
+
+                if (typeof data === "string") {
+                    try {
+                        data = JSON.parse(data);
+                    } catch (error) {
+                        toastr.error("Failed to parse data.");
+                        $("#btnDownloadErrorList").prop('disabled', false);
+                        return;
+                    }
+                }
+
+                if (!Array.isArray(data)) {
+                    toastr.error("Unexpected data format received.");
+                    $("#btnDownloadErrorList").prop('disabled', false);
+                    return;
+                }
+                if (data.length === 0) {
+                    toastr.error("No entry found in excel.");
+
+                } else if (data.isRedirect) {
+                    window.location.href = data.redirectUrl;
+
+                } else {
+                    try {
+                        function stripHtmlTags(input) {
+                            if (typeof input === 'string') {
+                                return input.replace(/<[^>]+>/g, '').trim();
+                            }
+                            return input;
+                        }
+                        var classMasterValue = $("#ddlClassMaster").val();
+
+                            const formattedData = data.map(item => ({
+                                CompanyName: item.CompanyName,
+                                Email: item.Email,
+                                Contact: item.Contact,
+                                Address: item.Address,
+                                CompanyWebsite: item.CompanyWebsite,
+                                Reason: item.Reason
+                            }));
+
+                        var worksheet = XLSX.utils.json_to_sheet(formattedData);
+                        var workbook = XLSX.utils.book_new();
+                        XLSX.utils.book_append_sheet(workbook, worksheet, "SaaSCompany");
+
+                        const range = XLSX.utils.decode_range(worksheet['!ref']);
+                        const headerRow = range.s.r; // Start row (header row)
+
+                        for (let col = range.s.c; col <= range.e.c; col++) {
+                            const cellAddress = XLSX.utils.encode_cell({ r: headerRow, c: col });
+                            if (!worksheet[cellAddress]) continue;
+
+                            // Add styling properties to the header cells
+                            worksheet[cellAddress].s = {
+                                font: { bold: true, color: { rgb: "FFFFFF" } },
+                                fill: { fgColor: { rgb: "4CAF50" } },
+                                alignment: { horizontal: "center" }
+                            };
+                        }
+
+                        // Optional: Set column widths for better readability
+                        worksheet['!cols'] = [
+                            { wch: 20 },
+                            { wch: 25 },
+                            { wch: 15 },
+                            { wch: 30 },
+                            { wch: 25 },
+                            { wch: 40 }
+                        ];
+                        XLSX.writeFile(workbook, 'SaaSCompany.xlsx');
+                        $("#btnDownloadErrorList").prop('disabled', false);
+
+                    } catch (error) {
+                        toastr.error("Error in processing the data.");
+                        $("#btnDownloadErrorList").prop('disabled', false);
+
+                    }
+                }
+            },
+            error: function (jqXHR, ajaxOptions, thrownError) {
+                if (jqXHR.status == 500) { //InternalServerError = 500,
+                    toastr.error("InternalServerError");
+                } else if (jqXHR.status == 400) { //BadRequest = 400,
+                    toastr.error("BadRequest");
+                } else if (jqXHR.status == 401) {
+                    window.location.href = "/PayTime/LoginPage";
+                }
+            }
+        });
+    }
+    function generateExcelFile(_Date, classMasterValue) {
+        checkSession();
+        var DtFlag = _Date
+        $.ajax({
+            url:  "/Utilities/DownloadErrorList",
+            type: "GET",
+            headers: { 'Authorization': '@_tokan' },
+            data: { DtFlag: _Date , classMasterValue: classMasterValue },
+            contentType: "application/json; charset=utf-8",
+            datatype: "json",
+            success: function (data) {
+                if (typeof data === "string") {
+                    try {
+                        data = JSON.parse(data);
+                    } catch (error) {
+                        toastr.error("Failed to parse data.");
+                        $("#btnDownloadErrorList").prop('disabled', false);
+                        return;
+                    }
+                }
+                if (!Array.isArray(data)) {
+                    toastr.error("Unexpected data format received.");
+                    $("#btnDownloadErrorList").prop('disabled', false);
+                    return;
+                }
+                if (data.length === 0) {
+                    toastr.error("No entry found in excel.");
+                } else if (data.isRedirect) {
+                    window.location.href = data.redirectUrl;
+
+                } else {
+                    try {
+                        function stripHtmlTags(input) {
+                            if (typeof input === 'string') {
+                                return input.replace(/<[^>]+>/g, '').trim();
+                            }
+                            return input;
+                        }
+                        var classMasterValue = $("#ddlClassMaster").val();
+
+                            const formattedData = data.map(item => ({
+                                EmpCode: item.EmpCode,
+                                EmpName: item.EmpName,
+                                EmpPunchID: item.EmpPunchID,
+                                EmpMarried: item.EmpMarried,
+                                EmpJoinDate: item.EmpJoinDate,
+                                EmpBirthDate: item.EmpBirthDate,
+                                EmpDepartment: item.EmpDepartment,
+                                EmpDesignation: item.EmpDesignation,
+                                EmpShift: item.EmpShift,
+                                EmpEmail: item.EmpEmail,
+                                Gender: item.Gender,
+                                Rolename: item.Rolename,
+                                PolicyName: item.PolicyName,
+                                EmpAddress: item.EmpAddress,
+                                EmpPhone: item.EmpPhone,
+                                EmpMobile: item.EmpMobile,
+                                EmpShiftGroup: item.EmpShiftGroup,
+                                CountryCode : item.CountryCode,
+                                BranchName: item.BranchName,
+                                Reason: item.Reason
+                            }));
+
+                        var worksheet = XLSX.utils.json_to_sheet(formattedData);
+                        var workbook = XLSX.utils.book_new();
+                        XLSX.utils.book_append_sheet(workbook, worksheet, "SaaSEmployee");
+
+                        // Apply styles to the header row
+                        const range = XLSX.utils.decode_range(worksheet['!ref']);
+                        const headerRow = range.s.r;
+
+                        for (let col = range.s.c; col <= range.e.c; col++) {
+                            const cellAddress = XLSX.utils.encode_cell({ r: headerRow, c: col });
+                            if (!worksheet[cellAddress]) continue;
+
+                            worksheet[cellAddress].s = {
+                                font: { bold: true, color: { rgb: "FFFFFF" } },
+                                fill: { fgColor: { rgb: "4CAF50" } },
+                                alignment: { horizontal: "center", vertical: "center" }
+                            };
+                        }
+
+                        // Optional: Set column widths for better readability
+                        worksheet['!cols'] = [
+                            { wch: 15 },
+                            { wch: 25 },
+                            { wch: 20 },
+                            { wch: 10 },
+                            { wch: 20 },
+                            { wch: 20 },
+                            { wch: 20 },
+                            { wch: 20 },
+                            { wch: 15 },
+                            { wch: 30 },
+                            { wch: 10 },
+                            { wch: 15 },
+                            { wch: 20 },
+                            { wch: 40 },
+                            { wch: 15 },
+                            { wch: 15 },
+                            { wch: 20 },
+                            { wch: 10 },
+                            { wch: 20 },
+                            { wch: 50 }
+                        ];
+                        XLSX.writeFile(workbook, 'SaaSEmployee.xlsx');
+                        $("#btnDownloadErrorList").prop('disabled', false);
+
+                    } catch (error) {
+                        toastr.error("Error in processing the data.");
+                        $("#btnDownloadErrorList").prop('disabled', false);
+
+                    }
+                }
+            },
+            error: function (jqXHR, ajaxOptions, thrownError) {
+
+                if (jqXHR.status == 500) { //InternalServerError = 500,
+                    toastr.error("InternalServerError");
+                } else if (jqXHR.status == 400) { //BadRequest = 400,
+                    toastr.error("BadRequest");
+                } else if (jqXHR.status == 401) {
+                    window.location.href = "/PayTime/LoginPage";
+                }
+            }
+        });
+    }
+    function generateBranchExcelFile(_Date, classMasterValue) {
+        checkSession();
+        var DtFlag = _Date
+        $.ajax({
+            url: "/Utilities/DownloadBranchErrList",
+            type: "GET",
+            headers: { 'Authorization': '@_tokan' },
+            data: { DtFlag: _Date , classMasterValue: classMasterValue },
+            contentType: "application/json; charset=utf-8",
+            datatype: "json",
+            success: function (data) {
+                if (typeof data === "string") {
+                    try {
+                        data = JSON.parse(data);
+                    } catch (error) {
+                        toastr.error("Failed to parse data.");
+                        $("#btnDownloadErrorList").prop('disabled', false);
+                        return;
+                    }
+                }
+
+                if (!Array.isArray(data)) {
+                    toastr.error("Unexpected data format received.");
+                    $("#btnDownloadErrorList").prop('disabled', false);
+                    return;
+                }
+
+                if (data.length === 0) {
+                    toastr.error("No entry found in excel.");
+                } else if (data.isRedirect) {
+                    window.location.href = data.redirectUrl;
+
+                } else {
+                    try {
+                        function stripHtmlTags(input) {
+                            if (typeof input === 'string') {
+                                return input.replace(/<[^>]+>/g, '').trim();
+                            }
+                            return input;
+                        }
+                         var classMasterValue = $("#ddlClassMaster").val();
+                         const formattedData = data.map(item => ({
+                             CompanyName: item.CompanyName,
+                             BranchName: item.BranchName,
+                             BranchHeadEmail: item.BranchHeadEmail,
+                             BranchHeadPassword: item.BranchHeadPassword,
+                             BranchAddress: item.BranchAddress,
+                             ReportingBranchName: item.ReportingBranchName,
+                             Reason: item.Reason
+                         }));
+
+                        var worksheet = XLSX.utils.json_to_sheet(formattedData);
+                        var workbook = XLSX.utils.book_new();
+                        XLSX.utils.book_append_sheet(workbook, worksheet, "SaaSBranch");
+
+                        // Apply styles to the header row
+                        const range = XLSX.utils.decode_range(worksheet['!ref']);
+                        const headerRow = range.s.r;
+
+                        for (let col = range.s.c; col <= range.e.c; col++) {
+                            const cellAddress = XLSX.utils.encode_cell({ r: headerRow, c: col });
+                            if (!worksheet[cellAddress]) continue;
+
+                            // Add styling properties to the header cells
+                            worksheet[cellAddress].s = {
+                                font: { bold: true, color: { rgb: "FFFFFF" } },
+                                fill: { fgColor: { rgb: "4CAF50" } },
+                                alignment: { horizontal: "center" }
+                            };
+                        }
+
+                        // Optional: Set column widths for better readability
+                        worksheet['!cols'] = [
+                            { wch: 20 },
+                            { wch: 25 },
+                            { wch: 30 },
+                            { wch: 25 },
+                            { wch: 40 },
+                            { wch: 25 },
+                            { wch: 50 }
+                        ];
+
+                        XLSX.writeFile(workbook, 'SaaSBranch.xlsx');
+                        $("#btnDownloadErrorList").prop('disabled', false);
+
+                    } catch (error) {
+                        toastr.error("Error in processing the data.");
+                        $("#btnDownloadErrorList").prop('disabled', false);
+
+                    }
+                }
+            },
+            error: function (jqXHR, ajaxOptions, thrownError) {
+                if (jqXHR.status == 500) { //InternalServerError = 500,
+                    toastr.error("InternalServerError");
+                } else if (jqXHR.status == 400) { //BadRequest = 400,
+                    toastr.error("BadRequest");
+                } else if (jqXHR.status == 401) {
+                    window.location.href = "/PayTime/LoginPage";
+                }
+            }
+        });
+    }
+    function generateDepartmentExcelFile(_Date, classMasterValue) {
+    checkSession();
+    var DtFlag = _Date
+    $.ajax({
+        url: "/Utilities/DownloadDepartmentErrList",
+        type: "GET",
+        headers: { 'Authorization': '@_tokan' },
+        data: { DtFlag: _Date , classMasterValue: classMasterValue },
+        contentType: "application/json; charset=utf-8",
+        datatype: "json",
+        success: function (data) {
+            if (typeof data === "string") {
+                try {
+                    data = JSON.parse(data);
+                } catch (error) {
+                    toastr.error("Failed to parse data.");
+                    $("#btnDownloadErrorList").prop('disabled', false);
+                    return;
+                }
+            }
+
+            if (!Array.isArray(data)) {
+                toastr.error("Unexpected data format received.");
+                $("#btnDownloadErrorList").prop('disabled', false);
+                return;
+            }
+
+            if (data.length === 0) {
+                toastr.error("No entry found in excel.");
+            } else if (data.isRedirect) {
+                window.location.href = data.redirectUrl;
+
+            } else {
+                try {
+                    function stripHtmlTags(input) {
+                        if (typeof input === 'string') {
+                            return input.replace(/<[^>]+>/g, '').trim();
+                        }
+                        return input;
+                    }
+                     var classMasterValue = $("#ddlClassMaster").val();
+                     const formattedData = data.map(item => ({
+                         DepartmentName: item.DepartmentName,
+                         DepartmentEmail: item.DepartmentEmail,
+                         DepartmentHeadName: item.DepartmentHeadName,
+                         Reason: item.Reason
+                     }));
+
+                    var worksheet = XLSX.utils.json_to_sheet(formattedData);
+                    var workbook = XLSX.utils.book_new();
+                    XLSX.utils.book_append_sheet(workbook, worksheet, "SaaSDepartment");
+
+                    // Apply styles to the header row
+                    const range = XLSX.utils.decode_range(worksheet['!ref']);
+                    const headerRow = range.s.r;
+
+                    for (let col = range.s.c; col <= range.e.c; col++) {
+                        const cellAddress = XLSX.utils.encode_cell({ r: headerRow, c: col });
+                        if (!worksheet[cellAddress]) continue;
+
+                        // Add styling properties to the header cells
+                        worksheet[cellAddress].s = {
+                            font: { bold: true, color: { rgb: "FFFFFF" } },
+                            fill: { fgColor: { rgb: "4CAF50" } },
+                            alignment: { horizontal: "center" }
+                        };
+                    }
+
+                    // Optional: Set column widths for better readability
+                    worksheet['!cols'] = [
+                        { wch: 20 },
+                        { wch: 30 },
+                        { wch: 20 },
+                        { wch: 50 }
+                    ];
+
+                    XLSX.writeFile(workbook, 'SaaSDepartment.xlsx');
+                    $("#btnDownloadErrorList").prop('disabled', false);
+
+                } catch (error) {
+                    $("#btnDownloadErrorList").prop('disabled', false);
+
+                }
+            }
+        },
+        error: function (jqXHR, ajaxOptions, thrownError) {
+            if (jqXHR.status == 500) { //InternalServerError = 500,
+                toastr.error("InternalServerError");
+            } else if (jqXHR.status == 400) { //BadRequest = 400,
+                toastr.error("BadRequest");
+            } else if (jqXHR.status == 401) {
+                window.location.href = "/PayTime/LoginPage";
+            }
+        }
+    });
+    }
+    function GetExcelFailedStatusEmpGridData() {
+    $.ajax({
+                url: '@_webapiurl' + "Utility/GetExcelFailedStatusEmpGridData",
+                type: "GET",
+                headers: { 'Authorization': '@_tokan' },
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                success: function (data) {
+                    if (data.length > 0) {
+                        data.forEach(function (item) {
+                            if (data[0].PendingCount > 0) {
+                                $("#tblEmployeeMaster tbody tr").each(function () {
+                                    var insertedCount = item.InsertedCount;
+                                    var DuplicateCount = item.DuplicateCount;
+                                    var PendingCount = item.PendingCount;
+                                    var totalCount = insertedCount + DuplicateCount + PendingCount;
+                                    var inscount = insertedCount + DuplicateCount;
+                                    var progressValue = Math.round((inscount / totalCount) * 100);
+                                    var rowDiv = $(this).find("div[id^='row_']");
+                                    var rowId = rowDiv.attr("id").replace("row_", "");
+                                    $("#statusEmp_" + rowId).text("Pending");
+                                    $("#regenerate_" + rowId).show();
+                                    var progressBar = $("#progress_Emp_bar_" + rowId);
+                                    var progressText = $("#progress_Emp_val_" + rowId);
+                                    if (progressBar.length && progressText.length) {
+                                        progressBar.css("width", progressValue + "%").attr("aria-valuenow", progressValue);
+                                        progressText.text(progressValue + "%");
+                                    }
+                                });
+                            }
+                        });
+                    }
+                },
+                error: function (jqXHR, ajaxOptions, thrownError) {
+                    if (jqXHR.status === 500) {
+                        toastr.error("Internal Server Error");
+                    } else if (jqXHR.status === 400) {
+                        toastr.error("Bad Request");
+                    } else if (jqXHR.status === 401) {
+                        window.location.href = "/PayTime/LoginPage";
+                    }
+                }
+            });
+     }
+      function GetExcelFailedStatusCompanyGridData() {
+                   $.ajax({
+                       url: '@_webapiurl' + "Utility/GetExcelFailedStatusCompanyGridData",
+                       type: "GET",
+                       headers: { 'Authorization': '@_tokan' },
+                       contentType: "application/json; charset=utf-8",
+                       dataType: "json",
+                       success: function (data) {
+                           if (data.length > 0) {
+                               data.forEach(function (item) {
+                                   if (data[0].PendingCount > 0) {
+                                       $("#tblCompanyMaster tbody tr").each(function () {
+                                           var insertedCount = item.InsertedCount;
+                                           var DuplicateCount = item.DuplicateCount;
+                                           var PendingCount = item.PendingCount;
+                                           var totalCount = insertedCount + DuplicateCount + PendingCount;
+                                           var progressValue = Math.round((insertedCount / totalCount) * 100);
+                                           var rowDiv = $(this).find("div[id^='row_']");
+                                           var rowId = rowDiv.attr("id").replace("row_", "");
+                                           $("#statusCompany_" + rowId).text("Pending");
+                                           $("#regenerateCompany_" + rowId).show();
+                                           var progressBar = $("#progress_company_bar_" + rowId);
+                                           var progressText = $("#progress_company_val_" + rowId);
+                                           if (progressBar.length && progressText.length) {
+                                               progressBar.css("width", progressValue + "%").attr("aria-valuenow", progressValue);
+                                               progressText.text(progressValue + "%");
+                                           }
+                                       });
+                                   }
+                               });
+                           }
+                       },
+                       error: function (jqXHR, ajaxOptions, thrownError) {
+                           if (jqXHR.status === 500) {
+                               toastr.error("Internal Server Error");
+                           } else if (jqXHR.status === 400) {
+                               toastr.error("Bad Request");
+                           } else if (jqXHR.status === 401) {
+                               window.location.href = "/PayTime/LoginPage";
+                           }
+                       }
+                   });
+        }
+
+
+        function GetExcelFailedStatusBranchGridData() {
+                 $.ajax({
+                     url: '@_webapiurl' + "Utility/GetExcelFailedStatusBranchGridData",
+                     type: "GET",
+                     headers: { 'Authorization': '@_tokan' },
+                     contentType: "application/json; charset=utf-8",
+                     dataType: "json",
+                     success: function (data) {
+                         if (data.length > 0) {
+                             data.forEach(function (item) {
+                                 if (data[0].PendingCount > 0) {
+                                     $("#tblBranchMaster tbody tr").each(function () {
+                                         var insertedCount = item.InsertedCount;
+                                         var DuplicateCount = item.DuplicateCount;
+                                         var PendingCount = item.PendingCount;
+                                         var totalCount = insertedCount + DuplicateCount + PendingCount;
+                                         var progressValue = Math.round((insertedCount / totalCount) * 100);
+                                         var rowDiv = $(this).find("div[id^='row_']");
+                                         var rowId = rowDiv.attr("id").replace("row_", "");
+                                         $("#statusBranch_" + rowId).text("Pending");
+                                         $("#regenerateBranch_" + rowId).show();
+                                         var progressBar = $("#progress_Branch_bar_" + rowId);
+                                         var progressText = $("#progress_Branch_val_" + rowId);
+                                         if (progressBar.length && progressText.length) {
+                                             progressBar.css("width", progressValue + "%").attr("aria-valuenow", progressValue);
+                                             progressText.text(progressValue + "%");
+                                         }
+                                     });
+                                 }
+                             });
+                         }
+                     },
+                     error: function (jqXHR, ajaxOptions, thrownError) {
+                         if (jqXHR.status === 500) {
+                             toastr.error("Internal Server Error");
+                         } else if (jqXHR.status === 400) {
+                             toastr.error("Bad Request");
+                         } else if (jqXHR.status === 401) {
+                             window.location.href = "/PayTime/LoginPage";
+                         }
+                     }
+                 });
+        }
+
+       function GetExcelFailedStatusDepartmentGridData() {
+        $.ajax({
+            url: '@_webapiurl' + "Utility/GetExcelFailedStatusDepartmentGridData",
+            type: "GET",
+            headers: { 'Authorization': '@_tokan' },
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            success: function (data) {
+                if (data.length > 0) {
+                    data.forEach(function (item) {
+                        if (data[0].PendingCount > 0) {
+                            $("#tblDepartmentMaster tbody tr").each(function () {
+                                var insertedCount = item.InsertedCount;
+                                var DuplicateCount = item.DuplicateCount;
+                                var PendingCount = item.PendingCount;
+                                var totalCount = insertedCount + DuplicateCount + PendingCount;
+                                var progressValue = Math.round((insertedCount / totalCount) * 100);
+                                var rowDiv = $(this).find("div[id^='row_']");
+                                var rowId = rowDiv.attr("id").replace("row_", "");
+                                $("#statusDepartment_" + rowId).text("Pending");
+                                $("#regenerateDept_" + rowId).show();
+                                var progressBar = $("#progress_Dept_bar_" + rowId);
+                                var progressText = $("#progress_Dept_val_" + rowId);
+                                if (progressBar.length && progressText.length) {
+                                    progressBar.css("width", progressValue + "%").attr("aria-valuenow", progressValue);
+                                    progressText.text(progressValue + "%");
+                                }
+                            });
+                        }
+                    });
+                }
+            },
+            error: function (jqXHR, ajaxOptions, thrownError) {
+                if (jqXHR.status === 500) {
+                    toastr.error("Internal Server Error");
+                } else if (jqXHR.status === 400) {
+                    toastr.error("Bad Request");
+                } else if (jqXHR.status === 401) {
+                    window.location.href = "/PayTime/LoginPage";
+                }
+            }
+        });
+        }
+       function GetExcelFailedStatusDesignationGridData() {
+        $.ajax({
+            url: '@_webapiurl' + "Utility/GetExcelFailedStatusDesignationGridData",
+            type: "GET",
+            headers: { 'Authorization': '@_tokan' },
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            success: function (data) {
+                if (data.length > 0) {
+                    data.forEach(function (item) {
+                        if (data[0].PendingCount > 0) {
+                            $("#tblDesignationMaster tbody tr").each(function () {
+                                var insertedCount = item.InsertedCount;
+                                var DuplicateCount = item.DuplicateCount;
+                                var PendingCount = item.PendingCount;
+                                var totalCount = insertedCount + DuplicateCount + PendingCount;
+                                var progressValue = Math.round((insertedCount / totalCount) * 100);
+                                var rowDiv = $(this).find("div[id^='row_']");
+                                var rowId = rowDiv.attr("id").replace("row_", "");
+                                $("#statusDesignation_" + rowId).text("Pending");
+                                $("#regenerateDesg_" + rowId).show();
+                                var progressBar = $("#progress_Desg_bar_" + rowId);
+                                var progressText = $("#progress_Desg_val_" + rowId);
+                                if (progressBar.length && progressText.length) {
+                                    progressBar.css("width", progressValue + "%").attr("aria-valuenow", progressValue);
+                                    progressText.text(progressValue + "%");
+                                }
+                            });
+                        }
+                    });
+                }
+            },
+            error: function (jqXHR, ajaxOptions, thrownError) {
+                if (jqXHR.status === 500) {
+                    toastr.error("Internal Server Error");
+                } else if (jqXHR.status === 400) {
+                    toastr.error("Bad Request");
+                } else if (jqXHR.status === 401) {
+                    window.location.href = "/PayTime/LoginPage";
+                }
+            }
+        });
+        }
+      function regenerateEntryEmployee(_Date, compcode, buttonElement,index) {
+        $(buttonElement).prop('disabled', true);
+        $.ajax({
+            url: '@_webapiurl' + 'Utility/ReGenerateEmployeeProgressData?DtFlag=' + encodeURIComponent(_Date) + "&compcode=" + encodeURIComponent(compcode),
+            type: 'POST',
+            headers: { 'Authorization': '@_tokan' },
+            dataType: 'json',
+            contentType: "application/json; charset=utf-8",
+            success: function (response) {
+                if (response) {
+                   // toastr.success("Regeneration process started successfully.");
+                } else {
+                   // toastr.warning("No data found for regeneration.");
+                }
+            },
+            error: function (jqXHR, ajaxOptions, thrownError) {
+                if (jqXHR.status === 500) {
+                    toastr.error("Internal Server Error");
+                } else if (jqXHR.status === 400) {
+                    toastr.error("Bad Request");
+                } else if (jqXHR.status === 401) {
+                    window.location.href = "/PayTime/LoginPage";
+                } else {
+                    toastr.error("An unexpected error occurred: " + thrownError);
+                }
+                $(buttonElement).prop('disabled', false);
+            }
+        });
+    }
+
+
+    function regenerateEntryCompany(_Date, compcode, buttonElement, index) {
+    $(buttonElement).prop('disabled', true);
+    $.ajax({
+        url: '@_webapiurl' + 'Utility/ReGenerateCompanyProgressData?DtFlag=' + encodeURIComponent(_Date) + "&compcode=" + encodeURIComponent(compcode),
+        type: 'POST',
+        headers: { 'Authorization': '@_tokan' },
+        dataType: 'json',
+        contentType: "application/json; charset=utf-8",
+        success: function (response) {
+            if (response) {
+               // toastr.success("Regeneration process started successfully.");
+            } else {
+               // toastr.warning("No data found for regeneration.");
+            }
+        },
+        error: function (jqXHR, ajaxOptions, thrownError) {
+            if (jqXHR.status === 500) {
+                toastr.error("Internal Server Error");
+            } else if (jqXHR.status === 400) {
+                toastr.error("Bad Request");
+            } else if (jqXHR.status === 401) {
+                window.location.href = "/PayTime/LoginPage";
+            } else {
+                toastr.error("An unexpected error occurred: " + thrownError);
+            }
+            $(buttonElement).prop('disabled', false);
+        }
+    });
+    }
+
+    function regenerateEntryBranch(_Date, compcode, buttonElement, index) {
+     $(buttonElement).prop('disabled', true);
+     $.ajax({
+         url: '@_webapiurl' + 'Utility/ReGenerateBranchProgressData?DtFlag=' + encodeURIComponent(_Date) + "&compcode=" + encodeURIComponent(compcode),
+         type: 'POST',
+         headers: { 'Authorization': '@_tokan' },
+         dataType: 'json',
+         contentType: "application/json; charset=utf-8",
+         success: function (response) {
+             if (response) {
+                // toastr.success("Regeneration process started successfully.");
+             } else {
+                // toastr.warning("No data found for regeneration.");
+             }
+         },
+         error: function (jqXHR, ajaxOptions, thrownError) {
+             if (jqXHR.status === 500) {
+                 toastr.error("Internal Server Error");
+             } else if (jqXHR.status === 400) {
+                 toastr.error("Bad Request");
+             } else if (jqXHR.status === 401) {
+                 window.location.href = "/PayTime/LoginPage";
+             } else {
+                 toastr.error("An unexpected error occurred: " + thrownError);
+             }
+             $(buttonElement).prop('disabled', false);
+             $("#status_" + index).text("Failed");
+         }
+     });
+    }
+
+    function regenerateEntryDepartment(_Date, compcode, buttonElement, index) {
+     $(buttonElement).prop('disabled', true);
+     $.ajax({
+         url: '@_webapiurl' + 'Utility/ReGenerateDepartmentProgressData?DtFlag=' + encodeURIComponent(_Date) + "&compcode=" + encodeURIComponent(compcode),
+         type: 'POST',
+         headers: { 'Authorization': '@_tokan' },
+         dataType: 'json',
+         contentType: "application/json; charset=utf-8",
+         success: function (response) {
+             if (response) {
+                // toastr.success("Regeneration process started successfully.");
+             } else {
+                // toastr.warning("No data found for regeneration.");
+             }
+         },
+         error: function (jqXHR, ajaxOptions, thrownError) {
+             if (jqXHR.status === 500) {
+                 toastr.error("Internal Server Error");
+             } else if (jqXHR.status === 400) {
+                 toastr.error("Bad Request");
+             } else if (jqXHR.status === 401) {
+                 window.location.href = "/PayTime/LoginPage";
+             } else {
+                 toastr.error("An unexpected error occurred: " + thrownError);
+             }
+             $(buttonElement).prop('disabled', false);
+         }
+     });
+    }
+
+    function regenerateEntryDesignation(_Date, compcode, buttonElement, index) {
+      $(buttonElement).prop('disabled', true);
+      $.ajax({
+          url: '@_webapiurl' + 'Utility/ReGenerateDesignationProgressData?DtFlag=' + encodeURIComponent(_Date) + "&compcode=" + encodeURIComponent(compcode),
+          type: 'POST',
+          headers: { 'Authorization': '@_tokan' },
+          dataType: 'json',
+          contentType: "application/json; charset=utf-8",
+          success: function (response) {
+              if (response) {
+                 // toastr.success("Regeneration process started successfully.");
+              } else {
+                 // toastr.warning("No data found for regeneration.");
+              }
+          },
+          error: function (jqXHR, ajaxOptions, thrownError) {
+              if (jqXHR.status === 500) {
+                  toastr.error("Internal Server Error");
+              } else if (jqXHR.status === 400) {
+                  toastr.error("Bad Request");
+              } else if (jqXHR.status === 401) {
+                  window.location.href = "/PayTime/LoginPage";
+              } else {
+                  toastr.error("An unexpected error occurred: " + thrownError);
+              }
+              $(buttonElement).prop('disabled', false);
+          }
+      });
+      }
+
+
+
+    function generateDesignationExcelFile(_Date, classMasterValue) {
+    checkSession();
+    var DtFlag = _Date
+    $.ajax({
+        url: "/Utilities/DownloadDesignationErrList",
+        type: "GET",
+        headers: { 'Authorization': '@_tokan' },
+        data: { DtFlag: _Date , classMasterValue: classMasterValue },
+        contentType: "application/json; charset=utf-8",
+        datatype: "json",
+        beforeSend: function () {
+            $("#ajax_loader_Import").show();
+        },
+        complete: function () {
+            $('#ajax_loader_Import').hide(); // Hide loader after request completes
+        },
+        success: function (data) {
+            if (typeof data === "string") {
+                try {
+                    data = JSON.parse(data);
+                } catch (error) {
+                    toastr.error("Failed to parse data.");
+                    $("#btnDownloadErrorList").prop('disabled', false);
+                    return;
+                }
+            }
+
+            if (!Array.isArray(data)) {
+                toastr.error("Unexpected data format received.");
+                $("#btnDownloadErrorList").prop('disabled', false);
+                return;
+            }
+
+            if (data.length === 0) {
+                toastr.error("No entry found in excel.");
+            } else if (data.isRedirect) {
+                window.location.href = data.redirectUrl;
+
+            } else {
+                try {
+                    function stripHtmlTags(input) {
+                        if (typeof input === 'string') {
+                            return input.replace(/<[^>]+>/g, '').trim();
+                        }
+                        return input;
+                    }
+                     var classMasterValue = $("#ddlClassMaster").val();
+                     const formattedData = data.map(item => ({
+                         DesignationName: item.DesignationName,
+                         Reason: item.Reason
+                     }));
+
+                    var worksheet = XLSX.utils.json_to_sheet(formattedData);
+                    var workbook = XLSX.utils.book_new();
+                    XLSX.utils.book_append_sheet(workbook, worksheet, "SaaSDesignation");
+
+                    // Apply styles to the header row
+                    const range = XLSX.utils.decode_range(worksheet['!ref']);
+                    const headerRow = range.s.r;
+
+                    for (let col = range.s.c; col <= range.e.c; col++) {
+                        const cellAddress = XLSX.utils.encode_cell({ r: headerRow, c: col });
+                        if (!worksheet[cellAddress]) continue;
+
+                        // Add styling properties to the header cells
+                        worksheet[cellAddress].s = {
+                            font: { bold: true, color: { rgb: "FFFFFF" } },
+                            fill: { fgColor: { rgb: "4CAF50" } },
+                            alignment: { horizontal: "center" }
+                        };
+                    }
+
+                    // Optional: Set column widths for better readability
+                    worksheet['!cols'] = [
+                        { wch: 20 },
+                        { wch: 30 },
+                    ];
+
+                    XLSX.writeFile(workbook, 'SaaSDesignation.xlsx');
+                    $("#btnDownloadErrorList").prop('disabled', false);
+
+                } catch (error) {
+                    $("#btnDownloadErrorList").prop('disabled', false);
+
+                }
+            }
+        },
+        error: function (jqXHR, ajaxOptions, thrownError) {
+            if (jqXHR.status == 500) { //InternalServerError = 500,
+                toastr.error("InternalServerError");
+            } else if (jqXHR.status == 400) { //BadRequest = 400,
+                toastr.error("BadRequest");
+            } else if (jqXHR.status == 401) {
+                window.location.href = "/PayTime/LoginPage";
+            }
+        }
+    });
+    }
+    function checkSession() {
+        $.ajax({
+            type: "GET",
+            async: false,
+            url: "/ESS/checkSession",
+            contentType: "application/json; charset=utf-8",
+            success: function (data) {
+
+                if (data.isRedirect) {
+                    window.location.href = data.redirectUrl;
+                }
+            },
+            error: function (data) {
+                window.location.href = data;
+            }
+        });
+    }
+</script>
+<div class="page-bar">
+    @if (_RoleId == 1 || _RoleId == 6805 || _RoleId == 6806)
+    {
+        <ul class="page-breadcrumb">
+            <li>
+                <a href="/PayTime/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> Import Employees</span>
+            </li>
+        </ul>
+    }
+    else
+    {
+        <ul class="page-breadcrumb">
+            <li>
+                <a href="/PayTime/EmployeeDashboard"><i class="fa-regular fa-house"></i></a>
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> Import Employees</span>
+            </li>
+        </ul>
+    }
+</div>
+
+<h1 class="page-title">
+    <small></small>
+</h1>
+
+
+
+@if (obj.CanView)
+{
+    <div class="row">
+        <div id='ajax_loader_Import' class="modal_bg loading" aria-hidden="true">
+            <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading" />
+        </div>
+    </div>
+    <div>
+        @using (Html.BeginForm("ImportEmployeeExcel", "Utilities", FormMethod.Post, new { enctype = "multipart/form-data" }))
+        {
+            <div class="portlet margin-bottom-10">
+                <div class="portlet-body">
+                    <div class="row">
+                        <div class="col-lg-3 col-md-3 col-sm-6 col-xs-12">
+                            <div class="form-group margin-0">
+                                <label>Select Category<span class="required" aria-required="true"> * </span></label>
+                                <select class="form-control input-sm select2" id="ddlClassMaster" name="ddlClassMaster">
+                                    <option value="0" selected>Select Category</option>
+                                    <option value="1">Company</option>
+                                    <option value="2">Branch</option>
+                                    <option value="3">Department</option>
+                                    <option value="4">Designation</option>
+                                    <option value="5" id="Importemployeeid">Employee</option>
+                                </select>
+                            </div>
+                        </div>
+                        <input type="hidden" name="compcode" id="compcode">
+                        <div class="col-lg-3 col-md-3 col-sm-6 col-xs-12" id="ddlCompany_block" style="display:none;">
+                            <div class="form-group margin-0">
+                                <label>Select Company<span class="required" aria-required="true"> * </span></label>
+                                <select class="form-control input-sm select2" id="ddlCompany" name="ddlCompany">
+                                    <option value="0" selected>Select Company</option>
+                                    @if (ViewBag.CompanyList != null && ((IEnumerable<SelectListItem>)ViewBag.CompanyList).Any())
+                                    {
+                                        foreach (var item in ViewBag.CompanyList as IEnumerable<SelectListItem>)
+                                        {
+                                            <option value="@item.Value">@item.Text</option>
+                                        }
+                                    }
+                                    </select>
+                            </div>
+                        </div>
+                        <div class="col-lg-3 col-md-3 col-sm-6 col-xs-12" hidden>
+                            <div class="form-group margin-0">
+                                <label>Select Branch<span class="required" aria-required="true"> * </span></label>
+                                <select class="form-control input-sm select2" id="ddlBranch" name="ddlBranch">
+                                    <option value="0" selected>Select Branch</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                            <div class="form-group margin-0">
+                                <label>Select File<span class="required" aria-required="true"> * </span></label>
+                                <div class="fileinput fileinput-new" data-provides="fileinput">
+                                    <div class="input-group">
+                                        <div class="form-control uneditable-input input-fixed input" data-trigger="fileinput">
+                                            <i class="fa-light fa-file"></i>&nbsp;
+                                            <span class="fileinput-filename"> </span>
+                                        </div>
+                                        <span class="input-group-addon btn blue btn-file">
+                                            <span class="fileinput-new"> Select File </span>
+                                            <span class="fileinput-exists"> Change </span>
+                                            <input type="file" name="FileUpload" id="FileUpload">
+                                        </span>
+                                        <a href="javascript:;" class="input-group-addon btn red fileinput-exists" data-dismiss="fileinput"> Remove </a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-lg-12">
+                            <hr class="save_hr_line" />
+                        </div>
+                        <div class="col-lg-12">
+                            <div class="row">
+                                <div class="col-lg-10">
+                                    <div class="row sample_sheet_box">
+                                        <div class="col-lg-9">
+                                            <p>Download the attached sample CSV, which can be used as a template to import your data into the application</p>
+                                        </div>
+                                        <div class="col-lg-3">
+                                            <a class="btn green-dark linkexcel"></a>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-lg-2 text-right">
+                                    @if (obj.CanAdd)
+                                    {
+                                        <button type="submit" id="btnImport" class="btn save_btn"><i class="fa-regular fa-upload"></i> Import</button>
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+
+        <div class="row">
+            <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                <!-- Employee Datatable-->
+                <div class="portlet" id="gridEmployee" style="display:none;">
+                    <div class="row">
+                        <div class="col-md-12">
+                            <div class="form-group">
+                                <div id="tblempty">
+                                    <div class="table-responsive" id="tableResponsiveEmployee">
+                                        <table id="tblEmployeeMaster" class="table new_datatbl table-striped table-bordered table-hover table-checkable order-column" style="display:none">
+                                            <thead>
+                                                <tr>
+                                                    <th hidden>Sr ID</th>
+                                                    <th>Startdate</th>
+                                                    <th>Status</th>
+                                                    <th hidden>CreatedDtFlag</th>
+                                                    <th hidden>Err</th>
+                                                    <th>View Error List</th>
+                                                </tr>
+                                            </thead>
+                                        </table>
+                                    </div>
+                                </div>
+                                <div id="NotificationGrid-empty" style="display: none">
+                                    <div class="datanotfound">
+                                        <img src="" width="280" height="148" alt="Nodata Found Icon">
+                                        <p class="datanotfound_title"></p> <!-- titleText -->
+                                        <p class=""></p><!-- subText -->
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Company Datatable-->
+                <div class="portlet" id="gridCompany" style="display: none;">
+                    <div class="row">
+                        <div class="col-md-12">
+                            <div class="form-group">
+                                <div id="tblempty1">
+                                    <div class="table-responsive" id="tableResponsiveCompany">
+                                        <table id="tblCompanyMaster" class="table  new_datatbl table-striped table-bordered table-hover table-checkable order-column" style="display: none;">
+                                            <thead>
+                                                <tr>
+                                                    <th style="display:none;">Sr No.</th>
+                                                    <th>Startdate</th>
+                                                    <th>Status</th>
+                                                    <th hidden>CreatedDtFlag</th>
+                                                    <th hidden>Err</th>
+                                                    <th>View Error List</th>
+                                                </tr>
+                                            </thead>
+                                        </table>
+                                    </div>
+                                </div>
+                                <div id="NotificationGrid-emptyCompany" style="display: none">
+                                    <div class="datanotfound">
+                                        <img src="" width="280" height="148" alt="Nodata Found Icon">
+                                        <p class="datanotfound_title"></p> <!-- titleText -->
+                                        <p class=""></p><!-- subText -->
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Branch Datatable-->
+                <div class="portlet" id="gridBranch" style="display:none;">
+                    <div class="row">
+                        <div class="col-md-12">
+                            <div class="form-group">
+                                <div id="tblempty2">
+                                    <div class="table-responsive" id="tableResponsiveBranch">
+                                        <table id="tblBranchMaster" class="table new_datatbl table-striped table-bordered table-hover table-checkable order-column" style="display: none;">
+                                            <thead>
+                                                <tr>
+                                                    <th style="display:none;">Sr No.</th>
+                                                    <th>Startdate</th>
+                                                    <th>Status</th>
+                                                    <th hidden>CreatedDtFlag</th>
+                                                    <th hidden>Err</th>
+                                                    <th>View Error List</th>
+                                                </tr>
+                                            </thead>
+                                        </table>
+                                    </div>
+                                </div>
+                                <div id="NotificationGrid-emptyBranch" style="display: none">
+                                    <div class="datanotfound">
+                                        <img src="" width="280" height="148" alt="Nodata Found Icon">
+                                        <p class="datanotfound_title"></p> <!-- titleText -->
+                                        <p class=""></p><!-- subText -->
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Department Datatable-->
+                <div class="portlet" id="gridDepartment" style="display:none;">
+                    <div class="row">
+                        <div class="col-md-12">
+                            <div class="form-group">
+                                <div id="tblempty3">
+                                    <div class="table-responsive" id="tableResponsiveDepartment">
+                                        <table id="tblDepartmentMaster" class="table new_datatbl table-striped table-bordered table-hover table-checkable order-column" style="display:none">
+                                            <thead>
+                                                <tr>
+                                                    <th style="display:none;">Sr ID</th>
+                                                    <th>Startdate</th>
+                                                    <th>Status</th>
+                                                    <th hidden>CreatedDtFlag</th>
+                                                    <th hidden>Err</th>
+                                                    <th>View Error List</th>
+                                                </tr>
+                                            </thead>
+                                        </table>
+                                    </div>
+                                </div>
+                                <div id="NotificationGrid-emptyDep" style="display: none">
+                                    <div class="datanotfound">
+                                        <img src="" width="280" height="148" alt="Nodata Found Icon">
+                                        <p class="datanotfound_title"></p> <!-- titleText -->
+                                        <p class=""></p><!-- subText -->
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Designation Datatable-->
+                <div class="portlet" id="gridDesignation" style="display:none;">
+                    <div class="row">
+                        <div class="col-md-12">
+                            <div class="form-group">
+                                <div id="tblempty4">
+                                    <div class="table-responsive" id="tableResponsiveDesignation">
+                                        <table id="tblDesignationMaster" class="table new_datatbl table-striped table-bordered table-hover table-checkable order-column" style="display:none">
+                                            <thead>
+                                                <tr>
+                                                    <th style="display:none;">Sr ID</th>
+                                                    <th>Startdate</th>
+                                                    <th>Status</th>
+                                                    <th hidden>CreatedDtFlag</th>
+                                                    <th hidden>Err</th>
+                                                    <th>View Error List</th>
+                                                </tr>
+                                            </thead>
+                                        </table>
+                                    </div>
+                                </div>
+                                <div id="NotificationGrid-emptyDes" style="display: none">
+                                    <div class="datanotfound">
+                                        <img src="" width="280" height="148" alt="Nodata Found Icon">
+                                        <p class="datanotfound_title"></p> <!-- titleText -->
+                                        <p class=""></p><!-- subText -->
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="text-center import_data_step">
+            <img style="display:inline-block;" class="img-responsive margin-top-20" src="~/assets/images/process-n2.png" />
+        </div>
+    </div>
+
+}
+else
+{
+    <span style="color:red">Unauthorized Access.</span>
+}
+<style>
+    .portleterrors {
+        height: 377px;
+    }
+
+    .input-group-addon {
+        font-size: 12px;
+    }
+</style>

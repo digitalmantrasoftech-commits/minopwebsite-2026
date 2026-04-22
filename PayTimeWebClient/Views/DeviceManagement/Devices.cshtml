@@ -1,0 +1,1047 @@
+﻿@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@{
+    ViewBag.Title = "Devices";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    string _Message = ViewBag.msg;
+    string _error = ViewBag.error;
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    string _webapiurl = System.Configuration.ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+    string _companyid = string.Empty;
+    if (_RoleId == 6805)
+    {
+        _companyid = HttpContext.Current.Session["ClientCompanyId"].ToString();
+    }
+    string _branchid = string.Empty;
+    if (_RoleId == 6806)
+    {
+        _companyid = HttpContext.Current.Session["ClientCompanyId"].ToString();
+        _branchid = HttpContext.Current.Session["BranchId"].ToString();
+    }
+    string _dbName = HttpContext.Current.Session["DbName"].ToString();
+
+    string isClientDBMatchFlag = HttpContext.Current.Session["IsClientDBMatch"] != null
+? HttpContext.Current.Session["IsClientDBMatch"].ToString()
+: "false"; // Default to "false" if the session is null
+
+}
+<script src="~/Scripts/timeme.js"></script>
+<script src="~/AssetsNew/js/CommonValidation.js"></script>
+<script src="~/Scripts/Helpers/noDataHandler.js"></script>
+<script type="text/javascript">
+    var cmpid = '@_companyid';
+    var branchid = '@_branchid';
+    var emprole = '@_RoleId';
+    var rows_selected;
+    var count = 0;
+    var form = "Devices";
+    var operation = "";
+    var isflagstep2 = false;
+    $(document).ready(function () {
+        /*timeMeInitialize function is  a javascript library which displays a timer to display how long you are actively viewing the current webpage.*/
+        /*timeMeInitialize();*/
+        if ("@_Message" != "") {
+            toastr.remove();
+            toastr.success("@_Message");
+        }
+        if ('@_error' != "") {
+            toastr.remove();
+            toastr.error("@_error");
+        }
+
+        var $select = $("#DeptIds").multiselect({
+            selectAllValue: 'multiselect-all',
+            enableCaseInsensitiveFiltering: true,
+            includeSelectAllOption: true,
+            allSelectedText: 'All Select',
+            enableFiltering: true,
+            maxHeight: '300',
+            buttonWidth: '100%',
+            enableClickableOptGroups: true
+        });
+        var navListItems = $('div.setup-panel div a'),
+            allWells = $('.setup-content'),
+            allNextBtn = $('.nextBtn');
+        allPrevBtb = $('.prevbtn');
+        allWells.hide();
+        navListItems.click(function (e) {
+            e.preventDefault();
+            var $target = $($(this).attr('href')),
+                $item = $(this);
+            if (!$item.hasClass('disabled')) {
+                navListItems.removeClass('btn-primary').addClass('btn-default');
+                $item.addClass('btn-primary');
+                allWells.hide();
+                $target.show();
+            }
+        });
+
+        $("#Secondprev").click(function (event) {
+            isflagstep2 = true;
+            Step1ShowHide();
+            if (isflagstep2) {
+                $("#s2").removeClass("disabled");
+            }
+        });
+
+        $("#s1").click(function (event) {
+            Step1ShowHide();
+            if (isflagstep2) {
+                $("#s2").removeClass("disabled");
+            }
+        });
+
+        $("#s2").click(function (event) {
+            Step2ShowHide();
+        });
+
+        $("#frstNext").click(function (event) {
+            isflagstep2 = true;
+            if ($("#ddlCompany").val() == "0") {
+                toastr.remove();
+                toastr.error("Please select a company.");
+                return false;
+            }
+            if ($("#ddlBranch").val() == "-1") {
+                toastr.remove();
+                toastr.error("Please select a branch.");
+                return false;
+            }
+            if ($("#txt2").val() == "0") {
+                toastr.remove();
+                toastr.error("Please select at least one department.");
+                return false;
+            }
+            $(".popMsg").hide();
+            getEmp();
+            //var nextStepWizard = $('#frmpopupupload div.setup-panel div a[href="#step-2"]').parent().children("a");
+            //nextStepWizard.removeAttr('disabled').trigger('click');
+            Step2ShowHide();
+        });
+        //allPrevBtb.click(function () {
+        //    var curStep = $(this).closest(".setup-content"),
+        //        curStepBtn = curStep.attr("id"),
+        //        nextStepWizard = $('div.setup-panel div a[href="#' + curStepBtn + '"]').parent().prev().children("a"),
+        //        isValid = true;
+        //    if (isValid)
+        //        nextStepWizard.removeAttr('disabled').trigger('click');
+        //});
+
+
+
+        $('div.setup-panel div a.btn-primary').trigger('click');
+        $("#ddlCompany").change(function () {
+            if ($("#ddlCompany").val() == "0") {
+                $("#tblManualPunch tbody").remove();
+                $("#divmanual").hide();
+                $("#ddlBranch").empty();
+                $("#ddlBranch").append("<option value='-1' selected>Select Branch </option>");
+                //$("#select2-ddlBranch-container").html("Select Branch");
+                //$("#select2-ddlBranch-container").attr("title", "Select Branch");
+            }
+            if ($("#ddlCompany").val() != 0) {
+                $('#btnAddManualPunch').attr("disabled", "disabled");
+                $("#btnAddManualPunch").unbind("click");
+                $('#btnClearData').attr("disabled", "disabled");
+                $("#btnClearData").unbind("click");
+                $("#ddlBranch").empty();
+                $("#ajax_loaderCompany").show();
+                $.post("/Transactions/FillBranch?id=" + $("#ddlCompany").val(), function (response) {
+                    if (response.isRedirect) {
+                        window.location.href = response.redirectUrl;
+                    }
+                    $("#ajax_loaderCompany").hide();
+                    if (response != null) {
+                        $("#ddlBranch").append("<option value='-1'> Select Branch </option>");
+                        $("#ddlBranch").append("<option value='0'> All </option>");
+                        for (var i = 0; i < response.length; i++) {
+                            $("#ddlBranch").append("<option value='" + response[i].BranchId + "'>" + response[i].BranchName + "</option>");
+                        }
+                    }
+                });
+            }
+        });
+        $("#ddlBranch").change(function () {
+            if ($("#ddlBranch").val() == "-1") {
+            }
+            if ($("#ddlBranch").val() != "-1") {
+                $("#tblEmp tbody").empty();
+                $("#tblDept tbody").empty();
+                $(".ClsChkAllDept").prop('checked', false);
+                $(".ClsChkAllEmp").prop('checked', false);
+                var nextStepWizard = $('div.setup-panel div a[href="#step-1"]').parent().children("a");
+                nextStepWizard.removeAttr('disabled').trigger('click');
+                $("#DeptIds").empty();
+                $.ajax({
+                    type: "POST",
+                    url: "/Transactions/GetDeptbyBranch?BranchId=" + $("#ddlBranch").val(),
+                    contentType: "application/json; charset=utf-8",
+                    datatype: "json",
+                    async: "false",
+                    success: function (response) {
+                        if (response.isRedirect) {
+                            window.location.href = response.redirectUrl;
+                        }
+                        if (response != null) {
+                            for (var i = 0; i < response.length; i++) {
+                                $('#DeptIds').append('<option value=" ' + response[i].Value + ' ">' + response[i].Text + '</option>');
+                            }
+                            $select.multiselect('rebuild');
+                            $(document.body).on('change', '#DeptIds', function () {
+                                $(".popMsg").hide();
+                                var deptid = $('#DeptIds option:selected');
+                                var DeptArray = [];
+                                $(deptid).each(function (index, deptid) {
+                                    DeptArray.push([$(this).val()]);
+                                });
+                                if (DeptArray == "") {
+                                    $("#txt2").val(0);
+                                }
+                                else {
+                                    $("#txt2").val(DeptArray);
+                                    $("#spValidation").hide();
+                                }
+                                var ArrDept = $("#txt2").val();
+                                DeptIdlst = ArrDept;
+                                getEmp();
+                            });
+                        }
+                        $("#ajax_loaderCompany").hide();
+                    },
+                    beforeSend: function () {
+                        $("#ajax_loaderCompany").show();
+                    },
+                    error: function () {
+                        $("#ajax_loaderCompany").hide();
+                    }
+                });
+                //                    var nextStepWizard1 = $('div.setup-panel div a[href="#cstep-1"]').parent().children("a");
+                //                    nextStepWizard1.removeAttr('disabled').trigger('click');
+            }
+        });
+        $('#frmpopupupload').on('hidden.bs.modal', function (e) {
+            $("#Commandid").val(0);
+        })
+
+        var _url = '@_webapiurl' + 'DeviceManagement/DeviceDetailsGetAll';
+
+        if (emprole == 6805) {
+            _url = '@_webapiurl' + 'DeviceManagement/DeviceDetailsGetAllbyCmpId?id=' + cmpid;
+        }
+        if (emprole == 6806) {
+            _url = '@_webapiurl' + 'DeviceManagement/DeviceDetailsGetAllbyBranchId?id=' + branchid;
+        }
+
+        var t = $('#tbldevice').DataTable(
+        {
+             dom: _domCommon,
+             language: _languageCommon,
+            "processing": false,
+            "ajax": {
+                url: _url,
+                type: "GET",
+                headers: { 'Authorization': '@_tokan' },
+                dataSrc: '',
+                beforeSend: function () {
+                    $("#ajax_loaderCompany").show();
+                }
+            },
+            "columns": [
+                { "data": "device_sn" },
+                { "data": "device_info_id" },
+                { "data": "device_id" },
+                { "data": "device_sn" },
+                { "data": "user_count" },
+                { "data": "trans_count" },
+                { "data": "fp_count" },
+                { "data": "face_count" },
+                {
+                    "data": "state",
+                    "render": function (data) {
+                        if (data == "Standby") {
+                            return "<label>" + data + "</label>";
+                        }
+                        else {
+                            return "<label>" + data + "</label>";
+                        }
+                    }
+                },
+                { "data": "ipaddress" },
+                {
+                    "data": "dev_funs",
+                    "render": function (data) {
+                        var fun = "";
+                        if (data != null) {
+                            if (data.substring(0, 1) == "1") {
+                                fun = "FP";
+                            }
+                            if (data.substring(1, 2) == "1") {
+                                fun = fun + ",FACE"
+                            }
+                            if (data.substring(2, 3) == "1") {
+                                fun = fun + ",USERPIC"
+                            }
+                        }
+                        return fun
+                    }
+                },
+                { "data": "device_name" },
+                { "data": "alias_name" },
+                {
+                    "data": "last_activity",
+                    "render": function (data) {
+                        var date = new Date(data);
+                        var month = date.getMonth() + 1;
+                        var day = date.getDate();
+                        return date.getFullYear() + "-" + (month.length > 1 ? month : "0" + month) + "-" + (day.length > 1 ? day : "0" + day) + " " + (date.getHours() > 10 ? date.getHours() : "0" + date.getHours()) + ":" + (date.getMinutes() > 10 ? date.getMinutes() : "0" + date.getMinutes()) + ":" + (date.getSeconds() > 10 ? date.getSeconds() : "0" + date.getSeconds());
+                    }
+                },
+                { "data": "trans_times" },
+                { "data": "trans_interval" },
+                { "data": "log_stamp" },
+                { "data": "op_log_stamp" },
+                { "data": "photo_stamp" },
+                { "data": "fw_version" },
+                { "data": "fp_alg_ver" },
+                { "data": "push_version" },
+                { "data": "device_type" },
+                { "data": "dev_language" },
+                { "data": "push_comm_key" },
+                { "data": "face_alg_ver" },
+                { "data": "reg_face_count" }
+
+            ],
+            "columnDefs": [
+                {
+                    //"targets": [0, 1, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25],
+                    "targets": [1, 2, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26],
+                    "visible": false
+                },
+                {
+                    'targets': 0,
+                    //'data': 3,
+                    'checkboxes': {
+                        'selectRow': true
+                    }
+                }
+                //{
+                //    "searchable": false,
+                //    "orderable": false,
+                //    "targets": 0
+                //}
+            ],
+            'select': {
+                'style': 'multi'
+            },
+            "order": [[1, 'asc']],
+            "preDrawCallback": function (settings) {
+                $("#ajax_loaderCompany").hide();
+                },
+                "initComplete": function (settings, json) {
+                    if (json != null) {
+                        const device = json;
+                        handleGridVisibility("tblempty", "NotificationGrid-empty", device, {
+                            imageUrl: "emptyscreen_3.png",
+                            subText: "No matching records found for the selected filters."
+                        });
+                    }
+                }
+       }
+);
+        setTimeout(function () {
+            $("#" + "tbldevice" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+            $('.tooltips').tooltip();
+        }, 100);
+        $("#Commandid").change(function () {
+            console.log('typeof jQuery:', typeof jQuery);
+            console.log('typeof $.fn.dataTable:', typeof $.fn.dataTable);
+            console.log('typeof $.fn.dataTable.Api:', typeof $.fn.dataTable.Api);
+            var selectedoption = $('option:selected', this).val();
+            //rows_selected = t.column(0).checkboxes.selected();//rows_selected = t.column(0).checkboxes.selected();
+            rows_selected = $('option:selected', this).val();
+
+            var ids = "";
+            var command = "INFO";
+            if (rows_selected.length > 0) {
+                if (selectedoption == 1) {
+                    for (var i = 0; i < rows_selected.length; i++) {
+                        var obj = {
+                            Command: command,
+                            DeviceSrno: rows_selected[i],
+                            Punchids: ids
+                        }
+                        $.ajax({
+                            //url: '@_webapiurl' + 'DeviceManagement/CreateDeviceCommand?Command=INFO&DeviceSrno=' + rows_selected[i] + "&Punchids=",
+                            url: '@_webapiurl' + "/DeviceManagement/CreateDeviceCommand",
+                            type: 'POST',
+                            datatype: "json",
+                            data: obj,
+                            headers: { 'Authorization': '@_tokan' },
+                            //contentType: "application/json; charset=utf-8",
+                            success: function (data) {
+                                if (data.MegSts == "Ok") {
+                                    $("#Commandid").val(0);
+                                    toastr.remove();
+                                    toastr.success("Command started successfully.");
+                                    $('#tbldevice').DataTable().ajax.reload();
+                                }
+                                else {
+                                    toastr.remove();
+                                    toastr.error("Error on adding command.");
+                                    $("#Commandid").val(0);
+                                }
+                            },
+                            statusCode: {
+                                404: function (content) { $("#Commandid").val(0); alert('cannot find resource'); },
+                                500: function (content) { $("#Commandid").val(0); alert('internal server error'); }
+                            },
+                            error: function (req, status, errorObj) {
+                                $("#Commandid").val(0);
+                                // handle status === "timeout"
+                                // handle other errors
+                            }
+                        });
+                    }
+                }
+                else if (selectedoption == 2) {
+                    Clear();
+                    //$("#Commandid").attr("data-toggle", "modal");
+                    //$("#Commandid").attr("data-target", "#frmpopupupload");
+                    $('#frmpopupupload').modal('show');
+
+                }
+                else if (selectedoption == 3) {
+                    Clear();
+                    //$("#Commandid").attr("data-toggle", "modal");
+                    //$("#Commandid").attr("data-target", "#frmpopupupload");
+                    $('#frmpopupupload').modal('show');
+
+                    //$("#Commandid").val(0);
+                }
+                else if (selectedoption == 4) {
+                    var ids = "";
+                    var command = "CHECK";
+                    for (var i = 0; i < rows_selected.length; i++) {
+                        var obj = {
+                            Command: command,
+                            DeviceSrno: rows_selected[i],
+                            Punchids: ids
+                        }
+                        $.ajax({
+                            //url: '@_webapiurl' + 'DeviceManagement/CreateDeviceCommand?Command=CHECK&DeviceSrno=' + rows_selected[i] + "&Punchids=",
+                            url: '@_webapiurl' + "/DeviceManagement/CreateDeviceCommand",
+                            type: 'POST',
+                            datatype: "json",
+                            data: obj,
+                            headers: { 'Authorization': '@_tokan' },
+                            success: function (data) {
+                                if (data.MegSts == "Ok") {
+                                    $("#Commandid").val(0);
+                                    $('#tbldevice').DataTable().ajax.reload();
+                                }
+                                else {
+                                    $("#Commandid").val(0);
+                                }
+                            },
+                            statusCode: {
+                                404: function (content) { $("#Commandid").val(0); alert('cannot find resource'); },
+                                500: function (content) { $("#Commandid").val(0); alert('internal server error'); }
+                            },
+                            error: function (req, status, errorObj) {
+                                $("#Commandid").val(0);
+                                // handle status === "timeout"
+                                // handle other errors
+                            }
+                        });
+                    }
+                }
+            }
+            else {
+                toastr.remove();
+                toastr.error("Please select atleast one device.");
+                $("#Commandid").val(0);
+            }
+        });
+        $("#btnSave").click(function () {
+            //save();
+            var ids = "";
+            var allVals = [];
+            //var t = $('#tbldevice').DataTable();
+            //var rows_selected = t.column(0).checkboxes.selected();
+            if (valid()) {
+                $("#tblEmp .ClsChkEmp").each(function () {
+                    if ($(this).is(':checked') == true) {
+                        allVals.push($(this).attr("id"));
+                    }
+                });
+                ids = allVals.join(',');
+                var selectedoption = $('#Commandid').find(":selected").val();
+                var command = "";
+                if (selectedoption == 2) {
+                    command = "Upload User";
+                }
+                else {
+                    command = "Download User";
+                }
+                for (var i = 0; i < rows_selected.length; i++) {
+                    var obj = {
+                        Command: command,
+                        DeviceSrno: rows_selected[i],
+                        Punchids: ids
+                    }
+                    $.ajax({
+                        type: "POST",
+                        headers: { 'Authorization': '@_tokan' },
+                        //url: '@_webapiurl' + "/DeviceManagement/CreateDeviceCommand?Command="+command+"&DeviceSrno=" + rows_selected[i] + "&Punchids=" + ids,
+                        url: '@_webapiurl' + "/DeviceManagement/CreateDeviceCommand",
+                        datatype: "json",
+                        data: obj,
+                        success: function (response) {
+                            if (response.isRedirect) {
+                                window.location.href = response.redirectUrl;
+                            }
+                            $('#frmpopupupload').modal('hide');
+                            $("#ajax_loaderCompany").hide();
+                            if (response.MegSts.toLowerCase() == "ok") {
+                                toastr.remove();
+                                toastr.success("Command started sucessfully.");
+                            }
+                            else {
+                                toastr.remove();
+                                toastr.error("Error on Adding Command.");
+                            }
+                        },
+                        beforeSend: function () {
+                            $("#ajax_loaderCompany").show();
+                        },
+                        error: function () {
+                            $("#ajax_loaderCompany").hide();
+                        }
+                    });
+                }
+            }
+            $("#Commandid").val(0);
+        });
+        setInterval(function () {
+            t.ajax.reload();
+        }, 10000);
+        window.onload = function () {
+            timeSpentOnPage();
+        }
+        $(window).on("beforeunload", function () {
+            if (operation == "" || operation == null || operation == '') {
+                operation = "View Devices";
+            }
+            var url = '@_webapiurl' + '/DashBoard/AddAnalyticsUser';
+            var timeSpent = timeSpentOnPage();
+            analyticsDataUsage(url, '@_dbName', form, '@_tokan', count, operation, timeSpent)
+        })
+
+        //$("#Filter_search").click(function () {
+        //    $("#filter_open_div").toggle();
+        //});
+
+        $("#Filter_search").click(function () {
+            const wrapper = $(".filter_portlet_wrapper");
+            wrapper.toggleClass("full-width");
+
+            var screenWidth = $(window).width();
+            if (screenWidth >= 300 && screenWidth <= 600) {
+                $('.filter_portlet_tbl').toggle();
+                $('.filter_portlet_wrapper .filter_boxModal').css('width', '100%');
+            }
+        });
+
+        // Close filter panel on close button click
+        $(".filterclose_btn").click(function () {
+            const wrapper = $(".filter_portlet_wrapper");
+            wrapper.addClass("full-width");
+
+            var screenWidth = $(window).width();
+            if (screenWidth >= 300 && screenWidth <= 600) {
+                $(".filter_portlet_tbl").css("display", "block");
+            }
+        });
+
+    });
+    function valid() {
+        var allVals = [];
+        $("#tblEmp .ClsChkEmp").each(function () {
+            if ($(this).is(':checked') == true) {
+                allVals.push($(this).attr("id"));
+            }
+        });
+        if (allVals.length == 0) {
+            toastr.remove();
+            toastr.error("please select employee.");
+            return false;
+        }
+        return true;
+    }
+    function getEmp() {
+        $("#lblemp").show();
+        //var allVals = [];
+
+        //$("#tblDept .ClsChkDept").each(function () {
+        //    if ($(this).is(':checked') == true) {
+        //        allVals.push($(this).attr("id"));
+        //    }
+        //});;
+        $("#tblEmp").empty();
+        var bID = $("#ddlBranch").val();
+        $.post("/Transactions/GetEmpByDept?empArr=" + DeptIdlst + ";" + bID, function (response) {
+            if (response.isRedirect) {
+                window.location.href = response.redirectUrl;
+            }
+            var table = "";
+            if (response != null) {
+                for (var i = 0; i < response.length; i++) {
+
+                    var tbl = "<tr class='odd gradeX'>";
+                    tbl = tbl + "<td id='eid' hidden>" + response[i].EmpId;
+                    tbl = tbl + "</td>";
+                    tbl = tbl + "<td id='ecode'>" + response[i].Empcode;
+                    tbl = tbl + "</td>";
+                    tbl = tbl + "<td id='enm'>" + response[i].EmpName;
+                    tbl = tbl + "</td>";
+                    tbl = tbl + "<td id='epid'>" + response[i].EmpPunchID;
+                    tbl = tbl + "</td>";
+                    tbl = tbl + "<td id=''><input type='checkbox' onchange='checkedDept(this)' class='ClsChkEmp' id='" + response[i].EmpPunchID + "'/>";
+                    //tbl = tbl + "<td id=''><input type='checkbox' class='ClsChkEmp' id='" + response[i].EmpId + "'/>";
+                    tbl = tbl + "</td>";
+                    tbl = tbl + "</tr>";
+                    table += tbl;
+                }
+            }
+            $("#tblEmp").destroy;
+            $('#tblEmp').append(table);
+            $('#step-2 #dataTables_tbl_header').remove();
+            $('#tblEmp').dataTable({
+                dom: _domCommon,
+                language: _languageCommon,
+                "columnDefs": [
+                    {
+                        "targets": [0],
+                        "visible": false,
+                        "searchable": false,
+                    }
+
+                ],
+                "destroy": true,
+                "bInfo": false,
+                "bPaginate": false,
+                "bLengthChange": false,
+                "columns": [
+                    { "title": "Employee ID" },
+                    { "title": "Code" },
+                    { "title": "Employee Name" },
+                    { "title": "Punch ID" },
+                    { "title": "<input type='checkbox' class='ClsChkAllDept' onchange='AllCheckedEmp(this)' />" }
+                ]
+            });
+            setTimeout(function () {
+                $("#" + "tblEmp" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive1"));
+                $('.tooltips').tooltip();
+            }, 100);
+        });
+    }
+
+    //***********************************frmattndpopup Model Steps Show/Hide with BtnTab for Fixed Footer***********************************//
+    function Step1ShowHide() {
+
+        //*****show/Hide setup-content perticular step*****//
+        $("#step-1").css("display", "block");
+        $("#step-2").css("display", "none");
+
+        //For Highlight pericualr stepwizard-step
+        $("#s1").addClass("btn-primary");
+        $("#s2").removeClass("btn-primary");
+
+        //For click perticular stepwizard-step
+        $("#s1").removeClass("disabled");
+        $("#s2").addClass("disabled");
+
+        //*****Show/Hide Step perticular step Btntab*****//
+        $("#FrstTabBtnDiv").css("display", "block");
+        $("#SecondTabBtnDiv").css("display", "none");
+    }
+
+    function Step2ShowHide() {
+
+        //*****show/Hide setup-content perticular step*****//
+        $("#step-2").css("display", "block");
+        $("#step-1").css("display", "none");
+
+        //For Highlight pericualr stepwizard-step
+        $("#s2").addClass("btn-primary");
+        $("#s1").removeClass("btn-primary");
+
+        //For click perticular stepwizard-step
+        $("#s2").removeClass("disabled");
+        $("#s1").removeClass("disabled");
+
+        //*****Show/Hide Step perticular step Btntab*****//
+        $("#SecondTabBtnDiv").css("display", "block");
+        $("#FrstTabBtnDiv").css("display", "none");
+    }
+
+    //For click perticular stepwizard-step
+    function AllstepsClicable() {
+        $("#s1").removeClass("disabled");
+        $("#s2").removeClass('disabled');
+    }
+    //******************************END********************************//
+
+    function Clear() {
+        $("#ddlCompany").val("0");
+        $("#select2-ddlCompany-container").html("Select Company");
+        $("#select2-ddlCompany-container").attr("title", "Select Company");
+        $("#ddlBranch").empty();
+        $("#ddlBranch").append("<option value='0' selected> Select Branch </option>");
+
+        $("#DepartmentID option:selected").prop("selected", false);
+        $("#DepartmentID").multiselect('refresh');
+        $("#DepartmentID").multiselect('disable');
+        $(".alert-danger").hide();
+        $(".alert-success").hide();
+        $("#tblEmp tbody").empty();
+        $("#DeptIds option:selected").prop("selected", false);
+        $("#DeptIds").multiselect('refresh');
+        $("#DeptIds").empty();
+        $("#DeptIds").multiselect('disable');
+        $(".ClsChkAllDept").prop('checked', false);
+        $(".ClsChkAllEmp").prop('checked', false);
+        var nextStepWizard = $('div.setup-panel div a[href="#step-1"]').parent().children("a");
+        nextStepWizard.removeAttr('disabled').trigger('click');
+
+    }
+    function AllCheckedDept(ths) {
+        $(".popMsg").hide();
+        if ($(ths).prop('checked') == true) {
+            $(".ClsChkDept").prop('checked', true);
+
+        }
+        else {
+            $(".ClsChkDept").prop('checked', false);
+        }
+
+    }
+    function AllCheckedEmp(ths) {
+        $(".popeMsg").hide();
+        if ($(ths).prop('checked') == true) {
+            $(".ClsChkEmp").prop('checked', true);
+
+        }
+        else {
+            $(".ClsChkEmp").prop('checked', false);
+        }
+
+    }
+    function checkedDept(ths) {
+        $(".popMsg").hide();
+    }
+    @*function save() {
+		//var allVals = [];
+		var ids = "";
+		var t = $('#tbldevice').DataTable();
+		var rows_selected = t.column(0).checkboxes.selected();
+		if (valid()) {
+			$("#tblEmp .ClsChkEmp").each(function () {
+				if ($(this).is(':checked') == true) {
+					//allVals.push($(this).attr("id"));
+					ids += $(this).attr("id") + ',';
+				}
+			});
+			for (var i = 0; i < rows_selected.length; i++) {
+				$.ajax({
+					type: "POST",
+					url: '@_webapiurl' + "/DeviceManagement/CreateDeviceCommand?Command=Upload User&DeviceSrno=" + rows_selected[i].device_sn + "&Punchids="+ ids,
+					datatype: "json",
+					//data: {
+					//    Command: "Upload User",
+					//    DeviceSrno: $("#hdndeviceCode").text(),
+					//    Punchids: ids
+					//},
+					success: function (response) {
+						if (response.isRedirect) {
+							window.location.href = response.redirectUrl;
+						}
+						//$('#frmpopupupload').toggle()
+						$('#frmpopupupload').modal('hide');
+						$("#ajax_loaderCompany").hide();
+						var obj = JSON.parse(response);
+						if (obj.MegSts == "ok") {
+							$(".alert-danger").hide();
+							$(".alert-success").text(obj.Meg);
+							$('.alert-success').fadeIn('fast').delay(2000).fadeOut('slow');
+						}
+						else {
+							$(".alert-success").hide();
+							$(".alert-danger").text(obj.Meg);
+							$('.alert-success').fadeIn('fast').delay(2000).fadeOut('slow');
+						}
+					},
+					beforeSend: function () {
+						$("#ajax_loaderCompany").show();
+					},
+					error: function () {
+						$("#ajax_loaderCompany").hide();
+					}
+				});
+			}
+		}
+	}*@
+</script>
+<div class="page-bar">
+    @if (_RoleId == 1)
+    {
+        <ul class="page-breadcrumb">
+            <li>
+                @if (isClientDBMatchFlag == "True")
+                {
+                    <a href="/Admin/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+                }
+                else
+                {
+                    <a href="/Dashboard/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+                }
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> Device</span>
+            </li>
+        </ul>
+    }
+    <div class="page-toolbar text-right">
+        <a href="javascript:;" class="btn icon_transparent_btn tooltips" id="Filter_search" data-placement="left" data-original-title="Filter" data-toggle="tooltip"><i class="fa-light fa-filter" aria-hidden="true"></i> </a>
+    </div>
+</div>
+
+@if (obj.CanAdd)
+{
+
+    <div class="filter_portlet_wrapper full-width">
+
+        <!-- Datatable Block : Begin -->
+        <div class="portlet filter_portlet_tbl">
+            <div class="portlet-body">
+                <div class="row">
+                    <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                        <div id="tblempty">
+                            <div class="table-responsive" id="tableResponsive">
+                                <table id="tbldevice" class="table new_datatbl table-striped table-bordered table-hover table-checkable order-column ">
+                                    <thead>
+                                        <tr>
+                                            <th></th>
+                                            <th hidden>device info id</th>
+                                            <th hidden>device id</th>
+                                            <th>Device Sr No.</th>
+                                            <th>User Count</th>
+                                            <th>Transaction Count</th>
+                                            <th>Finger Count</th>
+                                            <th>Face Count</th>
+                                            <th>Status</th>
+                                            <th>IPAddress</th>
+                                            <th hidden>Dev Funs</th>
+                                            <th hidden>device name</th>
+                                            <th hidden>alias name</th>
+                                            <th hidden>last Activity</th>
+                                            <th hidden>trans times</th>
+                                            <th hidden>trans interval</th>
+                                            <th hidden>log stamp</th>
+                                            <th hidden>op log stamp</th>
+                                            <th hidden>photo stamp</th>
+                                            <th hidden>Framework Version</th>
+                                            <th hidden>fp alg ver</th>
+                                            <th hidden>push version</th>
+                                            <th hidden>device type</th>
+                                            <th hidden>dev language</th>
+                                            <th hidden>push comm key</th>
+                                            <th hidden>face alg ver</th>
+                                            <th hidden>reg face count</th>
+                                        </tr>
+                                    </thead>
+                                </table>
+                            </div>
+                        </div>
+                        <div id="NotificationGrid-empty" style="display: none">
+                            <div class="datanotfound">
+                                <img src="" height="148" width="280" alt="Nodata Found Icon">
+                                <p class="datanotfound_title"></p> <!-- titleText -->
+                                <p class=""></p><!-- subText -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Datatable Block : End -->
+        <!-- Filter Block : Begin -->
+        <div class="portlet filter_boxModal">
+            <div class="filterbox_header">
+                <div class="d-flex align-items-center justify-content-between">
+                    <h4 class="filter-title">Filters</h4>
+                    <button type="button" class="filterclose_btn"><i class="fa-light fa-xmark"></i></button>
+                </div>
+            </div>
+            <div class="filterbox_body">
+                <div class="col-lg-12">
+                    <div class="form-group margin-0">
+                        <label>Command</label>
+                        <select id="Commandid" name="Commandid" class="form-control input-sm divCommandid">
+                            <option value=0 selected>Select Command</option>
+                            <option value=1>Update device info</option>
+                            <option value=2>Upload users to device</option>
+                            <option value=3>Download users from device</option>
+                            @*<option value=4>Check</option>*@
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="filterbox_footer">
+                <div class="text-right">
+                </div>
+            </div>
+        </div>
+        <!-- Filter Block : End -->
+
+    </div>
+
+    <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+        <div id='ajax_loaderCompany' class="modal_bg loading">
+            <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading" />
+        </div>
+    </div>
+
+    <div id="frmpopupupload" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog modal-lg">
+            <!-- Modal content-->
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    <h4 class="modal-title">Select User</h4>
+                </div>
+
+                <div class="modal-body">
+                    <div class="stepwizard">
+                        <div class="stepwizard-row setup-panel">
+                            <div class="stepwizard-step">
+                                <a href="#step-1" id="s1" type="button" class="btn btn-primary btn-circle disabled"><i class="fa-regular fa-sitemap"></i>  Select Department</a>
+                            </div>
+                            <div class="stepwizard-step">
+                                <a href="#step-2" id="s2" type="button" class="btn btn-default btn-circle disabled"><i class="fa-regular fa-user"></i> Select Employee</a>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="alert alert-danger popMsg" hidden>
+                        <a href="#" class="close" data-dismiss="alert">&times;</a>
+                        <strong id="strstg">Error ! </strong> @_error
+                    </div>
+                    <div class="setup-content" id="step-1">
+                        <div class="modal-card">
+                            <div class="row">
+                                @*<div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                                        <div id='ajax_loaderCompany' class="modal_bg loading">
+                                            <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" />
+                                        </div>
+                                    </div>*@
+                                <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                    <div class="form-group">
+                                        <label class="control-label">Company</label>
+                                        <select class="form-control input-sm col-md-8 select2" id="ddlCompany" name="ddlCompany">
+                                            <option value="0" selected>Select Company</option>
+                                            @foreach (var item in ViewBag.CompanyList as IEnumerable<SelectListItem>)
+                                            {
+                                                <option value="@item.Value">@item.Text</option>
+                                            }
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                    <div class="form-group">
+                                        <label class="control-label">Branch</label>
+                                        <select class="form-control input-sm select2" id="ddlBranch" name="ddlBranch">
+                                            <option value="-1" selected>Select Branch</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                    <div class="form-group">
+                                        <label class="control-label">Department</label>
+                                        <input type="text" id="txt2" value="0" hidden />
+                                        <select id="DeptIds" class="mt-multiselect btn-sm btn blue btn-outline " aria-haspopup="true" aria-expanded="false" multiple="multiple" data-width="100%"></select>
+                                    </div>
+                                </div>
+                                @*<div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                                        <hr class="save_hr_line" />
+                                        <button class="btn next_btn nextBtn" id="frstNext" type="button">Next <i class="fa-light fa-angle-right"></i></button>
+                                    </div>*@
+                            </div>
+                        </div>
+                    </div>
+                    <div class="setup-content" id="step-2">
+                        <fieldset>
+                            <div class="row">
+                                <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                                    <div class="alert alert-danger popeMsg" hidden>
+                                        <a href="#" class="close" data-dismiss="alert">&times;</a>
+                                        <strong id="strstg">Error ! </strong> @_error
+                                    </div>
+                                </div>
+                                <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                                    <div class="divEmp">
+                                        <label id="lblemp" class="lbl_emp" hidden>Employee</label>
+                                        <div class="table-responsive" id="tableResponsive1">
+                                            <table class="table new_datatbl table-striped table-bordered table-hover order-column" id="tblEmp"></table>
+                                        </div>
+                                    </div>
+                                </div>
+                                <!--<div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                                    <hr class="save_hr_line" />
+                                    <button class="btn prev_btn prevbtn" type="button"> <i class="fa-regular fa-angle-left"></i> Prev</button>
+                                    @*<button type="submit" class="btn green" onclick="Clear()">New</button>*@
+                                    @*<button type="submit" id="btnSave" class="btn blue">Save</button>*@
+                                    <button type="submit" class=" btn save_btn" id="btnSave"> <i class="fa-light fa-floppy-disk"></i> Save</button>
+                                </div> -->
+                            </div>
+                        </fieldset>
+                    </div>
+                </div>
+
+                <div class="modal-footer">
+                    <!-- First Tab Button -->
+                    <div class="row" id="FrstTabBtnDiv" style="display:none;">
+                        <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                            <button class="btn next_btn nextBtn" id="frstNext" type="button">Next <i class="fa-light fa-angle-right"></i></button>
+                        </div>
+                    </div>
+
+                    <!-- Second Tab Button -->
+                    <div class="row" id="SecondTabBtnDiv" style="display:none;">
+                        <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                            <button class="btn prev_btn prevbtn" type="button" id="Secondprev"> <i class="fa-regular fa-angle-left"></i> Prev</button>
+                            @*<button type="submit" class="btn green" onclick="Clear()">New</button>*@
+                            @*<button type="submit" id="btnSave" class="btn blue">Save</button>*@
+                            <button type="submit" class=" btn save_btn" id="btnSave"> <i class="fa-light fa-floppy-disk"></i> Save</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    <span style="color:red">Unauthorized Access.</span>
+}

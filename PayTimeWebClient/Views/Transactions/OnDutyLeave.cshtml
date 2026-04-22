@@ -1,0 +1,2208 @@
+﻿@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@using System.Configuration;
+@{
+    ViewBag.Title = "OnDuty/Leave";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    string _Message = ViewBag.msg;
+    string _error = ViewBag.error;
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    int _ChunkSize = Convert.ToInt32(HttpContext.Current.Session["DataDropDownThreShold"]);
+    int _EmpId = 0;
+    _EmpId = Convert.ToInt32(HttpContext.Current.Session["EmpId"]);
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+    string _isdateformat = HttpContext.Current.Session["IsDateFormat"].ToString();
+    string _dbName = HttpContext.Current.Session["DbName"].ToString();
+    string _lockAttendanceDay = HttpContext.Current.Session["lockAttendanceDay"].ToString();
+    int _PlanId = Convert.ToInt32(HttpContext.Current.Session["PlanId"]);
+    int _hierchywis = Convert.ToInt32(HttpContext.Current.Session["Ishierchy"]);
+    //int _lockAttendance_Day = Convert.ToInt32(HttpContext.Current.Session["lockAttendanceDay"]);
+    int _cmpid = 0;
+    int _branchid = 0;
+    int _empid = 0;
+    if (_RoleId == 6805)
+    {
+        _cmpid = Convert.ToInt32(HttpContext.Current.Session["ClientCompanyId"]);
+    }
+    if (_RoleId == 6806)
+    {
+        _cmpid = Convert.ToInt32(HttpContext.Current.Session["ClientCompanyId"]);
+        _branchid = Convert.ToInt32(HttpContext.Current.Session["BranchId"]);
+        _empid = Convert.ToInt32(HttpContext.Current.Session["EmpId"].ToString());
+    }
+    if (_RoleId > 1 && _RoleId != 6805 && _RoleId != 6806)
+    {
+        _cmpid = Convert.ToInt32(HttpContext.Current.Session["ClientCompanyId"]);
+        _branchid = Convert.ToInt32(HttpContext.Current.Session["BranchId"]);
+        _empid = Convert.ToInt32(HttpContext.Current.Session["EmpId"].ToString());
+    }
+    string isClientDBMatchFlag = HttpContext.Current.Session["IsClientDBMatch"] != null
+    ? HttpContext.Current.Session["IsClientDBMatch"].ToString()
+    : "false"; // Default to "false" if the session is null
+
+}
+@*<script async defer src="https://maps.googleapis.com/maps/api/js?v=3&key=AIzaSyArRiZ6rJGsALUVVJy80SRx0Wkz_JCwQgw&callback=initMap">
+</script>*@
+<script async defer src="https://maps.googleapis.com/maps/api/js?v=3&key=&callback=initMap">
+</script>
+<script src="~/Pages_JS/VirtuallScroll/NormalDropDownVirtualClientServer.js"></script>
+<script src="~/Pages_JS/VirtuallScroll/ServerSideMultiSelectDropDown.js"></script>
+<script src="~/AssetsNew/js/CommonValidation.js"></script>
+<script src="~/Scripts/timeme.js"></script>
+<script src="~/Scripts/Helpers/noDataHandler.js"></script>
+<script src="~/Newlayout/js/pako.min.js"></script>
+<link href="/Newlayout/css/payrollstructure.css" rel="stylesheet">
+<style>
+    .swal2-container {
+        z-index: 10000;
+    }
+</style>
+<script>
+    var DeptIdlst = "";
+    var isDateFormat = '@_isdateformat';
+    var count = 0;
+    var form = "OnDuty/Leave";
+    var operation = "";
+    var emprole = '@_RoleId';
+    var pkloginemployeeid = '@_EmpId';
+    var cmpid = '@_cmpid';
+    var branchid = '@_branchid';
+    var locationenabled = "";
+    var $SelectEmployee = null;
+    var $select = null;
+    var simpleEmpDropdown = null;
+    function initMap() {
+
+    }
+    $(document).ready(function () {
+        /*timeMeInitialize function is  a javascript library which displays a timer to display how long you are actively viewing the current webpage.*/
+        timeMeInitialize();
+        $(window).on("load", function () {
+             CompanyDropdown = new Select2Dropdown({
+                    dropdownId: "ddlCompany", // ID of the dropdown
+                    apiUrl: '@_webapiurl' + 'DataDropDownOptimize/GetCompanyDropDownPaginated', // API URL for fetching data
+                    dataKey: "Id", // Key for value
+                    labelKey: "Name", // Key for text
+                    token: '@_tokan', // Optional auth token
+                    chunkSize: Number('@_ChunkSize'),
+                    extraParams: { RoleId: '@_RoleId', CompanyID: '@_cmpid' }
+            });
+
+             BranchDropdown = new Select2Dropdown({
+                    dropdownId: "ddlBranch", // ID of the dropdown
+                    apiUrl: '@_webapiurl' + 'DataDropDownOptimize/GetBranchDropDownPaginated', // API URL for fetching data
+                    dataKey: "Id", // Key for value
+                    labelKey: "Name", // Key for text
+                    token: '@_tokan', // Optional auth token
+                    chunkSize: Number('@_ChunkSize')
+            });
+        });
+        var $select = new ServerVirtualDropdown({
+            apiUrl: '@_webapiurl' + "DataDropDownOptimize/GetDepartmentSimpleDropDownData",
+            tokan: '@_tokan',
+            chunkSize : Number('@_ChunkSize'),
+            dropdownId: "DeptIds",
+            selectAll: true,
+            dataKey: "DepartmentId",
+            labelKey: "DepartmentName",
+        });
+
+        $("#latlagAddress").val("");
+        $("#latlag").val("");
+        $(".loading").hide();
+        if ("@_Message" != "") {
+            toastr.remove();
+            toastr.success("@_Message");
+            $(".loading").hide();
+        }
+        if ('@_error' != "") {
+            toastr.remove();
+            toastr.error("@_error");
+            $(".loading").hide();
+        }
+        $("#txtReason").keypress(function (e) {
+            var keyCode = e.which;
+            var Responce = validateKeyPress(keyCode);
+            if (Responce == true) {
+            }
+            else { e.preventDefault(); }
+        });
+        document.oncontextmenu = function () { return false; };
+        $(document).mousedown(function (e) {
+            if (e.button == 2) {
+                return false;
+            }
+            return true;
+        });
+        $("#chkIsHalfLeave").prop('disabled', true);
+        //$select = $("#DeptIds").multiselect({
+        //    selectAllValue: 'multiselect-all',
+        //    enableCaseInsensitiveFiltering: true,
+        //    includeSelectAllOption: true,
+        //    allSelectedText: 'All Select',
+        //    enableFiltering: true,
+        //    maxHeight: '300',
+        //    buttonWidth: '100%',
+        //    enableClickableOptGroups: true,
+        //    nonSelectedText: 'Select Department',
+        //});
+        //var $Employee = $("#EmpIds").multiselect({
+        //    selectAllValue: 'multiselect-all',
+        //    enableCaseInsensitiveFiltering: true,
+        //    includeSelectAllOption: true,
+        //    allSelectedText: 'All Select',
+        //    enableFiltering: true,
+        //    maxHeight: '300',
+        //    buttonWidth: '100%',
+        //    enableClickableOptGroups: true
+        //});
+         $SelectEmployee = new ServerVirtualDropdown({
+                tokan:'@_tokan',
+                dropdownId: "EmpIds",
+                chunkSize : Number('@_ChunkSize'),
+                selectAll:true,
+                dataKey: "Id",
+                labelKey: "Name",
+        });
+        GetAllOnDutyLeave();
+        $("#btnSave").click(function () {
+            save();
+        });
+        $("#btnclose").on('click', function () {
+            $('#frmpopup').modal('toggle');
+            frmClear();
+            DeptIdlst = "";
+            if ($('#ddlEmployee').hasClass("select2-hidden-accessible")) {
+
+                $('#ddlEmployee').select2({
+                    placeholder: 'Select an option',
+                    allowClear: true,
+                    width: 'style'// Optional: shows a clear (x) button
+                });
+
+            }
+        });
+        $(".alert").hide();
+        if ("@_Message" != "") {
+            toastr.remove();
+            toastr.success("@_Message");
+        }
+        if ('@_error' != "") {
+            toastr.remove();
+            toastr.error("@_error");
+        }
+        if (emprole > 1 && emprole != 6805 && emprole != 6806) {
+            $("#Clear_OPration").hide();
+            $.ajax({
+                type: "GET",
+                url: '@_webapiurl' + "Master/CompanyGetById?id=" + cmpid,
+                headers: { 'Authorization': '@_tokan' },
+                dataType: "json",
+                async: false,
+                success: function (response) {
+                    if (response != null && response != [] && response != '') {
+                        var newOption = new Option(response[0].CompanyName, response[0].CompanyID, true, true);
+                        $('#ddlCompany').append(newOption).trigger('change');
+                    }
+                }
+            });
+            setTimeout(function () {
+                fillbranch(branchid);
+                fillemployee(pkloginemployeeid);
+                if (branchid != 0)
+                {
+                    $("#DeptIds").empty();
+                    $select.data = { BranchID: $("#ddlBranch").val() };
+                    $select.loadInitialData();
+                    $(document.body).on('change', '#DeptIds', function () {
+                        var deptid = $('#DeptIds option:selected');
+                        var DeptArray = [];
+                        $(deptid).each(function (index, deptid) {
+                            DeptArray.push([$(this).val()]);
+                        });
+                        if (DeptArray == "") {
+                            $("#txt2").val(0);
+                        }
+                        else {
+                            $("#txt2").val(DeptArray);
+                            $("#spValidation").hide();
+                        }
+                        var ArrDept = $("#txt2").val();
+                        DeptIdlst = ArrDept;
+                        getEmp();
+                    });
+                    //$("#DeptIds").empty();
+                    //$.ajax({
+                    //    type: "POST",
+                    //    url: "/Transactions/GetDeptbyBranch?BranchId=" + $("#ddlBranch").val(),
+                    //    contentType: "application/json; charset=utf-8",
+                    //    datatype: "json",
+                    //    async: "false",
+                    //    success: function (response) {
+                    //        if (response.isRedirect) {
+                    //            window.location.href = response.redirectUrl;
+                    //        }
+                    //        if (response != null) {
+                    //            response.sort(function (a, b) {
+                    //                return a.Text.localeCompare(b.Text);
+                    //            });
+                    //            for (var i = 0; i < response.length; i++) {
+                    //                $('#DeptIds').append('<option value=" ' + response[i].Value + ' ">' + response[i].Text + '</option>');
+                    //            }
+                    //            $select.multiselect('rebuild');
+                    //            $(document.body).on('change', '#DeptIds', function () {
+                    //                var deptid = $('#DeptIds option:selected');
+                    //                var DeptArray = [];
+                    //                $(deptid).each(function (index, deptid) {
+                    //                    DeptArray.push([$(this).val()]);
+                    //                });
+                    //                if (DeptArray == "") {
+                    //                    $("#txt2").val(0);
+                    //                }
+                    //                else {
+                    //                    $("#txt2").val(DeptArray);
+                    //                    $("#spValidation").hide();
+                    //                }
+                    //                var ArrDept = $("#txt2").val();
+                    //                DeptIdlst = ArrDept;
+                    //                getEmp();
+                    //            });
+                    //        }
+                    //        $(".loading").hide();
+                    //    },
+                    //    beforeSend: function () {
+                    //        $(".loading").show();
+                    //    },
+                    //    error: function () {
+                    //        $(".loading").hide();
+                    //    }
+                    //});
+                    $("#btnAddLeave").removeAttr("disabled");
+                    $("#btnAddLeave").click(function () {
+
+                        count++;
+                        operation = "Add Form";
+                        $("#btnAddLeave").attr("data-toggle", "modal");
+                        $("#btnAddLeave").attr("data-target", "#frmpopup");
+                        simpleEmpDropdown = new Select2Dropdown({
+                        dropdownId: "ddlEmployee", // ID of the dropdown
+                        apiUrl: '@_webapiurl' + 'DataDropDownOptimize/GetEmployeeSimpleDropDownData', // API URL for fetching data
+                        dataKey: "Id", // Key for value
+                        labelKey: "Name",
+                        chunkSize : Number('@_ChunkSize'),// Key for text
+                        token: '@_tokan',
+                        extraParams : {
+                            DepartID: 0
+                        }
+                        //data: { key: branchid, val: "All branch" }       // Optional auth token
+                         });
+
+                        //$("#ddlEmployee").append("<option value='' selected> Select Employee </option>");
+                        $("#DeptIds option:selected").prop("selected", false);
+                        $("#DeptIds").multiselect('refresh');
+                        $("#ddlLeaveType").val("0");
+                        $("#ddlLeavePaid").val("0");
+                        $("#txtFromDate").val("");
+                        $("#txtToDate").val("");
+                        $("#txtReason").val("");
+                        $(".alert-danger").hide();
+                        $(".alert-success").hide();
+                        $(".ClsChkAllDept").prop('checked', false);
+                        $("#chkIsHalfLeave").prop('checked', false);
+                        $(".ClsChkDept").prop('checked', false);
+                        $("#frmpopup").removeClass("disabledPopup");
+                        $("#lblLeaveBalance").text("0");
+                        $("#lblEncashLeave").text("0");
+                        $("#lblTotalBalance").text("0");
+                        $("#hfAvailBal").val(0);
+                        $("#hfEmpCode").val("0");
+                        $("#spValidation").hide();
+                        $("#ddlEmployee").removeClass('field_error');
+                        $("#ddlLeaveType").removeClass('field_error');
+                        $("#txtFromDate").removeClass('field_error');
+                        $("#txtToDate").removeClass('field_error');
+                    });
+                }
+            }, 0);
+        }
+        $('#btnAddLeave').attr("disabled", "disabled");
+        $("#btnAddLeave").unbind("click");
+        $("#txtFromDate").change(function () {
+            $("#todate").val("");
+            if (isDateFormat == "dd-mm-yyyy") {
+                var fromDate = $("#txtFromDate").val().split("-");
+                var newdate = new Date(fromDate[2], fromDate[1] - 1, fromDate[0]);
+            }
+            else if (isDateFormat == "mm-dd-yyyy") {
+                var fromDate = moment($('#txtFromDate').val(), 'MM-DD-YYYY');
+                var newdate = new Date(fromDate);
+            }
+            else if (isDateFormat == "yyyy-M-dd") {
+                var fromDate = moment($('#txtFromDate').val(), 'YYYY-MMM-DD');
+                var newdate = new Date(fromDate);
+            }
+            else if ("@_isdateformat" == "M-d-yyyy") {
+                var fromDate = moment($('#txtFromDate').val(), 'MMM-DD-YYYY');
+                var newdate = new Date(fromDate);
+            }
+            else if ("@_isdateformat" == "dd-M-yyyy") {
+                var fromDate = moment($('#txtFromDate').val(), 'DD-MMM-YYYY');
+                var newdate = new Date(fromDate);
+            }
+            else {
+                var fromDate = $("#txtFromDate").val();
+                var newdate = new Date(fromDate);
+            }
+            $('#txtToDate').datepicker("remove");
+            $("#txtToDate").datepicker({
+                startDate: newdate,
+                autoclose: true,
+                format: "@_isdateformat"
+            }).on('changeDate', function (ev) {
+            }).data('datepicker');
+        });
+        $("#ddlCompany").change(function () {
+
+            $('#btnAddLeave').attr("disabled", "disabled");
+            $("#btnAddLeave").unbind("click");
+            fillbranch();
+            $("#EmpIds").empty();
+            $("#EmpIds  Option:selected").prop("selected", false);
+            $("#EmpIds").multiselect('disable');
+            $("#EmpIds").multiselect('refresh');
+            $("#txt4").val(0);
+        });
+
+        $("#ddlBranch").change(function () {
+            if ($("#ddlBranch").val() == "0" || $("#ddlBranch").val() == null) {
+                $('#btnAddLeave').attr("disabled", "disabled");
+                $("#btnAddLeave").unbind("click");
+            }
+            else {
+                $("#btnAddLeave").removeAttr("disabled");
+                $("#btnAddLeave").click(function () {
+                    count++;
+                    operation = "Add Form";
+                    $("#btnAddLeave").attr("data-toggle", "modal");
+                    $("#btnAddLeave").attr("data-target", "#frmpopup");
+                    $("#ddlEmployee").empty();
+                    simpleEmpDropdown = new Select2Dropdown({
+                        dropdownId: "ddlEmployee", // ID of the dropdown
+                        apiUrl: '@_webapiurl' + 'DataDropDownOptimize/GetEmployeeSimpleDropDownData', // API URL for fetching data
+                        dataKey: "Id", // Key for value
+                        labelKey: "Name",
+                        chunkSize : Number('@_ChunkSize'),// Key for text
+                        token: '@_tokan',
+                        extraParams: {
+                            DepartID: 0
+                        }
+                        //data: { key: branchid, val: "All branch" }       // Optional auth token
+                    });
+                    //$("#ddlEmployee").append("<option value='' selected> Select Employee </option>");
+                    $("#DeptIds option:selected").prop("selected", false);
+                    $("#DeptIds").multiselect('refresh');
+                    $("#ddlLeaveType").val("0");
+                    $("#ddlLeavePaid").val("0");
+                    $("#txtFromDate").val("");
+                    $("#txtToDate").val("");
+                    $("#txtReason").val("");
+                    $(".alert-danger").hide();
+                    $(".alert-success").hide();
+                    $(".ClsChkAllDept").prop('checked', false);
+                    $("#chkIsHalfLeave").prop('checked', false);
+                    $(".ClsChkDept").prop('checked', false);
+                    $("#frmpopup").removeClass("disabledPopup");
+                    $("#lblLeaveBalance").text("0");
+                    $("#lblEncashLeave").text("0");
+                    $("#lblTotalBalance").text("0");
+                    $("#hfAvailBal").val(0);
+                    $("#hfEmpCode").val("0");
+                    $("#spValidation").hide();
+                    $("#ddlEmployee").removeClass('field_error');
+                    $("#ddlLeaveType").removeClass('field_error');
+                    $("#txtFromDate").removeClass('field_error');
+                    $("#txtToDate").removeClass('field_error');
+                });
+            }
+            fillemployee();
+            GetAllOnDutyLeave();
+            $("#DeptIds").empty();
+            $select.data = { BranchID: $("#ddlBranch").val() };
+            $select.loadInitialData();
+            $(document.body).on('change', '#DeptIds', function () {
+                var deptid = $('#DeptIds option:selected');
+                var DeptArray = [];
+                $(deptid).each(function (index, deptid) {
+                    DeptArray.push([$(this).val()]);
+                });
+                if (DeptArray == "") {
+                    $("#txt2").val(0);
+                }
+                else {
+                    $("#txt2").val(DeptArray);
+                    $("#spValidation").hide();
+                }
+                var ArrDept = $("#txt2").val();
+                DeptIdlst = ArrDept;
+                getEmp();
+            });
+
+        });
+
+        $("#Clear_OPration").click(function () {
+            $("#ddlCompany").empty();
+            $("#ddlCompany").val(null).trigger('change');
+            $("#select2-ddlCompany-container").html("Select Company");
+            $("#select2-ddlCompany-container").attr("title", "Select Company");
+            $("#ddlBranch").empty();
+            $("#ddlBranch").val(null).trigger('change');
+            $('#btnAddLeave').attr("disabled", "disabled");
+            $("#btnAddLeave").unbind("click");
+            $("#EmpIds").empty();
+            $("#EmpIds  Option:selected").prop("selected", false);
+            $("#EmpIds").multiselect('disable');
+            $("#EmpIds").multiselect('refresh');
+            $("#txt4").val(0);
+            GetAllOnDutyLeave();
+        });
+        $("#Search_OPration").click(function () {
+            if ($("#ddlCompany").val() == "0" || $("#ddlCompany").val() == null) {
+                toastr.remove();
+                toastr.error("Please select company.");
+                return false;
+            }
+            if ($("#ddlBranch").val() == "0" || $("#ddlBranch").val() == null ) {
+                toastr.remove();
+                toastr.error("Please select branch.");
+                return false;
+            }
+            if ($("#EmpIds").val() == "" || $("#EmpIds").val() == null) {
+                toastr.remove();
+                toastr.error("Please select employee.");
+                return false;
+            }
+            const wrapper = $(".filter_portlet_wrapper");
+            wrapper.addClass("full-width");
+            var screenWidth = $(window).width();
+            if (screenWidth >= 300 && screenWidth <= 600) {
+                $(".filter_portlet_tbl").show();
+            }
+            GetAllOnDutyLeave();
+        });
+        $("#ddlEmployee").change(function () {
+            $("#ddlEmployee").removeClass('field_error');
+            $("#spValidation").hide();
+            GetLeaveBalance();
+        });
+        CheckDocumentRequire();
+        //getLocation();
+        $("#ddlLeaveType").change(function () {
+            $("#ddlLeaveType").removeClass('field_error');
+            $("#spValidation").hide();
+            CheckHalfLeave();
+            GetLeaveBalance();
+            CheckDocumentRequire();
+            CheckLocationEnabled();
+        });
+        $("#txtFromDate").change(function () {
+            $("#txtFromDate").removeClass('field_error');
+            $("#spValidation").hide();
+            GetLeaveBalance();
+            CheckDocumentRequire();
+        });
+        $("#txtToDate").change(function () {
+            $("#txtToDate").removeClass('field_error');
+            $("#spValidation").hide();
+            GetLeaveBalance();
+            CheckDocumentRequire();
+        });
+        $("#chkIsHalfLeave").on("change", function ()
+        {
+            if ($(this).is(":checked"))
+            {
+                CheckDocumentRequire();
+                $("#leaveTypeDurationBlock").show();
+            }
+            else
+            {
+                CheckDocumentRequire();
+                $("#leaveTypeDurationBlock").hide();
+                $("#ddlLeaveDuration").val("1");
+            }
+        });
+        $("#txtReason").keypress(function (e) {
+            $("#txtReason").removeClass('field_error');
+            $("#spValidation").hide();
+        });
+        $("#txtReason").blur(function () {
+            var txtreason = removeTags($("#txtReason").val());
+            $("#txtReason").val(txtreason);
+        });
+        $("#UploadLeaveDoc").change(function () {
+            var GetfileName = document.getElementById('UploadLeaveDoc');
+            if ($("#UploadLeaveDoc").val() != null) {
+                var GetfileName = document.getElementById('UploadLeaveDoc');
+                var selectedfile = GetfileName.files[0].size;
+                var validFileSize = 5 * 1024 * 1024; // 5 MB in bytes
+                if (selectedfile > validFileSize) {
+                    toastr.remove();
+                    toastr.error("File size exceeds the maximum allowed size of 5 MB.");
+                    $(this).val("");
+                    return false;
+                }
+                var validExts = new Array(".pdf", ".png", ".jpg", ".jpeg");
+                var fileExt = $("#UploadLeaveDoc").val();
+                if (fileExt != "") {
+                    fileExt = fileExt.substring(fileExt.lastIndexOf('.')).toLowerCase();
+                    if (validExts.indexOf(fileExt) < 0) {
+                        toastr.remove();
+                        toastr.error("Invalid file selected, valid files are of " + validExts.join(", ") + " types.");
+                        $("#UploadLeaveDoc").val("");
+                        return false;
+                    }
+                }
+            }
+            var fileName = $(this).val().split('\\').pop(); // Get the file name without the full path
+            $('#UploadLeaveDoc').text(fileName);
+        });
+        window.onload = function () {
+            timeSpentOnPage();
+        }
+        $(window).on("beforeunload", function () {
+            if (operation == "" || operation == null || operation == '') {
+                operation = "View OnDuty/Leave";
+            }
+            var url = '@_webapiurl' + '/DashBoard/AddAnalyticsUser';
+            var timeSpent = timeSpentOnPage();
+            analyticsDataUsage(url, '@_dbName', form, '@_tokan', count, operation, timeSpent)
+        })
+
+
+        $("#tblOnDutyLeave").on('click', '.editclass', function () {
+            $(".alert-danger").hide();
+            $(".alert-success").hide();
+            $("#tblDept").empty();
+            $("#OnDutyLeaveId").val($(this).parent('td').attr('id'));
+            $("#ddlLeaveType").val($(this).parent('td').parent('tr').children(1)[1].id);
+            $("#ddlLeavePaid").val($(this).parent('td').parent('tr').children(1)[5].id);
+            $("#txtFromDate").val($(this).parent('td').parent('tr').children(1)[2].innerText);
+            $("#txtToDate").val($(this).parent('td').parent('tr').children(1)[3].innerText);
+            $("#txtReason").val($(this).parent('td').parent('tr').children(1)[4].innerText);
+            $("#hfEmpCode").val($(this).parent('td').parent('tr').children(1)[0].id);
+            $("#ddlEmployee").prop('disabled', true);
+            if ($(this).parent('td').parent('tr').children(1)[6].innerText == 'NO') {
+                $("#chkIsHalfLeave").prop('checked', false);
+                $("#chkIsHalfLeave").prop('disabled', true);
+            }
+            else {
+                $("#chkIsHalfLeave").prop('checked', true);
+                $("#chkIsHalfLeave").prop('disabled', false);
+            }
+            $("#frmpopup").dialog("open");
+            GetLeaveBalance();
+        });
+        $("#uploadDoc").hide();
+
+        $("#tblOnDutyLeave").on('click', '.deleteclass', function () {
+            var flg = 0;
+            if (confirm("Are you sure you want to delete this data?")) {
+                $("#OnDutyLeaveId").val($(this).parent('td').attr("id"));
+                $.post("/Transactions/DeleteOnDutyLeave?id=" + $("#OnDutyLeaveId").val(), function (response) {
+                    if (response.isRedirect) {
+                        window.location.href = response.redirectUrl;
+                    }
+                    if (response == "OK") {
+                        toastr.remove();
+                        toastr.success("Leave/OnDuty deleted Sucessfully.");
+                        GetAllOnDutyLeave();
+                    }
+                    else {
+                        toastr.remove();
+                        toastr.error("something wrong occures.");
+                    }
+                });
+            }
+        });
+
+        //$("#Filter_search").click(function () {
+        //    $("#filter_open_div").toggle();
+        //});
+
+        $("#Filter_search").click(function () {
+            debugger;
+            const wrapper = $(".filter_portlet_wrapper");
+            wrapper.toggleClass("full-width");
+
+            var screenWidth = $(window).width();
+            if (screenWidth >= 300 && screenWidth <= 600) {
+                $('.filter_portlet_tbl').toggle();
+                $('.filter_portlet_wrapper .filter_boxModal').css('width', '100%');
+            }
+        });
+
+        // Close filter panel on close button click
+        $(".filterclose_btn").click(function () {
+            const wrapper = $(".filter_portlet_wrapper");
+            wrapper.addClass("full-width");
+
+            var screenWidth = $(window).width();
+            if (screenWidth >= 300 && screenWidth <= 600) {                
+                $(".filter_portlet_tbl").css("display", "block");
+            }
+        });
+
+    });
+    function GetAllOnDutyLeave() {        
+        var objcanedit = '@obj.CanEdit';
+        var objcandelete = '@obj.CanDelete';
+        $("#tblOnDutyLeave").empty();
+        var bID = $("#ddlBranch").val();
+        var selectedEmp = "";
+        var totalOptions = $('#EmpIds option').length;
+        var selectedOptions = $('#EmpIds option:selected').length;
+        $('#EmpIds :selected').each(function () {
+
+            if (totalOptions == selectedOptions) {
+                selectedEmp = "";
+                return false;
+            }
+            else {
+                if (selectedEmp == "") {
+                    selectedEmp = $(this).val();
+                }
+                else {
+                    selectedEmp += "," + $(this).val();
+                }
+            }
+        });
+        var empidstring = selectedEmp.replace(/\s/g, '');
+        var requestData = {};
+        if ($("#EmpIdsContainer li").hasClass("multiselect-item multiselect-all active")) {
+            requestData = {
+                BranchID: parseInt(bID),
+                Empid: "",
+                selectAll: 1,
+                selectAllSearchTerm: $("#EmpIdsContainer li .multiselect-search").val().trim().toLowerCase()
+            };
+        }
+        else {
+            requestData = {
+                BranchID: parseInt(bID),
+                Empid: empidstring,
+                selectAll: 0
+            };
+        }
+        $.ajax({
+            type: "POST",
+            url: "/Transactions/GetAllOnDutyLeave",
+            data: JSON.stringify(requestData),
+            contentType: "application/json; charset=utf-8",
+            datatype: "json",
+            async: "false",
+            beforeSend: function () {
+                $(".loading").show();
+            },
+            success: function (response) {
+                if (response.isRedirect) {
+                    window.location.href = response.redirectUrl;
+                }
+                var table = "";
+                if (response != null) {
+                    var compressedData = atob(response);
+                    var jsonData = JSON.parse(pako.inflate(compressedData, { to: 'string' }));
+                    if (jsonData != null) {
+                        const odl = jsonData.Result;
+                        handleGridVisibility("tblempty", "NotificationGrid-empty", odl, {
+                            imageUrl: "emptyscreen_3.png",
+                            subText: "No matching records found for the selected filters."
+                        });
+                    }
+                    for (var i = 0; i < jsonData.Result.length; i++) {
+
+                        var nameParts = jsonData.Result[i].EmpName.replace(/\s+/g, ' ').trim().split(" ");
+                        var initials = nameParts[0].charAt(0).toUpperCase();
+                        if (nameParts.length > 1) {
+                            initials += nameParts[1].charAt(0).toUpperCase();
+                        }
+                        const colors = ["#e74c3c", "#8e44ad", "#3498db", "#16a085", "#f39c12", "#d35400", "#2c3e50"];
+                        //const randomColor = colors[Math.floor(Math.random() * colors.length)];
+                        const randomColor = "#295097";
+                        var status;
+                        if (jsonData.Result[i].LeaveStatus == 1) {
+                            status = "Approved";
+                        }
+                        else if (jsonData.Result[i].LeaveStatus == 2) {
+                            status = "Rejected";
+                        }
+                        else {
+                            status = "Pending";
+                        }
+                        var tbl = "<tr class='odd gradeX'>";
+                        //tbl = tbl + "<td hidden>" + jsonData.Result[i].LeaveId;
+                        //tbl = tbl + "</td>";
+                        //tbl = tbl + "<td hidden>" + jsonData.Result[i].EmpId;
+                        //tbl = tbl + "</td>";
+                        //tbl = tbl + "<td hidden>" + jsonData.Result[i].LeaveTypeId;
+                        //tbl = tbl + "</td>";
+                        tbl = tbl + `<td class="emp_box empbox_pending">
+                        <img alt="" class="user_img img-circle tooltips" data-placement="right" data-original-title="Empcode : ${jsonData.Result[i].EmpCode}" src="/UploadEmpPhoto/${jsonData.Result[i].EmpPhoto?jsonData.Result[i].EmpPhoto:null}" onerror="this.style.display='none'; if (this.nextElementSibling) { this.nextElementSibling.style.display='inline-block'; }";"/>
+                        <span class="tooltips" data-placement="right" data-original-title="Empcode : ${jsonData.Result[i].EmpCode}"  style="display: none; min-width: 30px; height: 30px; line-height: 30px; text-align: center; background-color: #ecf3ff; color:  ${randomColor}; border-radius: 50% !important; border: 1px solid #8ab1f7; margin-right: 8px;">
+                        ${initials}</span>${jsonData.Result[i].EmpName}</td>`;
+                        //tbl = tbl + "<td id=" + jsonData.Result[i].EmpId + ">" + jsonData.Result[i].EmpName;
+                        tbl = tbl + "</td>";
+                        tbl = tbl + "<td id=" + jsonData.Result[i].LeaveTypeId + ">" + jsonData.Result[i].LeaveTypeName;
+                        tbl = tbl + "</td>";
+                        tbl = tbl + "<td>" + jsonData.Result[i].FromDate1;
+                        tbl = tbl + "</td>";
+                        tbl = tbl + "<td>" + jsonData.Result[i].ToDate1;
+                        tbl = tbl + "</td>";
+                        tbl = tbl + "<td>" + jsonData.Result[i].ApplyReason;
+                        tbl = tbl + "</td>";
+                        tbl = tbl + "<td id=" + jsonData.Result[i].LeavePaid + ">" + (jsonData.Result[i].LeavePaid == 0 ? "UnPaid" : "Paid");
+                        tbl = tbl + "</td>";
+                        tbl = tbl + "<td>" + (jsonData.Result[i].IsHalfLeave == 0 ? "NO" : "YES");
+                        tbl = tbl + "</td>";
+                        tbl = tbl + "<td>" + (jsonData.Result[i].LeaveStatus == 1 ? "Approved" : jsonData.Result[i].LeaveStatus == 2 ? "Rejected" : jsonData.Result[i].LeaveStatus == 4 ? "Canceled" : "Pending");
+                        tbl = tbl + "</td>";
+                        tbl = tbl + "<td>" + jsonData.Result[i].ApprovalReason;
+                        tbl = tbl + "</td>";
+                        tbl = tbl + "<td hidden>" + jsonData.Result[i].LeaveId;
+                        tbl = tbl + "</td>";
+                        tbl = tbl + "<td hidden>" + jsonData.Result[i].EmpId;
+                        tbl = tbl + "</td>";
+                        tbl = tbl + "<td hidden>" + jsonData.Result[i].LeaveTypeId;
+                        tbl = tbl + "</td>";
+                        if (objcanedit == true) {
+                            tbl = tbl + "<td id=" + jsonData.Result[i].LeaveId + "><a class='editclass btn blue_btnnew tooltips' data-placement='top' data-original-title='Edit'><i class='fa-regular fa-pen-to-square'></i></a>";
+                        }
+                        if (objcandelete == true) {
+                            tbl = tbl + "<span>|</span><span> </span><a class='deleteclass btn red_btnnew tooltips' data-placement='top' data-original-title='Delete'><i class='fa-regular fa-trash-can'></i></a>";
+                        }
+
+                        tbl = tbl + "</td>";
+                        tbl = tbl + "</tr>";
+                        table += tbl;
+                    }
+                }
+                $("#tblOnDutyLeave").destroy;
+                $("#dataTables_tbl_header").remove();
+                $('#tblOnDutyLeave').append(table);
+                if (objcanedit == true || objcandelete == true) {
+                    $('#tblOnDutyLeave').dataTable({
+                        "columnDefs": [
+                                        //{
+                                        //    "targets": [0],
+                                        //    "visible": false,
+                                        //    "searchable": false,
+                                        //},
+                                        //{
+                                        //    "targets": [1],
+                                        //    "visible": false
+                                        //},
+                                         { "width": "30%", "targets": 2 },
+                                        { "width": "5%", "targets": 7 }
+                        ],
+                        dom: _domCommon,
+                        language: _languageCommon,
+                        "destroy": true,
+                        "autoWidth": true,
+                        "columns": [
+                            { "title": "Name", data: "Name" },
+                            { "title": "Leave Type", data: "Leave Type" },
+                            { "title": "From Date <i class='fa-regular fa-circle-info tooltips' data-placement='bottom' title='Date format is : @_isdateformat.ToUpper()' style='color: #295097;'></i>", data: "From Date <i class='fa-regular fa-circle-info tooltips' data-placement='bottom' title='Date format is : @_isdateformat.ToUpper()' style='color: #295097;'></i>" },
+                            { "title": "To Date <i class='fa-regular fa-circle-info tooltips' data-placement='bottom' title='Date format is : @_isdateformat.ToUpper()' style='color: #295097;'></i>", data: "To Date <i class='fa-regular fa-circle-info tooltips' data-placement='bottom' title='Date format is : @_isdateformat.ToUpper()' style='color: #295097;'></i>" },
+                            { "title": "Reason", data: "Reason" },
+                            { "title": "LeavePaid", data: "LeavePaid" },
+                            { "title": "IsHalfLeave", data: "IsHalfLeave" },
+                            { "title": "LeaveStatus", data: "LeaveStatus" },
+                            { "title": "Comment", data: "Comment" },
+                            { "title": "OnDutyLeaveId", data: "OnDutyLeaveId", visible: false },
+                            { "title": "EmpCode", data: "EmpCode", visible: false },
+                            { "title": "LeaveType", data: "LeaveType", visible: false },
+                        ],
+                        drawCallback: function () {
+	                                $('.tooltips').tooltip();
+                                },
+                        initComplete: function () {
+                            const visibleTable = $('table:visible').attr('id');
+                            $("#buttons").append(`
+                                <div id="export-button" class="export-button tooltips" data-placement="bottom" data-original-title="Download" data-table-id="${visibleTable}">
+                                    <img src="../Newlayout/images/download_icon.svg" alt="Download icon">
+                                </div>
+                            `);
+                        }
+                    });
+                    $("#dataTables_tbl_header").remove();
+                    setTimeout(function () {
+                        $("#" + "tblOnDutyLeave" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+                        $('.tooltips').tooltip();
+                    }, 100);
+
+                }
+                else {
+                    $('#tblOnDutyLeave').dataTable({
+                        "columnDefs": [
+                                        //{
+                                        //    "targets": [0],
+                                        //    "visible": false,
+                                        //    "searchable": false,
+                                        //},
+                                        //{
+                                        //    "targets": [1],
+                                        //    "visible": false
+                                        //},
+                                        //{
+                                        //    "targets": [2],
+                                        //    "visible": false
+                                        //},
+                        ],
+                        dom: _domCommon,
+                        language: _languageCommon,
+                        "destroy": true,
+                        "autoWidth": false,
+                        "columns": [
+                            { "title": "Name", data: "Name" },
+                            { "title": "Leave Type", data: "Leave Type" },
+                            { "title": "From Date <i class='fa-regular fa-circle-info tooltips' data-placement='bottom' title='Date format is : @_isdateformat.ToUpper()' style='color: #295097;'></i>", data: "From Date <i class='fa-regular fa-circle-info tooltips' data-placement='bottom' title='Date format is : @_isdateformat.ToUpper()' style='color: #295097;'></i>" },
+                            { "title": "To Date <i class='fa-regular fa-circle-info tooltips' data-placement='bottom' title='Date format is : @_isdateformat.ToUpper()' style='color: #295097;'></i>", data: "To Date <i class='fa-regular fa-circle-info tooltips' data-placement='bottom' title='Date format is : @_isdateformat.ToUpper()' style='color: #295097;'></i>" },
+                            { "title": "Reason", data: "Reason" },
+                            { "title": "LeavePaid", data: "LeavePaid" },
+                            { "title": "IsHalfLeave", data: "IsHalfLeave" },
+                            { "title": "LeaveStatus", data: "LeaveStatus" },
+                            { "title": "Comment", data: "Comment" },
+                            { "title": "OnDutyLeaveId", data: "OnDutyLeaveId", visible: false },
+                            { "title": "EmpCode", data: "EmpCode", visible: false },
+                            { "title": "LeaveType", data: "LeaveType", visible: false },
+
+                        ],
+                              drawCallback: function () {
+                                  $('.tooltips').tooltip();
+                              },
+                        initComplete: function () {
+                            const visibleTable = $('table:visible').attr('id');
+                            $("#buttons").append(`
+                                <div id="export-button" class="export-button tooltips" data-placement="bottom" data-original-title="Download" data-table-id="${visibleTable}">
+                                    <img src="../Newlayout/images/download_icon.svg" alt="Download icon">
+                                </div>
+                            `); }
+                    });
+                    setTimeout(function () {
+                        $("#" + "tblOnDutyLeave" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+                        $('.tooltips').tooltip();
+                    }, 100);
+                }
+                $(".loading").hide();
+            },
+            error: function () {
+                $(".loading").hide();
+            }
+        });
+
+    }
+    function CheckHalfLeave() {
+        var ltype = $("#ddlLeaveType").val();
+        $.ajax({
+            type: "GET",
+            url: "/Transactions/HalfLeaveValidate?LeaveType=" + parseInt(ltype),
+            contentType: "application/json; charset=utf-8",
+            datatype: "json",
+            async: "false",
+            success: function (response) {
+                if (response.isRedirect) {
+                    window.location.href = response.redirectUrl;
+                }
+                if (response != null) {
+                    if (response == "yes") {
+                        $("#chkIsHalfLeave").prop('disabled', false);
+                        $("#chkIsHalfLeave").prop('checked', false);
+                    }
+                    else {
+                        $("#chkIsHalfLeave").prop('disabled', true);
+                        $("#chkIsHalfLeave").prop('checked', false);
+                    }
+                }
+                $(".loading").hide();
+            },
+            beforeSend: function () {
+                $(".loading").show();
+            },
+            error: function () {
+                $(".loading").hide();
+            }
+        });
+    }
+    function GetLeaveBalance() {
+        var EmpCode;
+        if ($("#hfEmpCode").val() == "0") {
+            EmpCode = $("#ddlEmployee").val();
+        }
+        else {
+            EmpCode = $("#hfEmpCode").val();
+        }
+
+        EmpCode = (EmpCode == null) ? 0 : EmpCode;
+        if ("@_isdateformat" == "dd-mm-yyyy") {
+            var fromDate = $("#txtFromDate").val().split("-");
+            var _Fromdate = fromDate[2] + "-" + fromDate[1] + "-" + fromDate[0];
+            var toDate = $("#txtToDate").val().split("-");
+            var _toDate = toDate[2] + "-" + toDate[1] + "-" + toDate[0];
+        }
+        else if ("@_isdateformat" == "mm-dd-yyyy") {
+            var fromDate = $("#txtFromDate").val().split("-");
+            var _Fromdate = fromDate[2] + "-" + fromDate[0] + "-" + fromDate[1];
+            var toDate = $("#txtToDate").val().split("-");
+            var _toDate = toDate[2] + "-" + toDate[0] + "-" + toDate[1];
+        }
+        else if ("@_isdateformat" == "yyyy-mm-dd") {
+            var fromDate = $("#txtFromDate").val().split("-");
+            var _Fromdate = fromDate[0] + "-" + fromDate[1] + "-" + fromDate[2];
+            var toDate = $("#txtToDate").val().split("-");
+            var _toDate = toDate[0] + "-" + toDate[1] + "-" + toDate[2];
+        }
+        else if ("@_isdateformat" == "yyyy-M-dd") {
+            var fromDate = $("#txtFromDate").val().split("-");
+            var _Fromdate = fromDate[0] + "-" + fromDate[1] + "-" + fromDate[2];
+            var toDate = $("#txtToDate").val().split("-");
+            var _toDate = toDate[0] + "-" + toDate[1] + "-" + toDate[2];
+        }
+        else if ("@_isdateformat" == "M-dd-yyyy") {
+            var fromDate = $("#txtFromDate").val().split("-");
+            var _Fromdate = fromDate[2] + "-" + fromDate[0] + "-" + fromDate[1];
+            var toDate = $("#txtToDate").val().split("-");
+            var _toDate = toDate[2] + "-" + toDate[0] + "-" + toDate[1];
+        }
+        else if ("@_isdateformat" == "dd-M-yyyy") {
+            var fromDate = $("#txtFromDate").val().split("-");
+            var _Fromdate = fromDate[2] + "-" + fromDate[1] + "-" + fromDate[0];
+            var toDate = $("#txtToDate").val().split("-");
+            var _toDate = toDate[2] + "-" + toDate[1] + "-" + toDate[0];
+        }
+        var OnDutyLeave = {
+            "EmpId": parseInt(EmpCode),
+            "LeaveTypeId": parseInt($("#ddlLeaveType").val()),
+            "FromDate": _Fromdate,
+            "ToDate": _toDate,
+            "PkEmpId": pkloginemployeeid,
+        };
+        $.ajax({
+            type: "POST",
+            url: "/Transactions/GetBalanceByLeaveType?OnDutyLeave=" + JSON.stringify(OnDutyLeave),
+            contentType: "application/json; charset=utf-8",
+            datatype: "json",
+            async: "false",
+            success: function (response) {
+                if (response.isRedirect) {
+                    window.location.href = response.redirectUrl;
+                }
+                if (response != null) {
+                    $("#lblLeaveBalance").text(response.LeaveBalance);
+                    $("#lblTotalBalance").text(response.Total);
+                    var lv = $("#lblLeaveBalance").text();
+                    var a = lv.indexOf("-");
+                    if (a != '-1') {
+                        $("#lblLeaveBalance").text("0");
+                        $("#lblTotalBalance").text("0");
+                    }
+                    var _lv = $("#lblTotalBalance").text();
+                    var b = _lv.indexOf("-");
+                    if (b != '-1') {
+                        $("#lblTotalBalance").text("0");
+                        $("#hfAvailBal").val(parseFloat(response.Total));
+                    }
+                    $("#lblEncashLeave").text(response.EncashLeaveBalance);
+
+                    $("#hfAvailBal").val(parseFloat(response.Total));
+                }
+                else {
+                    $("#lblLeaveBalance").text("0");
+                    $("#lblEncashLeave").text("0");
+                    $("#lblTotalBalance").text("0");
+                    $("#hfAvailBal").val("0");
+                }
+                var leavebalance = $('#lblLeaveBalance').text();
+                var lblEncashLeave = $("#lblEncashLeave").text();
+                var lblTotalBalance = parseFloat(leavebalance) + parseFloat(lblEncashLeave);
+                $("#lblTotalBalance").text(lblTotalBalance);
+                $("#hfAvailBal").val(parseFloat(lblTotalBalance));
+                var ddlLeaveType = $("#ddlLeaveType").val();
+                if (ddlLeaveType == 1) {
+                    $("#ddlLeavePaid").empty();
+                    $("#ddlLeavePaid").append("<option value='1' selected> Paid </option>");
+                }
+                else {
+                    if (lblTotalBalance > 0) {
+                        $("#ddlLeavePaid").empty();
+                        $("#ddlLeavePaid").append("<option value='1' selected> Paid </option>");
+                    }
+                    else {
+                        $("#ddlLeavePaid").empty();
+                        $("#ddlLeavePaid").append("<option value='0' selected> Unpaid </option>");
+                    }
+                }
+                if (response.Total > 0) {
+                    $("#IsPaidFlag").val("1");
+                } else {
+                    $("#IsPaidFlag").val("0");
+                }
+                $(".loading").hide();
+            },
+            beforeSend: function () {
+                $(".loading").show();
+            },
+            error: function () {
+                $(".loading").hide();
+            }
+        });
+    }
+    function CheckDocumentRequire() {
+        var ltype = $("#ddlLeaveType").val();
+        $.ajax({
+            type: "GET",
+            url: "/Transactions/DocumentRequireForLeave?LeaveType=" + parseInt(ltype),
+            contentType: "application/json; charset=utf-8",
+            datatype: "json",
+            async: "false",
+            success: function (response) {
+                if (response.isRedirect) {
+                    window.location.href = response.redirectUrl;
+                }
+                if (response != null && response.length > 0) {
+                    if (response[0].IsDocRequire) {
+                        if ("@_isdateformat" == "dd-mm-yyyy") {
+                            var fromDate = $("#txtFromDate").val().split("-");
+                            var _Fromdate = fromDate[2] + "-" + fromDate[1] + "-" + fromDate[0];
+                            var toDate = $("#txtToDate").val().split("-");
+                            var _toDate = toDate[2] + "-" + toDate[1] + "-" + toDate[0];
+                        }
+                        else if ("@_isdateformat" == "mm-dd-yyyy") {
+                            var fromDate = $("#txtFromDate").val().split("-");
+                            var _Fromdate = fromDate[2] + "-" + fromDate[0] + "-" + fromDate[1];
+                            var toDate = $("#txtToDate").val().split("-");
+                            var _toDate = toDate[2] + "-" + toDate[0] + "-" + toDate[1];
+                        }
+                        else if ("@_isdateformat" == "yyyy-mm-dd") {
+                            var fromDate = $("#txtFromDate").val().split("-");
+                            var _Fromdate = fromDate[0] + "-" + fromDate[1] + "-" + fromDate[2];
+                            var toDate = $("#txtToDate").val().split("-");
+                            var _toDate = toDate[0] + "-" + toDate[1] + "-" + toDate[2];
+                        }
+                        else if ("@_isdateformat" == "yyyy-M-dd") {
+                            var fromDate = $("#txtFromDate").val().split("-");
+                            var _Fromdate = fromDate[0] + "-" + fromDate[1] + "-" + fromDate[2];
+                            var toDate = $("#txtToDate").val().split("-");
+                            var _toDate = toDate[0] + "-" + toDate[1] + "-" + toDate[2];
+                        }
+                        else if ("@_isdateformat" == "M-dd-yyyy") {
+                            var fromDate = $("#txtFromDate").val().split("-");
+                            var _Fromdate = fromDate[2] + "-" + fromDate[0] + "-" + fromDate[1];
+                            var toDate = $("#txtToDate").val().split("-");
+                            var _toDate = toDate[2] + "-" + toDate[0] + "-" + toDate[1];
+                        }
+                        else if ("@_isdateformat" == "dd-M-yyyy") {
+                            var fromDate = $("#txtFromDate").val().split("-");
+                            var _Fromdate = fromDate[2] + "-" + fromDate[1] + "-" + fromDate[0];
+                            var toDate = $("#txtToDate").val().split("-");
+                            var _toDate = toDate[2] + "-" + toDate[1] + "-" + toDate[0];
+                        }
+                        if ($("#chkIsHalfLeave").prop("checked")) {
+                            var diff = Date.parse(_toDate) - Date.parse(_Fromdate);
+                            days = diff / 1000 / 60 / 60 / 24;
+                            daysDiff = (days + 1) / 2;
+                            if (daysDiff >= 0.5 && daysDiff >= response[0].LimitDays) {
+                                $("#uploadDoc").show();
+                            } else {
+                                $("#uploadDoc").hide();
+                                $("#UploadLeaveDoc").text("");
+                                $("#UploadLeaveDoc").val("");
+                            }
+                        }
+                        else {
+                            var dateDiff = Math.abs(new Date(_toDate) - new Date(_Fromdate));
+                            var daysDiff = Math.ceil(dateDiff / (1000 * 60 * 60 * 24));
+                            if (daysDiff === response[0].LimitDays - 1 || daysDiff >= response[0].LimitDays - 1) {
+                                $("#uploadDoc").show();
+                            }
+                            else {
+                                $("#uploadDoc").hide();
+                                $("#UploadLeaveDoc").text("");
+                                $("#UploadLeaveDoc").val("");
+                            }
+                        }
+                    }
+                }
+                else {
+                    $("#uploadDoc").hide();
+                }
+                $(".loading").hide();
+            },
+            beforeSend: function () {
+                $(".loading").show();
+            },
+            error: function () {
+                $(".loading").hide();
+            }
+        });
+    }
+    function CheckLocationEnabled() {
+        var ltype = $("#ddlLeaveType").val();
+        $.ajax({
+            type: "GET",
+            url: "/Transactions/DocumentRequireForLeave?LeaveType=" + parseInt(ltype),
+            contentType: "application/json; charset=utf-8",
+            datatype: "json",
+            async: "false",
+            success: function (response) {
+                if (response.isRedirect) {
+                    window.location.href = response.redirectUrl;
+                }
+                if (response != null && response.length > 0) {
+                    locationenabled = response[0].IsLocationEnabled;
+                    if (locationenabled != 0) {
+                        Gcode();
+                    }
+                }
+                $(".loading").hide();
+            },
+            beforeSend: function () {
+                $(".loading").show();
+            },
+            error: function (jqXHR, ajaxOptions, thrownError) {
+                $(".loading").hide();
+
+                if (jqXHR.status == 500) { //InternalServerError = 500,
+                    toastr.error("InternalServerError");
+                } else if (jqXHR.status == 400) { //BadRequest = 400,
+                    toastr.error("BadRequest");
+                } else if (jqXHR.status == 401) {
+                    window.location.href = "/PayTime/LoginPage";
+                }
+            }
+        });
+    }
+    function save() {
+        if ("@_isdateformat" == "dd-mm-yyyy") {
+            var fromDate = $("#txtFromDate").val().split("-");
+            var _Fromdate = fromDate[2] + "-" + fromDate[1] + "-" + fromDate[0];
+            var toDate = $("#txtToDate").val().split("-");
+            var _toDate = toDate[2] + "-" + toDate[1] + "-" + toDate[0];
+        }
+        else if ("@_isdateformat" == "mm-dd-yyyy") {
+            var fromDate = $("#txtFromDate").val().split("-");
+            var _Fromdate = fromDate[2] + "-" + fromDate[0] + "-" + fromDate[1];
+            var toDate = $("#txtToDate").val().split("-");
+            var _toDate = toDate[2] + "-" + toDate[0] + "-" + toDate[1];
+        }
+        else if ("@_isdateformat" == "yyyy-mm-dd") {
+            var fromDate = $("#txtFromDate").val().split("-");
+            var _Fromdate = fromDate[0] + "-" + fromDate[1] + "-" + fromDate[2];
+            var toDate = $("#txtToDate").val().split("-");
+            var _toDate = toDate[0] + "-" + toDate[1] + "-" + toDate[2];
+        }
+        else if ("@_isdateformat" == "yyyy-M-dd") {
+            var fromDate = $("#txtFromDate").val().split("-");
+            var _Fromdate = fromDate[0] + "-" + fromDate[1] + "-" + fromDate[2];
+            var toDate = $("#txtToDate").val().split("-");
+            var _toDate = toDate[0] + "-" + toDate[1] + "-" + toDate[2];
+        }
+        else if ("@_isdateformat" == "M-dd-yyyy") {
+            var fromDate = $("#txtFromDate").val().split("-");
+            var _Fromdate = fromDate[2] + "-" + fromDate[0] + "-" + fromDate[1];
+            var toDate = $("#txtToDate").val().split("-");
+            var _toDate = toDate[2] + "-" + toDate[0] + "-" + toDate[1];
+        }
+        else if ("@_isdateformat" == "dd-M-yyyy") {
+            var fromDate = $("#txtFromDate").val().split("-");
+            var _Fromdate = fromDate[2] + "-" + fromDate[1] + "-" + fromDate[0];
+            var toDate = $("#txtToDate").val().split("-");
+            var _toDate = toDate[2] + "-" + toDate[1] + "-" + toDate[0];
+        }
+        if (valid()) {
+            var IsHalfLeave = 0;
+            var ddlLeaveDuration = 0;
+            if ($('#chkIsHalfLeave').is(':checked') == true) {
+                IsHalfLeave = true;
+            }
+            else {
+                IsHalfLeave = false;
+            }
+            var Empcodee = 0;
+            if ($("#OnDutyLeaveId").val() == "0") {
+                Empcodee = parseInt($("#ddlEmployee").val());
+            }
+            else {
+                Empcodee = parseInt($("#hfEmpCode").val());
+            }
+            var days;
+            var start1 = _Fromdate;
+            var end1 = _toDate;
+
+            if (IsHalfLeave == 1)
+            {
+                var diff = Date.parse(end1) - Date.parse(start1);
+                days = diff / 1000 / 60 / 60 / 24;
+                days = (days + 1) / 2;
+                ddlLeaveDuration = parseInt($("#ddlLeaveDuration").val());
+            }
+            else
+            {
+                var diff = Date.parse(end1) - Date.parse(start1);
+                days = diff / 1000 / 60 / 60 / 24;
+                days = days + 1;
+            }
+            var LeaveDoc = $("#UploadLeaveDoc").text();
+            //LeaveTypeDuration values First Half:1,Second Half:2 defaults:0
+            var Leave =
+            {
+                "LeaveId": $("#OnDutyLeaveId").val(),
+                "EmpId": Empcodee,
+                "LeaveTypeId": parseInt($("#ddlLeaveType").val()),
+                "FromDate": _Fromdate,
+                "ToDate": _toDate,
+                "ApplyReason": $("#txtReason").val(),
+                "IsHalfLeave": IsHalfLeave,
+                "LeavePaid": parseInt($("#IsPaidFlag").val()),
+                "LeaveDoc": LeaveDoc,
+                "Location": $("#latlag").val(),
+                "LocAddress": $("#latlagAddress").val(),
+                "LeaveTypeDuration": parseInt(ddlLeaveDuration)
+            };
+            var LeaveType = $("#ddlLeavePaid").val();
+            if (LeaveType == 0) {
+                Swal.fire({
+                    title: `<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_info.svg' alt=''> Unpaid Leave`,
+                    html: `
+                        <div class="swal_subtitle">
+                            <b>This is an UNPAID leave.</b>
+                            <p>Are you sure you want to continue?</p>
+                        </div>
+                    `,
+                    showCloseButton: true,
+                    showCancelButton: true,
+                    focusConfirm: false,
+                    cancelButtonText: 'No, Cancel',
+                    confirmButtonText: 'Yes, Continue',
+                    allowOutsideClick: false,
+                    allowEscapeKey: false,
+                    customClass: {
+                        confirmButton: 'swal-confirm-button-class',
+                        cancelButton: 'swal-cancel-button-class'
+                    }
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        debugger
+                        AddLeave(Leave);
+                    } else {
+                        return false;
+                    }
+                });
+                $('img[src="/assets/images/icons/swal_icon/icon_info.svg"]')
+                    .parent().parent().parent()
+                    .addClass('swal_info');
+                return;
+            }
+            AddLeave(Leave);
+        }
+    }
+    function AddLeave(Leave) {
+        $.ajax({
+            type: "POST",
+            url: "/Transactions/OnDutyLeave?Leave=" + JSON.stringify(Leave),
+            contentType: "application/json",
+            beforeSend: function () {
+                $(".loading").show();
+            },
+            success: function (response) {
+                if (response.isRedirect) {
+                    window.location.href = response.redirectUrl;
+                } else if (response.startsWith('\r\n\r')) {
+                    window.location = "/PayTime/Index";
+                } else if (response != null) {
+                    if (response === "OK") {
+                        var uploaddoc = $("#UploadLeaveDoc").val();
+                        if (uploaddoc != null && uploaddoc !== "") {
+                            setTimeout(function () {
+                                $("#frmupload").submit();
+                            }, 1000);
+                        }
+                        else {
+                            Clear();
+                            GetAllOnDutyLeave();
+                        }
+                        $('#frmpopup').modal('toggle');
+                        toastr.remove();
+                        toastr.success("Leave/OnDuty added successfully.");
+                        $('#btnAddLeave').attr("disabled", "disabled");
+                        $("#btnAddLeave").unbind("click");
+                        $("#leaveTypeDurationBlock").hide();
+                    } else {
+                        toastr.remove();
+                        toastr.error(response);
+                    }
+                } else {
+                    $(".loading").hide();
+                }
+            },
+            error: function (xhr, textStatus, errorThrown) {
+                $(".loading").hide();
+                toastr.error("An error occurred while processing your request.");
+                $("#leaveTypeDurationBlock").hide();
+            },
+            complete: function () {
+                $(".loading").hide();
+            }
+        });
+    }
+   function getEmp() {
+       var bID = $("#ddlBranch").val();
+       let SelectAll = 0;
+       let selectAllSearchTerm = "";
+       let _depts = DeptIdlst.replace(/\s/g, "");
+       if ($("#DeptIdsContainer li").hasClass("multiselect-item multiselect-all active")) {
+           SelectAll = 1;
+           selectAllSearchTerm = $("#DeptIdsContainer li .multiselect-search").val().trim().toLowerCase()
+           _depts = "";
+       }
+
+
+       simpleEmpDropdown.extraParams = { DepartID: _depts, BranchID: bID, SelectAll: SelectAll, selectAllSearchTerm: selectAllSearchTerm, RoleId : '@_RoleId', EmpId : '@_EmpId' }
+       $("#ddlEmployee").select2('close');
+       $("#ddlEmployee").trigger('change');
+
+               //data: { key: branchid, val: "All branch" }       // Optional auth token
+        //$.ajax({
+        //    type: "POST",
+        //    url: "/Transactions/GetEmpByDept?empArr=" + DeptIdlst + ";" + bID,
+        //    contentType: "application/json; charset=utf-8",
+        //    datatype: "json",
+        //    async: "false",
+        //    success: function (response) {
+        //        if (response.isRedirect) {
+        //            window.location.href = response.redirectUrl;
+        //        }
+        //        if (response != null) {
+        //            $("#ddlEmployee").empty();
+        //            $("#ddlEmployee").append("<option value=''> Select Employee </option>");
+        //            response.sort(function (a, b) {
+        //                return a.EmpName.localeCompare(b.EmpName);
+        //            });
+        //            for (var i = 0; i < response.length; i++) {
+        //                $("#ddlEmployee").append("<option value='" + response[i].EmpId + "'>Emp PunchID - " + response[i].EmpPunchID + "  (" + response[i].EmpName + ")</option>");
+        //            }
+        //        }
+        //        $("#ddlEmployee").trigger("chosen:updated");
+        //        $(".loading").hide();
+        //    },
+        //    beforeSend: function () {
+        //        $(".loading").show();
+        //    },
+        //    error: function () {
+        //        $(".loading").hide();
+        //    }
+        //});
+    }
+    function valid() {
+        var Employee = $("#ddlEmployee").val();
+        var Leave = $("#ddlLeaveType").val();
+        var FromDate = $("#txtFromDate").val();
+        var ToDate = $("#txtToDate").val();
+        var Reason = $("#txtReason").val();
+        var IsHalfLeave = 0;
+
+
+        if ($("#txt2").val() == 0) {
+            toastr.remove();
+            toastr.error("Please  select at least one department.");
+            return false;
+        }
+        if (Employee == ""||Employee == null) {
+            toastr.remove();
+            toastr.error("Please select employee.");
+            $("#ddlEmployee").addClass('field_error');
+            return false;
+        }
+        if (Leave == "0") {
+            $("#ddlLeaveType").addClass('field_error');
+            return false;
+        }
+        if (FromDate.trim() == "") {
+            $("#txtFromDate").addClass('field_error');
+            return false;
+        }
+
+            @*else if ($("#txtFromDate").val() != "" && '@_lockAttendanceDay' != "" && '@_PlanId' == '6') {
+            var _data = $("#txtFromDate").val();
+            var date = _data.split('-');
+            if ("@_isdateformat" == "dd-mm-yyyy") {
+                var firstValue = date[2] + "-" + date[1] + "-" + date[0] //yyyy-mm-dd
+            }
+            else if ("@_isdateformat" == "yyyy-mm-dd") {
+                var firstValue = date[0] + "-" + date[1] + "-" + date[2] //yyyy-mm-dd
+            }
+            else if ("@_isdateformat" == "mm-dd-yyyy") {
+                var firstValue = date[2] + "-" + date[1] + "-" + date[0] //yyyy-mm-dd
+            }
+            else if ("@_isdateformat" == "yyyy-M-dd") {
+                var _date = new Date(date[2] + " " + date[1] + " " + date[0]);
+                var locale = "en-us";
+                var month = _date.toLocaleString(locale, { month: "numeric" });
+                var firstValue = date[0] + "-" + month + "-" + date[2] //yyyy-mm-dd
+            }
+            else if ("@_isdateformat" == "M-dd-yyyy") {
+                var _date = new Date(date[1] + " " + date[0] + " " + date[2]);
+                var locale = "en-us";
+                var month = _date.toLocaleString(locale, { month: "numeric" });
+                var firstValue = date[2] + "-" + month + "-" + date[1] //yyyy-mm-dd
+            }
+            else if ("@_isdateformat" == "dd-M-yyyy") {
+                var _date = new Date(date[0] + " " + date[1] + " " + date[2]);
+                var locale = "en-us";
+                var month = _date.toLocaleString(locale, { month: "numeric" });
+                var firstValue = date[2] + "-" + month + "-" + date[0] //yyyy-mm-dd
+            }
+            firstValue = firstValue.split('-');
+            var s_date = new Date();
+            var secondValue = (s_date.getFullYear() + "-" + (s_date.getMonth() + 1) + "-" + '@_lockAttendanceDay').split('-');
+            var firstDate = new Date();
+            firstDate.setFullYear(firstValue[0], (firstValue[1] - 1), firstValue[2]);
+            var secondDate = new Date();
+            secondDate.setFullYear(secondValue[0], (secondValue[1] - 1), 1);
+            var secondDate_pev_month = new Date();
+            secondDate_pev_month.setFullYear(secondValue[0], (secondValue[1] - 2), 1);
+            var Current_date = new Date();
+            var _Current_date = new Date(firstDate.getFullYear(), firstDate.getMonth(), 1);
+            var Lock_date_day = new Date();
+            var _lockAttendance_Day = '@_lockAttendance_Day';
+            if (_lockAttendance_Day >= 25) {
+                Lock_date_day.setFullYear(secondValue[0], firstDate.getMonth(), _lockAttendance_Day);
+                if (firstDate < secondDate) {
+                    if (firstDate >= _Current_date && firstDate <= Lock_date_day) {
+                        toastr.remove();
+                        toastr.error("Please change the date because your attendance is locked on this date");
+                        event.preventDefault();
+                        return false;
+                    }
+                }
+            }
+            else {
+                Lock_date_day.setFullYear(secondValue[0], (secondValue[1] - 1), '@_lockAttendanceDay');
+                if (firstDate < secondDate) {
+                    if (firstDate >= secondDate_pev_month && Current_date <= Lock_date_day) {
+                    } else {
+                        toastr.remove();
+                        toastr.error("Please change the date because your attendance is locked on this date");
+                        event.preventDefault();
+                        return false;
+                    }
+                }
+            }
+        }*@
+        else if ($("#txtFromDate").val() != "" && '@_lockAttendanceDay' != "" && ('@_PlanId' == '6' || '@_PlanId' == '5' || '@_PlanId' == '3')) {
+            var _data = $("#txtFromDate").val();
+            var date = _data.split('-');
+            if ("@_isdateformat" == "dd-mm-yyyy") {
+                var firstValue = date[2] + "-" + date[1] + "-" + date[0] //yyyy-mm-dd
+            }
+            else if ("@_isdateformat" == "yyyy-mm-dd") {
+                var firstValue = date[0] + "-" + date[1] + "-" + date[2] //yyyy-mm-dd
+            }
+            else if ("@_isdateformat" == "mm-dd-yyyy") {
+                var firstValue = date[2] + "-" + date[1] + "-" + date[0] //yyyy-mm-dd
+            }
+            else if ("@_isdateformat" == "yyyy-M-dd") {
+                var _date = new Date(date[2] + " " + date[1] + " " + date[0]);
+                var locale = "en-us";
+                var month = _date.toLocaleString(locale, { month: "numeric" });
+                var firstValue = date[0] + "-" + month + "-" + date[2] //yyyy-mm-dd
+            }
+            else if ("@_isdateformat" == "M-dd-yyyy") {
+                var _date = new Date(date[1] + " " + date[0] + " " + date[2]);
+                var locale = "en-us";
+                var month = _date.toLocaleString(locale, { month: "numeric" });
+                var firstValue = date[2] + "-" + month + "-" + date[1] //yyyy-mm-dd
+            }
+            else if ("@_isdateformat" == "dd-M-yyyy") {
+                var _date = new Date(date[0] + " " + date[1] + " " + date[2]);
+                var locale = "en-us";
+                var month = _date.toLocaleString(locale, { month: "numeric" });
+                var firstValue = date[2] + "-" + month + "-" + date[0] //yyyy-mm-dd
+            }
+            firstValue = firstValue.split('-');
+            var s_date = new Date();
+            var secondValue = (s_date.getFullYear() + "-" + (s_date.getMonth() + 1) + "-" + '@_lockAttendanceDay').split('-');
+            var firstDate = new Date();
+            firstDate.setFullYear(firstValue[0], (firstValue[1] - 1), firstValue[2]);
+            var secondDate = new Date();
+            secondDate.setFullYear(secondValue[0], (secondValue[1] - 1), 1);
+            var secondDate_pev_month = new Date();
+            secondDate_pev_month.setFullYear(secondValue[0], (secondValue[1] - 2), 1);
+            var Current_date = new Date();
+            var Lock_date_day = new Date();
+            Lock_date_day.setFullYear(secondValue[0], (secondValue[1] - 1), '@_lockAttendanceDay');
+            if (firstDate < secondDate) {
+                if (firstDate >= secondDate_pev_month && Current_date <= Lock_date_day) {
+                } else {
+                    toastr.remove();
+                    toastr.error("Please change the date because your attendance is locked on this date.");
+                    event.preventDefault();
+                    return false;
+                }
+            }
+        }
+        if (ToDate.trim() == "") {
+            $("#txtToDate").addClass('field_error');
+            return false;
+        }
+        if ($('#chkIsHalfLeave').is(':checked') == true) {
+            IsHalfLeave = true;
+        }
+        else {
+            IsHalfLeave = false;
+        }
+        var days;
+        if ("@_isdateformat" == "dd-mm-yyyy") {
+            var fromDate = $("#txtFromDate").val().split("-");
+            var _Fromdate = fromDate[2] + "-" + fromDate[1] + "-" + fromDate[0];
+            var toDate = $("#txtToDate").val().split("-");
+            var _toDate = toDate[2] + "-" + toDate[1] + "-" + toDate[0];
+        }
+        else if ("@_isdateformat" == "mm-dd-yyyy") {
+            var fromDate = $("#txtFromDate").val().split("-");
+            var _Fromdate = fromDate[2] + "-" + fromDate[0] + "-" + fromDate[1];
+            var toDate = $("#txtToDate").val().split("-");
+            var _toDate = toDate[2] + "-" + toDate[0] + "-" + toDate[1];
+        }
+        else if ("@_isdateformat" == "yyyy-mm-dd") {
+            var fromDate = $("#txtFromDate").val().split("-");
+            var _Fromdate = fromDate[0] + "-" + fromDate[1] + "-" + fromDate[2];
+            var toDate = $("#txtToDate").val().split("-");
+            var _toDate = toDate[0] + "-" + toDate[1] + "-" + toDate[2];
+        }
+        else if ("@_isdateformat" == "yyyy-M-dd") {
+            var fromDate = $("#txtFromDate").val().split("-");
+            var _Fromdate = fromDate[0] + "-" + fromDate[1] + "-" + fromDate[2];
+            var toDate = $("#txtToDate").val().split("-");
+            var _toDate = toDate[0] + "-" + toDate[1] + "-" + toDate[2];
+        }
+        else if ("@_isdateformat" == "M-dd-yyyy") {
+            var fromDate = $("#txtFromDate").val().split("-");
+            var _Fromdate = fromDate[2] + "-" + fromDate[0] + "-" + fromDate[1];
+            var toDate = $("#txtToDate").val().split("-");
+            var _toDate = toDate[2] + "-" + toDate[0] + "-" + toDate[1];
+        }
+        else if ("@_isdateformat" == "dd-M-yyyy") {
+            var fromDate = $("#txtFromDate").val().split("-");
+            var _Fromdate = fromDate[2] + "-" + fromDate[1] + "-" + fromDate[0];
+            var toDate = $("#txtToDate").val().split("-");
+            var _toDate = toDate[2] + "-" + toDate[1] + "-" + toDate[0];
+        }
+        var start1 = _Fromdate;
+        var end1 = _toDate;
+        if ($("#hfAvailBal").val().indexOf("-") != -1) {
+        }
+        else {
+
+            if (IsHalfLeave == 1) {
+                var diff = Date.parse(end1) - Date.parse(start1);
+                days = diff / 1000 / 60 / 60 / 24;
+                days = (days + 1) / 2;
+            }
+            else {
+                var diff = Date.parse(end1) - Date.parse(start1);
+                days = diff / 1000 / 60 / 60 / 24;
+                days = days + 1;
+            }
+
+            if ($("#hfAvailBal").val() != 0) {
+                var _dydif = parseFloat($("#hfAvailBal").val()) >= parseFloat(days);
+                if (_dydif != "1") {
+                    toastr.remove();
+                    toastr.error("You have not enough leave balance..!!");
+                    return false;
+                }
+            }
+        }
+        var ConFrmDate = Date.parse(FromDate);
+        var ConToDate = Date.parse(ToDate);
+        if (ConFrmDate > ConToDate) {
+            toastr.remove();
+            toastr.error("Please enter valid date.");
+            return false;
+        }
+
+        if (Reason.trim() == "") {
+            $("#txtReason").addClass('field_error');
+            return false;
+        }
+        if ($("#uploadDoc").is(":visible") && $("#UploadLeaveDoc").val() == "") {
+            toastr.remove();
+            toastr.error("Please upload document.");
+            return false;
+        }
+        return true;
+    }
+
+    function Clear() {
+        $("#ddlLeaveType").val("0");
+        $("#ddlLeavePaid").val("0");
+        $("#OnDutyLeaveId").val("0");
+        $("#txtFromDate").val("");
+        $("#txtToDate").val("");
+        $("#txtReason").val("");
+        $("#chkIsHalfLeave").prop('checked', false);
+        $("#ddlCompany").empty();
+        $("#ddlCompany").val(null).trigger('change');
+        $("#select2-ddlCompany-container").html("Select Company");
+        $("#select2-ddlCompany-container").attr("title", "Select Company");
+        $("#ddlBranch").empty();
+        $("#ddlBranch").val(null).trigger("change");
+
+        $(".alert-danger").hide();
+        $(".alert-success").hide();
+        $(".alert-danger").text("");
+        $(".alert-success").text("");
+        //   $("#tblDept tbody").empty();
+        $(".ClsChkAllDept").prop('checked', false);
+        $("#lblLeaveBalance").text("0");
+        $("#lblEncashLeave").text("0");
+        $("#lblTotalBalance").text("0");
+        $("#hfAvailBal").val(0);
+        $("#hfEmpCode").val("0");
+        $("#chkIsHalfLeave").prop('disabled', true);
+        $("#spValidation").hide();
+        $("#uploadDoc").hide();
+        $('#UploadLeaveDoc').val('');
+        $("#EmpIds").empty();
+        $("#EmpIds  Option:selected").prop("selected", false);
+        $("#EmpIds").multiselect('disable');
+        $("#EmpIds").multiselect('refresh');
+        $("#txt4").val(0);
+    }
+    function frmClear() {
+        $('ddlEmployee').val(null).trigger("change");
+        $("#ddlLeaveType").val("0");
+        $("#ddlLeavePaid").val("0");
+        $("#OnDutyLeaveId").val("0");
+        $("#txtFromDate").val("");
+        $("#txtToDate").val("");
+        $("#txtReason").val("");
+        $("#chkIsHalfLeave").prop('checked', false);
+        $(".alert-danger").hide();
+        $(".alert-success").hide();
+        $(".alert-danger").text("");
+        $(".alert-success").text("");
+        //   $("#tblDept tbody").empty();
+        $(".ClsChkAllDept").prop('checked', false);
+        $("#lblLeaveBalance").text("0");
+        $("#lblEncashLeave").text("0");
+        $("#lblTotalBalance").text("0");
+        $("#hfAvailBal").val(0);
+        $("#hfEmpCode").val("0");
+        $("#chkIsHalfLeave").prop('disabled', true);
+        $("#spValidation").hide();
+        $("#uploadDoc").hide();
+        $('#UploadLeaveDoc').val('');
+    }
+    function fillemployee(employeeid) {
+        //clear the value of maultislected dropdown
+        $('#EmpIds').val([]).empty();
+        var url = "";
+        var cID = $("#ddlCompany").val();
+        var bID = $("#ddlBranch").val();
+        if (cID == null || cID == "0") {
+            $("#EmpIds  Option:selected").prop("selected", false);
+            $("#EmpIds").multiselect('disable');
+            $("#EmpIds").multiselect('refresh');
+
+        }
+        else if (bID == null || bID == "0") {
+            $("#EmpIds  Option:selected").prop("selected", false);
+            $("#EmpIds").multiselect('disable');
+            $("#EmpIds").multiselect('refresh');
+        }
+        else {
+            if (emprole > 1 && emprole != 6805 && emprole != 6806) {
+                //url = "/MasterData/GetEmpByreporting?EmpId=" + pkloginemployeeid;
+                //url = "/MasterData/GetEmpByreporting?hierarchyState=" + '@_hierchywis' + "&EmpId=" + pkloginemployeeid;
+
+                $SelectEmployee.apiUrl = '@_webapiurl' + 'DataDropDownOptimize/GetEmployeeHierarchyDropDownData';
+                $SelectEmployee.data = { EmpId: pkloginemployeeid, RoleId: emprole };
+                $SelectEmployee.loadInitialData();
+            }
+            else {
+                //url = '@_webapiurl' + 'Master/GetEmployeeByComBranch?ComapnyId=' + cID + '&Branchid=' + bID;
+                $SelectEmployee.apiUrl = '@_webapiurl' + "DataDropDownOptimize/GetEmployeeCmpBranchPaginatDropDown";
+                $SelectEmployee.data = { CompanyID: cID, BranchID: bID };
+                $SelectEmployee.loadInitialData();
+
+            }
+            $(document.body).on('change', '#EmpIds', function () {
+                $("#spvalidation").hide();
+                var Empid = $('#EmpIds option:selected');
+                var Emparray = [];
+                $(Empid).each(function (index, deptid) {
+                    Emparray.push([$(this).val()]);
+                });
+                if (Emparray == "") {
+                    $("#txt4").val(0);
+                }
+                else {
+                    $("#txt4").val(Emparray);
+                    $("#spValidation").hide();
+                }
+                var ArrEmp = $("#txt4").val();
+                EmpIdlst = ArrEmp;
+            });
+        }
+        @*$.ajax({
+            type: "GET",
+            url: url,
+            headers: { 'Authorization': '@_tokan' },
+            contentType: "application/json; charset=utf-8",
+            datatype: "json",
+            async: "false",
+            success: function (response) {
+                $('#EmpIds').empty();
+                if (response != null) {
+                    for (var i = 0; i < response.length; i++) {
+                        var option = $('<option>', {
+                            value: response[i].EmpId,
+                            text: response[i].EmpName + '(' + response[i].Empcode + ')'
+                        });
+                        $('#EmpIds').append(option);
+                    }
+                    if (emprole > 1 && emprole != 6805 && emprole != 6806) {
+                        $("#EmpIds").val([employeeid]);
+                        GetAllOnDutyLeave();
+                    }
+                    $('#EmpIds').multiselect('rebuild');
+                    $(document.body).on('change', '#EmpIds', function () {
+                        $("#spvalidation").hide();
+                        var Empid = $('#EmpIds option:selected');
+                        var Emparray = [];
+                        $(Empid).each(function (index, deptid) {
+                            Emparray.push([$(this).val()]);
+                        });
+                        if (Emparray == "") {
+                            $("#txt4").val(0);
+                        }
+                        else {
+                            $("#txt4").val(Emparray);
+                            $("#spValidation").hide();
+                        }
+                        var ArrEmp = $("#txt4").val();
+                        EmpIdlst = ArrEmp;
+                    });
+                }
+
+            }
+        });*@
+    }
+    function fillbranch(branchid) {
+        $("#ddlBranch").val(null).trigger("change");
+        BranchDropdown.extraParams = { CompanyID: $("#ddlCompany").val(), BranchID: '@_branchid', RoleId: '@_RoleId', EmpID: '@_empid' };
+        $("#ddlBranch").select2('close');
+        $("#ddlBranch").trigger('change');
+        if (branchid) {
+            $.ajax({
+                type: "GET",
+                url: '@_webapiurl' + "Master/BranchGetById?id=" + branchid,
+                headers: { 'Authorization': '@_tokan' },
+                dataType: "json",
+                async: false,
+                success: function (response) {
+                    if (response != null && response != [] && response != '') {
+                        var newOption = new Option(response[0].BranchName, response[0].BranchId, true, true);
+                        $('#ddlBranch').append(newOption).trigger('change');
+                    }
+                }
+            })
+        }
+
+        //$("#ddlBranch").empty();
+        //$.ajax({
+        //    type: "POST",
+        //    url: "/Transactions/FillBranchForOnDutyLeave?id=" + $("#ddlCompany").val(),
+        //    contentType: "application/json; charset=utf-8",
+        //    datatype: "json",
+        //    async: "false",
+        //    beforeSend: function () {
+        //        $(".loading").show();
+        //    },
+        //    success: function (response) {
+        //        if (response.isRedirect) {
+        //            window.location.href = response.redirectUrl;
+        //        }
+        //        if (response != null) {
+        //            if (response.status == true) {
+        //                var sortedData = response.data.sort(function (a, b) {
+        //                    return a.BranchName.localeCompare(b.BranchName);
+        //                });
+        //                $("#ddlBranch").append("<option value='0'> Select Branch </option>");
+        //                for (var i = 0; i < sortedData.length; i++) {
+        //                    $("#ddlBranch").append("<option value='" + sortedData[i].BranchId + "'>" + sortedData[i].BranchName + "</option>");
+        //                }
+        //                if (emprole > 1 && emprole != 6805 && emprole != 6806) {
+        //                    $("#ddlBranch option[value = '" + branchid + "' ]").prop('selected', true);
+        //                }
+        //            }
+        //            else {
+        //                alert("session expired");
+        //                window.location = "/PayTime/Index";
+        //            }
+        //        }
+        //        $(".loading").hide();
+        //    },
+        //    error: function () {
+        //        $(".loading").hide();
+        //    }
+        //});
+    }
+    function getLocation() {
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(showPosition, showError);
+        } else {
+            x.innerHTML = "Geolocation is not supported by this browser.";
+        }
+    }
+    function showPosition(position) {
+        var lat = position.coords.latitude;
+        var long = position.coords.longitude;
+        $("#lat").val(lat);
+        $("#lag").val(long);
+        var LatLng = new google.maps.LatLng(lat, long);
+        $("#latlag").val(LatLng);
+    }
+    function showError(error) {
+        switch (error.code) {
+            case error.PERMISSION_DENIED:
+                showerrormsg("Geolocation is unavailable or user denied the request for geolocation.");
+                break;
+            case error.POSITION_UNAVAILABLE:
+                showerrormsg("Location information is unavailable.");
+                break;
+            case error.TIMEOUT:
+                showerrormsg("The request to get user location timed out.");
+                break;
+            case error.UNKNOWN_ERROR:
+                showerrormsg("An unknown error occurred.");
+                break;
+        }
+    }
+    function showerrormsg(errormsg) {
+        toastr.remove();
+        toastr.warning(errormsg);
+    }
+    function Gcode() {
+        var latitude = $("#lat").val();
+        var longitude = $("#lag").val();
+        var LatLng = new google.maps.LatLng(latitude, longitude);
+        var geocoder = new google.maps.Geocoder;
+        geocoder.geocode({ 'location': LatLng }, function (results, status) {
+            if (status === 'OK') {
+                if (results[0]) {
+
+                    $("#latlagAddress").val(results[0].formatted_address);
+                } else {
+                    window.alert('No results found');
+                }
+            } else {
+                var apikey = 'AIzaSyDAtmmQTRUSi5Yc5X_09t-HW6fBbQaUjMQ';
+                var query = 'https://maps.googleapis.com/maps/api/geocode/json?address=' + latitude + ',' + longitude + '&key=' + apikey;
+                $.getJSON(query, function (data) {
+                    if (data.status === 'OK') {
+                        $("#latlagAddress").val(data.results[0].formatted_address);
+                    }
+                });
+            }
+        });
+    }
+</script>
+
+<div class="page-bar">
+    @if (_RoleId == 1 || _RoleId == 6805 || _RoleId == 6806)
+    {
+        <ul class="page-breadcrumb">
+            <li>
+                <a href="@(isClientDBMatchFlag == "True" ? "/Admin/AdminDashboard" : "/Dashboard/AdminDashboard")"><i class="fa-regular fa-house"></i></a>
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i>OnDuty / Leave</span>
+            </li>
+        </ul>
+    }
+    else
+    {
+        <ul class="page-breadcrumb">
+            <li>
+                <a href="/Dashboard/EmployeeDashboard"><i class="fa-regular fa-house"></i></a>
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> OnDuty / Leave</span>
+            </li>
+        </ul>
+    }
+    <div class="page-toolbar text-right">
+        <a href="javascript:;" class="btn icon_transparent_btn tooltips" id="Filter_search" data-placement="left" data-original-title="Filter" data-toggle="tooltip"><i class="fa-light fa-filter" aria-hidden="true"></i> </a>
+    </div>
+</div>
+
+@if (obj.CanView)
+{
+    <div class="modal_bg loading" aria-hidden="true">
+        <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading" />
+    </div>
+
+    <div class="filter_portlet_wrapper full-width">
+        <!-- Datatable Block : Begin -->
+        <div class="portlet filter_portlet_tbl">
+            <div class="portlet-body">
+                <div class="row">
+                    <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                        <div class="clsTable">
+                            <div id="tblempty">
+                                <div class="table-responsive" id="tableResponsive">
+                                    <table class="table new_datatbl table-striped table-bordered table-hover order-column serch_datatable" id="tblOnDutyLeave"></table>
+                                </div>
+                            </div>
+                            <div id="NotificationGrid-empty" style="display: none">
+                                <div class="datanotfound">
+                                    <img src="" height="148" width="280" alt="Nodata Found Icon">
+                                    <p class="datanotfound_title"></p> <!-- titleText -->
+                                    <p class=""></p><!-- subText -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Datatable Block : End -->
+        <!-- Filter Block : Begin -->
+        <div class="portlet filter_boxModal">
+            <div class="filterbox_header">
+                <div class="d-flex align-items-center justify-content-between">
+                    <h4 class="filter-title">Filters</h4>
+                    <button type="button" class="filterclose_btn"><i class="fa-light fa-xmark"></i></button>
+                </div>
+            </div>
+            <div class="filterbox_body">
+                <div class="col-lg-12">
+                    <div class="form-group">
+                        <label>Company<span class="required" aria-required="true"> * </span></label>
+                        <select class="form-control input-sm select2" id="ddlCompany" name="ddlCompany">
+                        </select>
+                    </div>
+                </div>
+                <div class="col-lg-12">
+                    <div class="form-group">
+                        <label>Branch<span class="required" aria-required="true"> * </span></label>
+                        <select class="form-control input-sm select2" id="ddlBranch" name="ddlBranch">
+                        </select>
+                    </div>
+                </div>
+                <div class="col-lg-12" id="EmpIdsContainer">
+                    <div class="form-group">
+                        <label class="control-label">Employee<span class="required" aria-required="true"> * </span></label>
+                        <input type="text" id="txt4" value="0" hidden />
+                        <select id="EmpIds" class="mt-multiselect btn blue btn-outline" multiple="multiple" data-width="100%"></select>
+                    </div>
+                </div>
+            </div>
+            <div class="filterbox_footer">
+                <div class="text-right">
+                    <button type="button" id="Clear_OPration" class="clear_btn tooltips" data-placement="top" data-original-title="Clear Filters"><i class="fa-regular fa-eraser"></i></button>
+                    <button type="button" id="Search_OPration" class="icon_btn margin-left-5 tooltips" data-placement="top" data-original-title="Search Filters"><i class="fa-solid fa-magnifying-glass"></i></button>
+                    @if (obj.CanAdd)
+                    {
+                        <a href="javascript:void(0)" id="btnAddLeave" class="btn icon_btn margin-left-5 tooltips" data-placement="top" data-original-title="Add Leave" style="vertical-align: top;"><i class="fa-solid fa-plus"></i></a>
+                    }
+                </div>
+            </div>
+        </div>
+        <!-- Filter Block : End -->
+    </div>
+
+    <div id="frmpopup" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog">
+            <!-- Modal content-->
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal" id="btnclose">&times;</button>
+                    <h4 class="modal-title">On Duty Leave</h4>
+                </div>
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                            <span class="help-block" hidden id="spValidation"></span>
+                        </div>
+                    </div>
+                    <div class="modal-card">
+                        <fieldset>
+                            <input type="hidden" id="IsPaidFlag" value="0" />
+                            <div class="row">
+                                <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                                    <input type="hidden" id="OnDutyLeaveId" value="0">
+                                    <input type="hidden" id="hfEmpCode" value="0">
+                                    <input type="hidden" id="hfAvailBal" value="0">
+                                    <input type="hidden" id="latlag" name="latlag" value="">
+                                    <input type="hidden" id="lat" name="lat" value="">
+                                    <input type="hidden" id="lag" name="lag" value="">
+                                    <input type="hidden" id="latlagAddress" name="latlagAddress" value="">
+                                </div>
+                                <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12" id="DeptIdsContainer">
+                                    <div class="form-group">
+                                        <label class="control-label">Department<span class="required" aria-required="true"> * </span></label>
+                                        <input type="text" id="txt2" value="0" hidden />
+                                        <select id="DeptIds" class="mt-multiselect btn blue btn-outline" multiple="multiple" data-width="100%"></select>
+                                    </div>
+                                </div>
+                                <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                    <div class="form-group">
+                                        <label>Employee <span class="required" aria-required="true"> * </span></label>
+                                        <select class="form-control input-sm select2 employee_leave" id="ddlEmployee" name="ddlEmployee">
+                                            @*<option value="" selected>-- Select Employee --</option>*@
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col-lg-3 col-md-3 col-sm-12 col-xs-12">
+                                    <div class="form-group margin-top-30">
+                                        <label class="check mt-checkbox mt-checkbox-outline">
+                                            <input type="checkbox" id="chkIsHalfLeave" class=""> Is Half-Leave?
+                                            <span></span>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="col-lg-3 col-md-3 col-sm-12 col-xs-12" id="leaveTypeDurationBlock" style="display: none;">
+                                    <div class="form-group">
+                                        <label>Leave Summary</label>
+                                        <select id="ddlLeaveDuration" class="form-control input-sm">
+                                            <option value="1" selected>First Half</option>
+                                            <option value="2">Second Half</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                    <div class="form-group">
+                                        <label>Leave <span class="required" aria-required="true"> * </span></label>
+                                        <select class="form-control input-sm " id="ddlLeaveType" name="ddlLeaveType">
+                                            <option value="0" selected> Select Leave </option>
+                                            @foreach (var item in ViewBag.LeaveTypeList as IEnumerable<SelectListItem>)
+                                            {
+                                                <option value="@item.Value">@item.Text</option>
+                                            }
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                    <div class="form-group">
+                                        <label>Leave Type</label>
+                                        <select class="form-control input-sm " id="ddlLeavePaid" name="ddlLeavePaid">
+                                            @*<option value="0" selected>-- Select Leave Type --</option>*@
+                                            <option value="0" selected>UnPaid</option>
+                                            <option value="1" selected>Paid</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                    <div class="form-group data_picker_box">
+                                        <label>From Date <span class="required" aria-required="true"> * </span></label>
+                                        <div class="input-group  date date-picker" data-date-format="@_isdateformat" data-date-viewmode="years">
+                                            <span class="input-group-btn">
+                                                <button class="btn default btn-sm" type="button">
+                                                    <i class="fa-light fa-calendar-days"></i>
+                                                </button>
+                                            </span>
+                                            @if (_isdateformat == "dd-M-yyyy" || _isdateformat == "M-dd-yyyy" || _isdateformat == "yyyy-M-dd")
+                                            {
+                                                <input type="text" id="txtFromDate" placeholder="@_isdateformat.Replace("M","MMM")" value="@DateTime.Now" class="form-control input-sm" readonly="readonly">
+                                            }
+                                            else
+                                            {
+                                                <input type="text" id="txtFromDate" placeholder="@_isdateformat" value="@DateTime.Now" class="form-control input-sm" readonly="readonly">
+                                            }
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                    <div class="form-group data_picker_box">
+                                        <label>To Date <span class="required" aria-required="true"> * </span></label>
+                                        <div class="input-group  date date-picker" data-date-format="@_isdateformat" data-date-viewmode="years">
+                                            <span class="input-group-btn">
+                                                <button class="btn default btn-sm" type="button">
+                                                    <i class="fa-light fa-calendar-days"></i>
+                                                </button>
+                                            </span>
+                                            @if (_isdateformat == "dd-M-yyyy" || _isdateformat == "M-dd-yyyy" || _isdateformat == "yyyy-M-dd")
+                                            {
+                                                <input type="text" id="txtToDate" placeholder="@_isdateformat.Replace("M","MMM")" class="form-control input-sm" data-date-format="@_isdateformat" readonly="readonly">
+                                            }
+                                            else
+                                            {
+                                                <input type="text" id="txtToDate" placeholder="@_isdateformat" class="form-control input-sm" data-date-format="@_isdateformat" readonly="readonly">
+                                            }
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                                    <div class="form-group" id="uploadDoc">
+                                        <form id="frmupload" method="post" action="/Transactions/UploadLeaveRequestDocument" enctype="multipart/form-data">
+                                            <div class="form-group">
+                                                <label>Upload Document <span class="required" aria-required="true" id="uploadleaveid"> * (File size Required 5 MB. and extension files:.pdf,.png,.jpg,.jpeg) </span></label>
+                                                <input type="file" name="UploadLeaveDoc" id="UploadLeaveDoc" value="">
+                                            </div>
+                                        </form>
+                                    </div>
+                                </div>
+                                <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                                    <div class="form-group">
+                                        <label>Reason <span class="required" aria-required="true"> * </span></label>
+                                        <textarea id="txtReason" class="form-control input-sm"></textarea>
+                                    </div>
+                                </div>
+                            </div>
+                        </fieldset>
+                    </div>
+                    <div class="row">
+                        <div class="col-lg-4 col-md-4 col-sm-12 col-xs-12">
+                            <a class="btn default btn-block blue-stripe"><i class="fa-regular fa-calendar-check"></i> Leave Balance  : <span id="lblLeaveBalance"> 0</span> </a>
+                        </div>
+                        <div class="col-lg-5 col-md-5 col-sm-12 col-xs-12">
+                            <a class="btn default btn-block green-stripe"><i class="fa-light fa-calendar-plus"></i> Carry Forward leaves : <span id="lblEncashLeave"> 0</span> </a>
+                        </div>
+                        <div class="col-lg-3 col-md-3 col-sm-12 col-xs-12">
+                            <a class="btn default btn-block red-stripe"><i class="fa-solid fa-plus"></i> Total : <span id="lblTotalBalance"> 0</span> </a>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <div class="row">
+                        <div class="col-md-12 form-actions text-right">
+                            <button type="submit" class="btn icon_addbtn" onclick="Clear()"><i class="fa-light fa-rotate-left"></i> Reset</button>
+                            <button type="submit" id="btnSave" class="btn save_btn"><i class="fa-light fa-floppy-disk"></i> Save</button>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    <span style="color:red">Unauthorized Access.</span>
+}
+<script>
+    $('.overlay').fadeIn('fast').delay(5000).fadeOut('slow');
+</script>

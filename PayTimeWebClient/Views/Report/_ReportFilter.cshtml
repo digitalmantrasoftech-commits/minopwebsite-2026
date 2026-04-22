@@ -1,0 +1,1442 @@
+﻿@model PayTimeWebClient.Models.reqDailyInOutReport
+@using System.Data;
+@using PayTimeWebClient.Helper;
+@using System.Configuration;
+@using PayTimeWebClient.Models;
+@{
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    string IsSchool = HttpContext.Current.Session["IsSchool"].ToString();
+    string IsOffice = HttpContext.Current.Session["IsOffice"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _companyid = string.Empty;
+    string _branchid = string.Empty;
+    int _departmentid = 0;
+    int _empid = 0;
+    if (_RoleId == 6805 || _RoleId == 6806)
+    {
+        _companyid = HttpContext.Current.Session["ClientCompanyId"].ToString();
+    }
+    string _isdateformat = HttpContext.Current.Session["IsDateFormat"].ToString();
+    if (_RoleId > 1 && _RoleId != 6805 && _RoleId != 6806)
+    {
+        _companyid = HttpContext.Current.Session["ClientCompanyId"].ToString();
+        _branchid = HttpContext.Current.Session["BranchId"].ToString();
+        _departmentid = Convert.ToInt32(HttpContext.Current.Session["DepartmentId"].ToString());
+        _empid = Convert.ToInt32(HttpContext.Current.Session["EmpId"].ToString());
+    }
+    string _accountcd = HttpContext.Current.Session["cmpcode"].ToString();
+
+    if (_RoleId == 6810)
+    {
+        _RoleId = 1;
+    }
+}
+<style>
+    .dataTables_wrapper {
+        padding: 40px 0 40px 0;
+    }
+</style>
+<script src="~/AssetsNew/js/CommonValidation.js"></script>
+<script src="~/Scripts/toastr.min.js"></script>
+<script src="~/Scripts/toastr.js"></script>
+<script src="//code.jquery.com/ui/1.11.4/jquery-ui.js"></script>
+<script type="text/javascript">
+    var _accountcode = '@_accountcd';
+    var croleid = '@_RoleId';
+    var _isschool = '@IsSchool';
+    var isDateformat = '@_isdateformat';
+    var selectedEmpArray = new Array();
+    var DeptIdlst = "";
+    var BranchIdlst = "";
+    var StrselectedDep = "";
+    var SelectedCompany = "";
+    var StrselectedCompany = "";
+    var Strselectedbranch = "";
+    var selectedBranch = "";
+    var strselectedEmpID = "";
+    var strIsFilo = "";
+    var SelectedCompanyName = "";
+    var strIsActiveEmployee = "";
+    var strReportName = "";
+    var hdnemp = "";
+    var selectedcrptid = "";
+    var selectedreportid = 0;
+    var companyid = '@_companyid';
+    var branchid = '@_branchid';
+    var departmentid = '@_departmentid';
+    var empid = '@_empid';
+    $(document).ready(function () {
+        if ($("#ActiveEmployee").prop("checked") == true) {
+            getEmp();
+        }
+        var rows_selected = [];
+        if (_isschool == '1') {
+            $('#SeqNo').val(1);
+        }
+        else {
+            $('#SeqNo').val(0);
+        }
+
+        var $select = $("#DeptIds").multiselect({
+            selectAllValue: 'multiselect-all',
+            enableCaseInsensitiveFiltering: true,
+            includeSelectAllOption: true,
+            allSelectedText: 'All Select',
+            enableFiltering: true,
+            maxHeight: '300',
+            buttonWidth: '100%',
+            enableClickableOptGroups: true,
+            nonSelectedText: 'Select Department',
+
+        });
+        var $Branchselect = $("#BranchIds").multiselect({
+            selectAllValue: 'multiselect-all',
+            enableCaseInsensitiveFiltering: true,
+            includeSelectAllOption: true,
+            allSelectedText: 'All Select',
+            enableFiltering: true,
+            maxHeight: '300',
+            buttonWidth: '100%',
+            enableClickableOptGroups: true,
+            nonSelectedText: 'Select Branch',
+        });
+
+        if (_accountcode == "OLA9368" || _accountcode == "SKE107C") {
+            var $Companyselect = $("#CompanyIds").multiselect({
+                selectAllValue: 'multiselect-all',
+                enableCaseInsensitiveFiltering: true,
+                includeSelectAllOption: true,
+                allSelectedText: 'All Select',
+                enableFiltering: true,
+                maxHeight: '300',
+                buttonWidth: '100%',
+                enableClickableOptGroups: true,
+                nonSelectedText: 'Select Company',
+            });
+        }
+
+
+        var SelectedBranchName = '@((Session["NFilterData"] == null) ? "" : ((reqDailyInOutReport)Session["NFilterData"]).BranchName)';
+        SelectedCompany = '@((Session["NFilterData"] == null) ? "" : ((reqDailyInOutReport)Session["NFilterData"]).CompanyID.ToString())';
+        var selectedDeparment = '@((Session["NFilterData"] == null) ? "" : ((reqDailyInOutReport)Session["NFilterData"]).DepId)';
+        selectedBranch = '@((Session["NFilterData"] == null) ? "" : ((reqDailyInOutReport)Session["NFilterData"]).BranchId.ToString())';
+        selectedFromDate = '@((Session["NFilterData"] == null) ? "" : ((reqDailyInOutReport)Session["NFilterData"]).FromDate)';
+        if (selectedFromDate != "") {
+            if ("@_isdateformat" == "dd-mm-yyyy") {
+                var selectedfromDate = selectedFromDate.split("-");
+                selectedFromDate = selectedfromDate[2] + "-" + selectedfromDate[1] + "-" + selectedfromDate[0];
+            }
+            else if ("@_isdateformat" == "mm-dd-yyyy") {
+                var selectedfromDate = selectedFromDate.split("-");
+                selectedFromDate = selectedfromDate[1] + "-" + selectedfromDate[2] + "-" + selectedfromDate[0];
+            }
+            else if ("@_isdateformat" == "yyyy-mm-dd") {
+
+                var selectedfromDate = selectedFromDate.split("-");
+                selectedFromDate = selectedfromDate[0] + "-" + selectedfromDate[1] + "-" + selectedfromDate[2];
+            }
+            else if ("@_isdateformat" == "dd-M-yyyy") {
+                var selectedfromDate = selectedFromDate.split("-");
+                var dateMM = selectedfromDate[1];
+                selectedFromDate = selectedfromDate[2] + "-" + GetMonthName(dateMM) + "-" + selectedfromDate[0];
+            }
+            else if ("@_isdateformat" == "M-dd-yyyy") {
+                var selectedfromDate = selectedFromDate.split("-");
+                var dateMM = selectedfromDate[1];
+                selectedFromDate = GetMonthName(dateMM) + "-" + selectedfromDate[2] + "-" + selectedfromDate[0];
+            }
+            else if ("@_isdateformat" == "yyyy-M-dd") {
+                var selectedfromDate = selectedFromDate.split("-");
+                var dateMM = selectedfromDate[1];
+                selectedFromDate = selectedfromDate[0] + "-" + GetMonthName(dateMM) + "-" + selectedfromDate[2];
+            }
+        }
+        selectedToDate = '@((Session["NFilterData"] == null) ? "" : ((reqDailyInOutReport)Session["NFilterData"]).Todate)';
+        if (selectedToDate != "") {
+            if ("@_isdateformat" == "dd-mm-yyyy") {
+                var selectedtoDate = selectedToDate.split("-");
+                selectedToDate = selectedtoDate[2] + "-" + selectedtoDate[1] + "-" + selectedtoDate[0];
+            }
+            else if ("@_isdateformat" == "mm-dd-yyyy") {
+                var selectedtoDate = selectedToDate.split("-");
+                selectedToDate = selectedtoDate[1] + "-" + selectedtoDate[2] + "-" + selectedtoDate[0];
+            }
+            else if ("@_isdateformat" == "yyyy-mm-dd") {
+                var selectedtoDate = selectedToDate.split("-");
+                selectedToDate = selectedtoDate[0] + "-" + selectedtoDate[1] + "-" + selectedtoDate[2];
+            }
+            if ("@_isdateformat" == "dd-M-yyyy") {
+                var selectedtoDate = selectedToDate.split("-");
+                var dateMM = selectedtoDate[1];
+                selectedToDate = selectedtoDate[2] + "-" + GetMonthName(dateMM) + "-" + selectedtoDate[0];
+            }
+            else if ("@_isdateformat" == "M-dd-yyyy") {
+                var selectedtoDate = selectedToDate.split("-");
+                var dateMM = selectedtoDate[1];
+                selectedToDate = GetMonthName(dateMM) + "-" + selectedtoDate[2] + "-" + selectedtoDate[0];
+            }
+            else if ("@_isdateformat" == "yyyy-M-dd") {
+                var selectedtoDate = selectedToDate.split("-");
+                var dateMM = selectedtoDate[1];
+                selectedToDate = selectedtoDate[0] + "-" + GetMonthName(dateMM) + "-" + selectedtoDate[2];
+            }
+        }
+        strselectedEmpID = '@((Session["NFilterData"] == null) ? "" : ((reqDailyInOutReport)Session["NFilterData"]).EmpID.ToString())';
+        strIsFilo = '@((Session["NFilterData"] == null) ? "" : ((reqDailyInOutReport)Session["NFilterData"]).IsFilo.ToString())';
+        strIsActiveEmployee = '@((Session["NFilterData"] == null) ? "" : ((reqDailyInOutReport)Session["NFilterData"]).ActiveEmployee.ToString())';
+        SelectedCompanyName = '@((Session["NFilterData"] == null) ? "" : ((reqDailyInOutReport)Session["NFilterData"]).CompanyName)';
+        selectedReportName = '@((Session["NFilterData"] == null) ? "" : ((reqDailyInOutReport)Session["NFilterData"]).ReportName.ToString())';
+        selectedcrptd = '@((Session["NFilterData"] == null) ? "" : ((reqDailyInOutReport)Session["NFilterData"]).crptid.ToString())';
+        selectedreportid = '@((Session["NFilterData"] == null) ? 0 : ((reqDailyInOutReport)Session["NFilterData"]).RptID)';
+        if (selectedDeparment != "" && SelectedBranchName != "" && SelectedCompanyName != "") {
+            SelectedCompany = SelectedCompany.split("&quot;").join("");
+            SelectedCompany = SelectedCompany.split(" ").join("");
+            SelectedCompany = SelectedCompany.split(",");
+            StrselectedCompany = SelectedCompany;
+            for (var i in StrselectedCompany) {
+                var optionVal = StrselectedCompany[i];
+                $("#CompanyIds").find("option[value=" + optionVal + "]").prop("selected", "selected");
+            }
+            if (_accountcode == "OLA9368" || _accountcode == "SKE107C") {
+                $("#CompanyIds").multiselect("rebuild");
+            }
+            $('#BranchName').val(SelectedBranchName);
+            //$('#BranchId').val(selectedBranch);
+            selectedBranch = selectedBranch.split("&quot;").join("");
+            selectedBranch = selectedBranch.split(" ").join("");
+            selectedBranch = selectedBranch.split(",");
+            Strselectedbranch = selectedBranch;
+            //fillBranchbycompnyid(SelectedCompany, selectedBranch);
+            $("#FromDate").datepicker({ format: "@_isdateformat" });
+            $("#FromDate").datepicker("setDate", selectedFromDate);
+            $("#Todate").datepicker({ format: "@_isdateformat" });
+            $("#Todate").datepicker("setDate", selectedToDate);
+            selectedDeparment = selectedDeparment.split("&quot;").join("");
+            selectedDeparment = selectedDeparment.split(" ").join("");
+            selectedDeparment = selectedDeparment.split(",");
+            StrselectedDep = selectedDeparment;
+            fillDeptTable(selectedBranch, StrselectedDep);
+            $('#txt2').val(StrselectedDep);
+            $('#txt3').val(Strselectedbranch);
+            $('#CompanyID').val(SelectedCompany);
+            $('#BranchId').val(Strselectedbranch);
+            strselectedEmpID = strselectedEmpID.split("&quot;").join("");
+            strselectedEmpID = strselectedEmpID.split("[").join("");
+            strselectedEmpID = strselectedEmpID.split("]").join("");
+            if (strIsActiveEmployee != "") {
+                if (strIsActiveEmployee == '1') {
+                    $('#ActiveEmployee').prop("checked", true)
+                    $("#ActiveEmployee").attr("value", 1);
+                }
+                else {
+                    $('#ActiveEmployee').prop("checked", false)
+                    $("#ActiveEmployee").attr("value", 0);
+                }
+            }
+            getEmp();
+            $('#EmpID').val(strselectedEmpID);
+
+            $('#DepId').val(StrselectedDep);
+            if (strIsFilo != "") {
+                if (strIsFilo == '1') {
+                    $('#IsFilo').prop("checked", true)
+                    $("#IsFilo").attr("value", 1);
+                }
+                else {
+                    $('#IsFilo').prop("checked", false)
+                    $("#IsFilo").attr("value", 0);
+                }
+            }
+            $('#CompanyName').val(SelectedCompanyName);
+        }
+        $("#FromDate").change(function () {
+            //var today = new Date();
+            $("#spvalidation").hide();
+            $("#FromDate").removeClass('field_error');
+            $("#Todate").val("");
+            var fromDate = $("#FromDate").val();
+            var i = "";
+            var k = "";
+            if ("@_isdateformat" == "dd-mm-yyyy") {
+                var fromDate = $("#FromDate").val().split("-");
+                var newdate = new Date(fromDate[2], fromDate[1] - 1, fromDate[0]);
+            }
+            else if ("@_isdateformat" == "mm-dd-yyyy") {
+                var fromDate = moment($('#FromDate').val(), 'MM-DD-YYYY');
+                var newdate = new Date(fromDate);
+            }
+            else if ("@_isdateformat" == "yyyy-M-dd") {
+                var fromDate = moment($('#FromDate').val(), 'YYYY-MMM-DD');
+                var newdate = new Date(fromDate);
+            }
+            else if ("@_isdateformat" == "M-dd-yyyy") {
+                var fromDate = moment($('#FromDate').val(), 'MMM-DD-YYYY');
+                var newdate = new Date(fromDate);
+            }
+            else if ("@_isdateformat" == "dd-M-yyyy") {
+                var fromDate = moment($('#FromDate').val(), 'DD-MMM-YYYY');
+                var newdate = new Date(fromDate);
+            }
+            else {
+                var fromDate = $("#FromDate").val();
+                var newdate = new Date(fromDate);
+            }
+            if ("@_isdateformat" == "dd-M-yyyy" || "@_isdateformat" == "M-dd-yyyy" || "@_isdateformat" == "yyyy-M-dd") {
+                if (newdate.getMonth() <= 8) {
+                    i = newdate.toLocaleString('en-us', { month: 'short' });
+                }
+                else {
+                    i = newdate.toLocaleString('en-us', { month: 'short' });
+                }
+                if (newdate.getDate() < 10) {
+                    k = "0" + (newdate.getDate());
+                }
+                else {
+                    k = (newdate.getDate());
+                }
+            }
+            else {
+                if (newdate.getMonth() <= 8) {
+                    i = "0" + (newdate.getMonth() + 1);
+                }
+                else {
+                    i = (newdate.getMonth() + 1);
+                }
+                if (newdate.getDate() < 10) {
+                    k = "0" + (newdate.getDate());
+                }
+                else {
+                    k = (newdate.getDate());
+                }
+            }
+            //var newdate = new Date(fromDate);
+            if ("@_isdateformat" == "yyyy-mm-dd") {
+                $("#Todate").val(newdate.getFullYear() + "-" + i + "-" + k);
+            }
+            else if ("@_isdateformat" == "mm-dd-yyyy") {
+                $("#Todate").val(i + "-" + k + "-" + newdate.getFullYear());
+            }
+            else if ("@_isdateformat" == "dd-mm-yyyy") {
+                $("#Todate").val(k + "-" + i + "-" + newdate.getFullYear());
+            }
+            else if ("@_isdateformat" == "dd-M-yyyy") {
+                $("#Todate").val(k + "-" + i + "-" + newdate.getFullYear());
+            }
+            else if ("@_isdateformat" == "M-dd-yyyy") {
+                $("#Todate").val(i + "-" + k + "-" + newdate.getFullYear());
+            }
+            else if ("@_isdateformat" == "yyyy-M-dd") {
+                $("#Todate").val(newdate.getFullYear() + "-" + i + "-" + k);
+            }
+            $('#Todate').datepicker("remove");
+            $("#Todate").datepicker({
+                startDate: newdate,
+                autoclose: true,
+                format: "@_isdateformat",
+            }).on('changeDate', function (ev) {
+                $("#Todate").removeClass('field_error');
+            }).data('datepicker');
+        });
+
+        $("#Todate").change(function () {
+            $("#spvalidation").hide();
+        });
+
+        var SelectedBranchName = '@((Session["NFilterData"] == null) ? "" : ((reqDailyInOutReport)Session["NFilterData"]).BranchName)';
+        var SelectedCompany = '@((Session["NFilterData"] == null) ? "" : ((reqDailyInOutReport)Session["NFilterData"]).CompanyID.ToString())';
+        if (SelectedBranchName != "" && SelectedCompany != "") {
+            $('#CompanyID').val(SelectedCompany);
+            $('#BranchName').val(SelectedBranchName);
+            fillBranchbycompnyid(SelectedCompany, selectedBranch);
+        }
+        if (SelectedBranchName != "" && SelectedCompany != "") {
+            if (_isschool == '1') {
+                $("#filterpara").html("School:  <b>" + SelectedCompanyName + "</b>     " + "Class:  <b>" + SelectedBranchName + "</b>     " + "From Date:  <b>" + selectedFromDate + "</b>     " + "To Date:  <b>" + selectedToDate + "</b>");
+            }
+            else {
+                $("#filterpara").html("Company:  <b>" + SelectedCompanyName + "</b>     " + "Branch:  <b>" + SelectedBranchName + "</b>     " + "From Date:  <b>" + selectedFromDate + "</b>     " + "To Date:  <b>" + selectedToDate + "</b>");
+            }
+        }
+        else {
+            $("#filterpara").html("")
+        }
+        $('#CompanyIds').change(function () {
+            clearcmp();
+            $("#spvalidation").hide();
+            var s = $('#CompanyIds').val();
+            $('#CompanyName').val($("#CompanyIds option:selected").text());
+            var selectedCompanies = [];
+            $('#CompanyIds :selected').each(function () {
+                selectedCompanies.push($(this).val()); // Get the text of selected option
+            });
+            var selectedCompaniesString = selectedCompanies.join(", ");
+            $('#CompanyID').val(selectedCompaniesString);
+            fillBranchbycompnyid(s, "");
+        });
+        $('#BranchIds').change(function () {
+            clearbrn();
+            $("#spvalidation").hide();
+            var s = $('#BranchIds').val();
+            $('#BranchName').val($('#BranchIds :selected').text());
+            fillDeptTable(s, "");
+        });
+        $("#IsFilo").change(function () {
+            if (this.checked) {
+                $("#IsFilo").attr("value", 1);
+            }
+            else {
+                $("#IsFilo").attr("value", 0);
+            }
+        });
+        $("#ActiveEmployee").change(function () {
+            if (this.checked) {
+                $("#ActiveEmployee").attr("value", 1);
+                getEmp();
+            }
+            else {
+                $("#ActiveEmployee").attr("value", 0);
+                getEmp();
+            }
+        })
+        $('#Btnclear').click(function () {
+            $("#spvalidation").hide();
+            $("#CompanyIds").val(0);
+            $("#CompanyIds Option:selected").prop("selected", false);
+            if (_accountcode == "OLA9368" || _accountcode == "SKE107C") {
+                $("#CompanyIds").multiselect('refresh');
+            }
+            $('#BranchIds').empty();
+            $("#BranchIds").val("");
+            //$("#BranchId").append("<option value='' selected>Select Branch</option>");
+            $('#FromDate').val("");
+            $('#Todate').val("");
+            if (isDateformat == "dd-mm-yyyy" || isDateformat == "mm-dd-yyyy" || isDateformat == "yyyy-mm-dd") {
+                $("#FromDate").attr("placeholder", "@_isdateformat");
+                $("#Todate").attr("placeholder", "@_isdateformat");
+            }
+            else if (isDateformat == "dd-M-yyyy" || isDateformat == "M-dd-yyyy" || isDateformat == "yyyy-M-dd") {
+                $("#FromDate").attr("placeholder", "@_isdateformat.Replace("M","MMM")");
+                $("#Todate").attr("placeholder", "@_isdateformat.Replace("M","MMM")");
+            }
+            $("#DeptIds option:selected").prop("selected", false);
+            $("#DeptIds").multiselect('refresh');
+            $("#DeptIds").empty();
+            $("#DeptIds").multiselect('disable');
+            $("#BranchIds option:selected").prop("selected", false);
+            $("#BranchIds").multiselect('refresh');
+            $("#BranchIds").empty();
+            $("#BranchIds").multiselect('disable');
+            //BranchIds
+            $("#txt2").val(0);
+            $("#txt3").val(0);
+            $("#empdiv").hide();
+            $('#tblemp').empty();
+            $('#BranchName').val(SelectedBranchName);
+            StrselectedDep = "";
+            selectedBranch = "";
+            selectedFromDate = "";
+            selectedToDate = "";
+            strselectedEmpID = "";
+            $("#EmpID").val("");
+            $("#DepId").val("");
+            strIsFilo = "";
+            $('#IsFilo').prop("checked", false)
+            $("#IsFilo").attr("value", 0);
+            strIsActiveEmployee = "";
+            $("#ActiveEmployee").prop("checked", false)
+            $("#ActiveEmployee").attr("value", 0);
+            SelectedCompanyName = "";
+            $('#CompanyName').val("");
+            $("#filterpara").html("");
+            selectedEmpArray = [];
+            //$("#filternote").hide();
+            $.ajax(
+                 {
+                     type: "GET",
+                     url: "/Report/ClearSelection",
+                     contentType: "application/json; charset=utf-8",
+                     dataType: "json",
+                     beforeSend: function () {
+                         $("#ajax_loader").show();
+                     },
+                     success: function (data) {
+                         $("#ajax_loader").hide();
+                     },
+                     error: function (jqXHR, ajaxOptions, thrownError) {
+                         $('.loading').hide();
+
+                         if (jqXHR.status == 500) { //InternalServerError = 500,
+                             toastr.error("InternalServerError");
+                         } else if (jqXHR.status == 400) { //BadRequest = 400,
+                             toastr.error("BadRequest");
+                         } else if (jqXHR.status == 401) {
+                             window.location.href = "/PayTime/LoginPage";
+                         }
+                     },
+                 });
+
+        });
+
+        $("#BtnOk").click(function () {
+            $("body").toggleClass("page-quick-sidebar-open");
+        });
+
+        function clearcmp() {
+            $("#spvalidation").hide();
+            //$('#CompanyID').val("");
+            $('#BranchId').empty();
+            $("#BranchId").val("");
+            //$("#BranchId").append("<option value='' selected>Select Branch</option>");
+            $('#FromDate').val("");
+            $('#Todate').val("");
+            if (isDateformat == "dd-mm-yyyy" || isDateformat == "mm-dd-yyyy" || isDateformat == "yyyy-mm-dd") {
+                $("#FromDate").attr("placeholder", "@_isdateformat");
+                $("#Todate").attr("placeholder", "@_isdateformat");
+            }
+            else if (isDateformat == "dd-M-yyyy" || isDateformat == "M-dd-yyyy" || isDateformat == "yyyy-M-dd") {
+                $("#FromDate").attr("placeholder", "@_isdateformat.Replace("M","MMM")");
+                $("#Todate").attr("placeholder", "@_isdateformat.Replace("M","MMM")");
+            }
+            $("#DeptIds option:selected").prop("selected", false);
+            $("#DeptIds").multiselect('refresh');
+            $("#DeptIds").empty();
+            $("#DeptIds").multiselect('disable');
+            $("#BranchIds option:selected").prop("selected", false);
+            $("#BranchIds").multiselect('refresh');
+            $("#BranchIds").empty();
+            $("#BranchIds").multiselect('disable');
+            //BranchIds
+            $("#txt2").val(0);
+            $("#txt3").val(0);
+            $("#empdiv").hide();
+            $('#tblemp').empty();
+            $('#BranchName').val(SelectedBranchName);
+            StrselectedDep = "";
+            selectedBranch = "";
+            selectedFromDate = "";
+            selectedToDate = "";
+            strselectedEmpID = "";
+            $("#EmpID").val("");
+            $("#DepId").val("");
+            strIsFilo = "";
+            $('#IsFilo').prop("checked", false)
+            $("#IsFilo").attr("value", 0);
+            strIsActiveEmployee = "";
+            $("#ActiveEmployee").prop("checked", false);
+            $("#ActiveEmployee").attr("value", 0);
+            SelectedCompanyName = "";
+            //$('#CompanyName').val("");
+            $("#filterpara").html("");
+            selectedEmpArray = [];
+        }
+        function clearbrn() {
+            $("#spvalidation").hide();
+            //$('#CompanyID').val("");
+            //$('#BranchId').empty();
+            //$("#BranchId").append("<option value='' selected>Select Branch</option>");
+            $('#FromDate').val("");
+            $('#Todate').val("");
+            if (isDateformat == "dd-mm-yyyy" || isDateformat == "mm-dd-yyyy" || isDateformat == "yyyy-mm-dd") {
+                $("#FromDate").attr("placeholder", "@_isdateformat");
+                $("#Todate").attr("placeholder", "@_isdateformat");
+            }
+            else if (isDateformat == "dd-M-yyyy" || isDateformat == "M-dd-yyyy" || isDateformat == "yyyy-M-dd") {
+                $("#FromDate").attr("placeholder", "@_isdateformat.Replace("M","MMM")");
+                $("#Todate").attr("placeholder", "@_isdateformat.Replace("M","MMM")");
+            }
+            $("#DeptIds option:selected").prop("selected", false);
+            $("#DeptIds").multiselect('refresh');
+            $("#DeptIds").empty();
+            $("#DeptIds").multiselect('disable');
+            //BranchIds
+            $("#txt2").val(0);
+            $("#empdiv").hide();
+            $('#tblemp').empty();
+            $('#BranchName').val(SelectedBranchName);
+            StrselectedDep = "";
+            selectedBranch = "";
+            selectedFromDate = "";
+            selectedToDate = "";
+            strselectedEmpID = "";
+            $("#EmpID").val("");
+            $("#DepId").val("");
+            strIsFilo = "";
+            $('#IsFilo').prop("checked", false)
+            $("#IsFilo").attr("value", 0);
+            $("#ActiveEmployee").prop("checked", false)
+            $("#ActiveEmployee").attr("value", 0);
+            SelectedCompanyName = "";
+            //$('#CompanyName').val("");
+            $("#filterpara").html("");
+            selectedEmpArray = [];
+        }
+        function fillBranchbycompnyid(companyid, selectedBranch) {
+            $('#BranchIds').empty();
+            var empid = '@_empid';
+            var url;
+            if (croleid == 1 || croleid == 6805 || croleid == 6806) {
+                url = "/MasterData/GetBranchbycomapnyid?CompanyID=" + companyid;
+            } else {
+                url = "/MasterData/GetBranchlist?CompanyID=" + companyid + "&Empid=" + empid;
+            }
+            $.ajax(
+             {
+                 type: "GET",
+                 //url: "/MasterData/GetBranchbycomapnyid?CompanyID=" + companyid,
+
+                 url: url,
+                 contentType: "application/json; charset=utf-8",
+                 dataType: "json",
+                 beforeSend: function () {
+                     $("#ajax_loader").show();
+                 },
+                 success: function (data) {
+                     $("#ajax_loader").hide();
+                     var markup = '';
+                     for (var x = 0; x < data.length; x++) {
+                         if (selectedBranch.length != 0) {
+                             var re = new RegExp("(^|,)" + data[x].BranchId + "($|,)");
+                             if (re.test(selectedBranch) == true) {
+                                 markup += '<option selected="selected" value="' + data[x].BranchId + '" >' + data[x].BranchName + '</option>';
+                             }
+                             else {
+                                 markup += "<option value=" + data[x].BranchId + ">" + data[x].BranchName + "</option>";
+                             }
+                         }
+                         else {
+                             markup += "<option value=" + data[x].BranchId + ">" + data[x].BranchName + "</option>";
+                         }
+                     }
+                     $('#BranchIds').append(markup);
+                     $Branchselect.multiselect('rebuild');
+                     $(document.body).on('change', '#BranchIds', function () {
+                         $("#spvalidation").hide();
+                         var branid = $('#BranchIds option:selected');
+                         var BranchArray = [];
+                         $(branid).each(function (index, branid) {
+                             BranchArray.push([$(this).val()]);
+                         });
+                         if (BranchArray == "") {
+                             $("#txt3").val(0);
+                         }
+                         else {
+                             $("#txt3").val(BranchArray);
+                             $("#spValidation").hide();
+                         }
+                         var Arrbranch = $("#txt3").val();
+                         BranchIdlst = Arrbranch;
+                         $("#BranchId").val(BranchIdlst);
+                     });
+
+                 },
+                 error: function (jqXHR, ajaxOptions, thrownError) {
+                     $('.loading').hide();
+
+                     if (jqXHR.status == 500) { //InternalServerError = 500,
+                         toastr.error("InternalServerError");
+                     } else if (jqXHR.status == 400) { //BadRequest = 400,
+                         toastr.error("BadRequest");
+                     } else if (jqXHR.status == 401) {
+                         window.location.href = "/PayTime/LoginPage";
+                     }
+                 },
+             });
+        }
+        //function fillDeptTable(BranchId, selectedDept) {
+        //    $("#DeptIds").empty();
+        //    $.ajax({
+        //        type: "GET",
+        //        url: "/MasterData/GetDeptbyBranchstr?BranchId=" + BranchId,
+        //        contentType: "application/json; charset=utf-8",
+        //        datatype: "json",
+        //        async: "false",
+        //        success: function (response) {
+        //            if (response != null) {
+        //                for (var i = 0; i < response.length; i++) {
+        //                    if (selectedDept.length != 0 && selectedDept != null) {
+        //                        var re = new RegExp("(^|,)" + response[i].Value + "($|,)");
+        //                        if (re.test(selectedDept) == true) {
+        //                            $('#DeptIds').append('<option value=" ' + response[i].Value + '" selected>' + response[i].Text + '</option>');
+        //                        }
+        //                        else {
+        //                            $('#DeptIds').append('<option value=" ' + response[i].Value + ' ">' + response[i].Text + '</option>');
+        //                        }
+        //                    }
+        //                    else {
+        //                        $('#DeptIds').append('<option value=" ' + response[i].Value + ' ">' + response[i].Text + '</option>');
+        //                    }
+        //                }
+        //                $select.multiselect('rebuild');
+        //                $(document.body).on('change', '#DeptIds', function () {
+        //                    $("#spvalidation").hide();
+        //                    var deptid = $('#DeptIds option:selected');
+        //                    var DeptArray = [];
+        //                    $(deptid).each(function (index, deptid) {
+        //                        DeptArray.push([$(this).val()]);
+        //                    });
+        //                    if (DeptArray == "") {
+        //                        $("#txt2").val(0);
+        //                    }
+        //                    else {
+        //                        $("#txt2").val(DeptArray);
+        //                        $("#spValidation").hide();
+        //                    }
+        //                    var ArrDept = $("#txt2").val();
+        //                    DeptIdlst = ArrDept;
+        //                    $("#DepId").val(DeptIdlst);
+        //                    $("#ActiveEmployee").prop('checked', true);
+        //                    $("#ActiveEmployee").attr("value", 1);
+        //                    getEmp();
+
+        //                });
+        //            }
+        //            $(".loading").hide();
+        //        },
+        //        beforeSend: function () {
+        //            $(".loading").show();
+        //        },
+        //        error: function () {
+        //            $(".loading").hide();
+        //        }
+        //    });
+        //}
+
+
+        function fillDeptTable(BranchId, selectedDept) {
+
+            $("#DeptIds").empty();
+            if ($.isArray(BranchId)) {
+                var branchid = BranchId.join();
+            }
+            else {
+                var branchid = BranchId;
+            }
+            var obj = {
+                BranchId: branchid
+            };
+            $.ajax({
+                type: "GET",
+                url: "/MasterData/GetDeptbyBranchstrfltr",
+                data: obj,
+                //url: "/MasterData/GetDeptbyBranchstr?BranchId=" + BranchId,
+                contentType: "application/json; charset=utf-8",
+                datatype: "json",
+                async: "false",
+                success: function (response) {
+                    if (response != null) {
+                        for (var i = 0; i < response.length; i++) {
+                            if (selectedDept.length != 0 && selectedDept != null) {
+                                var re = new RegExp("(^|,)" + response[i].Value + "($|,)");
+                                if (re.test(selectedDept) == true) {
+                                    $('#DeptIds').append('<option value=" ' + response[i].Value + '" selected>' + response[i].Text + '</option>');
+                                }
+                                else {
+                                    $('#DeptIds').append('<option value=" ' + response[i].Value + ' ">' + response[i].Text + '</option>');
+                                }
+                            }
+                            else {
+                                $('#DeptIds').append('<option value=" ' + response[i].Value + ' ">' + response[i].Text + '</option>');
+                            }
+                        }
+                        $select.multiselect('rebuild');
+                        $(document.body).on('change', '#DeptIds', function () {
+                            $("#spvalidation").hide();
+                            var deptid = $('#DeptIds option:selected');
+                            var DeptArray = [];
+                            $(deptid).each(function (index, deptid) {
+                                DeptArray.push([$(this).val()]);
+                            });
+                            if (DeptArray == "") {
+                                $("#txt2").val(0);
+                            }
+                            else {
+                                $("#txt2").val(DeptArray);
+                                $("#spValidation").hide();
+                            }
+                            var ArrDept = $("#txt2").val();
+                            DeptIdlst = ArrDept;
+                            $("#DepId").val(DeptIdlst);
+                            $("#ActiveEmployee").prop('checked', true);
+                            $("#ActiveEmployee").attr("value", 1);
+                            getEmp();
+                            $("#IsFilo").prop('checked', true);
+                            $("#IsFilo").attr("value", 1);
+
+                        });
+                    }
+                    $(".loading").hide();
+                },
+                beforeSend: function () {
+                    $(".loading").show();
+                },
+                error: function () {
+                    $(".loading").hide();
+                }
+            });
+        }
+
+
+
+        function fillAllTable() {
+            var obj = { FromDate: $("#FromDate").val(), Todate: $("#Todate").val(), EmpID: selectedEmpArray, ReportName: $('#ReportName').val(), CompanyID: $('#CompanyID').val(), RptID: $('#RptID').val(), CompanyName: $('#CompanyName').val(), BranchName: $('#BranchName').val(), IsFilo: $("#FLOut").val(), };
+            $.ajax(
+             {
+                 type: "Post",
+                 url: "/Report/PayTimeWebReports",
+                 dataType: "json",
+                 data: JSON.stringify(obj),
+                 contentType: "application/json; charset=utf-8",
+
+                 error: function (jqXHR, ajaxOptions, thrownError) {
+                     $('.loading').hide();
+
+                     if (jqXHR.status == 500) { //InternalServerError = 500,
+                         toastr.error("InternalServerError");
+                     } else if (jqXHR.status == 400) { //BadRequest = 400,
+                         toastr.error("BadRequest");
+                     } else if (jqXHR.status == 401) {
+                         window.location.href = "/PayTime/LoginPage";
+                     }
+                 },
+             });
+        };
+        function getEmp() {
+            $("#empdiv").show();
+            $("#lblemp").show();
+            $("#tblemp").empty();
+            var bID = $("#BranchId").val();
+            var dep = $("#txt2").val();
+            var Dep = dep.replace(/\s/g, '');
+            var isActiveEmployee = $("#ActiveEmployee").val();
+            if (strselectedEmpID != "" && selectedBranch != "") {
+                bID = selectedBranch;
+                bID = bID.join();
+            }
+            else {
+                bID = bID;
+            }
+            //var urls = "/MasterData/GetEmpByBranchDept?departmentid=" + Dep + "&branchid=" + bID + "&isActiveEmployee=" + isActiveEmployee;
+            var urls = "/MasterData/GetEmpByBranchDept";
+            var method = "GET";
+            var ajaxData = {
+                departmentid: Dep,
+                branchid: bID,
+                isActiveEmployee: isActiveEmployee
+            };
+            if (croleid > 1) {
+                urls = "/Transactions/GetEmpByDept";
+                method = "POST";
+                ajaxData = JSON.stringify({ empArr: Dep + ";" + bID });
+            }
+            $.ajax({
+                type: method,
+                url: urls,
+                contentType: "application/json; charset=utf-8",
+                datatype: "json",
+                data: ajaxData,
+                async: "false",
+                success: function (response) {
+                    if (response.isRedirect) {
+                        window.location.href = response.redirectUrl;
+                    }
+                    var table = "";
+                    if (response != null) {
+                        for (var i = 0; i < response.length; i++) {
+                            var tbl = "<tr class='odd gradeX'>";
+                            tbl = tbl + "<td id='eid' hidden>" + response[i].EmpId;
+                            tbl = tbl + "</td>";
+                            tbl = tbl + "<td id='ecode'>" + response[i].Empcode;
+                            tbl = tbl + "</td>";
+                            tbl = tbl + "<td id='enm'>" + response[i].EmpName;
+                            tbl = tbl + "</td>";
+                            tbl = tbl + "<td id='epid'>" + response[i].EmpPunchID;
+                            tbl = tbl + "</td>";
+                            if (strselectedEmpID.length != 0) {
+                                var re = new RegExp("(^|,)" + response[i].EmpId + "($|,)");
+                                if (re.test(strselectedEmpID) == true) {
+                                    tbl = tbl + "<td id=''><input type='checkbox' onchange='checkedDept(this)' class='ClsChkEmp' id='" + response[i].EmpId + "' checked/>";
+                                }
+                                else {
+                                    tbl = tbl + "<td id=''><input type='checkbox' onchange='checkedDept(this)' class='ClsChkEmp' id='" + response[i].EmpId + "'/>";
+                                }
+                            }
+                            else {
+                                tbl = tbl + "<td id=''><input type='checkbox' onchange='checkedDept(this)' class='ClsChkEmp' id='" + response[i].EmpId + "'/>";
+                            }
+                            tbl = tbl + "</td>";
+                            tbl = tbl + "</tr>";
+                            table += tbl;
+                        }
+                    }
+                    $("#tblemp").destroy;
+                    $('#tblemp').append(table);
+                    $('#tblemp').dataTable({
+                        "columnDefs": [
+                                            {
+                                                "targets": '@IsSchool' == "1" ? [0, 1] : [0],
+                                                "visible": false,
+                                                "searchable": false,
+                                            }
+                        ],
+                        "destroy": true,
+                        "bInfo": true,
+                        "bPaginate": false,
+                        "bLengthChange": false,
+                        "columns": [
+                            { "title": "Employee ID" },
+                            { "title": "Code" },
+                            { "title": "Name", "orderable": true },
+                            { "title": "Punch ID" },
+                            { "title": "<input type='checkbox' class='ClsChkAllDept' onchange='AllCheckedEmp(this)' />" }
+                        ],
+                        "order": [[2, 'asc']]
+                    });
+                    $(".loading").hide();
+                },
+                beforeSend: function () {
+                    $(".loading").show();
+                },
+                error: function () {
+                    $(".loading").hide();
+                }
+            });
+        }
+        $('#tblemp').on('click', 'input[type="checkbox"]', function (e) {
+            $("#tblemp .ClsChkEmp").each(function () {
+                if ($(this).is(':checked') == true) {
+                    if (jQuery.inArray($(this).attr("id"), selectedEmpArray) == -1)
+                        selectedEmpArray.push($(this).attr("id"));
+                }
+                else {
+                    if (jQuery.inArray($(this).attr("id"), selectedEmpArray) == -1) {
+                        var removeItem = $(this).attr("id");
+                        //selectedEmpArray.splice($.inArray(itemtoRemove, selectedEmpArray), 1);
+                        selectedEmpArray = jQuery.grep(selectedEmpArray, function (value) {
+                            return value != removeItem;
+                        });
+                    }
+                }
+            });
+            $("#EmpID").val(selectedEmpArray);
+        });
+        $("#BtnSave").click(function (e) {
+            $("#ReportName").val(selectedReportName);
+            $("#RptID").val(selectedreportid);
+            if ($("#FromDate").val() == "") {
+                toastr.remove();
+                toastr.error("Please select from date.");
+                return false;
+            }
+            if ($("#Todate").val() == "") {
+                toastr.remove();
+                toastr.error("Please select to date.");
+                return false;
+            }
+            if ('@_isdateformat' == "dd-mm-yyyy") {
+                if ($("#FromDate").val() != "" && $("#Todate").val() != "") {
+                     var datefrom = $("#FromDate").val().split("-");
+                     var todate = $("#Todate").val().split("-");
+                     datefrom = datefrom[2] + "-" + datefrom[1] + "-" + datefrom[0];
+                     todate = todate[2] + "-" + todate[1] + "-" + todate[0];
+                     if (datefrom > todate) {
+                         toastr.remove();
+                         toastr.error("To date should be greater than from date.");
+                         return false;
+                     }
+                 }
+
+             }
+             else {
+                 var datefrom = $("#FromDate").val();
+                 var todate = $("#Todate").val();
+                 // Convert the date strings to Date objects
+                 var fromDateObj = new Date(datefrom);
+                 var toDateObj = new Date(todate);
+
+                 if (fromDateObj > toDateObj) {
+                     toastr.remove();
+                     toastr.error("To date should be greater than from date.");
+                     return false;
+                 }
+             }
+            selectedEmpArray = [];
+            if ($("#tblemp .ClsChkEmp").length != 0) {
+                $("#tblemp .ClsChkEmp").each(function () {
+                    if ($(this).is(':checked') == true) {
+                        if (jQuery.inArray($(this).attr("id"), selectedEmpArray) == -1)
+                            selectedEmpArray.push($(this).attr("id"));
+                    }
+                    else {
+                        if (jQuery.inArray($(this).attr("id"), selectedEmpArray) == -1) {
+                            var removeItem = $(this).attr("id");
+                            selectedEmpArray = jQuery.grep(selectedEmpArray, function (value) {
+                                return value != removeItem;
+                            });
+                        }
+                    }
+                });
+
+                if (selectedEmpArray.length == 0) {
+                    if ('@IsSchool' == "1") {
+                        toastr.remove();
+                        toastr.error("Please select student.");
+                    }
+                    else {
+                        toastr.remove();
+                        toastr.error("Please select employee.");
+                        //$("#spvalidation").text("Please select Employee").show();
+                    }
+                    $("body").addClass("page-quick-sidebar-open");
+                    e.preventDefault();
+                    return false;
+                }
+                $("#EmpID").val(selectedEmpArray);
+            }
+            else {
+                if ('@IsSchool' == "1") {
+                    toastr.remove();
+                    toastr.error("Please select  division");
+                } else {
+                    toastr.remove();
+                    toastr.error("Please select department.");
+                }
+                $("body").addClass("page-quick-sidebar-open");
+                e.preventDefault();
+                return false;
+            }
+        });        
+        if (croleid > 1 && croleid != 6805 && croleid != 6806) {
+            if (selectedDeparment == "" && SelectedBranchName == "" && SelectedCompany == "") {
+                $("#CompanyIds option[value = '" + companyid + "' ]").prop('selected', true);
+                if (_accountcode == "OLA9368" || _accountcode == "SKE107C") {
+                    $("#CompanyIds").multiselect("rebuild");
+                }
+                $("#CompanyID").val(companyid);
+                $('#CompanyName').val($("#CompanyIds option:selected").text());
+                $("#BranchId").val(branchid);
+                fillBranchbycompnyid(companyid, branchid);
+                $('#txt2').val(departmentid);
+                $("#DepId").val(departmentid);
+                fillDeptTable(branchid, departmentid);
+                $("#ActiveEmployee").prop('checked', true);
+                $("#ActiveEmployee").attr("value", 1);
+                getEmp();
+                $('#EmpID').val(empid);
+                strselectedEmpID = empid;
+                getBranchName(branchid);
+            }
+        }
+    });
+    function AllCheckedDept(ths) {
+        $("#spvalidation").hide();
+        if ($(ths).prop('checked') == true) {
+            $(".ClsChkDept").prop('checked', true);
+
+        }
+        else {
+            $(".ClsChkDept").prop('checked', false);
+        }
+
+    }
+    function getBranchName(branchid) {
+        $.ajax({
+            type: "GET",
+            url: '@_webapiurl' + 'Master/BranchGetById?id=' + branchid, // Replace with your actual API endpoint to get the branch name
+            contentType: "application/json; charset=utf-8",
+            headers: { 'Authorization': '@_tokan' },
+            dataType: "json",
+            success: function (data) {
+                // Assuming data contains the branch name, update the "BranchName" field
+                $('#BranchName').val(data[0].BranchName);
+            },
+            error: function (jqXHR, ajaxOptions, thrownError) {
+                $('.loading').hide();
+
+                if (jqXHR.status == 500) { //InternalServerError = 500,
+                    toastr.error("InternalServerError");
+                } else if (jqXHR.status == 400) { //BadRequest = 400,
+                    toastr.error("BadRequest");
+                } else if (jqXHR.status == 401) {
+                    window.location.href = "/PayTime/LoginPage";
+                }
+            },
+        });
+    }
+
+    function AllCheckedEmp(ths) {
+        $("#spvalidation").hide();
+        if ($(ths).prop('checked') == true) {
+            $(".ClsChkEmp").prop('checked', true);
+
+        }
+        else {
+            $(".ClsChkEmp").prop('checked', false);
+        }
+        SelectedEmp();
+    }
+    function checkedDept(ths) {
+        $("#spvalidation").hide();
+    }
+    function SelectedEmp() {
+        var selectedEmpArray = [];
+        $("#tblemp .ClsChkEmp").each(function () {
+            if ($(this).is(':checked') == true) {
+                selectedEmpArray.push($(this).attr("id"));
+            }
+
+        });
+        $("#EmpID").val(selectedEmpArray);
+    }
+    function EmpIdArray(selectedEmpId, selection) {
+
+        if (selection == true) {
+            selectedEmpArray.push(selectedEmpId)
+        }
+        if (selection == false) {
+            selectedEmpArray = jQuery.grep(selectedEmpArray, function (value) {
+                return value != selectedEmpId;
+            });
+        }
+        $("#EmpID").val(JSON.stringify(selectedEmpArray));
+    };
+
+    $(".page-quick-sidebar-toggler").click(function () {
+        $("body").removeClass("page-quick-sidebar-open");
+    });
+</script>
+
+<div class="col-md-12 margin-top-40">
+    @using (Html.BeginForm("PayTimeWebReports", "Report", FormMethod.Post, new { @id = "frmrpt" }))
+    {
+        if (IsSchool == "1")
+        {
+            <div class="portlet light portlet-fit">
+                <div class="portlet-title">
+                    <a href="javascript:;" class="page-quick-sidebar-toggler close_reportfilter" onclick="closesidebar();"><img src="~/Newlayout/icons/logout.svg" /></a>
+                    @*<a href="~/Newlayout/icons/logout.svg">~/Newlayout/icons/logout.svg</a>*@
+                </div>
+                <div class="portlet-body ">
+                    <div class="row ">
+                        <div class="col-md-12">
+                            <span class="help-block" style="color:red; height:20px;" hidden id="spvalidation"></span>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label class="control-label">School</label>
+                                @if (ViewBag.Companyslist != null)
+                                {
+                                    @Html.DropDownList("CompanyID", new SelectList(ViewBag.Companyslist, "CompanyID", "CompanyName"), "Select School", new { @class = "form-control input-sm" })
+                                }
+                                else
+                                {
+                                    @Html.DropDownList("CompanyID", new SelectList(new[] { "" }), "Select School", new { @class = "form-control input-sm" })
+                                }
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label class="control-label">Class</label>
+                                <input type="text" id="txt3" value="0" hidden />
+                                @*@Html.DropDownList("BranchId", new SelectList(new[] { "" }), "Select Class", new { @class = "form-control input-sm" })*@
+                                <select id="BranchIds" class="mt-multiselect btn-sm btn blue btn-outline " aria-haspopup="true" aria-expanded="false" multiple="multiple" data-width="100%"></select>
+                            </div>
+                            <div id='ajax_loader' class="modal_bg loading" aria-hidden="true">
+                                <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading"/>
+                            </div>
+                        </div>
+                        <div class="col-md-6" hidden>
+                            <div class="form-group">
+                                <label class="control-label">Report Type</label>
+                                @Html.HiddenFor(x => x.ReportName);
+                                @Html.HiddenFor(x => x.RptID);
+                                @Html.HiddenFor(x => x.crptid);
+                                @Html.HiddenFor(x => x.SeqNo);
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label class="control-label">From</label>
+                                <div class="input-group  date date-picker" data-date="@DateTime.Now" data-date-format="@_isdateformat" data-date-viewmode="years">
+                                    <span class="input-group-btn">
+                                        <button class="btn default btn-sm" type="button">
+                                            <i class="fa-light fa-calendar-days"></i>
+                                        </button>
+                                    </span>
+                                    @if (_isdateformat == "dd-mm-yyyy" || _isdateformat == "mm-dd-yyyy" || _isdateformat == "yyyy-mm-dd")
+                                    {
+                                        @Html.TextBoxFor(model => model.FromDate, new { @Value = @System.DateTime.Now.ToString(_isdateformat.Replace("mm", "MM")), @class = "form-control datepicker", @readonly = "readonly" })
+                                    }
+                                    else
+                                    {
+                                        @Html.TextBoxFor(model => model.FromDate, new { @Value = @System.DateTime.Now.ToString(_isdateformat.Replace("M", "MMM")), @class = "form-control datepicker", @readonly = "readonly" })
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label class="control-label">To</label>
+                                <div class="input-group  date date-picker" data-date="@DateTime.Now" data-date-format="@_isdateformat" data-date-viewmode="years">
+                                    <span class="input-group-btn ">
+                                        <button class="btn default btn-sm" type="button">
+                                            <i class="fa-light fa-calendar-days"></i>
+                                        </button>
+                                    </span>
+                                    @if (_isdateformat == "dd-mm-yyyy" || _isdateformat == "mm-dd-yyyy" || _isdateformat == "yyyy-mm-dd")
+                                    {
+                                        @Html.TextBoxFor(model => model.Todate, new { @Value = @System.DateTime.Now.ToString(_isdateformat.Replace("mm", "MM")), @class = "form-control input-sm", @readonly = "readonly" })
+                                    }
+                                    else
+                                    {
+                                        @Html.TextBoxFor(model => model.Todate, new { @Value = @System.DateTime.Now.ToString(_isdateformat.Replace("M", "MMM")), @class = "form-control input-sm", @readonly = "readonly" })
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 ">
+                            <div class="portlet">
+                                <div class="row">
+
+                                    <div class="col-md-12">
+                                        <div class="form-group">
+                                            <label class="control-label">Division</label>
+                                            <input type="text" id="txt2" value="0" hidden />
+                                            <select id="DeptIds" class="mt-multiselect btn-sm btn blue btn-outline " aria-haspopup="true" aria-expanded="false" multiple="multiple" data-width="100%"></select>
+                                        </div>
+                                    </div>
+
+                                    <div class="col-md-12">
+                                        <label class="mt-checkbox mt-checkbox-single mt-checkbox-outline">
+                                            <input type="checkbox" class="checkboxes" id="IsFilo" name="IsFilo" value="0" />Report as First IN Last Out
+                                            <span></span>
+                                        </label>
+                                    </div>
+                                    <div class="col-md-12">
+                                        <label class="mt-checkbox mt-checkbox-single mt-checkbox-outline">
+                                            <input type="checkbox" class="checkboxes" id="ActiveEmployee" name="ActiveEmployee" value="0" />Active Employee0 <i class='fa-regular fa-circle-info' title='Show only active employee' style='color: #2196f3;'></i>
+                                            <span></span>
+                                        </label>
+                                    </div>
+                                    <div class="col-md-12" id="empdiv">
+                                        <label class="control-label" id="lblemp" hidden>Students</label>
+                                        @Html.HiddenFor(model => model.EmpID)
+                                        @Html.HiddenFor(model => model.DepId)
+                                        @Html.HiddenFor(model => model.BranchId)
+                                        @Html.HiddenFor(model => model.CompanyName)
+                                        @Html.HiddenFor(model => model.BranchName)
+                                        @Html.HiddenFor(model => model.CompanyID)
+                                        <div class="table-scroll-1 divEmp">
+                                            <table id="tblemp" class="table table-striped table-bordered table-hover order-column"></table>
+                                        </div>
+                                    </div>
+
+                                    <div class="col-md-12 margin-top-20">
+                                        <div class="form-actions text-right">
+                                            @if (ViewBag.ShowReportButton == false)
+                                            {
+                                                <button type="button" id="BtnOk" class="btn btn-sm blue">OK</button>
+                                            }
+                                            else
+                                            {
+                                                <button type="submit" id="BtnSave" class="btn btn-sm blue" hidden>Show Report</button>
+                                            }
+                                            <button type="button" id="Btnclear" class="btn btn-sm blue">Clear</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+        else if (IsOffice == "1")
+        {
+            <div class="portlet light portlet-fit">
+                <div class="portlet-title">
+                    @*<a href="javascript:;" class="page-quick-sidebar-toggler close_reportfilter" onclick="closesidebar();">×</a>*@
+                    <a href="javascript:;" class="page-quick-sidebar-toggler close_reportfilter" onclick="closesidebar();"><img src="~/Newlayout/icons/logout.svg" /></a>
+                </div>
+                <div class="portlet-body ">
+                    <div class="row ">
+                        <div class="col-md-12">
+                            <span class="help-block" style="color:red; height:20px;" hidden id="spvalidation"></span>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label class="control-label">Company<span class="required" aria-required="true"> * </span></label>
+                                @if (_accountcd == "OLA9368" || _accountcd == "SKE107C")
+                                {
+                                    if (ViewBag.Companyslist != null)
+                                    {
+                                        @Html.DropDownList("CompanyIds", new SelectList(ViewBag.Companyslist, "CompanyID", "CompanyName"), new { @class = "form-control input-sm", @multiple = "multiple" })
+                                    }
+                                    else
+                                    {
+                                        @Html.DropDownList("CompanyIds", new SelectList(new[] { "" }), "", new { @class = "form-control input-sm", @multiple = "multiple" })
+                                    }
+                                }
+                                else
+                                {
+                                    if (ViewBag.Companyslist != null)
+                                    {
+                                        @Html.DropDownList("CompanyIds", new SelectList(ViewBag.Companyslist, "CompanyID", "CompanyName"), "Select Company", new { @class = "form-control input-sm" })
+                                    }
+                                    else
+                                    {
+                                        @Html.DropDownList("CompanyIds", new SelectList(new[] { "" }), "Select Company", new { @class = "form-control input-sm" })
+                                    }
+                                }
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label class="control-label">Branch<span class="required" aria-required="true"> * </span></label>
+                                <input type="text" id="txt3" value="0" hidden />
+                                @*@Html.DropDownList("BranchId", new SelectList(new[] { "" }), "Select Branch", new { @class = "form-control input-sm" })*@
+                                <select id="BranchIds" class="mt-multiselect btn-sm btn blue btn-outline" aria-haspopup="true" aria-expanded="false" multiple="multiple" data-width="100%"></select>
+                            </div>
+                            <div id='ajax_loader' class="modal_bg loading" aria-hidden="true">
+                                <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading"/>
+                            </div>
+                        </div>
+                        <div class="col-md-6" hidden>
+                            <div class="form-group">
+                                <label class="control-label">Report Type</label>
+                                @Html.HiddenFor(x => x.ReportName);
+                                @Html.HiddenFor(x => x.RptID);
+                                @Html.HiddenFor(x => x.crptid);
+
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group data_picker_box">
+                                <label class="control-label">From<span class="required" aria-required="true"> * </span></label>
+                                <div class="input-group date date-picker" data-date="@DateTime.Now" data-date-format="@_isdateformat" data-date-viewmode="years">
+                                    <span class="input-group-btn">
+                                        <button class="btn default btn-sm" type="button">
+                                            <i class="fa-light fa-calendar-days"></i>
+                                        </button>
+                                    </span>
+                                    @if (_isdateformat == "yyyy-mm-dd" || _isdateformat == "mm-dd-yyyy" || _isdateformat == "dd-mm-yyyy")
+                                    {
+                                        @Html.TextBoxFor(model => model.FromDate, new { @Value = @System.DateTime.Now.ToString(_isdateformat.Replace("mm", "MM")), @class = "form-control datepicker", @readonly = "readonly" })
+                                    }
+                                    else
+                                    {
+                                        @Html.TextBoxFor(model => model.FromDate, new { @Value = @System.DateTime.Now.ToString(_isdateformat.Replace("M", "MMM")), @class = "form-control datepicker", @readonly = "readonly" })
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group data_picker_box">
+                                <label class="control-label">To<span class="required" aria-required="true"> * </span></label>
+                                <div class="input-group  date date-picker" data-date="@DateTime.Now" data-date-format="@_isdateformat" data-date-viewmode="years">
+                                    <span class="input-group-btn ">
+                                        <button class="btn default btn-sm" type="button">
+                                            <i class="fa-light fa-calendar-days"></i>
+                                        </button>
+                                    </span>
+                                    @if (_isdateformat == "yyyy-mm-dd" || _isdateformat == "mm-dd-yyyy" || _isdateformat == "dd-mm-yyyy")
+                                    {
+                                        @Html.TextBoxFor(model => model.Todate, new { @Value = @System.DateTime.Now.ToString(_isdateformat.Replace("mm", "MM")), @class = "form-control datepicker", @readonly = "readonly" })
+                                    }
+                                    else
+                                    {
+                                        @Html.TextBoxFor(model => model.Todate, new { @Value = @System.DateTime.Now.ToString(_isdateformat.Replace("M", "MMM")), @class = "form-control datepicker", @readonly = "readonly" })
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                        @*<div class="col-md-6">
+                                <div class="form-group">
+                                    <label class="control-label">From</label>
+                                    <div class="input-group  date date-picker" data-date="@DateTime.Now" data-date-format="yyyy-mm-dd" data-date-viewmode="years">
+                                        <span class="input-group-btn">
+                                            <button class="btn default btn-sm" type="button">
+                                                <i class="fa-light fa-calendar-days"></i>
+                                            </button>
+                                        </span>
+                                        @
+                                Html.TextBoxFor(model => model.FromDate, new { @Value = @System.DateTime.Now.ToString("yyyy-MM-dd"), @class = "form-control datepicker", @readonly = "readonly" })
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label class="control-label">To</label>
+                                    <div class="input-group  date date-picker" data-date="@DateTime.Now" data-date-format="yyyy-mm-dd" data-date-viewmode="years">
+                                        <span class="input-group-btn ">
+                                            <button class="btn default btn-sm" type="button">
+                                                <i class="fa-light fa-calendar-days"></i>
+                                            </button>
+                                        </span>
+                                        @Html.TextBoxFor(model => model.Todate, new { @Value = @System.DateTime.Now.ToString("yyyy-MM-dd"), @class = "form-control datepicker", @readonly = "readonly" })
+                                    </div>
+                                </div>
+                            </div>*@
+                    </div>
+                    <div class="row">
+                        <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 ">
+                            <div class="">
+                                <div class="row">
+
+                                    <div class="col-md-12">
+                                        <div class="form-group">
+                                            <label class="control-label">Department<span class="required" aria-required="true"> * </span></label>
+                                            <input type="text" id="txt2" value="0" hidden />
+                                            <select id="DeptIds" class="mt-multiselect btn-sm btn blue btn-outline " aria-haspopup="true" aria-expanded="false" multiple="multiple" data-width="100%"></select>
+                                        </div>
+                                    </div>
+
+                                    <div class="col-md-6">
+                                        <label class="mt-checkbox mt-checkbox-single mt-checkbox-outline">
+                                            <input type="checkbox" class="checkboxes" id="IsFilo" name="IsFilo" value="0" />Report as First IN Last Out
+                                            <span></span>
+                                        </label>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="mt-checkbox mt-checkbox-single mt-checkbox-outline">
+                                            <input type="checkbox" class="checkboxes" id="ActiveEmployee" name="ActiveEmployee" value="0" />Active Employee <i class='fa-regular fa-circle-info tooltips' data-placement="top" title='Show only active employee' style='color: #2196f3;'></i>
+                                            <span></span>
+                                        </label>
+                                    </div>
+                                    <div class="col-md-12" id="empdiv">
+                                        <label class="control-label" id="lblemp" hidden style="position: relative;top: 28px;">Employee<span class="required" aria-required="true"> * </span></label>
+                                        @Html.HiddenFor(model => model.EmpID)
+                                        @Html.HiddenFor(model => model.DepId)
+                                        @Html.HiddenFor(model => model.BranchId)
+                                        @Html.HiddenFor(model => model.CompanyName)
+                                        @Html.HiddenFor(model => model.BranchName)
+                                        @Html.HiddenFor(model => model.CompanyID)
+                                        <div class="table-scroll-1 divEmp">
+                                            <table id="tblemp" class="table table-striped table-bordered table-hover order-column"></table>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-12 margin-top-20">
+                                        <div class="form-actions text-right">
+                                            @if (ViewBag.ShowReportButton == false)
+                                            {
+                                                <button type="button" id="BtnOk" class="btn btn-sm blue">OK</button>
+                                            }
+                                            else
+                                            {
+                                                <button type="submit" id="BtnSave" class="btn btn-sm blue" hidden>Show Report</button>
+                                            }
+                                            <button type="button" id="Btnclear" class="btn btn-sm blue">Clear</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+
+    }
+</div>

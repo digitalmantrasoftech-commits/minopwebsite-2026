@@ -1,0 +1,761 @@
+@using System.Configuration;
+@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@using System.Data;
+@{
+    ViewBag.Title = "FieldSens Dashboard";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    int _UserId = Convert.ToInt32(HttpContext.Current.Session["UserId"]);
+    int _cmpid = Convert.ToInt32(HttpContext.Current.Session["CompanyId"]);
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapifieldtracking"].ToString();
+    string _webapiurlBase = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    string _UserImg = HttpContext.Current.Session["photo"].ToString();
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+    string _companyid = "0";
+    string _empid = "0";
+    string _empName = "0";
+    int DepartmentId = Convert.ToInt32(HttpContext.Current.Session["DepartmentId"]);
+    if (_RoleId != 1 && _RoleId != 6805 && _RoleId != 6806)
+    {
+        _empid = HttpContext.Current.Session["EmpId"].ToString();
+        _empName = HttpContext.Current.Session["EmpName"].ToString();
+    }
+    string _branchid = "0";
+    if (_RoleId == 6805)
+    {
+        _companyid = HttpContext.Current.Session["ClientCompanyId"].ToString();
+    }
+    if (_RoleId == 6806)
+    {
+        _companyid = HttpContext.Current.Session["ClientCompanyId"].ToString();
+        _branchid = HttpContext.Current.Session["BranchId"].ToString();
+    }
+    string _isdateformat = HttpContext.Current.Session["IsDateFormat"].ToString();
+    string _CountryCode = HttpContext.Current.Session["CountryCode"].ToString();
+    string _AreaCode = HttpContext.Current.Session["AreaCode"].ToString();
+    string _dbName = HttpContext.Current.Session["DbName"].ToString();
+    string _isPlanId = HttpContext.Current.Session["planId"].ToString();
+    string isClientDBMatchFlag = HttpContext.Current.Session["IsClientDBMatch"] != null
+        ? HttpContext.Current.Session["IsClientDBMatch"].ToString()
+        : "false";
+}
+
+<style>
+    .highcharts-figure,
+    .highcharts-data-table table {
+        max-width: 100%;
+        margin: 10px auto;
+    }
+</style>
+
+<script>
+    $(document).ready(function () {
+        var _UID = '@_UserId';
+        var _ComID = '@_companyid';
+        var _BranchID = '@_branchid';
+        var _DepID = '@DepartmentId';
+        var _empIdnew = '@_empid';
+        var _RoleIDnew = '@_RoleId';
+        var _Token = '@_tokan';
+
+        // Load dashboard data
+        loadFieldMonitor();
+        loadFieldOverview();
+        loadActiveFieldWorkers();
+        loadPendingTasks();
+
+        $("#FieldMonitorFilter").change(function () {
+            loadFieldMonitor();
+        });
+
+        $("#fieldMonth").change(function () {
+            loadActiveFieldWorkers();
+        });
+
+        $("#fieldMonths, #fieldDepartment").change(function () {
+            loadPendingTasks();
+        });
+
+        function loadFieldMonitor() {
+            var filterType = parseInt($("#FieldMonitorFilter").val());
+            var request = {
+                empId: parseInt(_empIdnew),
+                roleId: parseInt(_RoleIDnew),
+                companyId: _ComID,
+                branchId: _BranchID,
+                departmentId: _DepID,
+                filterType: filterType
+            };
+            $.ajax({
+                url: '@_webapiurl' + 'FieldTracking/GetFieldMonitor',
+                type: "POST",
+                contentType: "application/json",
+                headers: {
+                    "Authorization": "Bearer " + _Token
+                },
+                data: JSON.stringify(request),
+                success: function (res) {
+                    $("#TotalWorkersCount").text(res.totalWorkers || 0);
+                    $("#ActiveWorkersCount").text(res.activeWorkers || 0);
+                    $("#OnFieldCount").text(res.onField || 0);
+                    $("#TasksCompletedCount").text(res.tasksCompleted || 0);
+                    $("#PendingTasksCount").text(res.pendingTasks || 0);
+                    $("#DistanceTravelledCount").text((res.distanceTravelled || 0) + ' km');
+                },
+                error: function (xhr) {
+                    console.error("Field Monitor API Error", xhr.status, xhr.responseText);
+                }
+            });
+        }
+
+        function loadFieldOverview() {
+            var request = {
+                empId: parseInt(_empIdnew),
+                roleId: parseInt(_RoleIDnew),
+                companyId: _ComID,
+                branchId: _BranchID,
+                departmentId: _DepID
+            };
+            $.ajax({
+                url: '@_webapiurl' + 'FieldTracking/GetFieldOverview',
+                type: "POST",
+                contentType: "application/json",
+                headers: {
+                    "Authorization": "Bearer " + _Token
+                },
+                data: JSON.stringify(request),
+                success: function (res) {
+                    if (res && res.fieldItems && res.fieldItems.length > 0) {
+                        $("#Field_Overview").show();
+                        $("#Field_Empty").hide();
+                        prepareFieldOverview(res.fieldItems);
+                    } else {
+                        $("#Field_Overview").hide();
+                        $("#Field_Empty").show();
+                    }
+                },
+                error: function () {
+                    $("#Field_Overview").hide();
+                    $("#Field_Empty").show();
+                }
+            });
+        }
+
+        function prepareFieldOverview(data) {
+            var groupedData = {};
+            data.forEach(function (item) {
+                var d = new Date(item.trackDate);
+                var day = d.getDate().toString().padStart(2, '0');
+                var month = d.toLocaleString('en-US', { month: 'short' });
+                var key = day + '-' + month;
+                if (!groupedData[key]) {
+                    groupedData[key] = 0;
+                }
+                groupedData[key] += Number(item.taskCount);
+            });
+            var categories = Object.keys(groupedData);
+            var counts = Object.values(groupedData);
+            drawFieldChart(categories, counts);
+        }
+
+        function drawFieldChart(categories, data) {
+            Highcharts.chart('FieldOverviewChart', {
+                chart: {
+                    type: 'column'
+                },
+                title: {
+                    text: ''
+                },
+                legend: {
+                    enabled: false
+                },
+                xAxis: {
+                    categories: categories
+                },
+                yAxis: {
+                    min: 0,
+                    title: {
+                        text: ''
+                    },
+                    labels: {
+                        formatter: function () {
+                            return this.value;
+                        }
+                    }
+                },
+                tooltip: {
+                    useHTML: true,
+                    formatter: function () {
+                        return `
+                            <b>${this.x} ${new Date().getFullYear()}</b><br/>
+                            Tasks: <b>${this.y}</b>
+                        `;
+                    }
+                },
+                plotOptions: {
+                    column: {
+                        pointPadding: 0.2,
+                        borderWidth: 0,
+                        color: '#10B981'
+                    }
+                },
+                series: [{
+                    name: 'Tasks',
+                    data: data
+                }],
+                credits: { enabled: false }
+            });
+        }
+
+        function loadActiveFieldWorkers() {
+            var request = {
+                empId: parseInt(_empIdnew),
+                roleId: parseInt(_RoleIDnew),
+                companyId: _ComID,
+                branchId: _BranchID,
+                month: parseInt($("#fieldMonth").val())
+            };
+            $.ajax({
+                url: '@_webapiurl' + 'FieldTracking/GetActiveFieldWorkers',
+                type: "POST",
+                contentType: "application/json",
+                headers: {
+                    "Authorization": "Bearer " + _Token
+                },
+                data: JSON.stringify(request),
+                success: function (res) {
+                    $("#ActiveWorkers_Empty").hide();
+                    $("#ActiveWorkers_List").hide();
+                    if (!res || !res.workers || res.workers.length === 0) {
+                        $("#ActiveWorkers_Empty").show();
+                        return;
+                    }
+                    $("#ActiveWorkers_List").show();
+                    bindActiveWorkers(res.workers);
+                },
+                error: function () {
+                    $("#ActiveWorkers_Empty").show();
+                    $("#ActiveWorkers_List").hide();
+                }
+            });
+        }
+
+        function bindActiveWorkers(workers) {
+            var container = $("#activeWorkersContainer");
+            var html = '';
+            $.each(workers, function (i, item) {
+                var statusClass = item.status === 'Active' ? 'badge-success' : 'badge-secondary';
+                html += `
+                <div class="myrequest_trip_block d-flex justify-content-between margin-bottom-10">
+                    <div class="tripdetail_main">
+                        <div class="tripdetail_title">
+                            <img src="${item.photo || '/assets/images/icons/icon_profile.svg'}" alt="" style="width:35px; height:35px; border-radius:50%; margin-right:10px;">
+                            <span>${item.workerName}</span>
+                            <span class="badge ${statusClass}">${item.status}</span>
+                        </div>
+                        <div class="tripdetail">
+                            <span class="margin-right-15"><i class="fa fa-map-marker"></i> ${item.location || 'N/A'}</span>
+                            <span><i class="fa fa-clock"></i> Last update: ${formatDateTime(item.lastUpdate)}</span>
+                        </div>
+                    </div>
+                    <div class="tripactionbtn">
+                        <a href="javascript:;" class="btn blue_btnnew" onclick="viewWorkerLocation(${item.workerId})">
+                            <i class="fa-solid fa-location-dot"></i>
+                        </a>
+                    </div>
+                </div>`;
+            });
+            container.html(html);
+        }
+
+        function loadPendingTasks() {
+            var request = {
+                empId: parseInt(_empIdnew),
+                roleId: parseInt(_RoleIDnew),
+                companyId: _ComID,
+                branchId: _BranchID,
+                departmentId: parseInt($("#fieldDepartment").val()),
+                month: parseInt($("#fieldMonths").val())
+            };
+            $("#PendingTasks_List").hide();
+            $("#PendingTasks_Empty").hide();
+            $("#pendingTasksContainer").empty();
+            $.ajax({
+                url: '@_webapiurl' + 'FieldTracking/GetPendingTasks',
+                type: "POST",
+                contentType: "application/json",
+                headers: {
+                    "Authorization": "Bearer " + _Token
+                },
+                data: JSON.stringify(request),
+                success: function (res) {
+                    if (!res || !Array.isArray(res.tasks) || res.tasks.length === 0) {
+                        $("#PendingTasks_List").hide();
+                        $("#PendingTasks_Empty").show();
+                        return;
+                    }
+                    $("#PendingTasks_Empty").hide();
+                    $("#PendingTasks_List").show();
+                    renderPendingTasks(res.tasks);
+                },
+                error: function () {
+                    $("#PendingTasks_List").hide();
+                    $("#PendingTasks_Empty").show();
+                }
+            });
+        }
+
+        function renderPendingTasks(items) {
+            var html = '';
+            $.each(items, function (i, item) {
+                html += `
+                <div class="pending_request_block d-flex justify-content-between margin-bottom-10">
+                    <div class="tripdetail_main">
+                        <div class="reqby">Assigned to: <span>${item.workerName}</span></div>
+                        <div class="tripdetail">${item.taskDescription || ''}</div>
+                        <div class="text-muted small">Due: ${formatDate(item.dueDate)}</div>
+                    </div>
+                    <div class="tripactionbtn">
+                        <a href="javascript:;" class="btn green_btnnew approve"
+                           onclick="updateTaskStatus(${item.taskId}, 'Complete')"><i class="fa-solid fa-check"></i></a>
+                        <a href="javascript:;" class="btn red_btnnew reject"
+                           onclick="updateTaskStatus(${item.taskId}, 'Cancel')"><i class="fa-solid fa-xmark"></i></a>
+                    </div>
+                </div>`;
+            });
+            $("#pendingTasksContainer").html(html);
+        }
+
+        function formatDate(dateStr) {
+            if (!dateStr) return '';
+            var date = new Date(dateStr);
+            return date.toLocaleDateString('en-GB');
+        }
+
+        function formatDateTime(dateStr) {
+            if (!dateStr) return '';
+            var date = new Date(dateStr);
+            return date.toLocaleString('en-GB');
+        }
+
+        window.updateTaskStatus = function (taskId, action) {
+            var request = {
+                TaskId: taskId,
+                UserId: parseInt(_empIdnew),
+                Action: action
+            };
+            $.ajax({
+                url: '@_webapiurl' + 'FieldTracking/UpdateTaskStatus',
+                type: "POST",
+                contentType: "application/json",
+                headers: { "Authorization": "Bearer " + _Token },
+                data: JSON.stringify(request),
+                success: function (res) {
+                    toastr.success(res.message || 'Task ' + action + 'd successfully');
+                    loadPendingTasks();
+                    loadFieldMonitor();
+                },
+                error: function (xhr) {
+                    console.error("Task Status API Error", xhr.status, xhr.responseText);
+                    alert("Failed to update task.");
+                }
+            });
+        };
+
+        window.viewWorkerLocation = function (workerId) {
+            window.open('/FieldTracking/LiveTracking?workerId=' + workerId, '_blank');
+        };
+
+        // Custom widget save
+        $("#widgetSave").on("click", function () {
+            $(".widget-checkbox").each(function () {
+                var widgetKey = $(this).data("widget");
+                var $dashboardWidget = $(
+                    ".row[data-widget='" + widgetKey + "'], " +
+                    ".col-lg-6[data-widget='" + widgetKey + "']"
+                ).not("#customwidget_modal *");
+                if ($(this).is(":checked")) {
+                    $dashboardWidget.show();
+                } else {
+                    $dashboardWidget.hide();
+                }
+            });
+            $("#customwidget_modal").modal("hide");
+        });
+
+        // Update product display
+        if ($('#currentProductDisplay').length) {
+            $('#currentProductDisplay').text('FieldSens');
+        }
+    });
+</script>
+
+@if (obj.CanView)
+{
+    <div class="page-bar">
+        <ul class="page-breadcrumb">
+            <li>
+                <a href="/MinopProduct/FieldSensDashboard"><i class="fa-regular fa-house"></i></a>
+            </li>
+            <li>
+                <span> <i class="fa fa-angle-right"> </i> Field Service Dashboard</span>
+            </li>
+        </ul>
+        <div class="filter_search pull-right">
+            <button id="customwidget_btn" class="btn icon_transparent_btn tooltips margin-right-5" type="button" data-toggle="modal" data-target="#customwidget_modal" data-placement="left" data-original-title="Custom Widget"><i class="fa-light fa-objects-column"></i></button>
+            <button id="Filter_search" class="btn icon_transparent_btn tooltips" type="button" data-placement="bottom" data-original-title="Filter"><i class="fa-light fa-filter"></i></button>
+        </div>
+    </div>
+
+    <div class="body_section">
+
+        <div class="row" data-widget="fieldMonitor">
+            <!-- Field Monitor Block : Begin -->
+            <div class="col-lg-12">
+                <div class="card_box margin-bottom-20">
+                    <div class="card_header">
+                        <div class="d-flex align-items-center">
+                            <img class="margin-right-8" src="~/assets/images/icons/icon_activitymonitor.svg" alt="" width="25" height="24">
+                            <p class="card-title margin-right-10">Field Monitor</p>
+                            <img class="tooltips" src="/assets/images/icons/icon_info.svg" alt="" width="12" height="12" data-placement="right" data-original-title="Track field workforce activity">
+                            <div class="dropdown_box margin-left-15">
+                                <div class="form-group margin-bottom-0">
+                                    <select id="FieldMonitorFilter" class="btn blue btn-outline select2" data-width="100%">
+                                        <option value="1">Today</option>
+                                        <option value="2">This Week</option>
+                                        <option value="3">This Month</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card_summarylist">
+                        <div class="row">
+                            <div class="col-lg-2 col-sm-4 col-xs-6">
+                                <div class="activity_block">
+                                    <a href="javascript:;">
+                                        <img src="~/assets/images/icons/icon_team.svg" alt="" width="48" height="48">
+                                        <div>
+                                            <p>Total Workers</p>
+                                            <div class="activity_count" id="TotalWorkersCount">0</div>
+                                        </div>
+                                    </a>
+                                </div>
+                            </div>
+                            <div class="col-lg-2 col-sm-4 col-xs-6">
+                                <div class="activity_block">
+                                    <a href="javascript:;">
+                                        <img src="~/assets/images/icons/icon_checkin.svg" alt="" width="48" height="48">
+                                        <div>
+                                            <p>Active Workers</p>
+                                            <div class="activity_count" id="ActiveWorkersCount">0</div>
+                                        </div>
+                                    </a>
+                                </div>
+                            </div>
+                            <div class="col-lg-2 col-sm-4 col-xs-6">
+                                <div class="activity_block">
+                                    <a href="javascript:;">
+                                        <img src="~/assets/images/icons/icon_profile.svg" alt="" width="48" height="48">
+                                        <div>
+                                            <p>On Field</p>
+                                            <div class="activity_count" id="OnFieldCount">0</div>
+                                        </div>
+                                    </a>
+                                </div>
+                            </div>
+                            <div class="col-lg-2 col-sm-4 col-xs-6">
+                                <div class="activity_block">
+                                    <a href="javascript:;">
+                                        <img src="~/assets/images/icons/icon_approvedrequest.svg" alt="" width="48" height="48">
+                                        <div>
+                                            <p>Tasks Completed</p>
+                                            <div class="activity_count" id="TasksCompletedCount">0</div>
+                                        </div>
+                                    </a>
+                                </div>
+                            </div>
+                            <div class="col-lg-2 col-sm-4 col-xs-6">
+                                <div class="activity_block">
+                                    <a href="javascript:;">
+                                        <img src="~/assets/images/icons/icon_pendingrequest.svg" alt="" width="48" height="48">
+                                        <div>
+                                            <p>Pending Tasks</p>
+                                            <div class="activity_count" id="PendingTasksCount">0</div>
+                                        </div>
+                                    </a>
+                                </div>
+                            </div>
+                            <div class="col-lg-2 col-sm-4 col-xs-6">
+                                <div class="activity_block">
+                                    <a href="javascript:;">
+                                        <img src="~/assets/images/icons/icon_myattendance.svg" alt="" width="48" height="48">
+                                        <div>
+                                            <p>Distance Travelled</p>
+                                            <div class="activity_count" id="DistanceTravelledCount">0 km</div>
+                                        </div>
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Field Monitor Block : End -->
+        </div>
+
+        <div class="row">
+            <!-- Field Overview Block : Begin -->
+            <div class="col-lg-6" data-widget="fieldOverview">
+                <div class="card_box margin-bottom-20 h-380">
+                    <div class="card_header d-flex align-items-center justify-content-between">
+                        <div class="d-flex align-items-center">
+                            <img class="margin-right-8" src="/assets/images/icons/icon_attoverview.svg" alt="" width="22" height="22">
+                            <p class="card-title margin-right-10">Field Activity Overview</p>
+                            <img class="tooltips" src="/assets/images/icons/icon_info.svg" alt="" width="12" height="12" data-placement="right" data-original-title="Field task trend analysis">
+                        </div>
+                    </div>
+                    <div class="card_summarylist">
+                        <div id="Field_Overview">
+                            <figure class="highcharts-figure">
+                                <div id="FieldOverviewChart" style="height: 320px;"></div>
+                            </figure>
+                        </div>
+                        <div id="Field_Empty" style="display:none">
+                            <div class="empty_block no_record">
+                                <img src="~/assets/images/emptyscreen_3.png" height="122" width="230" alt="No Records Found">
+                                <p>No records found.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Field Overview Block : End -->
+
+            <!-- Active Field Workers Block : Begin -->
+            <div class="col-lg-6" data-widget="activeWorkers">
+                <div class="card_box margin-bottom-20 h-380">
+                    <div class="card_header d-flex align-items-center justify-content-between">
+                        <div class="d-flex align-items-center">
+                            <img class="margin-right-8" src="/assets/images/icons/icon_myattendance.svg" alt="" width="22" height="22">
+                            <p class="card-title margin-right-10">Active Field Workers</p>
+                            <img class="tooltips" src="/assets/images/icons/icon_info.svg" alt="" width="12" height="12" data-placement="right" data-original-title="Currently active workers">
+                        </div>
+                        <div class="dropdown_box">
+                            <div class="form-group margin-bottom-0">
+                                <select id="fieldMonth" class="btn blue btn-outline select2" data-width="100%">
+                                    <option value="1">January</option>
+                                    <option value="2">February</option>
+                                    <option value="3">March</option>
+                                    <option value="4">April</option>
+                                    <option value="5">May</option>
+                                    <option value="6">June</option>
+                                    <option value="7">July</option>
+                                    <option value="8">August</option>
+                                    <option value="9">September</option>
+                                    <option value="10">October</option>
+                                    <option value="11">November</option>
+                                    <option value="12">December</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card_summarylist myscrollbar" style="max-height: 310px; overflow-y: auto;">
+                        <div id="ActiveWorkers_List">
+                            <div id="activeWorkersContainer"></div>
+                        </div>
+                        <div id="ActiveWorkers_Empty" style="display:none">
+                            <div class="empty_block no_record">
+                                <img src="~/assets/images/emptyscreen_3.png" height="122" width="230" alt="No Records Found">
+                                <p>No active workers found.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Active Field Workers Block : End -->
+        </div>
+
+        <div class="row">
+            <!-- Pending Tasks Block : Begin -->
+            <div class="col-lg-6" data-widget="pendingTasks">
+                <div class="card_box margin-bottom-20 h-380">
+                    <div class="card_header d-flex align-items-center justify-content-between">
+                        <div class="d-flex align-items-center">
+                            <img class="margin-right-8" src="/assets/images/icons/icon_pendingrequests.svg" alt="" width="22" height="22">
+                            <p class="card-title margin-right-10">Pending Tasks</p>
+                            <img class="tooltips" src="/assets/images/icons/icon_info.svg" alt="" width="12" height="12" data-placement="right" data-original-title="Tasks awaiting completion">
+                        </div>
+                        <div class="dropdown_box">
+                            <div class="form-group margin-bottom-0 d-flex">
+                                <select id="fieldMonths" class="btn blue btn-outline select2 margin-right-5" data-width="100%">
+                                    <option value="0">All</option>
+                                    <option value="1">January</option>
+                                    <option value="2">February</option>
+                                    <option value="3">March</option>
+                                    <option value="4">April</option>
+                                    <option value="5">May</option>
+                                    <option value="6">June</option>
+                                    <option value="7">July</option>
+                                    <option value="8">August</option>
+                                    <option value="9">September</option>
+                                    <option value="10">October</option>
+                                    <option value="11">November</option>
+                                    <option value="12">December</option>
+                                </select>
+                                <select id="fieldDepartment" class="btn blue btn-outline select2" data-width="100%">
+                                    <option value="0">All Departments</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card_summarylist myscrollbar" style="max-height: 310px; overflow-y: auto;">
+                        <div id="PendingTasks_List">
+                            <div id="pendingTasksContainer"></div>
+                        </div>
+                        <div id="PendingTasks_Empty" style="display:none">
+                            <div class="empty_block no_record">
+                                <img src="~/assets/images/emptyscreen_3.png" height="122" width="230" alt="No Records Found">
+                                <p>No pending tasks found.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Pending Tasks Block : End -->
+
+            <!-- Quick Actions Block : Begin -->
+            <div class="col-lg-6" data-widget="quickActions">
+                <div class="card_box margin-bottom-20 h-380">
+                    <div class="card_header d-flex align-items-center justify-content-between">
+                        <div class="d-flex align-items-center">
+                            <img class="margin-right-8" src="/assets/images/icons/icon_add.svg" alt="" width="22" height="22">
+                            <p class="card-title margin-right-10">Quick Actions</p>
+                        </div>
+                    </div>
+                    <div class="card_summarylist">
+                        <div class="row">
+                            <div class="col-lg-4 col-sm-6 col-xs-6 margin-bottom-15">
+                                <a href="/FieldTracking/LiveTracking" class="quick_action_btn">
+                                    <img src="/assets/images/icons/icon_checkin.svg" alt="" width="40" height="40">
+                                    <span>Live Tracking</span>
+                                </a>
+                            </div>
+                            <div class="col-lg-4 col-sm-6 col-xs-6 margin-bottom-15">
+                                <a href="/FieldTracking/TaskList" class="quick_action_btn">
+                                    <img src="/assets/images/icons/icon_pendingrequest.svg" alt="" width="40" height="40">
+                                    <span>Task List</span>
+                                </a>
+                            </div>
+                            <div class="col-lg-4 col-sm-6 col-xs-6 margin-bottom-15">
+                                <a href="/FieldTracking/WorkOrders" class="quick_action_btn">
+                                    <img src="/assets/images/icons/icon_approvedrequest.svg" alt="" width="40" height="40">
+                                    <span>Work Orders</span>
+                                </a>
+                            </div>
+                            <div class="col-lg-4 col-sm-6 col-xs-6 margin-bottom-15">
+                                <a href="/FieldTracking/WorkerList" class="quick_action_btn">
+                                    <img src="/assets/images/icons/icon_team.svg" alt="" width="40" height="40">
+                                    <span>Manage Workers</span>
+                                </a>
+                            </div>
+                            <div class="col-lg-4 col-sm-6 col-xs-6 margin-bottom-15">
+                                <a href="/FieldTracking/Routes" class="quick_action_btn">
+                                    <img src="/assets/images/icons/icon_myattendance.svg" alt="" width="40" height="40">
+                                    <span>Route Planning</span>
+                                </a>
+                            </div>
+                            <div class="col-lg-4 col-sm-6 col-xs-6 margin-bottom-15">
+                                <a href="/FieldTracking/Reports" class="quick_action_btn">
+                                    <img src="/assets/images/icons/icon_attoverview.svg" alt="" width="40" height="40">
+                                    <span>Reports</span>
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Quick Actions Block : End -->
+        </div>
+
+    </div>
+
+    <!-- Custom Widget Modal : Begin -->
+    <div class="modal fade" id="customwidget_modal" tabindex="-1" role="dialog" aria-labelledby="customwidget_modal_title" aria-hidden="true">
+        <div class="modal-dialog modal-md" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="customwidget_modal_title">Custom Widget</h5>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <div class="row">
+                        <div class="col-lg-6">
+                            <div class="form-group">
+                                <label class="custom-checkbox">
+                                    <input type="checkbox" class="widget-checkbox" data-widget="fieldMonitor" checked>
+                                    <span class="checkmark"></span> Field Monitor
+                                </label>
+                            </div>
+                        </div>
+                        <div class="col-lg-6">
+                            <div class="form-group">
+                                <label class="custom-checkbox">
+                                    <input type="checkbox" class="widget-checkbox" data-widget="fieldOverview" checked>
+                                    <span class="checkmark"></span> Field Overview
+                                </label>
+                            </div>
+                        </div>
+                        <div class="col-lg-6">
+                            <div class="form-group">
+                                <label class="custom-checkbox">
+                                    <input type="checkbox" class="widget-checkbox" data-widget="activeWorkers" checked>
+                                    <span class="checkmark"></span> Active Workers
+                                </label>
+                            </div>
+                        </div>
+                        <div class="col-lg-6">
+                            <div class="form-group">
+                                <label class="custom-checkbox">
+                                    <input type="checkbox" class="widget-checkbox" data-widget="pendingTasks" checked>
+                                    <span class="checkmark"></span> Pending Tasks
+                                </label>
+                            </div>
+                        </div>
+                        <div class="col-lg-6">
+                            <div class="form-group">
+                                <label class="custom-checkbox">
+                                    <input type="checkbox" class="widget-checkbox" data-widget="quickActions" checked>
+                                    <span class="checkmark"></span> Quick Actions
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" id="widgetSave">Save</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Custom Widget Modal : End -->
+}
+else
+{
+    <span style="color:red">@PayTimeWebClient.Resource.Resource.UnauthorizedAccess .</span>
+}

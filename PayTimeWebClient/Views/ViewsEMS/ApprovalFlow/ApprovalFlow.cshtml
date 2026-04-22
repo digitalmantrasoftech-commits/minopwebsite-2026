@@ -1,0 +1,992 @@
+﻿@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@using System.Configuration;
+@{
+    ViewBag.Title = "ApprovalFlow";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    string _Message = ViewBag.msg;
+    string _error = ViewBag.error;
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    int _UserId = Convert.ToInt32(HttpContext.Current.Session["UserId"]);
+    int _cmpid = Convert.ToInt32(HttpContext.Current.Session["CompanyId"]);
+
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiEMSURL = ConfigurationManager.AppSettings["WebApiEMS"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    string _accountcd = HttpContext.Current.Session["cmpcode"].ToString();
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+    string _companyid = "0";
+    string _empid = "0";
+
+    if (_RoleId != 1 && _RoleId != 6805 && _RoleId != 6806)
+    {
+        _empid = HttpContext.Current.Session["EmpId"].ToString();
+    }
+    string _branchid = "0";
+    if (_RoleId == 6805)
+    {
+        _companyid = HttpContext.Current.Session["ClientCompanyId"].ToString();
+    }
+    if (_RoleId == 6806)
+    {
+        _companyid = HttpContext.Current.Session["ClientCompanyId"].ToString();
+        _branchid = HttpContext.Current.Session["BranchId"].ToString();
+    }
+    string _isPlanFace = HttpContext.Current.Session["isPlanFace"].ToString();
+    string _isdateformat = HttpContext.Current.Session["IsDateFormat"].ToString();
+    string _CountryCode = HttpContext.Current.Session["CountryCode"].ToString();
+    string _AreaCode = HttpContext.Current.Session["AreaCode"].ToString();
+    string _dbName = HttpContext.Current.Session["DbName"].ToString();
+    string _isPlanId = HttpContext.Current.Session["planId"].ToString();
+
+    string isClientDBMatchFlag = HttpContext.Current.Session["IsClientDBMatch"] != null
+ ? HttpContext.Current.Session["IsClientDBMatch"].ToString()
+ : "false"; // Default to "false" if the session is null
+
+}
+<link href="/Newlayout/css/payrollstructure.css" rel="stylesheet">
+<link href="/Newlayout/css/emsstructure.css" rel="stylesheet">
+<script src="~/Newlayout/js/sweet_alert_payroll.js"></script>
+<script src="~/Scripts/Helpers/noDataHandler.js"></script>
+<style type="text/css">
+    .tbl_newdatatbl > tbody > tr > td {
+        text-align: left !important;
+    }
+
+    #tblpolicyView.dataTable th:last-child .search_input, #tblpolicyView.dataTable th:last-child i {
+        display: block;
+    }
+</style>
+
+<script>
+    var ApprovalFlow_table = "";
+    var PolicyView_table = "";
+    $(document).ready(function () {
+        checkSession();
+        var _ApproveLvl1 = "";
+        var _ApproveLvl2 = 0;
+        var _ApproveLvl3 = 0;
+        var flowid = 0;
+        var ApproveLvl3 = 0;
+        var EStatus = 0;
+
+        $("#tblApprovalFlow tfoot th").each(function (index) {
+            var title = $(this).text();
+            if (index === 9) {
+                $(this).html(''); // No input
+            }
+            else {
+                $(this).html('<input type="text" class="search_input" placeholder="Search" /><i class="clm-search" id=""></i>');
+            }
+        });
+        getApprovalFlow();
+        $(function () {
+            $("#ApproveEmp").autocomplete({
+                source: function (request, response) {
+                    $.ajax({
+                        url: '@_webapiEMSURL' + 'CommanMaster/GetAllWithEmployee?EmpsqlQuery=' + request.term,
+                        contentType: "application/json; charset=utf-8",
+                        headers: { 'Authorization': '@_tokan' },
+                        dataType: "json",
+                        type: "GET",
+                        contentType: "application/json; charset=utf-8",
+                        success: function (data) {
+                            if (data.length > 0) {
+                                response($.map(data, function (item) {
+                                    return {
+                                        label: item.EmpName + '(' + item.Empcode + ')',
+                                        value: item.EmpName
+                                    };
+                                }))
+                                empid = data.Empid;
+                            }
+                            else {
+                                $("#ApproveEmp").val("");
+                                $("#ApproveEmp").focus();
+                            }
+                        },
+                        error: function (response) {
+                            //alert(response.responseText);
+                        },
+                        failure: function (response) {
+                            //alert(response.responseText);
+                        }
+                    });
+                },
+                select: function (e, i) {
+
+                    var Empcode = i.item.label.split('(')[1].split(')')[0];
+                    var EmpName = i.item.value;
+                    var objreq = {
+                        Empcode: Empcode,
+                        EmpName: EmpName
+                    };
+                    $.ajax({
+                        url: '@_webapiEMSURL' + 'CommanMaster/GetAllWithEmployeeByIDFetch',
+                        data: JSON.stringify(objreq),
+                        dataType: "json",
+                        type: "POST",
+                        headers: { 'Authorization': '@_tokan' },
+                        contentType: "application/json; charset=utf-8",
+                        success: function (data) {
+                            if (data.length > 0) {
+                                $("#hfCustomer").val(data[0].EmpId);
+                            }
+                            else {
+                                $("#hfCustomer").val(0);
+                            }
+
+                        },
+                    });
+                },
+                minLength: 1
+            });
+        });
+
+        $("#closeModal").on('click', function () {
+            $(".dataTables_filter").removeClass("active");
+        })
+
+        $('#Approval_flow_name').keydown(function (e) {
+            if (this.value.length === 0 && e.which === 32) e.preventDefault();
+        });
+
+        $('#Approval_flow_name').on('input', function () {
+            var exTitle = $(this).val();
+            if (!/^[a-zA-Z0-9\s]*$/.test(exTitle)) {
+                $(this).val(exTitle.replace(/[^a-zA-Z0-9\s]/g, ''));
+            }
+        });
+
+        $("#tblApprovalFlow").on('click', '.assign_policy_count', function ()
+        {
+            checkSession();
+            var FlowID = $(this).parent('td').parent('tr').children(1)[0].innerText.trim();
+            var Status = $(this).parent('td').parent('tr').children(1)[9].innerText.trim();
+            if (Status == "Active") {
+                $(".assign_policy_count").attr("data-toggle", "modal");
+                $(".assign_policy_count").attr("data-target", "#AssignedPolicyBtn_modal");
+
+                $("#tblpolicyView tfoot th").each(function () {
+                    var title = $(this).text();
+                    $(this).html('<input type="text" class="search_input" placeholder="Search" /><i class="clm-search" id=""></i>');
+                });
+                getpolicyView(FlowID);
+            }
+        });
+
+
+        $("#tblApprovalFlow").on('click', '#btnEdit', function () {
+            checkSession();
+            $("#FlowID").val($(this).parent('td').parent('tr').children(1)[0].innerText.trim());
+            $("#Approval_flow_name").val($(this).parent('td').parent('tr').children(1)[1].innerText.trim());
+            _ApproveLvl1 = $(this).parent('td').parent('tr').children(1)[5].innerText.trim();
+            _ApproveLvl2 = $(this).parent('td').parent('tr').children(1)[6].innerText.trim();
+            _ApproveLvl3 = $(this).parent('td').parent('tr').children(1)[4].innerText.trim();
+            ApproveLvl3 = $(this).parent('td').parent('tr').children(1)[7].innerText.trim();
+            $("#ApproveLvl1 option[value = '" + _ApproveLvl1 + "' ]").prop("selected", true);
+            $("#ApproveLvl2 option[value = '" + _ApproveLvl2 + "' ]").prop("selected", true);
+            $('#ApproveLvl1').trigger('change.select2');
+            $('#ApproveLvl2').trigger('change.select2');
+            $("#ApproveEmp").val(_ApproveLvl3);
+            $("#hfCustomer").val(ApproveLvl3);
+
+            $(".clm_edit_btn").attr("data-toggle", "modal");
+            $(".clm_edit_btn").attr("data-target", "#AddApprovalflowBtn_modal");
+
+        });
+
+        $("#tblApprovalFlow").on('click', '#btnDelete', function () {
+            checkSession();
+            var delay = 1000;
+            var FlowID = $(this).closest('tr').children(1)[0].innerText.trim();
+            EStatus = 0;
+
+            if (FlowID > 0) {
+                Swal.fire({
+                    title: "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_error.svg' alt=''>Delete",
+                    html: `<div class="swal_subtitle">
+                               <b>Are you sure you want to deactivate this approval flow?</b>
+                               <p>This flow may be linked to existing processes. Please verify before proceeding with deactivation.</p>
+                               <div class="margin-top-10 text-left"></div>
+                           </div>`,
+                    closeOnConfirm: true,
+                    showCloseButton: true,
+                    showCancelButton: true,
+                    focusConfirm: false,
+                    cancelButtonText: 'No',
+                    confirmButtonText: 'Yes',
+                    allowOutsideClick: false,
+                    allowEscapeKey: false,
+                    customClass: {
+                        confirmButton: 'swal-confirm-button-class',
+                        cancelButton: 'swal-cancel-button-class'
+                    }
+                }).then(function (isConfirm) {
+                    if (isConfirm.isConfirmed == true) {
+                        $.ajax({
+                            type: "POST",
+                            headers: { 'Authorization': '@_tokan' },
+                            url: '@_webapiEMSURL' + 'ExpenseApprovalFlow/DeleteExpenseApprovalByFlowID?EFlowId=' + FlowID + "&EStatus=" + EStatus,
+                            contentType: "application/json; charset=utf-8",
+                            dataType: "json",
+                            beforeSend: function () {
+                                $("#ajax_loader").show();
+                            },
+                            success: function (response) {
+                                if (response != null) {
+                                    if (response.success == true) {
+                                        toastr.remove();
+                                        toastr.success("InActive Successfully");
+                                    } else {
+                                        toastr.remove();
+                                        toastr.error(response.message);
+                                    }
+                                    setTimeout(function () {
+                                        window.location.reload(true);
+                                    }, delay);
+                                } else {
+                                    toastr.remove();
+                                    toastr.error(response.message || "Something went wrong");
+                                    setTimeout(function () {
+                                        window.location.reload(true);
+                                    }, delay);
+                                }
+                            },
+                            complete: function () {
+                                $("#ajax_loader").hide();
+                            }
+                        });
+                    }
+                });
+
+                // Add error style like in first code
+                $('img[src="/assets/images/icons/swal_icon/icon_error.svg"]')
+                    .closest('.swal2-popup')
+                    .addClass('swal_error');
+            }
+        });
+
+
+        $("#tblApprovalFlow").on('click', '#btnActive', function () {
+            checkSession();
+            var delay = 1000;
+            var FlowID = $(this).parent('td').parent('tr').children(1)[0].innerText.trim();
+            EStatus = 1;
+            if (FlowID > 0) {
+                $.ajax({
+                    type: "POST",
+                    headers: { 'Authorization': '@_tokan' },
+                    url: '@_webapiEMSURL' + 'ExpenseApprovalFlow/DeleteExpenseApprovalByFlowID?EFlowId=' + FlowID + "&EStatus=" + EStatus,
+                    contentType: "application/json; charset=utf-8",
+                    dataType: "json",
+                    beforeSend: function () {
+                        $("#ajax_loader").show();
+                    },
+                    success: function (response) {
+                        if (response != null) {
+                            if (response.success == true) {
+                                toastr.remove();
+                                toastr.success("Activate Successfully");
+                                setTimeout(function () {
+                                    window.location.reload(true);
+                                }, delay);
+
+                            }
+                            else {
+                                toastr.remove();
+                                toastr.error(response.message);
+                                setTimeout(function () {
+                                    window.location.reload(true);
+                                }, delay);
+
+                            }
+                        } else {
+                            toastr.remove();
+                            toastr.success("InActive Successfully");
+                            setTimeout(function () {
+                                window.location.reload(true);
+                            }, delay);
+
+                        }
+                    },
+                    complete: function () {
+                        $("#ajax_loader").hide();
+                    }
+                });
+            }
+        });
+
+        //================================= Add Approval Flow Modal Code : Begin  ==================================
+
+
+        // Add Approval flow modal open and close
+        $("#AddApprovalflowBtn").on('click', function () {
+            $("#AddApprovalflowBtn").attr("data-toggle", "modal");
+            $("#AddApprovalflowBtn").attr("data-target", "#AddApprovalflowBtn_modal");
+        });
+
+        // View Trip Status modal open and close
+        $("#AssignedPolicyBtn").on('click', function () {
+            $("#AssignedPolicyBtn").attr("data-toggle", "modal");
+            $("#AssignedPolicyBtn").attr("data-target", "#AssignedPolicyBtn_modal");
+        });
+
+        //================================= View Assigned Policy Modal Code : End  ==================================
+
+
+        $("#btnSaveApprovalFlow").on('click', function (e) {
+            e.preventDefault(); // stop default submit and modal close
+            checkSession();
+
+            // === 1. Approval Flow Title ===
+            if (!$("#Approval_flow_name").val().trim()) {
+                $("#Approval_flow_name").addClass('field_error').focus();
+                toastr.remove();
+                toastr.error("Please enter Approval Flow Title.");
+                return false;
+            } else {
+                $("#Approval_flow_name").removeClass('field_error');
+            }
+
+            // === 2. Level 01 Approval ===
+            var _ApproveLvl1Text = $("#ApproveLvl1 option:selected").text().trim();
+            if (_ApproveLvl1Text === "Select Level 01 Approval" || _ApproveLvl1Text === "") {
+                $("#ApproveLvl1").addClass('field_error').focus();
+                toastr.remove();
+                toastr.error("Please Select Level 01 Approval");
+                return false;
+            } else {
+                $("#ApproveLvl1").removeClass('field_error');
+            }
+
+            // === 3. Level 02 Approval ===
+            var _ApproveLvl2Text = $("#ApproveLvl2 option:selected").text().trim();
+            if (_ApproveLvl2Text === "Select Level 02 Approval" || _ApproveLvl2Text === "") {
+                $("#ApproveLvl2").addClass('field_error').focus();
+                toastr.remove();
+                toastr.error("Please Select Level 02 Approval");
+                return false;
+            } else {
+                $("#ApproveLvl2").removeClass('field_error');
+            }
+
+            // === 4. Level 03 Approval === (Text Input – Mandatory)
+            var _ApproveLvl3Text = $("#ApproveEmp").val().trim(); // Corrected ID
+            if (_ApproveLvl3Text === "") {
+                $("#ApproveEmp").addClass('field_error').focus();
+                toastr.remove();
+                toastr.error("Please enter Level 03 Approval (Code or Name)");
+                return false;
+            } else {
+                $("#ApproveEmp").removeClass('field_error');
+            }
+
+            // === 5. Level 04 Approval ===
+            var _ApproveLvl4Text = $("#ApproveLvl4 option:selected").text().trim();
+            if (_ApproveLvl4Text === "Level 04 : Default Approval" || _ApproveLvl4Text === "") {
+                $("#ApproveLvl4").addClass('field_error').focus();
+                toastr.remove();
+                toastr.error("Please Select Level 04 Approval");
+                return false;
+            } else {
+                $("#ApproveLvl4").removeClass('field_error');
+            }
+
+
+
+            // === 5. Prepare data ===
+            var obj = {
+                FlowID: $('#FlowID').val(),
+                FlowTitle: $('#Approval_flow_name').val().trim(),
+                Level1Approval: $("#ApproveLvl1").val(),
+                Level2Approval: $("#ApproveLvl2").val(),
+                Level3Approval: $("#hfCustomer").val() || "0",
+                Level4Approval: $("#ApproveLvl4").val(),
+                CreatebyId: "0"
+            };
+
+            var delay = 1000;
+            var apiUrl = '@_webapiEMSURL' + 'ExpenseApprovalFlow/ExpenseApprovalFlowRequest';
+            var token = '@_tokan';
+
+            // === 6. Submit AJAX request ===
+            $.ajax({
+                type: "POST",
+                headers: { 'Authorization': token },
+                url: apiUrl,
+                data: JSON.stringify(obj),
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                beforeSend: function () {
+                    $("#ajax_loaderapproval").show();
+                },
+                success: function (response) {
+                    toastr.remove();
+                    if (response.success && (response.responseCode === 201 || response.responseCode === 206)) {
+                        toastr.success("ApprovalFlow " + response.message);
+                    } else if (!response.success && (response.responseCode === 205 || response.responseCode === 210 || response.responseCode === 212)) {
+                        toastr.error(response.message);
+                    } else {
+                        toastr.error(response.validationErrors || "Unknown error occurred");
+                    }
+
+                    // Reload after success only
+                    if (response.success) {
+                        setTimeout(function () {
+                            window.location.reload(true);
+                        }, delay);
+                    }
+                },
+                complete: function () {
+                    $("#ajax_loaderapproval").hide();
+                }
+            });
+        });
+
+
+        $("#btnCancel").on('click', function () {
+            frmClear();
+        });
+
+        $("#btnClose").on('click', function () {
+
+            frmClear();
+        });
+    });
+    function checkSession() {
+        $.ajax({
+            type: "GET",
+            async: false,
+            url: "/ESS/checkSession",
+            contentType: "application/json; charset=utf-8",
+            success: function (data) {
+                if (data.isRedirect) {
+                    window.location.href = data.redirectUrl;
+                }
+            },
+            error: function (data) {
+                window.location.href = data;
+            }
+        });
+    }
+
+    function getApprovalFlow() {
+        if ($.fn.DataTable.isDataTable('#tblApprovalFlow'))
+        {
+            ApprovalFlow_table.destroy();
+        }
+        checkSession();
+        $.ajax({
+            type: "GET",
+            headers: { 'Authorization': '@_tokan' },
+            url: '@_webapiEMSURL' + 'ExpenseApprovalFlow/GetExpenseApprovalFlowAll',
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            dataSrc: '',
+            beforeSend: function () {
+                $('#ajax_loaderapproval').show();
+            },
+            complete: function () {
+                $('#ajax_loaderapproval').hide();
+            },
+            success: function (response)
+            {
+                if (response != null) {
+                    const List = response;
+                    handleGridVisibility("tblempty", "NotificationGrid-empty", List, {
+                        imageUrl: "emptyscreen_1.png",
+                        subText: "No entries found. Please add a record to get started."
+                    });
+                }
+                $("#tblApprovalFlow tbody").empty();
+
+                if (response.length == 0)
+                {
+                }
+                else
+                    {
+                    var datatbl = "";
+                    for (var i = 0; i < response.length; i++)
+                    {
+                        var tbl = "<tr class='odd gradeX'>";
+                        tbl = tbl + "<td class='FlowID' hidden>" + response[i].FlowID + "</td>";
+                        tbl = tbl + "<td class='FlowTitle'>" + response[i].FlowTitle + "</td>";
+                        tbl = tbl + "<td class='Level1Approval'>" + response[i].Level1Approval + "</td>";
+                        tbl = tbl + "<td class='Level2Approval'>" + response[i].Level2Approval + "</td>";
+                        if (response[i].Level3Approval === "0") {
+                            tbl += "<td class='Level3Approval'></td>";
+                        } else {
+                            tbl += "<td class='Level3Approval'>" + response[i].Level3Approval + "</td>";
+                        }
+                        //if (response[i].Level4Approval === "0") {
+                        //    tbl += "<td class='Level4Approval'></td>";
+                        //} else {
+                        //    tbl += "<td class='Level4Approval'>" + response[i].Level4Approval + "</td>";
+                        //}
+                        tbl = tbl + "<td class='Lvl1ApprovalID' hidden>" + response[i].Lvl1ApprovalID + "</td>";
+                        tbl = tbl + "<td class='Lvl2ApprovalID' hidden>" + response[i].Lvl2ApprovalID + "</td>";
+                        tbl = tbl + "<td class='Lvl3ApprovalID' hidden>" + response[i].Lvl3ApprovalID + "</td>";
+                        if (response[i].AssignPolicyCount === 0) {
+                            tbl += "<td class='Assigned_Policy'>-</td>";
+                        }
+                        else {
+                            tbl = tbl + "<td class='Assigned_Policy'><a class='assign_policy_count'>" + response[i].AssignPolicyCount + "</a></td>";
+                        }
+                        if (response[i].Status === "Active") {
+                            tbl = tbl + "<td class='Approval_Status green_font'>" + response[i].Status + "</td>";
+                            tbl = tbl + "<td>";
+                            tbl = tbl + "<a class='btn blue_btnnew tooltips clm_edit_btn' title='Edit' id='btnEdit'><i class='fa-regular fa-pen-to-square'></i></a>";
+                            tbl = tbl + "<a class='btn blue_btnnew tooltips clm_delete_btn' title='InActive' id='btnDelete'><i class='fa-solid fa-xmark'></i></a>";
+                            tbl = tbl + "</td>";
+                        }
+                        else if (response[i].Status === "InActive") {
+                            tbl = tbl + "<td class='Approval_Status red_font'>" + response[i].Status + "</td>";
+                            tbl = tbl + "<td>";
+                            tbl = tbl + "<a class='btn blue_btnnew tooltips clm_edit_btn' title='Edit' id='btnEdit' disabled><i class='fa-regular fa-pen-to-square'></i></a>";
+                            tbl = tbl + "<a class='btn blue_btnnew tooltips clm_renew_btn' id='btnActive' title='Active'><i class='fa-solid fa-check' aria-hidden='true'></i></a>";
+                            tbl = tbl + "</td>";
+                        }
+                        tbl = tbl + "</tr>";
+                        datatbl += tbl;
+                    }
+                }
+                $('#tblApprovalFlow tbody').append(datatbl);
+                $('#tblApprovalFlow').destroy;
+                $("#_dataFoundList dataTables_tbl_header").remove();
+                ApprovalFlow_table = $("#tblApprovalFlow").DataTable({
+                    dom: _domColumn,
+                    language: _languageColumn,
+                    paging: true,
+                    autoWidth: true,
+                    ordering: true,
+                    buttons: [
+                        "excelHtml5",
+                        //{
+                        //    "className": "buttons-columns btnColumnvisibility",
+                        //},
+                    ],
+                    "columnDefs": [
+                    {
+                        "targets": [8, 10],
+                        "orderable": false,
+                    },
+                    ],
+                    initComplete: function (settings, json) {
+                        var footer = $("#tblApprovalFlow tfoot tr");
+                        $("#tblApprovalFlow thead").append(footer);
+                    }
+                });
+
+                // Apply the Search
+                $("#tblApprovalFlow thead").on("keyup", "input", function () {
+                    ApprovalFlow_table.column($(this).parent().index())
+                    .search(this.value)
+                    .draw();
+                });
+                setTimeout(function () {
+                    $("#" + "tblApprovalFlow" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+                    $('.tooltips').tooltip();
+                    injectExportButtonsForDataTables(false, function () {
+                    });
+                    $('.tooltips').tooltip();
+                }, 100);
+            },
+        });
+    }
+
+    function getpolicyView(ApprovalFlowID) {
+        if ($.fn.DataTable.isDataTable('#tblpolicyView')) {
+            PolicyView_table.destroy();
+        }
+        checkSession();
+        $.ajax({
+            type: "GET",
+            headers: { 'Authorization': '@_tokan' },
+            url: '@_webapiEMSURL' + 'ExpenseApprovalFlow/GetApprovalFlowAssignPolicyList?ApprovalFlowID=' + ApprovalFlowID,
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            beforeSend: function () {
+                $('#ajax_loaderapproval').show();
+            },
+            success: function (response)
+            {
+                $("#tblpolicyView tbody").empty();
+                if (response.length > 0) {
+                    var datatbl = "";
+                    for (var i = 0; i < response.length; i++) {
+                        var tbl = "<tr class='odd gradeX'>";
+                        tbl = tbl + "<td class='ApprovalFlowID' hidden>" + response[i].ApprovalFlowID + "</td>";
+                        tbl = tbl + "<td class='ExpPolicyID'>" + response[i].ExpePolicyReqCode + "</td>";
+                        tbl = tbl + "<td class='PolicyName'>" + response[i].PolicyName + "</td>";
+                        tbl = tbl + "</tr>";
+                        datatbl += tbl;
+                    }
+                }
+                $('#tblpolicyView tbody').append(datatbl);
+                $('#tblpolicyView').destroy;
+                $("#AssignedPolicyBtn_modal #dataTables_tbl_header").remove();
+                PolicyView_table = $("#tblpolicyView").DataTable({
+                    dom: _domCommon,
+                    language: _languageCommon,
+                    paging: true,
+                    autoWidth: true,
+                    ordering: true,
+                    buttons: [
+                        "excelHtml5"
+                        //{
+                        //    "className": "buttons-columns btnColumnvisibility",
+                        //},
+                    ],
+                    initComplete: function (settings, json) {
+                        var footer = $("#tblpolicyView tfoot tr");
+                        $("#tblpolicyView thead").append(footer);
+                    }
+                });
+                setTimeout(function () {
+                    $("#" + "tblpolicyView" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive1"));
+                    $('.tooltips').tooltip();
+                }, 100);
+
+                // Apply the Search
+                $("#tblpolicyView thead").on("keyup", "input", function () {
+                    PolicyView_table.column($(this).parent().index())
+                    .search(this.value)
+                    .draw();
+                });
+            },
+            complete: function () {
+                $('#ajax_loaderapproval').hide();
+            },
+        });
+    }
+
+    function checkSession() {
+        $.ajax({
+            type: "GET",
+            async: false,
+            url: "/ESS/checkSession",
+            contentType: "application/json; charset=utf-8",
+            success: function (data) {
+                if (data.isRedirect) {
+                    window.location.href = data.redirectUrl;
+                }
+            },
+            error: function (data) {
+                window.location.href = data;
+            }
+        });
+    }
+
+    function frmClear() {
+        $("#Approval_flow_name").val("");
+        $("#Approval_flow_name").attr("placeholder", "Enter approval flow title");
+        $("#ApproveLvl1").val("0").trigger('change');
+        $("#ApproveLvl2").val("0").trigger('change');
+        $("#ApproveEmp").val("");
+        $("#ApproveEmp").attr("placeholder", "Please Enter EmpID or Name");
+    }
+
+</script>
+
+
+<div class="page-bar">
+    @if (_RoleId == 1 || _RoleId == 6805 || _RoleId == 6806)
+    {
+        <ul class="page-breadcrumb" style="float: none">
+            <li>
+                @if (isClientDBMatchFlag == "True")
+                {
+                    <a href="/Admin/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+                }
+                else
+                {
+                    <a href="/Dashboard/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+                }
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> Approval Flow</span>
+            </li>
+        </ul>
+    }
+    else
+    {
+        <ul class="page-breadcrumb">
+            <li>
+                @if (isClientDBMatchFlag == "true")
+                {
+                    <a href="/Admin/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+                }
+                else
+                {
+                    <a href="/Dashboard/EmployeeDashboard"><i class="fa-regular fa-house"></i></a>
+                }
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> Approval Flow</span>
+            </li>
+        </ul>
+    }
+
+    <div class="emptotalcount">
+        <div class="page-toolbar page-toolbar_payroll">
+            @if (obj.CanAdd)
+            {
+                <div class="emp_btn_block">
+                    <div class="text-right">
+                        <a href="javascript:;" class="btn icon_transparent_btn tooltips" data-placement="left" data-original-title="Add Approval Flow" id="AddApprovalflowBtn"><i class="fa-solid fa-plus"></i></a>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+<div id='ajax_loaderapproval' class="modal_bg loading" aria-hidden="true">
+    <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading" />
+</div>
+
+
+@if (obj.CanView)
+{
+    <div id="_dataFoundList">
+        <div id="TripRequest_block">
+            <div class="portlet">
+                <div class="portlet-body">
+                    <div id="tblempty">
+                        <div class="table-responsive" id="tableResponsive">
+                            <div class="EMS_details_table">
+                                <!-- Datatable : Begin -->
+                                <table id="tblApprovalFlow" class="table new_datatbl table-striped table-bordered table-hover serch_datatable table-checkable order-column">
+                                    <thead>
+                                        <tr>
+                                            <th style="min-width: 70px" hidden>FlowID</th>
+                                            <th style="min-width: 250px">Name</th>
+                                            <th style="min-width: 90px">Level 01</th>
+                                            <th style="min-width: 90px">Level 02</th>
+                                            <th style="min-width: 90px">Level 03</th>
+                                            @*<th style="min-width: 90px">Level 04</th>*@
+                                            <th style="min-width: 300px" hidden>Lvl1ApprovalID</th>
+                                            <th style="min-width: 300px" hidden>Lvl2ApprovalID</th>
+                                            <th style="min-width: 300px" hidden>Lvl3ApprovalID</th>
+                                            <th style="min-width: 100px">Assigned Policy</th>
+                                            <th style="min-width: 50px">Status</th>
+                                            <th style="min-width: 70px">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody></tbody>
+                                    <tfoot>
+                                        <tr>
+                                            <th hidden>FlowID</th>
+                                            <th>Name</th>
+                                            <th>Level 01</th>
+                                            <th>Level 02</th>
+                                            <th>Level 03</th>
+                                            @*<th>Level 04</th>*@
+                                            <th hidden>Lvl1ApprovalID</th>
+                                            <th hidden>Lvl2ApprovalID</th>
+                                            <th hidden>Lvl3ApprovalID</th>
+                                            <th>Assigned Policy</th>
+                                            <th>Status</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                                <!-- Datatable : End -->
+                            </div>
+                        </div>
+                    </div>
+                    <div id="NotificationGrid-empty" style="display: none">
+                        <div class="datanotfound">
+                            <img src="" width="280" height="148" alt="Nodata Found Icon">
+                            <p class="datanotfound_title"></p> <!-- titleText -->
+                            <p class=""></p><!-- subText -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Add Approval flow Modal : Begin -->
+        <div id="AddApprovalflowBtn_modal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+            <div class="modal-dialog" style="width:500px;">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <button type="button" class="close" data-dismiss="modal" id="btnClose">×</button>
+                        <h4 class="modal-title">Approval Flow</h4>
+                    </div>
+                    <div class="modal-body">
+                        <div class="modal-card">
+                            <fieldset>
+                                <div class="head_box">
+                                    <div class="row">
+                                        <div class="af_modal_box">
+                                            <div class="col-xs-12">
+                                                <div class="form-group">
+                                                    <label>Name<span class="required" aria-required="true">*</span></label>
+                                                    <input type="text" class="form-control input-sm" name="" id="Approval_flow_name" placeholder="Enter approval flow title" maxlength="50">
+                                                </div>
+                                            </div>
+                                            <div class="col-xs-12">
+                                                <div class="depart_box">
+                                                    <div class="margin-bottom-10">Approver Level Configuration</div>
+                                                    <div class="depart_box__card">
+                                                        <!-- Approval Flow Block 1 : Begin -->
+                                                        <div class="depart_box__block margin-bottom-10">
+                                                            <div class="row">
+                                                                <div class="col-xs-12">
+                                                                    <div class="form-group margin-bottom-0">
+                                                                        <label>Level 01 : Select Approver<span class="required" aria-required="true">*</span></label>
+                                                                        <select class="form-control" id="ApproveLvl1" name="ApproveLvl1">
+                                                                            <option value="0" selected>Select Level 01 Approval</option>
+                                                                            <option value="1">Department HOD</option>
+                                                                            @*<option value="2">Reporting To</option>*@
+                                                                        </select>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        <!-- Approval Flow Block 1 : End -->
+                                                        <!-- Approval Flow Block 2 : Begin -->
+                                                        <div class="depart_box__block margin-bottom-10">
+                                                            <div class="row">
+                                                                <div class="col-xs-12">
+                                                                    <div class="form-group margin-bottom-0">
+                                                                        <label>Level 02 : Select Approver<span class="required" aria-required="true">*</span></label>
+                                                                        <select class="form-control" id="ApproveLvl2" name="ApproveLvl2">
+                                                                            <option value="0" selected>Select Level 02 Approval</option>
+                                                                            @*<option value="1">Department HOD</option>*@
+                                                                            <option value="2">Reporting To</option>
+                                                                        </select>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        <!-- Approval Flow Block 2 : End -->
+                                                        <!-- Approval Flow Block 3 : Begin -->
+                                                        <div class="depart_box__block margin-bottom-10">
+                                                            <div class="row">
+                                                                <div class="col-xs-12">
+                                                                    <div class="form-group margin-bottom-0">
+                                                                        <label>Level 03 : Select Person<span class="required" aria-required="true">*</span></label>
+                                                                        <input id="ApproveEmp" name="ApproveEmp" maxlength="15" class="form-control" placeholder="Please Enter Code or Name" tabindex="1">
+                                                                        <input type="hidden" id="hfCustomer" />
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        <!-- Approval Flow Block 3 : End -->
+                                                        <!-- Approval Flow Block 4 : Begin -->
+                                                        <div class="depart_box__block margin-bottom-10">
+                                                            <div class="row">
+                                                                <div class="col-xs-12">
+                                                                    <div class="form-group margin-bottom-0">
+                                                                        <label>Level 04 : Default Approval</label>
+                                                                        <select class="form-control" id="ApproveLvl4" name="ApproveLvl4">
+                                                                            <option value="1" selected>Account/HR</option>
+                                                                        </select>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                        <!-- Approval Flow Block 4 : End -->
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </fieldset>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <div class="row">
+                            <div class="col-lg-12 text-right">
+                                <input type="hidden" id="FlowID" name="FlowID" value="0">
+                                <input type="button" class="btn clear_btn" data-dismiss="modal" value="Cancel" id="btnCancel" />
+                                <button class="btn save_btn" type="button" id="btnSaveApprovalFlow"><i class="fa-light fa-floppy-disk"></i> Save</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Add Approval flow Modal : End -->
+        <!-- View Assigned Policy Modal : Begin -->
+        <div id="AssignedPolicyBtn_modal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <button type="button" class="close" data-dismiss="modal" id="closeModal">×</button>
+                        <h4 class="modal-title">Assigned Policy</h4>
+                    </div>
+                    <div class="modal-body nomodalfooter">
+
+                        <div class="">
+                            <div class="admin_tbl table-responsive" id="tableResponsive1">
+                                <table id="tblpolicyView" class="table new_datatbl serch_datatable table-striped table-bordered table-hover table-checkable order-column dataTable no-footer">
+                                    <thead>
+                                        <tr>
+                                            <th hidden>ApprovalFlowID</th>
+                                            <th>Policy ID</th>
+                                            <th style="min-width: 150px">Policy Name</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody></tbody>
+                                    <tfoot>
+                                        <tr>
+                                            <th hidden>ApprovalFlowID</th>
+                                            <th>Policy ID</th>
+                                            <th>Policy Name</th>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- View Assigned Policy Modal : End -->
+    </div>
+}
+else
+{
+    <script>
+        Swal.fire({
+            title:
+                "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_info.svg' alt=''> Unauthorized Access",
+            html:
+                "<div class='swal_subtitle'>" +
+                "<b>Access denied. You don’t have the required permissions to view this page.</b>" +
+                "<p>Please contact your administrator if you believe this is a mistake.</p>" +
+                "</div>",
+            showCloseButton: true,
+            showCancelButton: false,
+            focusConfirm: false,
+            cancelButtonText: 'Close',
+            confirmButtonText: 'Go to Dashboard',
+            allowOutsideClick: false,
+            allowEscapeKey: false,
+            customClass: {
+                popup: 'swal_info',                     // <<-- Add class directly to popup
+                confirmButton: 'swal-confirm-button-class',
+                cancelButton: 'swal-cancel-button-class'
+            }
+        }).then(function (result) {
+            if (result.isConfirmed) {
+                window.location.href = "/MinopProduct/EMSDashboard";
+            }
+        });
+    </script>
+}

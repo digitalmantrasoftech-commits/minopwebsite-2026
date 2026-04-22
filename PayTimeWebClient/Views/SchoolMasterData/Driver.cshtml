@@ -1,0 +1,680 @@
+﻿@using System.Configuration;
+@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@{
+    ViewBag.Title = "Driver";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    string _companyCode = HttpContext.Current.Session["cmpcode"].ToString();
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+}
+<script type="text/javascript">
+    $(document).ready(function () {
+        fillVehicledll();
+        $("#DateofBirth").datepicker({ format: 'yyyy/mm/dd' });
+        $("#tblDriverMaster").on('click', '.Inactiveclass', function () {
+            $("#Remarks").val("");
+            $("#Remarks").removeClass('field_error');
+            $(".Inactiveclass").attr("data-toggle", "modal");
+            $(".Inactiveclass").attr("data-target", "#frmInactivedr");
+            $("#DriverId").val(t.row($(this).parent('td').parent('tr')).data()["DriverId"]);
+        });
+
+        $("#btnIactivesubmit").click(function (event) {
+            if ($("#Remarks").val() == "") {
+                $("#Remarks").attr('required', true);
+                $("#Remarks").addClass('field_error');
+                event.preventDefault();//or return false
+                return false;
+            }
+            else {
+                $("#Remarks").removeClass('field_error');
+            }
+            var isactive = false;
+            var Remarks = $("#Remarks").val();
+            $.ajax({
+                url: '@_webapiurl' + 'SchoolMaster/ActiveInactiveDriver?id=' + $("#DriverId").val() + "&Isactive=" + isactive + "&Remarks=" + Remarks + "",
+                type: 'POST',
+                headers: { 'Authorization': '@_tokan' },
+                contentType: "application/json; charset=utf-8",
+                success: function (data) {
+                    if (data.MegSts == "Ok") {
+                        $('#frmInactiveVeh').modal('toggle');
+                        //$(".Inactiveclass").attr("data-toggle", "modal");
+                        //$(".Inactiveclass").attr("data-target", "#frmInactiveEmp");
+                        t.draw();
+                        //$(".alert-danger").hide();
+                        //$(".alert-success").text("Employee deactivated sucessfully.");
+                        //$('.alert-success').fadeIn('fast').delay(2000).fadeOut('slow');
+                        //window.location.href = "/MasterData/EmployeeMaster";
+                        window.location.href = "/SchoolMasterData/Driver";
+                    }
+                    else {
+                        $(".alert-success").hide();
+                        $(".alert-danger").text("Error in deactivating Driver.");
+                        $('.alert-danger').fadeIn('fast').delay(2000).fadeOut('slow');
+                    }
+                },
+                statusCode: {
+                    404: function (content) { alert('cannot find resource'); },
+                    500: function (content) { alert('internal server error'); }
+                },
+                error: function (req, status, errorObj) {
+                    // handle status === "timeout"
+                    // handle other errors
+                }
+            });
+        });
+
+        $("#tblDriverMaster").on('click', '.Activeclass', function () {
+            $("#DriverId").val(t.row($(this).parent('td').parent('tr')).data()["DriverId"]);
+            var isactive = true;
+            $.ajax({
+                url: '@_webapiurl' + 'SchoolMaster/ActiveInactiveDriver?id=' + $("#DriverId").val() + "&Isactive=" + isactive + "&Remarks=",
+                type: 'POST',
+                headers: { 'Authorization': '@_tokan' },
+                contentType: "application/json; charset=utf-8",
+                success: function (data) {
+                    if (data.MegSts == "Ok") {
+                        t.draw();
+                        //$(".alert-danger").hide();
+                        //$(".alert-success").text("Employee Activated sucessfully.");
+                        //$('.alert-success').fadeIn('fast').delay(2000).fadeOut('slow');
+                        window.location.href = "/SchoolMasterData/Driver";
+                    }
+                    else {
+                        $(".alert-success").hide();
+                        $(".alert-danger").text("Error in activing Driver.");
+                        $('.alert-danger').fadeIn('fast').delay(2000).fadeOut('slow');
+                    }
+                },
+                statusCode: {
+                    404: function (content) { alert('cannot find resource'); },
+                    500: function (content) { alert('internal server error'); }
+                },
+                error: function (req, status, errorObj) {
+                    // handle status === "timeout"
+                    // handle other errors
+                }
+            });
+        });
+        $('#tblDriverMaster').destroy;
+
+        var t = $('#tblDriverMaster').DataTable(
+    {
+        "processing": true,
+        "ajax": {
+            url: '@_webapiurl' + 'SchoolMaster/DriverGetAll',
+            type: "GET",
+            headers: { 'Authorization': '@_tokan' },
+            dataSrc: '',
+        },
+        "columns": [
+            { "data": null },
+            { "data": "DriverId" },
+            { "data": "DriverName" },
+            { "data": "PresentAddress" },
+            { "data": "PermanentAddress" },
+            { "data": "DateofBirth" },
+            { "data": "PhoneNo" },
+            { "data": "VehicleNo" },
+            { "data": "LicenseNumber" },
+            { "data": "IsActive" },
+            { "data": "DriverPhoto" }
+
+        ],
+        "columnDefs": [
+            {
+                "targets": [1, 3, 4, 5, 8,9,10],
+                "visible": false
+            },
+            {
+                "targets": 11,
+                "data": null,
+                "render": function (data, type, full, meta) {
+                   if ('@obj.CanEdit.ToString()' == 'True') {
+                            if (data.IsActive == true) {
+                                data = "<a class='editclass btn btn-xs blue tooltips' title='Edit'><i class='fa fa-edit'></i></a><a class='Inactiveclass btn btn-xs blue tooltips' title='Blacklist'><i class='fa fa-times'></i></a>";
+                            }
+                            else {
+                                data = "<a class='editclass btn btn-xs blue tooltips' title='Edit'><i class='fa fa-edit'></i></a><a class='Activeclass btn btn-xs blue tooltips' title='Remove Blacklist'><i class='fa fa-check'></i></a>";
+                            }
+                        }
+                        else {
+                            data = "";
+                        }
+                    return data;
+                }
+            },
+             {
+                 "searchable": false,
+                 "orderable": false,
+                 "targets": 0
+             }
+        ],
+        "order": [[1, 'asc']],
+    }
+    );
+        t.on('order.dt search.dt', function () {
+            t.column(0, { search: 'applied', order: 'applied' }).nodes().each(function (cell, i) {
+                cell.innerHTML = i + 1;
+            });
+        }).draw();
+
+        $("#AddDriver").on('click', function () {
+            frmClear();
+            $("#AddDriver").attr("data-toggle", "modal");
+            $("#AddDriver").attr("data-target", "#frmpopup");
+        });
+        $("#tblDriverMaster").on('click', '.editclass', function () {
+            $("#DriverName").removeClass('field_error');
+            $("#PhoneNo").removeClass('field_error');
+            $("#PresentAddress").removeClass('field_error');
+            $("#PermanentAddress").removeClass('field_error');
+            $("#DateofBirth").removeClass('field_error');
+            $("#LicenseNumber").removeClass('field_error');
+            $("#VehicleId").removeClass('field_error');
+            $("#DriverId").val(t.row($(this).parent('td').parent('tr')).data()["DriverId"]);
+            $("#DriverName").val(t.row($(this).parent('td').parent('tr')).data()["DriverName"]);
+            $("#PhoneNo").val(t.row($(this).parent('td').parent('tr')).data()["PhoneNo"]);
+            $("#PresentAddress").val(t.row($(this).parent('td').parent('tr')).data()["PresentAddress"]);
+            $("#PermanentAddress").val(t.row($(this).parent('td').parent('tr')).data()["PermanentAddress"]);
+            $("#DateofBirth").val(t.row($(this).parent('td').parent('tr')).data()["DateofBirth"]);
+            var DateOfBirth = t.row($(this).parent('td').parent('tr')).data()["DateofBirth"];
+            $("#DateofBirth").datepicker({ format: 'yyyy/mm/dd' });
+            $("#DateofBirth").datepicker('setDate', new Date(DateOfBirth));
+            $("#LicenseNumber").val(t.row($(this).parent('td').parent('tr')).data()["LicenseNumber"]);
+            $("#VehicleId").val(t.row($(this).parent('td').parent('tr')).data()["VehicleId"]);
+            $("#IsActive").val(t.row($(this).parent('td').parent('tr')).data()["IsActive"]);
+            var pathname = t.row($(this).parent('td').parent('tr')).data()["DriverPhoto"];
+            //alert(pathname);
+            $("#DriverPhoto").val(pathname);
+            if (pathname != "" && pathname != null) {
+                //alert('1');
+                //alert($('#profile_img').innerHTML);
+                //$('.fileinput-preview profile_img img').attr("src", "/UploadEmpPhoto/" + pathname);
+                $("#showimg").attr("src", "/UploadDriverPhoto/" + pathname);
+                //$('.fileinput-preview profile_img').append($("#showimg"));
+            }
+            else {
+                //alert('v');
+                //$('.fileinput-preview profile_img').innerHTML = '';
+                $("#showimg").attr("src", "/assets/images/avtar.png");
+                //$('.fileinput-preview profile_img').append($("#showimg"));
+            }
+            //fillVehicledll($("#VehicleId").val());
+            $(".editclass").attr("data-toggle", "modal");
+            $(".editclass").attr("data-target", "#frmpopup");
+        });
+        $("#PhoneNo").blur(function () {
+            var inputStr = $("#PhoneNo").val();
+            if (inputStr.length < 8) {
+                $("#spscnt").html("Please enter atleast 8 number.").show();
+                $("#PhoneNo").val("");
+                $("#PhoneNo").focus();
+                $("#PhoneNo").addClass('field_error');
+                //$("#spscnt").html("enter atleast 5 chars in the input box");
+            }
+            else {
+                $("#PhoneNo").removeClass('field_error');
+                $("#spscnt").hide();
+                return true;
+            }
+        });
+        $("#PhoneNo").keypress(function (e) {
+            $("#PhoneNo").removeClass('field_error');
+            if (e.which != 8 && e.which != 0 && (e.which < 48 || e.which > 57)) {
+                return false;
+            }
+            else {
+                return true;
+            }
+        });
+        $('#PhoneNo').bind('cut copy paste', function (e) {
+            e.preventDefault(); //disable cut,copy,paste
+        });
+        $("#DriverPhotoFile").change(function () {
+            var GetfileName = document.getElementById('DriverPhotoFile');
+            var selectedfile = GetfileName.files[0].size;
+            var rann = Date.now();
+
+
+            var filename = GetfileName.files[0].name;
+            var fname = filename.split('.')[0];
+            var ext = filename.split('.')[1];
+            var newname = fname + Date.now() + '.' + ext;
+            //alert(newname);
+
+
+
+            $("#DriverPhoto").val(newname);
+            var validFileSize = 1000 * 1024;
+            if (selectedfile > validFileSize) {
+                alert('Select File Between 0 to 1 MB.');
+                $(this).val("");
+                $("#showimg").attr("src", "/assets/images/avtar.png");
+                return false;
+            }
+            var allowedFiles = [".bmp", ".png", ".jpg", ".jpeg"];
+            var fileUpload = $("#DriverPhotoFile");
+            var regex = new RegExp("([a-zA-Z0-9\s_\\.\-:])+(" + allowedFiles.join('|') + ")$");
+            if (!regex.test(fileUpload.val().toLowerCase())) {
+                alert("Please upload files having extensions:" + allowedFiles.join(', ') + " only.");
+                $("#showimg").attr("src", "/assets/images/avtar.png");
+                return false;
+            }
+            var reader = new FileReader();
+            reader.onload = function (e) {
+                $('#showimg').attr('src', e.target.result)
+            };
+            reader.readAsDataURL(GetfileName.files[0]);
+        });
+        $("#btndriversubmit").click(function (event) {
+            if ($("#DriverName").val() == "") {
+                $("#DriverName").addClass('field_error');
+                $("#DriverName").focus();
+                event.preventDefault();//or return false
+                return false;
+            }
+            else {
+                $("#DriverName").removeClass('field_error');
+            }
+            if ($("#PhoneNo").val() == "") {
+                $("#PhoneNo").addClass('field_error');
+                $("#PhoneNo").focus();
+                event.preventDefault();//or return false
+                return false;
+            }
+            else {
+                $("#PhoneNo").removeClass('field_error');
+            }
+            if ($("#PresentAddress").val() == "") {
+                $("#PresentAddress").addClass('field_error');
+                $("#PresentAddress").focus();
+                event.preventDefault();//or return false
+                return false;
+            }
+            else {
+                $("#PresentAddress").removeClass('field_error');
+            }
+            if ($("#PermanentAddress").val() == "") {
+                $("#PermanentAddress").addClass('field_error');
+                $("#PermanentAddress").focus();
+                event.preventDefault();//or return false
+                return false;
+            }
+            else {
+                $("#PermanentAddress").removeClass('field_error');
+            }
+            if ($("#DateofBirth").val() == "") {
+                $("#DateofBirth").addClass('field_error');
+                $("#DateofBirth").focus();
+                event.preventDefault();//or return false
+                return false;
+            }
+            else {
+                $("#DateofBirth").removeClass('field_error');
+            }
+            if ($("#LicenseNumber").val() == "") {
+                $("#LicenseNumber").addClass('field_error');
+                $("#LicenseNumber").focus();
+                event.preventDefault();//or return false
+                return false;
+            }
+            else {
+                $("#LicenseNumber").removeClass('field_error');
+            }
+            if ($("#VehicleId").val() == "0" || $("#VehicleId").val() == "" || $("#VehicleId").val() == null) {
+                $(".divVehicleId").addClass('field_error');
+                $(".divVehicleId").focus();
+                event.preventDefault();//or return false
+                return false;
+            }
+            else {
+                $(".divVehicleId").removeClass('field_error');
+            }
+            var obj = {
+                DriverId: $('#DriverId').val(),
+                VehicleNo: $("#VehicleNo").val(),
+                DriverName: $("#DriverName").val(),
+                PresentAddress: $("#PresentAddress").val(),
+                PermanentAddress: $("#PermanentAddress").val(),
+                DateofBirth: $("#DateofBirth").val(),
+                PhoneNo: $("#PhoneNo").val(),
+                LicenseNumber: $("#LicenseNumber").val(),
+                VehicleId: $("#VehicleId").val(),
+                IsActive: $("#IsActive").val(),
+                DriverPhoto: $("#DriverPhoto").val()
+            };
+            if ($('#DriverId').val() == "0") {
+                $.ajax({
+                    type: "POST",
+                    headers: { 'Authorization': '@_tokan' },
+                    url: '@_webapiurl' + 'SchoolMaster/DriverCreate',
+                    data: JSON.stringify(obj),
+                    contentType: "application/json; charset=utf-8",
+                    dataType: "json",
+                    success: function (response) {
+                        if (response != null) {
+                            $("<div class='alert alert-success overlay'><label>Saved Successfully</label></div>").insertBefore(".portlet-body").fadeOut(3000);
+                            $('#tblDriverMaster').DataTable().ajax.reload();
+                            $('#frmpopup').modal('toggle');
+                            $("#frmupload").submit();
+                        } else {
+                            $("<div class='alert alert-danger overlay'><label>Error on save</label></div>").insertBefore(".portlet-body").fadeOut(3000);
+                            $('#tblDriverMaster').DataTable().ajax.reload();
+                            $('#frmpopup').modal('toggle');
+                        }
+                    },
+                    error: function (response) {
+                        if (response != null) {
+                            var obj = JSON.parse(response.responseText);
+                            if (obj.MegSts == 'error') {
+                                $("<div class='alert alert-danger overlay'><label>" + obj.Meg + "</label></div>").insertBefore(".portlet-body").fadeOut(3000);
+                                $('#tblDriverMaster').DataTable().ajax.reload();
+                                $('#frmpopup').modal('toggle');
+                            }
+                        }
+                    }
+                });
+            } else {
+                $.ajax({
+                    type: "POST",
+                    headers: { 'Authorization': '@_tokan' },
+                    url: '@_webapiurl' + 'SchoolMaster/DriverUpdate',
+                    data: JSON.stringify(obj),
+                    contentType: "application/json; charset=utf-8",
+                    dataType: "json",
+                    success: function (response) {
+                        if (response != null) {
+                            $("<div class='alert alert-success overlay'><label>Updated Successfully</label></div>").insertBefore(".portlet-body").fadeOut(3000);
+                            $('#tblDriverMaster').DataTable().ajax.reload();
+                            $('#frmpopup').modal('toggle');
+                            $("#frmupload").submit();
+                        } else {
+                            $("<div class='alert alert-danger overlay'><label>Error on updation</label></div>").insertBefore(".portlet-body").fadeOut(3000);
+                            $('#tblDriverMaster').DataTable().ajax.reload();
+                            $('#frmpopup').modal('toggle');
+                        }
+                    }
+                });
+            }
+        });
+    });
+    function fillVehicledll(selectedVehicleid) {
+        $('#VehicleId').empty();
+        $.ajax(
+         {
+             type: "GET",
+             headers: { 'Authorization': '@_tokan' },
+             url: '@_webapiurl' + "/SchoolMaster/GetAllActiveVehicle",
+             contentType: "application/json; charset=utf-8",
+             dataType: "json",
+             beforeSend: function () {
+             },
+             success: function (data) {
+                 if (data.isRedirect) {
+                     window.location.href = data.redirectUrl;
+                 }
+                 $("#VehicleId").append("<option value='0'>Select Vehicle</option>");
+                 for (var x = 0; x < data.length; x++) {
+                     $("#VehicleId").append("<option value=" + data[x].VehicleId + ">" + data[x].VehicleNo + "</option>");
+                 }
+                 $("#VehicleId option[value = '" + selectedVehicleid + "' ]").prop('selected', true);
+             },
+             error: function (jqXHR, ajaxOptions, thrownError) {
+                 if (jqXHR.status == 500) { //InternalServerError = 500,
+                     toastr.error("InternalServerError");
+                 } else if (jqXHR.status == 400) { //BadRequest = 400,
+                     toastr.error("BadRequest");
+                 } else if (jqXHR.status == 401) {
+                     window.location.href = "/PayTime/LoginPage";
+                 }
+             }
+         });
+    }
+    function frmClear() {
+        $("#DriverId").val(0);
+        $("#VehicleId").val(0);
+        $("#DriverName").val("");
+        $("#DriverName").attr("placeholder", "Enter Driver name");
+        $("#DriverName").removeClass('field_error');
+        $("#PresentAddress").val("");
+        $("#PresentAddress").attr("placeholder", "Enter Present Address");
+        $("#PresentAddress").removeClass('field_error');
+        $("#PermanentAddress").val("");
+        $("#PermanentAddress").attr("placeholder", "Enter Permanent Address");
+        $("#PermanentAddress").removeClass('field_error');
+        $("#PhoneNo").val("");
+        $("#PhoneNo").attr("placeholder", "Enter Contact Number");
+        $("#PhoneNo").removeClass('field_error');
+        $("#DateofBirth").attr('data-date', Date.now);
+        $("#DateofBirth").val("");
+        $("#LicenseNumber").val("");
+        $("#LicenseNumber").attr("placeholder", "Enter License Number");
+        $("#LicenseNumber").removeClass('field_error');
+        $("#showimg").attr("src", "/assets/images/avtar.png");
+    }
+</script>
+
+<div class="page-bar">
+    <ul class="page-breadcrumb">
+        <li>
+            <a href="/School/AdminDashboard">Home</a>
+            <i class="fa fa-circle"></i>
+        </li>
+        <li>
+            <span>Driver</span>
+        </li>
+    </ul>
+    <div class="page-toolbar">
+        @if (obj.CanAdd && Convert.ToInt32(Session["IsSchool"]) == 1)
+        {
+            <div class="">
+                <a href="#" id="AddDriver" class="btn btn-sm blue" style="float:right"> <i class="fa fa-plus"></i> Add Driver</a>
+            </div>
+        }
+
+    </div>
+</div>
+<h1 class="page-title">
+    <small></small>
+</h1>
+@if (obj.CanView && Convert.ToInt32(Session["IsSchool"]) == 1)
+{
+    <div class="row">
+        <div class="col-md-12">
+            <div class="portlet ">
+                <div class="portlet-body">
+                    <div>
+                        <table id="tblDriverMaster" class="table table-striped table-bordered table-hover table-checkable order-column">
+                            <thead>
+                                <tr>
+                                    <th>Sr. No</th>
+                                    <th hidden>Driver ID</th>
+                                    <th>Name</th>
+                                    <th hidden>Present Address</th>
+                                    <th hidden>Permanent Address</th>
+                                    <th hidden>Date Of Birth</th>
+                                    <th>ContactNo</th>
+                                    <th>Vehicle No</th>
+                                    <th hidden>License Number</th>
+                                    <th hidden>Is Active</th>
+                                    <th hidden>Driver Photo</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                        </table>
+                    </div>
+                    <div id="frmpopup" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+                        <div class="modal-dialog">
+                            <!-- Modal content-->
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                                    <h4 class="modal-title">Driver</h4>
+                                </div>
+                                <div class="modal-body">
+                                    <div class="row">
+                                        <div class="col-md-6">
+                                            <fieldset>
+                                                <div class="form-group">
+                                                    <label class=" control-label">
+                                                        @Html.Hidden("DriverId")
+                                                        @Html.Hidden("IsActive", true)
+                                                        Name <span class="required" aria-required="true"> * </span>
+                                                    </label>
+
+                                                    <div class="editor-field">
+                                                        @Html.Editor("DriverName", new { htmlAttributes = new { @class = "form-control input-sm", @maxlength = "70" } })
+
+                                                    </div>
+                                                </div>
+                                                <div class="form-group">
+                                                    <label class=" control-label">
+                                                        Present Address <span class="required" aria-required="true"> * </span>
+                                                    </label>
+
+                                                    <div class="editor-field">
+                                                        <textarea id="PresentAddress" class="form-control input-sm" name="PresentAddress" rows="5" placeholder="Enter Present Address" maxlength="150" onkeyup="this.value = this.value.replace(/[<>]/g, '').replace(/\//g, '')"></textarea>
+                                                    </div>
+                                                </div>
+                                                <div class="form-group">
+                                                    <label class=" control-label">
+                                                        Date of birth <span class="required" aria-required="true"> * </span>
+                                                    </label>
+
+                                                    <div class="input-group input-group-sm date date-picker" data-date="@DateTime.Now" data-date-format="yyyy/mm/dd" data-date-viewmode="years" data-date-end-date="0d">
+                                                        <span class="input-group-btn">
+                                                            <button class="btn default" type="button">
+                                                                <i class="fa fa-calendar"></i>
+                                                            </button>
+                                                        </span>
+                                                        <input type="text" placeholder="YYYY/MM/DD" class="form-control" id="DateofBirth" name="DateofBirth" required="">
+                                                    </div>
+                                                </div>
+                                                <div class="form-group">
+                                                    <label class=" control-label">
+                                                        License Number <span class="required" aria-required="true"> * </span>
+                                                    </label>
+
+                                                    <div class="editor-field">
+                                                        <input class="form-control input-sm" id="LicenseNumber" maxlength="30"
+                                                               name="LicenseNumber" type="text" value="" onkeyup="this.value = this.value.replace(/[<>]/g, '').replace(/\//g, '')">
+                                                    </div>
+                                                </div>
+                                            </fieldset>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <fieldset>
+                                                <div class="form-group">
+                                                    <label class=" control-label">
+                                                        Contact Number <span class="required" aria-required="true"> * </span>
+                                                    </label>
+
+                                                    <div class="editor-field">
+                                                        @Html.Editor("PhoneNo", new { htmlAttributes = new { @class = "form-control input-sm", @maxlength = "15" } })
+                                                        <span class="help-block" hidden id="spscnt" style="color:red;"></span>
+                                                    </div>
+                                                </div>
+                                                <div class="form-group">
+                                                    <label class=" control-label">
+                                                        Permanent Address <span class="required" aria-required="true"> * </span>
+                                                    </label>
+
+                                                    <div class="editor-field">
+                                                        <textarea id="PermanentAddress" class="form-control input-sm" name="PermanentAddress" rows="5" placeholder="Enter Permanent Address" maxlength="150" onkeyup="this.value = this.value.replace(/[<>]/g, '').replace(/\//g, '')"></textarea>
+                                                    </div>
+                                                </div>
+                                                <div class="form-group">
+                                                    <label class=" control-label">
+                                                        Vehicle Number <span class="required" aria-required="true"> * </span>
+                                                    </label>
+
+                                                    <div class="editor-field divVehicleId">
+                                                        @Html.DropDownList("VehicleId", new SelectList(new[] { "" }), "Select Vehicle", new { @class = "form-control input-sm" })
+                                                    </div>
+                                                </div>
+                                                <div class="form-group">
+                                                    <form id="frmupload" method="post" action="UploadDriverphoto" enctype="multipart/form-data">
+                                                        <div class="form-group text-center">
+                                                            <label>Photo</label>
+                                                            <div>
+                                                                <div class="fileinput fileinput-new">
+                                                                    <div class="fileinput-preview profile_img">
+                                                                        <img id="showimg" src="" />
+                                                                    </div>
+                                                                    <div class=" text-center margin-top-10">
+                                                                        <span class="btn blue  btn-sm btn-file">
+                                                                            <span class="fileinput-new btn-block"> Select image </span>
+                                                                            <span class="fileinput-exists"> Change </span>
+                                                                            <input type="file" name="DriverPhotoFile" id="DriverPhotoFile" value="">
+                                                                            <input type="hidden" id="DriverPhoto" name="DriverPhoto">
+                                                                        </span>
+                                                                        <a href="javascript:;" class="btn red fileinput-exists btn-sm" data-dismiss="fileinput"> Remove </a>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </form>
+                                                </div>
+                                                <span class="help-block" style="color:red;" hidden id="spvalidation"></span>
+                                                <div class="form-group">
+                                                    <button type="button" class=" btn btn-sm blue" id="btndriversubmit" style="float:right"> <i class="fa fa-check"></i> Save</button>
+                                                </div>
+                                            </fieldset>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="frmInactivedr" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+                        <div class="modal-dialog  ">
+                            <!-- Modal content-->
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                                    <h4 class="modal-title">Inactive Driver</h4>
+                                </div>
+                                <div class="modal-body">
+                                    <fieldset>
+                                        <div class="row">
+                                            <div class="col-md-12">
+                                                <div class="form-group">
+                                                    <label>Reason<span class="required" aria-required="true"> * </span></label>
+                                                    <textarea class="form-control" rows="4" name="Remarks" id="Remarks" placeholder="Reason" maxlength="150" onkeyup="this.value = this.value.replace(/[<>]/g, '').replace(/\//g, '')"></textarea>
+                                                </div>
+                                                <div class="form-group form-group col-md-12 text-right">
+                                                    <button type="submit" class=" btn btn-sm blue" id="btnIactivesubmit"> <i class="fa fa-check"></i> Save</button>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                    </fieldset>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    <span style="color:red">Unauthorized Access.</span>
+}

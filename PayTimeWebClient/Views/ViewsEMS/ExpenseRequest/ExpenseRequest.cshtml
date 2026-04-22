@@ -1,0 +1,3242 @@
+﻿@*@model PayTimeWebClient.Models.Employees*@
+@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@using System.Configuration;
+@using EMSWebClient;
+@{
+    ViewBag.Title = "ExpenseRequest";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    string _Message = ViewBag.msg;
+    string _error = ViewBag.error;
+    //string _flgempover = ViewBag.flgempover;
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    int _UserId = Convert.ToInt32(HttpContext.Current.Session["UserId"]);
+    int _cmpid = Convert.ToInt32(HttpContext.Current.Session["CompanyId"]);
+    //int _islimit = ViewBag.Islimit;
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiEMSURL = ConfigurationManager.AppSettings["WebApiEMS"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    string _accountcd = HttpContext.Current.Session["cmpcode"].ToString();
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+
+    string _companyid = "0";
+    string _empid = "0";
+    string _empName = "0";
+
+    if (_RoleId != 1 && _RoleId != 6805 && _RoleId != 6806)
+    {
+        _empid = HttpContext.Current.Session["EmpId"].ToString();
+        _empName = HttpContext.Current.Session["EmpName"].ToString();
+
+    }
+    string _branchid = "0";
+    if (_RoleId == 6805)
+    {
+        _companyid = HttpContext.Current.Session["ClientCompanyId"].ToString();
+    }
+    if (_RoleId == 6806)
+    {
+        _companyid = HttpContext.Current.Session["ClientCompanyId"].ToString();
+        _branchid = HttpContext.Current.Session["BranchId"].ToString();
+    }
+
+    string _isdateformat = HttpContext.Current.Session["IsDateFormat"].ToString();
+    string _UserImg = HttpContext.Current.Session["photo"].ToString();
+    //if (_flgempover == "true")
+    //{
+    //    obj.CanAdd = false;
+
+    //}
+    string _CountryCode = HttpContext.Current.Session["CountryCode"].ToString();
+    string _AreaCode = HttpContext.Current.Session["AreaCode"].ToString();
+    string _dbName = HttpContext.Current.Session["DbName"].ToString();
+    string _isPlanId = HttpContext.Current.Session["planId"].ToString();
+    int _amount = 0;
+
+    string isClientDBMatchFlag = HttpContext.Current.Session["IsClientDBMatch"] != null
+? HttpContext.Current.Session["IsClientDBMatch"].ToString()
+: "false"; // Default to "false" if the session is null
+}
+
+<script src="/Newlayout/js/uploadfile-script.js"></script>
+<link href="/Newlayout/css/payrollstructure.css" rel="stylesheet">
+<link href="/Newlayout/css/emsstructure.css" rel="stylesheet">
+<script src="~/Newlayout/js/sweet_alert_payroll.js"></script>
+<script src="~/Scripts/Helpers/noDataHandler.js"></script>
+
+<style type="text/css">
+    .policymodal_block {
+        position: fixed;
+        top: 0px;
+        left: 0px;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 11111;
+    }
+
+        .policymodal_block .modal_box {
+            position: relative;
+            width: 80%;
+            height: calc(100vh - 40px);
+            margin: 20px auto 20px auto;
+            background: #fff;
+            border-radius: 8px !important;
+            overflow: hidden;
+        }
+
+    .closeModal {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        background: #ffffff;
+        font-size: 20px;
+        border: none;
+        border-radius: 3px !important;
+        width: 30px;
+        height: 30px;
+    }
+
+    .user_img {
+        width: 25px;
+        height: 25px;
+        border-radius: 50%;
+        object-fit: cover;
+        vertical-align: middle;
+    }
+
+    .avatar-initials {
+        display: none;
+        min-width: 24px;
+        height: 24px;
+        line-height: 24px;
+        text-align: center;
+        background-color: #ecf3ff;
+        color: #295097;
+        border-radius: 50% !important;
+        border: 1px solid #8ab1f7;
+        font-size: 10px;
+        font-weight: 500;
+    }
+
+    .custom-timeline-box .timeline-list .custom-timeline li .timeline-badge.custStatus_Approved {
+        border-color: #1D8B3C; /* green */
+    }
+
+    .custom-timeline-box .timeline-list .custom-timeline li .timeline-badge.custStatus_Declined {
+        border-color: #b10a0a; /* red */
+    }
+
+    .custom-timeline-box .timeline-list .custom-timeline li .timeline-badge.custStatus_OnHold {
+        border-color: #FE7A00; /* orange */
+    }
+
+    .custom-timeline-box .timeline-list .custom-timeline li .timeline-badge.custStatus_Pending {
+        border-color: firebrick; /* Soft gray */
+    }
+
+    .zoom-image {
+        border-radius: 50%;
+        width: 54px;
+        height: 54px;
+        object-fit: cover;
+        transition: transform 0.5s ease-in-out;
+        cursor: zoom-in;
+    }
+
+        .zoom-image:hover {
+            transform: scale(2.5);
+            z-index: 10;
+            position: relative;
+        }
+
+    .ui-widget-content {
+        height: 200px;
+        overflow-y: auto;
+    }
+</style>
+
+<script type="text/javascript">
+    var isdateformat1 = '@_isdateformat';
+    var isValid = false;
+    var _NewEmpID = "@_empid";
+    var _NewEmpName = "@_empName";
+    var empid = "";
+    var empIds = [];
+    var empids = "";
+    var empname = "";
+    var empNames = [];
+    var delay = 2000;
+    var empPhotos = [];
+    $(document).ready(function () {
+
+        getExpenseRequest();
+        fillStatedll();
+        fillTrip();
+        fillCategoryList('.TripCategory');
+        updateTotalAmount();
+        fileNamearray = [];
+        var isDateformat = "yyyy-mm-dd";
+        var delay = 1000;
+        $('#State').on('change', function () {
+            fillCitydll();
+        });
+        $('#TravelID').on('change', function () {
+            fillTripselected();
+        });
+        $("#tblExpenseRequest tfoot th").each(function (index) {
+            // Adjust these index numbers based on your table
+            if (index === 8 || index === 9) {
+                $(this).html(''); // No input
+            } else {
+                $(this).html('<input type="text" class="search_input" placeholder="Search" /><i class="clm-search"></i>');
+            }
+        });
+
+        $("#btnSaveDraft").on('click', function () {
+            $("#ExpenseType").val(1)
+            addExpenseForEmployeeRequest();
+        });
+
+        $("#btnclose").on('click', function () {
+            frmClear();
+            frmClearexpensedata();
+            frmCleartraveldata();
+            window.location.reload();
+        });
+
+
+        $("#btn_cancel").on('click', function () {
+            frmClear();
+            frmClearexpensedata();
+            frmCleartraveldata();
+            window.location.reload();
+        });
+        $('#ExpDesc,#EMPwith,#ExTitle').keydown(function (e) {
+            if (this.value.length === 0 && e.which === 32) e.preventDefault();
+        });
+        window.pressed = function () {
+            var a = document.getElementById('FileUpload');
+            if (a.value == "") {
+                fileLabel.innerHTML = "";
+            }
+            else {
+                var theSplit = a.value.split('\\');
+                fileLabel.innerHTML = theSplit[theSplit.length - 1];
+            }
+        };
+
+        function formatDate(dateString) {
+            const dateFormat = "@_isdateformat";
+            if (!dateString) return "";
+
+            const inputFormats = [
+                moment.ISO_8601,
+                "DD/MM/YYYY", "DD-MM-YYYY",
+                "MM/DD/YYYY", "MM-DD-YYYY",
+                "YYYY/MM/DD", "YYYY-MM-DD",
+                "DD-MMM-YYYY", "MMM-DD-YYYY",
+                "YYYY-MMM-DD", "YYYY/MMM/DD"
+            ];
+
+            let parsedDate = moment(dateString, inputFormats, true);
+            if (!parsedDate.isValid()) return "";
+            switch (dateFormat) {
+                case "dd-M-yyyy":
+                    return parsedDate.format("DD-MMM-YYYY");
+                case "dd-mm-yyyy":
+                    return parsedDate.format("DD-MM-YYYY");
+                case "M-dd-yyyy":
+                    return parsedDate.format("MMM-DD-YYYY");
+                case "mm-dd-yyyy":
+                    return parsedDate.format("MM-DD-YYYY");
+                case "yyyy-M-dd":
+                    return parsedDate.format("YYYY-MMM-DD");
+                case "yyyy-mm-dd":
+                    return parsedDate.format("YYYY-MM-DD");
+                default:
+                    return parsedDate.format("YYYY-MM-DD");
+            }
+        }
+
+
+        //model close
+        var UploadExpensedatalist = [];
+        $("#tblExpenseRequest").on('click', '.clm_view_btn', function () {
+            $("#ExpView").hide();
+            $("#ExpenseRequestDetails").hide();
+            $("#ExpRequest").hide();
+            $("#closebtn").show();
+            $("#TripView_Details").show();
+            $("#ExpRequest_modal").hide();
+            var selectedRow = $(this).closest("tr");
+            var expId = selectedRow.find(".expId").text();
+            $("#expenseReqID").val(expId);
+            ExpenId = $("#expenseReqID").val();
+            var totalExpenseAmount = 0;
+
+            $.ajax({
+                url: '@_webapiEMSURL' + 'ExpenseRequestMaster/QuickExpeseRequestGetByID?ExpenId=' + ExpenId,
+                contentType: "application/json; charset=utf-8",
+                headers: { 'Authorization': '@_tokan' },
+                data: JSON.stringify(),
+                dataType: "json",
+                type: "GET",
+                contentType: "application/json; charset=utf-8",
+                success: function (data) {
+                    if (data.length > 0) {
+                        var firstItem = data[0];
+                        // Get first policy item
+                        var policyItem = firstItem.ExpensePolicyDetailsList && firstItem.ExpensePolicyDetailsList.length > 0
+                            ? firstItem.ExpensePolicyDetailsList[0]
+                            : null;
+
+                        //  Check if policy code starts with "TRP"
+                        if (policyItem && policyItem.ExpePolicyReqCode && policyItem.ExpePolicyReqCode.toUpperCase().startsWith("TRP")) {
+                            $(".details").show();
+                        } else {
+                            $(".details").hide();
+                        }
+
+                        var startdate = firstItem.Expensedate;
+                        var formattedStartDate = formatDate(startdate);
+                        $('#expenseid').html(firstItem.ExpenseReqCode);
+                        $('#location').html(firstItem.Location);
+                        var expensedate = new Date(firstItem.Expensedate);
+                        var formattedDate = expensedate.toISOString().split('T')[0]; // Convert to ISO format
+                        $('#expdate').html(formattedStartDate);
+                        $('#withemp').html(firstItem.WithEmployee);
+                        $('#expdesc').html(firstItem.Description || firstItem.TripPurpose);
+
+                        $('#_Pemp_name').html(firstItem.EmpName);
+
+                        if (firstItem.UploadTripDepartList?.length > 0) {
+                            $('.expense_bill_lines').empty();
+                            firstItem.UploadTripDepartList.forEach(function (uploadItem) {
+                                var row = $('<div class="row margin-bottom-10"></div>');
+                                row.html(`
+                                <div class="col-sm-3 col-xs-6">
+                                    <div class="mb-0 expense_value" id="ClientNameDateView">${uploadItem.ClientName}</div>
+                                </div>
+                                <div class="col-sm-2 col-xs-6">
+                                    <div class="mb-0 expense_value" id="DepartureDateView">${formatDate(uploadItem.DepartureDate.split("T")[0])}</div>
+                                </div>
+                                <div class="col-sm-3 col-xs-6">
+                                    <div class="mb-0 expense_value" id="DepartFormDateView">${uploadItem.DepartForm}</div>
+                                </div>
+                                <div class="col-sm-3 col-xs-6">
+                                    <div class="mb-0 expense_value" id="DestinationDateView">${uploadItem.Destination}</div>
+                                </div>
+                                    `);
+                                $('.expense_bill_lines').append(row);
+                            });
+                        }
+
+                        //function toJsDate(dateStr) {
+                        //    if (!dateStr) return null;
+                        //    dateStr = dateStr.replace(/\//g, "-");
+                        //    const parts = dateStr.split("-");
+
+                        //    if (parts.length !== 3) return null;
+
+                        //    let day, month, year;
+
+                        //    // Detect YYYY-MM-DD
+                        //    if (parts[0].length === 4) {
+                        //        year = parts[0];
+                        //        month = parts[1];
+                        //        day = parts[2];
+                        //    }
+                        //    // Detect DD-MM-YYYY vs MM-DD-YYYY
+                        //    else {
+                        //        const p1 = parseInt(parts[0], 10); // Could be day or month
+                        //        const p2 = parseInt(parts[1], 10); // Could be month or day
+                        //        const p3 = parseInt(parts[2], 10); // Must be year
+
+                        //        year = parts[2];
+
+                        //        // If first part >12 then MUST be day
+                        //        if (p1 > 12) {
+                        //            day = parts[0];
+                        //            month = parts[1];
+                        //        }
+                        //        // If second part >12 then MUST be day
+                        //        else if (p2 > 12) {
+                        //            day = parts[1];
+                        //            month = parts[0];
+                        //        }
+                        //        // If ambiguous (both ≤12), assume MM-DD-YYYY or choose your preference
+                        //        else {
+                        //            // ⚠ Choose MM-DD-YYYY as default
+                        //            month = parts[0];
+                        //            day = parts[1];
+                        //        }
+                        //    }
+
+                        //    // Return JS Date
+                        //    return new Date(`${year}-${month}-${day}`);
+                        //}
+
+
+
+
+                        var expenseId = firstItem.ExpenseID;
+
+                        var tripStart = sessionStorage.getItem('TripStartDate_' + expenseId);
+                        var tripEnd = sessionStorage.getItem('TripEndDate_' + expenseId);
+                        //var formattedStartDate = formatDate(tripStart);
+                        //var formattedEndDate = formatDate(tripEnd);
+                        //var startDateJs = toJsDate(tripStart);
+                        //var endDateJs = toJsDate(tripEnd);
+                        //var durationInDays = Math.ceil((endDateJs - startDateJs) / (1000 * 60 * 60 * 24));
+
+                        $('#TripDuration').html(
+                            'Trip: ' + tripStart + ' to ' + tripEnd
+                        );
+
+
+
+
+                        var dateStrArray = [];
+                        var dateTimeStrArray = [];
+                        for (var i = 0; i < dateStrArray.length; i++) {
+                            var dateTimeStr = dateStrArray[i] + "T00:00:00";
+                            dateTimeStrArray.push(dateTimeStr);
+                        }
+
+                        if (firstItem.UploadExpensedatalist.length > 0) {
+                            $('.expense_bill_line').empty();
+                            for (var i = 0; i < firstItem.UploadExpensedatalist.length; i++) {
+                                var uploadItem = firstItem.UploadExpensedatalist[i];
+
+                                var row = $('<div class="row margin-bottom-10"></div>');
+
+                                totalExpenseAmount += uploadItem.ExpenseAmount;
+                                var innerHTML =
+                                    '<div class="col-sm-3 col-xs-6">' +
+                                    '<div class="mb-0 expense_value" id="exptitle">' + uploadItem.CategoryName + '</div>' +
+                                    '</div>' +
+                                      '<div class="col-sm-2 col-xs-6">' +
+                                    '<div class="mb-0 expense_value" id="expcatamount">' + uploadItem.ExpenseAmount + '</div>' +
+                                    '</div>' +
+                                    '<div class="col-sm-3 col-xs-6">' +
+                                    '<div class="mb-0 expense_value" id="exptitle">' + uploadItem.UploadfileTitle + '</div>' +
+                                    '</div>' +
+
+                                    '<div class="col-sm-3 col-xs-6">' +
+                                    '<input type="hidden" id="Filepath" class="Filepath" name="Filepath" value="' + uploadItem.Filepath + '" />' +
+                                    '<input type="hidden" id="docid" class="docid" name="docid" value="' + uploadItem.DocuID + '" />' +
+                                    '<input type="hidden" id="downloadRecipt"  class="downloadRecipt" name="downloadRecipt" value="' + uploadItem.FileName + '" />' +
+                                    '<div class="mb-0 expense_value font-blue"><a href="javascript:;" id="downRecipt">Attachment <img class="tooltips" src="/assets/images/download_icon.svg" height="16" width="18" data-placement="top" data-original-title="Download Receipts" alt="download icon"></a></div>' +
+                                    '</div>';
+
+                                row.html(innerHTML);
+
+                                $('.expense_bill_line').append(row);
+
+                                fileNamearray.push(uploadItem.FileName);
+                                $('.amt_total span').html(totalExpenseAmount.toFixed(2));
+                            }
+                        }
+                        if (firstItem.ExpenseStatusList.length > 0) {
+                            var uploadItem = firstItem.ExpenseStatusList[0];
+                            $('#App1_name').html(uploadItem.ApproverLevel1Name);
+                            $('#App2_name').html(uploadItem.ApproverLevel2Name);
+                            $('#App3_name').html(uploadItem.ApproverLevel3Name);
+                            $('#App4_name').html(uploadItem.ApproverLevel4Name);
+                            $('#ApprovalLevel1ID').html(uploadItem.ApprovalLevel1ID);
+                            $('#ApprovalLevel2ID').html(uploadItem.ApprovalLevel2ID);
+                            $('#ApprovalLevel3ID').html(uploadItem.ApprovalLevel3ID);
+
+                            if (uploadItem.ApproverLevel1Photo != "") {
+                                //$('#app1_photo').attr('src', '/UploadEmpPhoto/' + uploadItem.ApproverLevel1Photo);
+                                $('#app1_photo').html(generateApproverAvatarHTML(
+                                    uploadItem.ApproverLevel1Name,
+                                    '',
+                                    uploadItem.ApproverLevel1Photo
+                                ));
+
+                            }
+                            else {
+                                $('#app1_photo').html(generateApproverAvatarHTML(
+                                    uploadItem.ApproverLevel1Name,
+                                    '',
+                                    uploadItem.ApproverLevel1Photo
+                                ));
+                            }
+
+                            if (uploadItem.ApproverLevel2Photo != "") {
+                                $('#app2_photo').html(generateApproverAvatarHTML(
+                                    uploadItem.ApproverLevel2Name,
+                                    '',
+                                    uploadItem.ApproverLevel2Photo
+                                ));
+                            }
+                            else {
+                                $('#app2_photo').html(generateApproverAvatarHTML(
+                                    uploadItem.ApproverLevel2Name,
+                                    '',
+                                    uploadItem.ApproverLevel2Photo
+                                ));
+                                //$('#app2_photo').attr({
+                                //    'class': 'img-circle',
+                                //    'height': '20px',
+                                //    'width': '20px',
+                                //    'src': '/assets/images/avtar.png'
+                                //});
+                            }
+
+                            if (uploadItem.ApproverLevel3Photo != "") {
+                                //$('#app3_photo').attr('src', '/UploadEmpPhoto/' + uploadItem.ApproverLevel3Photo);
+                                $('#app3_photo').html(generateApproverAvatarHTML(
+                                    uploadItem.ApproverLevel3Name,
+                                    '',
+                                    uploadItem.ApproverLevel3Photo
+                                ));
+                            }
+                            else {
+                                $('#app3_photo').html(generateApproverAvatarHTML(
+                                    uploadItem.ApproverLevel3Name,
+                                    '',
+                                    uploadItem.ApproverLevel3Photo
+                                ));
+                            }
+
+
+                            //$('#app2_photo').attr('src', '/UploadEmpPhoto/' + uploadItem.ApproverLevel2Photo);
+                            //$('#app3_photo').attr('src', '/UploadEmpPhoto/' + uploadItem.ApproverLevel3Photo);
+                            // $('#app4_photo').attr('src', '/PayTimeWebClient/UploadEmpPhoto/' + uploadItem.ApproverLevel1Photo);
+
+
+                            //        <img src="/assets/images/avtar.png" id="app4_photo" alt="UserImage" width="20" height="20">
+
+                            updateApprovalStatus(uploadItem.ApprovalStatus1, '#app1_status');
+                            updateApprovalStatus(uploadItem.ApprovalStatus2, '#app2_status');
+                            updateApprovalStatus(uploadItem.ApprovalStatus3, '#app3_status');
+                            updateApprovalStatus(uploadItem.ApprovalStatus4, '#app4_status');
+
+
+                            var _UserImg = '@_UserImg'; // Retrieving the value from server-side
+
+                            var userImage = document.getElementById('user_image');
+                            if (_UserImg.trim() !== "") {
+                                userImage.src = '/UploadEmpPhoto/' + _UserImg;
+                            }
+                            else
+                            {
+
+                                userImage.src = '/assets/images/avtar.png';
+                                //var maxWords = 70;
+                                var maxWords = 250;
+
+                                // Assuming uploadItem.Approval1Reason contains the approval reason
+                                var truncatedApproval1Reason = truncateApprovalReason(uploadItem.Approval1Reason, maxWords);
+                                var truncatedApproval2Reason = truncateApprovalReason(uploadItem.Approval2Reason, maxWords);
+                                var truncatedApproval3Reason = truncateApprovalReason(uploadItem.Approval3Reason, maxWords);
+                                var truncatedApproval4Reason = truncateApprovalReason(uploadItem.Approval4Reason, maxWords);
+
+                                // Display the truncated approval reason
+                                $('#_approval1Reason').html(truncatedApproval1Reason);
+                                $('#_approval2Reason').html(truncatedApproval2Reason);
+                                $('#_approval3Reason').html(truncatedApproval3Reason);
+                                $('#_approval4Reason').html(truncatedApproval4Reason);
+                            }
+                            updateTimelineProgress();
+                        }
+
+                        function updateApprovalStatus(status, selector) {
+                            switch (status) {
+                                case 'Drafted':
+                                    $(selector).removeClass('grey_font green_font red_font blue_font orange_font').addClass('orange_font').text('Drafted');
+                                    break;
+                                case 'Submit':
+                                    $(selector).removeClass('orange_font grey_font green_font red_font blue_font yellow_font').addClass('blue_font').text('Submit');
+                                    break;
+                                case 'Pending':
+                                    $(selector).removeClass('orange_font green_font').addClass('grey_font').text('Pending');
+                                    break;
+                                case 'Approved':
+                                    $(selector).removeClass('orange_font grey_font').addClass('green_font').text('Approved');
+                                    break;
+                                case 'Declined':
+                                    $(selector).removeClass('orange_font grey_font').addClass('red_font').text('Declined');
+                                    break;
+                                case 'ReSubmitted':
+                                    $(selector).removeClass('orange_font grey_font green_font red_font yellow_font').addClass('blue_font').text('ReSubmitted');
+                                    break;
+                                case 'OnHold':
+                                    $(selector).removeClass('orange_font grey_font green_font red_font blue_font').addClass('orange_font').text('OnHold');
+                                    break;
+                                case 'IsReject':
+                                    $(selector).removeClass('orange_font green_font blue_font yellow_font grey_font')
+                                        .addClass('red_font')
+                                        .text('Rejected');
+                                    break;
+
+                                default:
+                                    // handle default case
+                                    break;
+                            }
+                        }
+                    }
+                }
+
+            });
+        });
+
+        $(document).on('click', '#downRecipt', function () {
+            var expDocName = $(this).closest('.row').find('.downloadRecipt').val();
+            if (!expDocName) {
+                toastr.error("File name not found");
+                return;
+            }
+            var downloadUrl = '@_webapiEMSURL' + 'ExpenseRequestMaster/DownloadFile?fileName=' + encodeURIComponent(expDocName);
+            var xhr = new XMLHttpRequest();
+            xhr.open('GET', downloadUrl, true);
+            xhr.setRequestHeader('Authorization', '@_tokan');
+            xhr.responseType = 'blob';
+            $("#ajax_loader").show();
+            xhr.onload = function () {
+                $("#ajax_loader").hide();
+                if (xhr.status === 200) {
+                    var blob = xhr.response;
+                    var url = window.URL.createObjectURL(blob);
+                    var link = document.createElement('a');
+                    link.href = url;
+                    link.download = expDocName;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    window.URL.revokeObjectURL(url);
+                    toastr.success("Download started");
+                }
+                else {
+                    toastr.error("File not found");
+                }
+            };
+            xhr.onerror = function () {
+                $("#ajax_loader").hide();
+                toastr.error("Server error ");
+            };
+            xhr.send();
+        });
+        $("#closebtn").click(function () {
+            $("#ExpView").show();
+            $("#ExpenseRequestDetails").show();
+            $("#ExpRequest").show();
+            $("#closebtn").hide();
+            $("#TripView_Details").hide();
+
+        });
+        $(document).on("click", "a[class^='remove_emp_']", function (e) {
+
+            e.preventDefault();
+            $(this).closest('.emp_item').remove();
+            var empIdToRemove = parseInt($(this).attr('class').split(' ')[0].split('_')[2]);
+            var index = empIds.indexOf(empIdToRemove);
+            if (index !== -1) {
+                empIds.splice(index, 1);
+            }
+            var empIdToRemaining = empIds.join(',');
+            empids = empIdToRemaining;
+        });
+        $("#clearEMPwith").on("click", function () {
+            var index = $(this).index();
+            empIds.splice(index, 1);
+            $("#Show_EMPwith span").text(empIds.join(", "));
+            $("#Show_TravelEMPwith span").text(empIds.join(", "));
+            //$("#Show_EmpName span").text("");
+            //$("#hfCustomer").val("");
+        });
+
+        $("#tblExpenseRequest").on('click', '.downloadDoc', function () {
+            var selectedRow = $(this).closest("tr");
+            var expDocID = selectedRow.find(".expId").text().trim();
+            if (!expDocID) {
+                toastr.error("Invalid Expense ID");
+                return;
+            }
+            var downloadUrl = '@_webapiEMSURL' + 'ExpenseRequestMaster/DownloadRaRFile?expDocID=' + expDocID;
+            var xhr = new XMLHttpRequest();
+            xhr.open('GET', downloadUrl, true);
+            xhr.setRequestHeader('Authorization', '@_tokan');
+            xhr.responseType = 'blob';
+            $("#ajax_loader").show();
+            xhr.onload = function () {
+                $("#ajax_loader").hide();
+                if (xhr.status === 200) {
+                    var blob = xhr.response;
+                    var url = window.URL.createObjectURL(blob);
+                    var link = document.createElement('a');
+                    link.href = url;
+                    link.download = "Expense_" + expDocID + ".zip";
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    window.URL.revokeObjectURL(url);
+                    toastr.success("Download started");
+                }
+                else {
+                    toastr.error("Download failed");
+                }
+            };
+            xhr.onerror = function () {
+                $("#ajax_loader").hide();
+                toastr.error("Server error");
+            };
+            xhr.send();
+        });
+
+        // Add Expense modal open and close
+        $("#ExpRequest").on('click', function () {
+            frmClear();
+            frmClearexpensedata();
+            frmCleartraveldata();
+            $("#Expense_data").prop('disabled', false);
+            $("#Travel_data").prop('disabled', false);
+            $("#ExpRequest").attr("data-toggle", "modal");
+            $("#ExpRequest").attr("data-target", "#ExpRequest_modal");
+
+            //$("#ExpDate, #TravelEdate, #TravelSdate").datepicker({
+            //    format: isdateformat1,
+            //    todayHighlight: true,
+            //    autoclose: true
+            //});
+
+            $("#ExpRequest_modal").on("shown.bs.modal", function () {
+                $("#FileUpload").val('');
+            });
+        });
+        //  Tooltip setup
+       $.ajax({
+            type: "POST",
+            headers: { 'Authorization': '@_tokan' },
+            url: '@_webapiEMSURL' + 'ExpensePolicyMaster/GetPolicyListAll',
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            success: function (response) {
+                var _empIdnew = '@_empid';
+                var tooltipText = "";
+
+                if (response && response.length > 0) {
+                    var matchedPolicies = response.filter(function (item) {
+                        var ids = item.EmployeeIds ? item.EmployeeIds.split(',').map(id => id.trim()) : [];
+                        return ids.includes(_empIdnew) && (item.PolicyCode.startsWith('EXP') || item.PolicyCode.startsWith('TRP'));
+                    });
+
+                    if (matchedPolicies.length > 0) {
+                        var expPolicy = matchedPolicies.find(p => p.PolicyCode.startsWith("EXP"));
+                        var trpPolicy = matchedPolicies.find(p => p.PolicyCode.startsWith("TRP"));
+
+                        if (expPolicy) {
+                            sessionStorage.setItem("policyEffectiveDate_EXP", expPolicy.EffectiveDate);
+                            tooltipText += 'Assigned Expense Policy: ' + expPolicy.PolicyCode;
+                        } else {
+                            tooltipText += 'No Expense Policy assigned.';
+                        }
+
+                        if (trpPolicy) {
+                            sessionStorage.setItem("policyEffectiveDate_TRP", trpPolicy.EffectiveDate);
+                        }
+
+                        sessionStorage.setItem("policyCode", matchedPolicies.map(p => p.PolicyCode).join(","));
+                    } else {
+                        tooltipText = 'No Expense Policy assigned.';
+                    }
+                } else {
+                    tooltipText = 'No Expense Policy assigned.';
+                }
+
+                $('#ExpView')
+                    .attr('title', tooltipText)
+                    .attr('data-original-title', tooltipText)
+                    .tooltip('dispose')
+                    .tooltip();
+            },
+            error: function (xhr, status, error) {
+                console.error("Error loading policy for tooltip:", error);
+            }
+        });
+        // --- Modal on click ---
+        $("#ExpView").on('click', function (e) {
+            e.preventDefault();
+            $.ajax({
+                type: "POST",
+                headers: { 'Authorization': '@_tokan' },
+                url: '@_webapiEMSURL' + 'ExpensePolicyMaster/GetPolicyListAll',
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                beforeSend: function () {
+                    $("#ajax_loader").show();
+                },
+                success: function (response) {
+                    var _empIdnew = '@_empid';
+
+                    // Reset modal content
+                    $('#pdfViewer').hide().attr('src', '');
+                    $('#policyIdText').hide();
+                    $('#noPolicyImg').hide();
+                    $('#noPolicyMsg').text('');
+
+                    if (response && response.length > 0) {
+                        var matchedPolicy = response.find(function (item) {
+                            var ids = item.EmployeeIds ? item.EmployeeIds.split(',').map(id => id.trim()) : [];
+                            return ids.includes(_empIdnew) && item.PolicyCode.startsWith("EXP"); // prefer EXP policy
+                        });
+
+                        if (matchedPolicy) {
+                            var fileName = matchedPolicy.PolicyFileName ? matchedPolicy.PolicyFileName.replace(/\\/g, '/') : '';
+                            if (fileName) {
+                                var documentURL = '/UploadEMSDoc/' + fileName;
+
+                                $.ajax({
+                                    url: documentURL,
+                                    type: 'HEAD',
+                                    success: function () {
+                                        $('#pdfViewer').attr('src', documentURL).show();
+                                        $('#policyIdText').hide();
+                                    },
+                                    error: function () {
+                                        $('#pdfViewer').hide().attr('src', '');
+                                        $('#noPolicyImg').attr('src', '/assets/images/emptyscreen_1.png').show();
+                                        $('#noPolicyMsg').text("Expense policy document not found.");
+                                        $('#policyIdText').show();
+                                    }
+                                });
+                            } else {
+                                $('#noPolicyImg').attr('src', '/assets/images/emptyscreen_1.png').show();
+                                $('#noPolicyMsg').text("No document available for assigned Expense policy.");
+                                $('#policyIdText').show();
+                            }
+                        } else {
+                            $('#noPolicyImg').attr('src', '/assets/images/emptyscreen_1.png').show();
+                            $('#noPolicyMsg').text("No Expense policy assigned for this employee.");
+                            $('#policyIdText').show();
+                        }
+                    } else {
+                        $('#noPolicyImg').attr('src', '/assets/images/emptyscreen_1.png').show();
+                        $('#noPolicyMsg').text("No policies found.");
+                        $('#policyIdText').show();
+                    }
+
+                    $('#policy_modal').show();
+                },
+                error: function (xhr, status, error) {
+                    console.error("Error fetching policy:", error);
+                    $('#pdfViewer').hide();
+                    $('#noPolicyImg').attr('src', '/assets/images/emptyscreen_1.png').show();
+                    $('#noPolicyMsg').text("Error loading policy.");
+                    $('#policyIdText').show();
+                    $('#policy_modal').show();
+                },
+                complete: function () {
+                    $("#ajax_loader").hide();
+                }
+            });
+        });
+
+
+
+
+        $('#closeModal').on('click', function () {
+            $("#policy_modal").hide();
+            $('#pdfViewer').attr('src', '').hide(); // Clear and hide PDF
+           // $('#policyIdText').text('').hide();     // Clear message
+        });
+
+
+
+        $("#tblExpenseRequest").on('click', '.clm_edit_btn', function ()
+        {
+            var locationType = $(this).parent('td').parent('tr').children(1)[5].innerText.trim();  // selectedRow.find(".LocationType").text();
+
+            var selectedRow = $(this).closest("tr");
+            var expId = selectedRow.find(".expId").text();
+            var expensereqType = selectedRow.find(".expenseType").text();
+            if (expensereqType == "Expense") {
+                $("#Expense_data").prop('checked', true);
+                $("#Travel_data").prop('disabled', true);
+                $("#Travelselect_block").hide();
+                $("#Expenseselect_block").show();
+            }
+            else
+            {
+                $("#Travel_data").prop('checked', true);
+                $("#Expense_data").prop('disabled', true);
+                $("#ExpDesc").prop("disabled", true);
+                $("#TravelSdate").prop("disabled", true);
+                $("#TravelEdate").prop("disabled", true);
+                $("#Expenseselect_block").hide();
+                $("#Travelselect_block").show();
+                $('#ExpenseReqType').val(2);
+                if (locationType != null && locationType != "" && (locationType != "HO") && (locationType !="null"))
+                {
+                    $('#locationType').val(2);
+                }
+                else
+                {
+                    $('#locationType').val(0);
+                }
+
+            }
+            var expDate = selectedRow.find(".expense-date").text();
+            $("#ExpDate").datepicker({ format: isdateformat1, todayHighlight: true, });
+            $("#ExpDate").datepicker('setDate', expDate);
+
+            var travelSDate = selectedRow.find(".travelsdate").text();
+            $("#TravelSdate").datepicker({ format: isdateformat1, todayHighlight: true, });
+            $("#TravelSdate").datepicker('setDate', travelSDate);
+
+            var travelEDate = selectedRow.find(".traveledate").text();
+            $("#TravelEdate").datepicker({ format: isdateformat1, todayHighlight: true, });
+            $("#TravelEdate").datepicker('setDate', travelEDate);
+
+            locationType =$(this).parent('td').parent('tr').children(1)[5].innerText.trim();  // selectedRow.find(".LocationType").text();
+            if (locationType == "HO")
+            {
+                $("#Location_Head").prop('checked', true);
+                $("#sitelocation_block").hide();
+                //$("#Travel_data").prop('disabled', true);
+            }
+            else
+            {
+                $("#Location_Site").prop('checked', true);
+                $("#sitelocation_block").show();
+
+                if (locationType != null && locationType != "" && (locationType != "HO") && (locationType != "null")) {
+                    $('#locationType').val(2);
+                }
+                else {
+                    $('#locationType').val(0);
+                }
+                var _State = $(this).parent('td').parent('tr').children(1)[12].innerText.trim();
+                $("#State option[value = '" + _State + "' ]").prop("selected", true);
+                $('#State').trigger('change.select2');
+
+                var _CityId = $(this).parent('td').parent('tr').children(1)[13].innerText.trim();
+                fillCitydll(_State, _CityId);
+            }
+            var amount = selectedRow.find(".amount").text();
+            var exTitle = selectedRow.find(".description").text();
+            var reason = selectedRow.find(".reason").text();
+
+            $("#expenseReqID").val(expId);
+            $("#ExpDate").val(expDate);
+
+            $('#Total').text('Total: ₹ ' + parseFloat(amount).toFixed(2));
+            if (expensereqType == "Travel") {
+                var _tripselect = $(this).parent('td').parent('tr').children(1)[14].innerText.trim();
+                var tripselected = [];
+                tripselected =_tripselect.split(" ");
+                $("#TravelID option[value = '" + tripselected[0] + "' ]").prop("selected", true);
+                $('#TravelID').trigger('change.select2');
+                $('#TripData_block').show();
+                fillTripselected();
+            }
+
+            empid = $(this).parent('td').parent('tr').children(1)[11].innerText.trim();
+            empIds = empid.split(",");
+            empname = $(this).parent('td').parent('tr').children(1)[8].innerText.trim();
+            empNames = empname.split(",");
+            for (var i = 0; i < empIds.length; i++) {
+                var removeButton = '<a href="#" class="remove_emp_' + empIds[i] + '"><i class="fa-solid fa-xmark"></i></a>';
+                var newText = empNames[i] + removeButton;
+                var newSpan = $('<span></span>').html(newText);
+                $("#Show_EMPwith").append(newSpan);
+                //empIds.push(autocompleteempId);
+                empids = empIds.join(',');
+            }
+
+            for (var i = 0; i < empIds.length; i++) {
+                var removeButton = '<a href="#" class="remove_emp_' + empIds[i] + '"><i class="fa-solid fa-xmark"></i></a>';
+                var newText = empNames[i] + removeButton;
+                var newSpan = $('<span></span>').html(newText);
+                $("#Show_TravelEMPwith").append(newSpan);
+                //empIds.push(autocompleteempId);
+                empids = empIds.join(',');
+            }
+
+            $("#ExpDesc").val(reason);
+
+
+            $.ajax({
+                type: "GET",
+                url: '@_webapiEMSURL' + 'ExpenseRequestMaster/GetAllExpenseUploadDocumentList?ExpenId=' + expId,
+                headers: { 'Authorization': '@_tokan' },
+                contentType: "application/json; charset=utf-8",
+                dataType: "json",
+                beforeSend: function () {
+                    $("#ajax_loader").show();
+                },
+                success: function (response) {
+
+                    if (response.length > 0) {
+                        // Clear existing elements if needed
+                        $('#er_upload_docbox').empty();
+                        // $('#er_details__boxdetail').empty();
+                        for (var i = 0; i < response.length; i++) {
+                            var uploadItem = response[i];
+
+                            var newDetailHtml = '<div class="er_details__boxdetail">' +
+                                                    '<button type="button" class="er_details__close close">×</button>' +
+                                                    '<div class="col-lg-6">' +
+                                                        '<div class="form-group">' +
+                                                            '<label>Expense Type<span class="required" aria-required="true">*</span></label>' +
+                                                            '<select class="form-control input-sm TripCategory" id="TripCategory" name="TripCategory">' +
+                                                                '<option value="0" selected>Please Select</option>' +
+                                                            '</select>' +
+                                                        '</div>' +
+                                                    '</div>' +
+                                                    '<div class="col-lg-6">' +
+                                                        '<div class="form-group amount_box">' +
+                                                            '<span class="currency-symbol">₹</span>' +
+                                                            '<label>Amount<span class="required" aria-required="true">*</span></label>' +
+                                                            '<input type="text" class="form-control input-sm validation" name="ExAmount" id="ExAmount" maxlength="10" placeholder="Enter Amount">' +
+                                                        '</div>' +
+                                                    '</div>' +
+                                                    '<div class="col-lg-12">' +
+                                                        '<div class="form-group">' +
+                                                            '<label>Title<span class="required" aria-required="true">*</span></label>' +
+                                                            '<input type="text" class="form-control input-sm validation" name="" id="ExTitle" placeholder="Enter Title" maxlength="50">' +
+                                                        '</div>' +
+                                                    '</div>' +
+                                                    '<div class="col-lg-12">' +
+                                                        '<div class="fileinput fileinput-new form-group" data-provides="fileinput">' +
+                                                          '<label>Upload<span class="required" aria-required="true">*</span></label>' +
+                                                            '<div class="input-group">' +
+                                                                '<div class="form-control uneditable-input input-fixed input"   data-trigger="fileinput">' +
+                                                                    '<i class="fa-light fa-upload font-blue"></i>&nbsp;' +
+                                                                    '<span class="fileinput-filename"> </span>' +
+                                                                '</div>' +
+                                                                '<span class="input-group-addon btn blue btn-file">' +
+                                                                    '<span class="fileinput-new">Upload</span>' +
+                                                                    '<span class="fileinput-exists">Change</span>' +
+                                                                    '<input type="file" name="FileUpload" id="FileUpload">' +
+                                                                    '<input type="hidden" id="Empphotoname" name="Empphotoname">' +
+                                                                    '<input type="hidden" id="Empphotopath" name="Empphotopath">' +
+                                                                '</span>' +
+                                                                '<a href="javascript:;" class="input-group-addon btn red fileinput-exists" data-dismiss="fileinput">Remove</a>' +
+                                                            '</div>' +
+                                                        '</div>' +
+                                                    '</div>' +
+                                                '</div>';
+
+                            // Append the new detail box to the container
+                            $('#er_upload_docbox').append(newDetailHtml);
+
+                            fillCategoryList($('#er_upload_docbox .er_details__boxdetail:last .TripCategory'), uploadItem.CategoryId);
+
+                            $('#er_upload_docbox .er_details__boxdetail:last #ExTitle').val(uploadItem.UploadfileTitle);
+                            $('#er_upload_docbox .er_details__boxdetail:last .fileinput-filename').text(uploadItem.FileName);
+                           // $('#er_upload_docbox .er_details__boxdetail:last #Empphotoname').text(uploadItem.FileName);
+                            $('#er_upload_docbox .er_details__boxdetail:last #Empphotopath').text(uploadItem.Filepath);
+                            $('#er_upload_docbox .er_details__boxdetail:last #ExAmount').val(uploadItem.ExpenseAmount);
+
+                            var photoData = {
+                                fileName: uploadItem.FileName,
+                                filePath: uploadItem.Filepath
+                            };
+                            empPhotos.push(photoData);
+
+                        }
+                        //$('.er_details__close').on('click', function () {
+                        //    $(this).closest('.er_details__boxdetail').remove();
+                        //});
+                    }
+                },
+                error: function (response) {
+                    $("#ajax_loader").hide();
+                }
+            });
+
+            $("#step-1").show();
+            $("#step-2").hide();
+            $("#btnSaveDraft").hide();
+            $("#step1").addClass("btn-primary");
+            $("#step2").removeClass("btn-primary");
+            $("#ExpRequest_modal").modal("show");
+
+        });
+
+
+
+       $("#tblExpenseRequest").on('click', '.clm_delete_btn', function () {
+            $("#tblExpenseRequest").removeAttr("data-toggle");
+            $("#tblExpenseRequest").removeAttr("data-target");
+
+            var delay = 1000;
+            var selectedRow = $(this).closest("tr");
+            var ExpenId = selectedRow.find(".expId").text();
+
+            if (ExpenId > 0) {
+                Swal.fire({
+                    title: "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_error.svg' alt=''>Delete",
+                    html: `<div class="swal_subtitle">
+                               <b>Are you sure you want to delete this expense request?</b>
+                               <p>This request may be linked to existing records. Please verify before proceeding with deletion.</p>
+                               <div class="margin-top-10 text-left"></div>
+                           </div>`,
+                    closeOnConfirm: true,
+                    showCloseButton: true,
+                    showCancelButton: true,
+                    focusConfirm: false,
+                    cancelButtonText: 'No',
+                    confirmButtonText: 'Yes',
+                    allowOutsideClick: false,
+                    allowEscapeKey: false,
+                    customClass: {
+                        confirmButton: 'swal-confirm-button-class',
+                        cancelButton: 'swal-cancel-button-class'
+                    }
+                }).then(function (isConfirm) {
+                    if (isConfirm.isConfirmed === true) {
+                        $.ajax({
+                            type: "POST",
+                            url: '@_webapiEMSURL' + 'ExpenseRequestMaster/DeleteExpenseRequestById?ExpenId=' + ExpenId,
+                            headers: { 'Authorization': '@_tokan' },
+                            contentType: "application/json; charset=utf-8",
+                            dataType: "json",
+                            beforeSend: function () {
+                                $("#ajax_loader").show();
+                            },
+                            success: function (response) {
+                                toastr.remove();
+                                if (response != null) {
+                                    if (response.success === true) {
+                                        toastr.success(response.message);
+                                    } else {
+                                        toastr.error(response.message);
+                                    }
+                                } else {
+                                    toastr.error("Unexpected error occurred.");
+                                }
+                                setTimeout(function () {
+                                    window.location.reload(true);
+                                }, delay);
+                            },
+                            error: function (xhr) {
+                                toastr.remove();
+                                if (xhr != null) {
+                                    var obj = JSON.parse(xhr.responseText || "{}");
+                                    if (obj.MegSts === 'error') {
+                                        toastr.error(obj.Meg);
+                                    } else {
+                                        toastr.error("Request failed.");
+                                    }
+                                }
+                                setTimeout(function () {
+                                    window.location.reload(true);
+                                }, delay);
+                            },
+                            complete: function () {
+                                $("#ajax_loader").hide();
+                            }
+                        });
+                    }
+                });
+
+                // Apply the same swal_error style as in your first popup
+                $('img[src="/assets/images/icons/swal_icon/icon_error.svg"]')
+                    .closest('.swal2-popup')
+                    .addClass('swal_error');
+            }
+        });
+
+        // Expense Type Select Radio btn Hide/Show data
+        $("input[name='Expensetype']").change(function () {
+            if ($("#Travel_data").is(":checked")) {
+                $("#Travelselect_block").show();
+                $("#Expenseselect_block").hide();
+            } else {
+                $("#Travelselect_block").hide();
+                $("#Expenseselect_block").show();
+            }
+        });
+
+        $('#ExpDesc,#ExTitle').on('input', function () {
+            var exTitle = $(this).val();
+            if (!/^[a-zA-Z0-9\s]*$/.test(exTitle)) {
+                $(this).val(exTitle.replace(/[^a-zA-Z0-9\s]/g, ''));
+            }
+        });
+        $('#ExpDate').on('input', function () {
+            var sanitized = $(this).val().replace(/[^0-9/]/g, '');
+            $(this).val(sanitized);
+        });
+        $("#Expense_data").change(function () {
+            if ($(this).is(":checked")) {
+                $('#ExpenseReqType').val(1);
+            }
+            frmCleartraveldata();
+        });
+        $("#Travel_data").change(function () {
+            if ($(this).is(":checked")) {
+                $('#ExpenseReqType').val(2);
+            }
+            frmClearexpensedata();
+        });
+
+        // Location Select Radio btn hide/show data
+        $("input[name='Location']").change(function () {
+            if ($("#Location_Site").is(":checked")) {
+                $("#sitelocation_block").show();
+            } else {
+                $("#sitelocation_block").hide();
+            }
+        });
+
+        $("#Location_Head").change(function () {
+            if ($(this).is(":checked")) {
+                $('#locationType').val(1); // Set value to 1 if Expense_data is checked
+            }
+        });
+
+        $("#Location_Site").change(function () {
+            if ($(this).is(":checked")) {
+                $('#locationType').val(2); // Set value to 2 if Travel_data is checked
+            }
+        });
+
+        $('#TravelID').on('change', function () {
+            $('#TripData_block').show();
+        });
+
+        //$(document).on('input', '.er_details__boxdetail #FileUpload', function () {
+        //    debugger
+        //    var GetfileName = this.files[0];
+        //    var selectedfile = GetfileName.size;
+        //    var filename = GetfileName.name;
+        //    var isquality = true;
+        //    var validFileSize = 1000 * 1024;
+        //    if (selectedfile > validFileSize) {
+        //        toastr.remove();
+        //        toastr.error("Select File Between 0 to 1 MB.");
+        //        $(this).val("");
+        //        return false;
+        //    }
+        //    var allowedFiles = [".bmp", ".png", ".jpg", ".jpeg", ".pdf"];
+        //    var fileUpload1 = $(this);
+        //    var regex = new RegExp("([a-zA-Z0-9\s_\\.\-:])+(" + allowedFiles.join('|') + ")$");
+        //    if (!regex.test(fileUpload1.val().toLowerCase())) {
+        //        toastr.remove();
+        //        toastr.error("Please upload files having extensions:" + allowedFiles.join(', ') + " only.");
+        //        $(this).val("");
+        //        return false;
+        //    }
+        //    var fileData = new FormData();
+        //    fileData.append('file', GetfileName);
+
+        //    $.ajax({
+        //        url: '/ExpenseRequestMaster/EMSEmpReqMaster',
+        //        type: "POST",
+        //        processData: false,
+        //        contentType: false,
+        //        data: fileData,
+        //        success: function (result) {
+
+        //            var photoData = {
+        //                fileName: result.FileName,
+        //                filePath: result.FilePath
+        //            };
+        //            empPhotos.push(photoData); // Store photo data in the array
+        //        },
+        //        error: function (err) {
+        //            toastr.error("Error uploading file.");
+        //        }
+        //    });
+        //});
+        $(document).on('input', '.er_details__boxdetail #FileUpload', function () {
+            var _code = '@_accountcd';
+            if (this.files.length === 0)
+                return;
+            var file = this.files[0];
+
+            var maxSize = 1000 * 1024;
+            if (file.size > maxSize) {
+                toastr.error("Select file up to 1 MB only.");
+                $(this).val("");
+                return;
+            }
+            var allowedExtensions = [".bmp", ".png", ".jpg", ".jpeg", ".pdf"];
+            var fileName = file.name.toLowerCase();
+            var isValid = allowedExtensions.some(ext => fileName.endsWith(ext));
+
+            if (!isValid) {
+                toastr.error("Allowed: " + allowedExtensions.join(', '));
+                $(this).val("");
+                return;
+            }
+            var formData = new FormData();
+            formData.append("accountCode", _code);
+            formData.append("files", file);
+            $.ajax({
+                url: '@_webapiEMSURL' + 'ExpenseRequestMaster/EMSEmpReqMaster',
+                type: "POST",
+                headers: {
+                    'Authorization': '@_tokan'
+                },
+                processData: false,
+                contentType: false,
+                data: formData,
+                beforeSend: function () {
+                    $("#ajax_loader").show();
+                },
+                success: function (response) {
+                    $("#ajax_loader").hide();
+                    if (response.success) {
+                        $.each(response.responseInfo, function (i, item) {
+                            var photoData = {
+                                fileName: item.fileName,
+                                filePath: item.fileUrl
+                            };
+                            empPhotos.push(photoData);
+                            console.log(photoData);
+                        });
+                        toastr.success("File uploaded successfully");
+                    }
+                    else {
+                        toastr.error(response.message);
+                    }
+                },
+                error: function () {
+                    $("#ajax_loader").hide();
+                    toastr.error("Upload failed");
+                }
+            });
+        });
+        $(document).on('input', '.er_details__boxdetail #ExAmount', function () {
+            var amount = $(this).val();
+            var cleanAmount = amount.replace(/[^0-9.]/g, '');
+            var parts = cleanAmount.split('.');
+            if (parts.length > 2) {
+                cleanAmount = parts[0] + '.' + parts[1];
+            }
+            if (cleanAmount.startsWith('0')) {
+                cleanAmount = cleanAmount.replace(/^0+/, '');
+            }
+            $(this).val(cleanAmount);
+            updateTotalAmount();
+        });
+
+
+        $("#btnExprequest").click(function (event) {
+            $("#ExpenseType").val(2);
+            $("#locationType").val(1).trigger('change');
+            addExpenseForEmployeeRequest();
+
+        });//close submit_btn
+
+
+    }); // close document.ready()
+
+        function truncateApprovalReason(reason, maxChars)
+        {
+            if (reason.length <= maxChars) {
+                return reason; // Return the reason as it is if it's already within the limit
+            }
+
+            // Trim the reason to the maximum number of characters
+            var truncatedText = reason.substring(0, maxChars);
+
+            // Find the last space within the truncated text
+            var lastSpaceIndex = truncatedText.lastIndexOf(" ");
+
+            // If the last space exists, truncate at the last space
+            if (lastSpaceIndex !== -1) {
+                truncatedText = truncatedText.substring(0, lastSpaceIndex);
+            }
+
+            // Append ellipsis
+            truncatedText += " ...";
+
+            return truncatedText;
+        }
+
+    function addExpenseForEmployeeRequest() {
+        var policyCode = sessionStorage.getItem("policyCode");
+        if (!policyCode || !policyCode.startsWith("EXP")) {
+            toastr.remove();
+            toastr.error("Expense policy not assigned. Cannot create expense.");
+            event.preventDefault();
+            return false;
+        }
+    if ($("#ExpenseReqType").val() == 1) {
+        if ($("#ExpDate").val() == "") {
+            $("#ExpDate").addClass('field_error');
+            toastr.remove();
+            toastr.error("Please enter Expense Date.");
+            event.preventDefault();
+            return false;
+        } else {
+            $("#ExpDate").removeClass('field_error');
+        }
+
+        if ($("#locationType").val() == "") {
+            $("#locationType").addClass('field_error');
+            toastr.remove();
+            toastr.error("Please select Location Type.");
+            event.preventDefault();
+            return false;
+        } else {
+            $("#locationType").removeClass('field_error');
+        }
+    }
+
+    if ($("#ExpenseReqType").val() == 2) {
+        if ($("#TravelID").val() == 0) {
+            $("#TravelID").addClass('field_error');
+            toastr.remove();
+            toastr.error("Please Select Trip.");
+            event.preventDefault();
+            return false;
+        } else {
+            $("#TravelID").removeClass('field_error');
+        }
+        }
+
+    if ($("#locationType").val() == 2 && ($("#State").val() == null || $("#State").val() == "0")) {
+        $("#State").addClass('field_error');
+        toastr.remove();
+        toastr.error("Please Select State.");
+        event.preventDefault();
+        return false;
+    }
+
+    if ($("#locationType").val() == 2 && ($("#City").val() == null || $("#City").val() == "0")) {
+        $("#City").addClass('field_error');
+        toastr.remove();
+        toastr.error("Please Select City.");
+        event.preventDefault();
+        return false;
+    }
+
+    if ($("#TripCategory").val() == "0") {
+        $("#TripCategory").addClass('field_error');
+        event.preventDefault();
+        return false;
+    }
+
+    if ($("#ExAmount").val() == "") {
+        $("#ExAmount").addClass('field_error');
+        toastr.remove();
+        toastr.error("Please enter Amount");
+        event.preventDefault();
+        return false;
+    } else {
+        $("#ExAmount").removeClass('field_error');
+    }
+
+    if ($("#ExTitle").val() == "") {
+        $("#ExTitle").addClass('field_error');
+        toastr.remove();
+        toastr.error("Please enter Title");
+        event.preventDefault();
+        return false;
+    } else {
+        $("#ExTitle").removeClass('field_error');
+    }
+
+    // File validation only in Add mode
+    if ($("#expenseReqID").val() == "" || $("#expenseReqID").val() == "0") {
+        var fileError = false;
+        $(".er_details__boxdetail").each(function () {
+            var fileInput = $(this).find("input[type='file']");
+            if (fileInput.length > 0 && fileInput.val() == "") {
+                fileInput.addClass("field_error");
+                toastr.remove();
+                toastr.error("Please upload a file.");
+                fileError = true;
+            } else {
+                fileInput.removeClass("field_error");
+            }
+        });
+        if (fileError) {
+            event.preventDefault();
+            return false;
+        }
+    }
+
+    // Dates normalization
+    var expenseDateRaw = $("#ExpDate").val();
+    var expenseDate = normalizeToIsoDate(expenseDateRaw);
+
+    var travelStartRaw = $("#TravelSdate").val();
+    var TravelSDate = normalizeToIsoDate(travelStartRaw);
+
+    var travelEndRaw = $("#TravelEdate").val();
+    var TravelEDate = normalizeToIsoDate(travelEndRaw);
+
+    var CityIDs = ($("#locationType").val() == 2 && $("#City").val() != null) ? $("#City").val() : 0;
+    var StateID = ($("#locationType").val() == 2 && $("#State").val() != null) ? $("#State").val() : 0;
+    var expenseType = $("#ExpenseType").val();
+
+    // Collect entered details
+    var expenseRequestEmployeeUploadDocs = [];
+    $('.er_details__boxdetail').each(function () {
+        var detailValues = {
+            "ExpenseAmount": $(this).find("#ExAmount").val(),
+            "catogaryID": $(this).find(".TripCategory").val(),
+            "UploadfileTitle": $(this).find("#ExTitle").val()
+        };
+        expenseRequestEmployeeUploadDocs.push(detailValues);
+    });
+
+    // ✅ Merge file info (empPhotos) with details (expenseRequestEmployeeUploadDocs)
+    var mergedArray = [];
+    for (var i = 0; i < expenseRequestEmployeeUploadDocs.length; i++) {
+        var mergedObj = {};
+
+        if (empPhotos[i]) {
+            mergedObj.fileName = empPhotos[i].fileName;
+            mergedObj.filePath = empPhotos[i].filePath;
+        }
+
+        if (expenseRequestEmployeeUploadDocs[i]) {
+            mergedObj.ExpenseAmount = expenseRequestEmployeeUploadDocs[i].ExpenseAmount;
+            mergedObj.catogaryID = expenseRequestEmployeeUploadDocs[i].catogaryID;
+            mergedObj.UploadfileTitle = expenseRequestEmployeeUploadDocs[i].UploadfileTitle;
+        }
+
+        mergedArray.push(mergedObj);
+    }
+
+    var expenseData = {
+        ExpenseReqID: $('#expenseReqID').val(),
+        ExpenseReqType: $('#ExpenseReqType').val(),
+        ExpenseType: expenseType,
+        ExpenseDate: expenseDate,
+        ExpenseDescription: $("#ExpDesc").val(),
+        EmpID: _NewEmpID,
+        EmpName: _NewEmpName,
+        LocationType: $("#locationType").val(),
+        CityID: CityIDs,
+        StateID: StateID,
+        WithEmployee: empids,
+        TravelID: $("#TravelID").val(),
+        TripStartdate: TravelSDate,
+        TripEndDate: TravelEDate,
+        TripPurpose: $("#EMPTravelDesc").val(),
+        StatusID: '0',
+        ExpenseRequestEmployeeUploadDocs: mergedArray
+    };
+    $.ajax({
+        url: '@_webapiEMSURL' + 'ExpenseRequestMaster/AddExpenseForEmployeeRequest',
+        type: 'POST',
+        headers: { 'Authorization': '@_tokan' },
+        contentType: 'application/json',
+        dataType: 'json',
+        data: JSON.stringify(expenseData),
+        beforeSend: function () {
+            $("#ajax_loader").show();
+        },
+        success: function (response) {
+            $("#ajax_loader").hide();
+            if (response && response.success) {
+                if (response.success == true && response.responseCode == 201) {
+                    toastr.remove();
+                    toastr.success("ExpenseRequest " + response.message);
+                }
+                else if (response.success == true && response.responseCode == 206) {
+                    toastr.remove();
+                    toastr.success("ExpenseRequest " + response.message);
+                }
+                else if (response.success == false && response.responseCode == 210) {
+                    toastr.remove();
+                    toastr.error(response.message);
+                }
+                else if (response.success == false && response.responseCode == 205) {
+                    toastr.remove();
+                    toastr.error(response.message);
+                }
+                else if (response.success == true && (response.responseCode == 80001 || response.responseCode == 80002)) {
+                    toastr.remove();
+                    toastr.error(response.message);
+                }
+                else if (response.success == true && response.responseCode == 80003) {
+                    toastr.remove();
+                    var effectiveDate = sessionStorage.getItem("policyEffectiveDate_EXP");
+                    var errorMessage = response.message;
+                    if (effectiveDate) {
+                        errorMessage += " (Effective from: " + effectiveDate + ")";
+                    }
+                    toastr.error(errorMessage);
+                }
+                else if (response.success == true && response.responseCode == 80004) {
+                    toastr.remove();
+                    var effectiveDate = sessionStorage.getItem("policyEffectiveDate_TRP");
+                    var errorMessage = response.message;
+                    if (effectiveDate) {
+                        errorMessage += " (Effective from: " + effectiveDate + ")";
+                    }
+                    toastr.error(errorMessage);
+                }
+                else {
+                    toastr.remove();
+                    toastr.error(response.validationErrors);
+                }
+
+                $('#ExpRequest_modal').modal('toggle');
+                frmClear();
+                setTimeout(function () {
+                    window.location.reload(true);
+                }, delay);
+            }
+            else {
+                toastr.remove();
+                toastr.error("Failed to add expense");
+            }
+        },
+        error: function (response) {
+            $("#ajax_loader").hide();
+            if (response && response.responseText) {
+                var obj = JSON.parse(response.responseText);
+                if (obj && obj.MegSts == 'error') {
+                    toastr.error("Failed to add expense");
+                    frmClear();
+                    setTimeout(function () {
+                        window.location.reload(true);
+                    }, delay);
+                }
+            }
+        }
+    });
+}
+
+
+
+    function normalizeToIsoDate(rawDateString) {
+        if (!rawDateString) return null; // Handle empty/undefined
+
+        // Case 1: dd-M-yyyy  => "04-Sep-2025"
+        let match = rawDateString.match(/^(\d{2})-([A-Za-z]{3})-(\d{4})$/);
+        if (match) {
+            let [, day, mon, year] = match;
+            const months = { Jan: "01", Feb: "02", Mar: "03", Apr: "04", May: "05", Jun: "06", Jul: "07", Aug: "08", Sep: "09", Oct: "10", Nov: "11", Dec: "12" };
+            if (months[mon]) return `${year}-${months[mon]}-${day}`;
+        }
+
+        // Case 2: dd-mm-yyyy => "04-09-2025"
+        match = rawDateString.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+        if (match) {
+            let [, day, month, year] = match;
+            return `${year}-${month}-${day}`;
+        }
+
+        // Case 3: M-dd-yyyy => "Sep-04-2025"
+        match = rawDateString.match(/^([A-Za-z]{3})-(\d{2})-(\d{4})$/);
+        if (match) {
+            let [, mon, day, year] = match;
+            const months = { Jan: "01", Feb: "02", Mar: "03", Apr: "04", May: "05", Jun: "06", Jul: "07", Aug: "08", Sep: "09", Oct: "10", Nov: "11", Dec: "12" };
+            if (months[mon]) return `${year}-${months[mon]}-${day}`;
+        }
+
+        // Case 4: mm-dd-yyyy => "09-04-2025"
+        match = rawDateString.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+        if (match) {
+            let [, month, day, year] = match;
+            return `${year}-${month}-${day}`;
+        }
+
+        // Case 5: yyyy-M-dd => "2025-Sep-04"
+        match = rawDateString.match(/^(\d{4})-([A-Za-z]{3})-(\d{2})$/);
+        if (match) {
+            let [, year, mon, day] = match;
+            const months = { Jan: "01", Feb: "02", Mar: "03", Apr: "04", May: "05", Jun: "06", Jul: "07", Aug: "08", Sep: "09", Oct: "10", Nov: "11", Dec: "12" };
+            if (months[mon]) return `${year}-${months[mon]}-${day}`;
+        }
+
+        // Case 6: yyyy-mm-dd => already ISO "2025-09-04"
+        match = rawDateString.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (match) {
+            let [, year, month, day] = match;
+            return `${year}-${month}-${day}`;
+        }
+
+        // Default: try JS Date
+        let d = new Date(rawDateString);
+        if (!isNaN(d)) {
+            let year = d.getFullYear();
+            let month = (d.getMonth() + 1).toString().padStart(2, '0');
+            let day = d.getDate().toString().padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        }
+
+        return null;
+    }
+
+
+    function frmClearexpensedata() {
+        $("#ExpDate").val("");
+        $("#ExpDesc").val("");
+        $("#EMPwith").val("");
+        //$("#locationType").val("1");
+        $("#Location_Head").val("");
+        $("#Location_Site").val("");
+        $("#State").val("");
+        $("#City").val("");
+        $(".remove_emp_").val("");
+        $("#Show_EMPwith span").text("");
+        $('#Show_EMPwith span').remove();
+
+    }
+    function frmCleartraveldata() {
+        $("#TravelID").val("0");
+        $("#EMPTravelDesc").val("");
+        $("#TravelEdate").val("");
+        $("#TravelSdate").val("");
+        $(".remove_emp_").val("");
+        $('#TripData_block').hide();
+        $("#Show_TravelEMPwith span").text("");
+        $('#Show_TravelEMPwith span').remove();
+        //$("#TripSelector").empty();
+    }
+
+    function frmClear() {
+
+        $("#ExpDate").val("");
+        $("#ExpDesc").val("");
+        $("#ExAmount").val("");
+        $("#ExTitle").val("");
+        $("#EMPwith").val("");
+        $("#Total").val("");
+        $(".Total").text("");
+        $("#State").val("");
+        $("#City").val("");
+        //$("#locationType").val("1");
+        $("#Location_Head").val("");
+        $("#Location_Site").val("");
+
+        $('#Expenseselect_block').show();
+        //$('#ExpenseReqType').val(1);
+
+        $("#TravelID").val("");
+        $("#EMPTravelDesc").val("");
+        $("#TravelEdate").val("");
+        $("#TravelSdate").val("");
+        $('#TripData_block').hide();
+
+        $("#FileUpload").val("");
+        $(".fileinput-filename").text("");
+        $("#Empphotopath").val("");
+        $("#Empphotoname").val("");
+
+        empids = "";
+        $("#Show_EMPwith span").text("");
+        $('#Show_EMPwith span').remove();
+        $("#Show_TravelEMPwith span").text("");
+        $('#Show_TravelEMPwith span').remove();
+
+        $("#hfCustomer").val("");
+
+        $(".er_details__boxdetail:not(:first)").remove();
+
+        $('#er_details').empty();
+
+
+    }
+
+
+    function updateTotalAmount() {
+        let totalAmount = 0;
+        $('.er_details__boxdetail').each(function () {
+            let val = parseFloat($(this).find('input[name="ExAmount"]').val()) || 0;
+            totalAmount += val;
+        });
+        $('#Total').text('Total: ₹ ' + totalAmount.toFixed(2));
+    }
+    function checkSession() {
+        $.ajax({
+            type: "GET",
+            async: false,
+            url: "/ESS/checkSession",
+            contentType: "application/json; charset=utf-8",
+            success: function (data) {
+                if (data.isRedirect) {
+                    window.location.href = data.redirectUrl;
+                }
+            },
+            error: function (data) {
+                window.location.href = data;
+            }
+        });
+    }
+
+    function getExpenseRequest() {
+        var _UID = '@_UserId';
+        var _ComID = '@_companyid';
+        var _BranchID = '@_branchid';
+        var _empIdnew = '@_empid';
+        var _RoleIDnew = '@_RoleId';
+
+        var obj =
+            {
+                userId: _UID,
+                roleId: _RoleIDnew,
+                companyID: _ComID,
+                branchId: "0",
+                departmentID: "0",
+            };
+        $("#tblExpenseRequest tfoot th").each(function (index) {
+            // Adjust these index numbers based on your table
+            if (index === 8 || index === 9) {
+                $(this).html(''); // No input
+            } else {
+                $(this).html('<input type="text" class="search_input" placeholder="Search" /><i class="clm-search"></i>');
+            }
+        });
+
+        $.ajax({
+            url: '@_webapiEMSURL' + 'ExpenseRequestMaster/GetExpenseRequestAll',
+            type: 'POST',
+            headers: { 'Authorization': '@_tokan' },
+            contentType: 'application/json',
+            dataType: 'json',
+            data: JSON.stringify(obj),
+            beforeSend: function () {
+                $("#ajax_loader").show();
+            },
+
+            success: function (response) {
+                if (response != null) {
+                    const ER = response;
+                    ER.forEach(item => {
+                        sessionStorage.setItem('TripStartDate_' + item.expId, item.TripStartdate);
+                        sessionStorage.setItem('TripEndDate_' + item.expId, item.TripEndDate);
+                    });
+                    handleGridVisibility("tblempty", "NotificationGrid-empty", ER, {
+                        imageUrl: "emptyscreen_1.png",
+                        subText: "No entries found. Please add a record to get started."
+                    });
+                }
+                if (response.isRedirect) {
+                    window.location.href = response.redirectUrl;
+                }
+                var statusClass;
+                var table = "";
+                if (response != null)
+                {
+                    for (var i = 0; i < response.length; i++)
+                    {
+                        var tbl = "<tr class='odd gradeX'>";
+                        tbl += "<td class='expId' hidden>" + response[i].expId + "</td>";
+                        tbl += "<td class='EmpName' hidden>" + response[i].EmpName + "</td>";
+                        tbl += "<td class='expense-date'>" + response[i].ExpenseDate + "</td>";
+                        tbl += "<td class='expenseType'>" + response[i].ExpenseType + "</td>";
+
+                        tbl += "<td class='amount'>" + (response[i].ExpenseAmount != null ? response[i].ExpenseAmount : "-") + "</td>";
+
+                        tbl += "<td class='LocationType'>" + response[i].LocationType + "</td>";
+                        tbl += "<td class='downloadDoc'>" + "<div class='d-flex align-items-center justify-content-between'>" + "<span>View Receipts</span>" + "<a href='javascript:;'>" + "<img class='tooltips' src='/assets/images/download_icon.svg' height='18' width='18' data-placement='top' data-original-title='Download Receipts' alt='download icon'>" + "</a>" + "</div>" + "</td>";
+                        tbl += "<td class='reason'>" + (response[i].Description || response[i].TripPurpose) + "</td>";
+
+                        tbl = tbl + "<td class='EmpNames' hidden>" + response[i].EmpNamesNew + "</td>";
+                        var approveCount = 0;
+                        var declineCount = 0;
+                        var submitCount = 0;
+                        var statusClass;
+                        var statusArr = response[i].ExpenseStatus ? response[i].ExpenseStatus.split(',') : [];
+                        for (var j = 0; j < statusArr.length; j++) {
+                            var statusParts = statusArr[j].trim().split('(');
+                            var statusName = statusParts[0].trim();
+                            var count = 0;
+                            //parseInt(statusParts[1].replace(')', '').trim());
+
+                            switch (statusName) {
+                                case 'Drafted':
+                                    statusClass = 'orange_font';
+                                    break;
+                                case 'Approved':
+                                    statusClass = 'green_font';
+                                    approveCount += count;
+                                    break;
+                                case 'Declined':
+                                    statusClass = 'red_font';
+                                    declineCount += count;
+                                    break;
+                                case 'Submitted':
+                                    statusClass = 'blue_font';
+                                    submitCount += count;
+                                    break;
+                                case 'On Hold':
+                                    statusClass = 'orange_font';
+                                    break;
+                                case 'IsReject':
+                                    statusClass = 'red_font';
+                                    break;
+                                default:
+                                    break;
+                            }
+                        }
+
+                        var displayStatus = response[i].ExpenseStatus ? response[i].ExpenseStatus.replace(/IsReject/g, "Rejected") : "-";
+                        tbl += "<td class='" + statusClass + "'>" + displayStatus + "</td>";
+                        tbl += "<td>";
+
+
+                        if (response[i].StatusID == 11112)//Submitted
+                        {
+                            tbl += "<a class='btn blue_btnnew tooltips clm_view_btn' id='ViewTripReq_btn' title='View'><i class='fa-regular fa-eye'></i></a>";
+                            tbl += "<a class='btn blue_btnnew tooltips clm_delete_btn' title='Delete'><i class='fa-regular fa-trash'></i></a>";
+                        }
+                        else if (response[i].StatusID == 11113)//Approved
+                        {
+                            tbl += "<a class='btn blue_btnnew tooltips clm_view_btn' id='ViewTripReq_btn' title='View'><i class='fa-regular fa-eye'></i></a>";
+                        }
+                        else if (response[i].StatusID == 11114)//OnHold
+                        {
+                            tbl += "<a class='btn blue_btnnew tooltips clm_edit_btn editbtn' title='Edit'><i class='fa-regular fa-pen-to-square'></i></a>";
+                        }
+                        else if (response[i].StatusID == 11115)//IsDeclined
+                        {
+                            tbl += "<a class='btn blue_btnnew tooltips clm_view_btn' id='ViewTripReq_btn' title='View'><i class='fa-regular fa-eye'></i></a>";
+                        }
+                        else if (response[i].StatusID == 11117) // IsReject
+                        {
+                            tbl += "<a class='btn blue_btnnew tooltips clm_view_btn' id='ViewTripReq_btn' title='View'><i class='fa-regular fa-eye'></i></a>";
+                        }
+
+                        else {   //Other
+                            tbl += "<a class='btn blue_btnnew tooltips clm_view_btn' id='ViewTripReq_btn' title='View'><i class='fa-regular fa-eye'></i></a>";
+                            tbl += "<a class='btn blue_btnnew tooltips clm_edit_btn editbtn' title='Edit'><i class='fa-regular fa-pen-to-square'></i></a>";
+                            tbl += "<a class='btn blue_btnnew tooltips clm_delete_btn' title='Delete'><i class='fa-regular fa-trash'></i></a>";
+                        }
+
+
+                        tbl += "</td>";
+                        tbl = tbl + "<td class='EmpIDsNew' hidden>" + response[i].EmpIDsNew + "</td>";
+                        tbl = tbl + "<td class='StateID' hidden>" + response[i].StateID + "</td>";
+                        tbl = tbl + "<td class='CityID' hidden>" + response[i].CityID + "</td>";
+                        tbl = tbl + "<td class='TravelID' hidden>" + response[i].TravelID + "</td>";
+
+                        tbl += "</tr>";
+                        table += tbl;
+                    }
+                }
+
+                $('#tblExpenseRequest tbody').append(table);
+
+                var table = $("#tblExpenseRequest").DataTable({
+                    dom: _domColumn,
+                    language: _languageColumn,
+                    paging: true,
+                    autoWidth: true,
+                    ordering: true,
+                    buttons: [
+                        "excelHtml5",
+                    ],
+                    columnDefs: [
+                        {
+                            targets: [9], // column index
+                            orderable: false, // disable ordering
+                        }
+                    ],
+                    initComplete: function (settings, json)
+                    {
+                        var footer = $("#tblExpenseRequest tfoot tr");
+                        $("#tblExpenseRequest thead").append(footer);
+                    }
+                });
+                $("#tblExpenseRequest thead").on("keyup", "input", function () {
+
+                    table.column($(this).parent().index())
+                    .search(this.value)
+                    .draw();
+                });
+                setTimeout(function ()
+                {
+                    $("#" + "tblExpenseRequest" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+                    $('.tooltips').tooltip();
+                    injectExportButtonsForDataTables(false, function ()
+                    {
+                    });
+                    $('.tooltips').tooltip();
+                }, 100);
+
+
+            },
+            error: function (xhr, status, error) {
+
+            },
+            complete: function () {
+                $("#ajax_loader").hide();
+            }
+        });
+    }
+
+    var fileDataList = [];
+    function addMore() {
+
+        var newDetail = $("#er_upload_docbox .er_details__boxdetail:first").clone();
+        var counter = $("#er_upload_docbox .er_details__boxdetail").length + 1;
+        newDetail.attr('id', 'er_details__boxdetail_' + counter);
+        newDetail.find('.er_details__close').on('click', function () {
+            $(this).closest('.er_details__boxdetail').remove();
+            updateTotalAmount();
+
+        });
+        newDetail.find('input').val('');
+        newDetail.find('#FileUpload').val('');
+        newDetail.find('.fileinput-filename').text('');
+        newDetail.find('#Empphotopath').val('');
+        newDetail.find('#Empphotoname').val('');
+        var tripCategoryDropdown = newDetail.find('.TripCategory');
+        tripCategoryDropdown.attr('id', 'TripCategory_' + counter);
+        tripCategoryDropdown.html('');
+        var selectedCategoryId;
+        fillCategoryList('#TripCategory_' + counter, function(data) {
+            // Bind data to dropdown
+            for (var i = 0; i < data.length; i++) {
+                tripCategoryDropdown.append('<option value="' + data[i].CategoryId + '">' + data[i].CategoryName + '</option>');
+            }
+
+        });
+
+        newDetail.attr('TripCategory_', tripCategoryDropdown);
+
+        $("#er_upload_docbox").append(newDetail);
+
+    }
+    function fillStatedll() {
+        $('#State').empty();
+        $.ajax({
+            type: "GET",
+            url: '@_webapiEMSURL' + 'CommanMaster/GetAllStateMaster',
+            headers: { 'Authorization': '@_tokan' },
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            data: JSON.stringify(),
+            beforeSend: function () {
+                $("#ajax_loader").show();
+            },
+            success: function (data) {
+                if (data != null && data.length > 0) {
+                    var _state = '<option value="0">Select State</option>';
+                    for (var i = 0; i < data.length; i++) {
+                        _state += '<option value="' + data[i].StateId + '">' + data[i].StateName + '</option>';
+                    }
+                    $("#State").append(_state);
+                } else {
+                    $("#State").html('<option value="0">Select State</option>');
+                }
+            },
+            error: function (error) {
+                //alert("Error fetching states: " + error.statusText);
+            },
+            complete: function () {
+                $("#ajax_loader").hide();
+            }
+        });
+    }
+
+    function fillCitydll(stateId, cityId) {
+        var stateid = $('#State').val();
+
+        $.ajax({
+            type: "GET",
+            url: '@_webapiEMSURL' + 'CommanMaster/GetAllCityByStateById/' + stateid,
+            headers: { 'Authorization': '@_tokan' },
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            beforeSend: function () {
+                $("#ajax_loader").show();
+            },
+            success: function (data) {
+                if (data != null && data.length > 0) {
+                    var _city = '<option value="0">Select City</option>';
+                    for (var i = 0; i < data.length; i++) {
+                        _city += '<option value="' + data[i].CityID + '">' + data[i].CityName + '</option>';
+                    }
+                    $("#City").html(_city);
+
+                    if (cityId) {
+                        $("#City").val(cityId); // Set selected option by setting the value directly
+                    }
+                } else {
+                    $("#City").html('<option value="0">Select City</option>');
+                }
+            },
+            error: function (error) {
+                //alert("Error fetching cities: " + error.statusText);
+            },
+            complete: function () {
+                $("#ajax_loader").hide();
+            }
+        });
+    }
+
+    function fillTrip() {
+        var travelid = $('#TravelID').val(); // Assuming TravelID is an input field
+        $.ajax({
+            type: "GET",
+            url: '@_webapiEMSURL' + 'ExpenseTripRequestMaster/GetBindTripDropDownByID?TripID=' + travelid + '&EmpID=' + _NewEmpID,
+            headers: { 'Authorization': '@_tokan' },
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            beforeSend: function () {
+                $("#ajax_loader").show();
+            },
+            success: function (data) {
+                if (data != null) {
+                    var _trip = '<option value="0">Select Trip</option>';
+                    var seenTripIds = new Set();
+                    for (var i = 0; i < data.length; i++) {
+                        if (data[i].Approve2status === "Approved")
+                        {
+
+                            if (!seenTripIds.has(data[i].TripID)) {
+                                seenTripIds.add(data[i].TripID);
+                                _trip += '<option value="' + data[i].TripID + '">' + data[i].TripName + '</option>';
+                            }
+                        }
+                    }
+                    $("#TravelID").html(_trip);
+                }
+            },
+            error: function (error) {
+                //alert(error.responseText);
+            },
+            complete: function () {
+                $("#ajax_loader").hide();
+            }
+        });
+    }
+    function fillTripselected()
+    {
+        var tripid =  $("#TravelID").val();
+        $.ajax({
+            type: "GET",
+            url: '@_webapiEMSURL' + 'ExpenseTripRequestMaster/GetTripRequestAllByTripId?TripID=' + tripid + '&EmpID=' + _NewEmpID,
+            headers: { 'Authorization': '@_tokan' },
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            beforeSend: function () {
+                $("#ajax_loader").show();
+            },
+            success: function (data) {
+
+                for (var i = 0; i < data.length; i++) {
+                    $("#EMPTravelDesc").val(data[i].TripPurpose).prop("disabled", true);
+                    $("#TravelSdate").val(data[i].TripStartDate).prop("disabled", true);
+                    $("#TravelEdate").val(data[i].TripEndDate).prop("disabled", true);
+                }
+
+            },
+            error: function (error) {
+                // Handle error
+            },
+            complete: function () {
+                $("#ajax_loader").hide();
+            }
+        });
+    };
+
+
+    function fillCategoryList(targetElement, selectedCategoryID) {
+        $(targetElement).empty();
+        $.ajax({
+            type: "POST",
+            url: '@_webapiEMSURL' + 'CommanMaster/GetAllExpenseCategoryTypeList',
+            headers: { 'Authorization': '@_tokan' },
+            contentType: "application/json; charset=utf-8",
+            dataType: "json",
+            async: true,
+            beforeSend: function () {
+                $("#ajax_loader").show();
+            },
+            success: function (data) {
+                if (data != null) {
+
+                    var _category = '<option value="0">Select Category</option>';
+                    for (var i = 0; i < data.length; i++) {
+                        _category += '<option value="' + data[i].CategoryId + '">' + data[i].CategoryName + '</option>';
+                    }
+                    $(targetElement).html(_category);
+                    if (selectedCategoryID) {
+                        $(targetElement).val(selectedCategoryID); // Set selected option by setting the value directly
+                    }
+                }
+            },
+            error: function (error) {
+                // Handle error
+            },
+            complete: function () {
+                $("#ajax_loader").hide();
+            }
+        });
+    }
+
+      $(function () {
+
+        // var EmployeeGridFilter = $("#hfCustomer").val();
+        $("#EMPwith").autocomplete({
+            source: function (request, response) {
+                $.ajax({
+                    url: '@_webapiEMSURL' + 'CommanMaster/GetAllWithEmployee?EmpsqlQuery=' + request.term,
+
+                    contentType: "application/json; charset=utf-8",
+                    headers: { 'Authorization': '@_tokan' },
+                    dataType: "json",
+                    type: "GET",
+                    contentType: "application/json; charset=utf-8",
+                    success: function (data) {
+
+                        if (data.length > 0) {
+                            response($.map(data, function (item) {
+                                return {
+                                    label: item.EmpName + '(' + item.Empcode + ')',
+                                    value: item.EmpName
+                                };
+                            }))
+                            empid = data.Empid;
+                        }
+                        else {
+                            $("#EMPwith").val("");
+                            $("#EMPwith").focus();
+                        }
+                    },
+                    error: function (response) {
+                        alert(response.responseText);
+                    },
+                    failure: function (response) {
+                        alert(response.responseText);
+                    }
+                });
+            },
+            select: function (e, i) {
+
+                var Empcode = i.item.label.split('(')[1].split(')')[0]; // Extract EmpId from the selected label
+                var EmpName = i.item.value;
+                var obj = {
+                    Empcode: Empcode,
+                    EmpName: EmpName
+                };
+                $.ajax({
+                    url: '@_webapiEMSURL' + 'CommanMaster/GetAllWithEmployeeByIDFetch',
+                    contentType: "application/json; charset=utf-8",
+                    headers: { 'Authorization': '@_tokan' },
+                    data: JSON.stringify(obj),
+                    dataType: "json",
+                    type: "POST",
+                    contentType: "application/json; charset=utf-8",
+                    success: function (data) {
+
+                        if (data.length > 0) {
+                            //  $("#hfCustomer").val(data[0].EmpId);
+
+                            var autocompleteempId = data[0].EmpId;
+
+                            var found = Object.values(empIds).find(function(value) {
+                                return parseInt(value) === autocompleteempId;
+                            });
+
+                            if (parseInt(found) !== autocompleteempId) {
+                                empIds.push(autocompleteempId);
+                                empids = empIds.join(',');
+                                var removeButton = '<a href="#" class="remove_emp_' + autocompleteempId + '"><i class="fa-solid fa-xmark"></i></a>';
+                                var newText = data[0].EmpName + removeButton;
+                                var newSpan = $('<span></span>').html(newText);
+                                $("#Show_EMPwith").append(newSpan);
+                                //$("#Show_TravelEMPwith").append(newSpan);
+                            } else {
+                                toastr.error("Employee ID already added.");
+                            }
+                        }
+                        else {
+                            $("#hfCustomer").val(0);
+                        }
+
+                    },
+
+                });
+            },
+
+            minLength: 1
+        });
+        $("#Show_EMPwith").on('click', 'a', function() {
+            $(this).closest('span').remove();
+            var empIdToRemove = $(this).attr('class').split('remove_emp_')[1];
+            empIds = empIds.filter(id => id !== empIdToRemove);
+            empids = empIds.join(',');
+        });
+    });
+    //over empwith
+
+    $(function () {
+
+        // var EmployeeGridFilter = $("#hfCustomer").val();
+        $("#TravelEMPwith").autocomplete({
+            source: function (request, response) {
+                $.ajax({
+                    url: '@_webapiEMSURL' + 'CommanMaster/GetAllWithEmployee?EmpsqlQuery=' + request.term,
+
+                    contentType: "application/json; charset=utf-8",
+                    headers: { 'Authorization': '@_tokan' },
+                    dataType: "json",
+                    type: "GET",
+                    contentType: "application/json; charset=utf-8",
+                    success: function (data) {
+
+                        if (data.length > 0) {
+                            response($.map(data, function (item) {
+                                return {
+                                    label: item.EmpName + '(' + item.Empcode + ')',
+                                    value: item.EmpName
+                                };
+                            }))
+                            empid = data.Empid;
+                        }
+                        else {
+                            $("#TravelEMPwith").val("");
+                            $("#TravelEMPwith").focus();
+                        }
+                    },
+                    error: function (response) {
+                        alert(response.responseText);
+                    },
+                    failure: function (response) {
+                        alert(response.responseText);
+                    }
+                });
+            },
+            select: function (e, i) {
+                var Empcode = i.item.label.split('(')[1].split(')')[0]; // Extract EmpId from the selected label
+                var EmpName = i.item.value;
+                var obj = {
+                    Empcode: Empcode,
+                    EmpName: EmpName
+                };
+                $.ajax({
+                    url: '@_webapiEMSURL' + 'CommanMaster/GetAllWithEmployeeByIDFetch',
+                    contentType: "application/json; charset=utf-8",
+                    headers: { 'Authorization': '@_tokan' },
+                    data: JSON.stringify(obj),
+                    dataType: "json",
+                    type: "POST",
+                    contentType: "application/json; charset=utf-8",
+                    success: function (data) {
+
+                        if (data.length > 0) {
+                            //  $("#hfCustomer").val(data[0].EmpId);
+
+                            var autocompleteempId = data[0].EmpId;
+
+                            var found = Object.values(empIds).find(function(value) {
+                                return parseInt(value) === autocompleteempId;
+                            });
+
+                            if (parseInt(found) !== autocompleteempId) {
+                                empIds.push(autocompleteempId);
+                                empids = empIds.join(',');
+                                var removeButton = '<a href="#" class="remove_emp_' + autocompleteempId + '"><i class="fa-solid fa-xmark"></i></a>';
+                                var newText = data[0].EmpName + removeButton;
+                                var newSpan = $('<span></span>').html(newText);
+                                $("#Show_TravelEMPwith").append(newSpan);
+                            } else {
+                                toastr.error("Employee ID already added.");
+                            }
+                        }
+                        else {
+                            $("#hfCustomer").val(0);
+                        }
+
+                    },
+
+                });
+            },
+
+            minLength: 1
+        });
+        $("#Show_TravelEMPwith").on('click', 'a', function() {
+            $(this).closest('span').remove();
+            var empIdToRemove = $(this).attr('class').split('remove_emp_')[1];
+            empIds = empIds.filter(id => id !== empIdToRemove);
+            empids = empIds.join(',');
+        });
+    });
+
+    function generateApproverAvatarHTML(name, empCode, photoFileName) {
+        empCode = '';
+        const nameParts = name ? name.trim().split(" ") : ["?"];
+        let initials = nameParts[0].charAt(0).toUpperCase();
+        if (nameParts.length > 1) {
+            initials += nameParts[1].charAt(0).toUpperCase();
+        }
+
+        const imagePath = `/UploadEmpPhoto/${photoFileName ? photoFileName : ""}`;
+
+        const altSpan = `<span class="avatar-initials tooltips" data-placement="right" data-original-title="Empcode : ${empCode}"
+                  style="display:none;">
+                  ${initials}
+                </span>`;
+        const html = `
+        <img alt="" class="user_img zoom-image tooltips"
+             data-placement="right" data-original-title="Empcode : ${empCode}"
+             src="${imagePath}"
+             onerror="this.style.display='none'; this.nextElementSibling.style.display='inline-block';"/>
+        ${altSpan}
+                `;
+
+        return html;
+    }
+
+    function updateTimelineProgress() {
+        const steps = [
+            { status: $('#app1_status').text().trim().toLowerCase(), badgeId: '#custTime_1' },
+            { status: $('#app2_status').text().trim().toLowerCase(), badgeId: '#custTime_2' },
+            { status: $('#app3_status').text().trim().toLowerCase(), badgeId: '#custTime_3' },
+            { status: $('#app4_status').text().trim().toLowerCase(), badgeId: '#custTime_4' }
+        ];
+
+        $('.custom-timeline li').removeClass('step-complete step-pending step-declined');
+
+        steps.forEach((step, index) => {
+            const li = $('.custom-timeline li').eq(index);
+            const $badge = $(step.badgeId);
+            if ($badge.length === 0) return;
+
+            $badge.removeClass('custStatus_Approved custStatus_Declined custStatus_OnHold custStatus_Pending');
+
+            switch (step.status) {
+                case 'approved':
+                    li.addClass('step-complete');
+                    $badge.addClass('custStatus_Approved');
+                    break;
+                case 'declined':
+                    li.addClass('step-declined');
+                    $badge.addClass('custStatus_Declined');
+                    break;
+                case 'onhold':
+                    li.addClass('step-pending');
+                    $badge.addClass('custStatus_OnHold');
+                    break;
+                default:
+                    li.addClass('step-pending');
+                    $badge.addClass('custStatus_Pending');
+                    break;
+            }
+        });
+    }
+
+
+
+</script>
+
+
+
+<div class="page-bar">
+
+    @if (_RoleId == 1 || _RoleId == 6805 || _RoleId == 6806)
+    {
+        <ul class="page-breadcrumb">
+            <li>
+                @if (isClientDBMatchFlag == "True")
+                {
+                    <a href="/Admin/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+                }
+                else
+                {
+                    <a href="/Dashboard/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+                }
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> Expense Request</span>
+            </li>
+        </ul>
+    }
+    else
+    {
+        <ul class="page-breadcrumb">
+            <li>
+                @if (isClientDBMatchFlag == "true")
+                {
+                    <a href="/Admin/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+                }
+                else
+                {
+                    <a href="/Dashboard/EmployeeDashboard"><i class="fa-regular fa-house"></i></a>
+                }
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> Expense Request</span>
+            </li>
+        </ul>
+    }
+    <div class="page-toolbar text-right">
+        @if (obj.CanAdd)
+        {
+            <a href="javascript:;" class="btn icon_transparent_btn tooltips" data-placement="left" data-original-title="Add Expense Request" id="ExpRequest"><i class="fa-solid fa-plus"></i></a>
+            <a href="javascript:;" class="btn icon_transparent_btn tooltips" data-placement="left" data-original-title="Back" id="closebtn" style="display: none;"><i class="fa-regular fa-arrow-left"></i></a>
+            <a href="javascript:;" class="btn icon_transparent_btn " data-placement="left" id="ExpView"> <i class="fa-regular fa-eye"></i> </a>
+        }
+    </div>
+</div>
+
+@if (obj.CanView)
+{
+    <!-- Modal HTML -->
+    <div id="policy_modal" class="policymodal_block" style="display: none;">
+        <div class="modal_box"
+             style="position: relative; height: 90vh; display: flex; justify-content: center; align-items: center; flex-direction: column;">
+            <button id="closeModal" class="closeModal">&times;</button>
+            <iframe id="pdfViewer" style="width: 100%; height: 100%; display: none;" frameborder="0"></iframe>
+            <div id="policyIdText" style="display: none; text-align: center;">
+                <img id="noPolicyImg" src="~/assets/images/emptyscreen_1.png" alt="No Policy Found"
+                     style="display: none; max-width: 260px; margin-bottom: 20px;" />
+                <div id="noPolicyMsg" style="color: #666; font-size: 16px; font-weight: 500;">
+                    No policy has been assigned to this employee.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="ExpenseRequestDetails">
+        <div class="portlet">
+            <div class="portlet-body">
+                <div id="tblempty">
+                    <div class="table-responsive" id="tableResponsive">
+                        <div class="EMS_details_table">
+                            <!-- Datatable : Begin -->
+                            @*<table id="tblExpenseRequest" class="table table-striped table-bordered tbl_middle table-hover tbl_newdatatbl serch_datatable table-checkable order-column">*@
+                            <table id="tblExpenseRequest" class="table new_datatbl table-striped table-bordered table-hover serch_datatable table-checkable order-column">
+                                <thead>
+                                    <tr>
+                                        <th style="min-width: 60px;" hidden>Code</th>
+                                        <th style="min-width: 60px;" hidden>empname</th>
+                                        <th style="min-width: 90px">Expense Date</th>
+                                        <th style="min-width: 60px;">Type</th>
+                                        <th style="min-width: 60px;">Amount</th>
+                                        <th style="min-width: 80px">Location</th>
+                                        <th style="min-width: 120px">Receipts</th>
+                                        <th style="min-width: 250px">Description</th>
+                                        <th style="min-width: 70px">Status</th>
+                                        <th style="min-width: 100px">Actions</th>
+                                        <th style="min-width: 60px;" hidden>EmpNames</th>
+                                        <th style="min-width: 60px;" hidden>EmpIDs</th>
+                                        <th style="min-width: 60px;" hidden>TravelID</th>
+                                        <th style="min-width: 60px;" hidden>StateID</th>
+                                        <th style="min-width: 60px;" hidden>CityID</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                                <tfoot>
+                                    <tr>
+                                        <th hidden>Code</th>
+                                        <th hidden>empname</th>
+
+                                        <th>Expense Date</th>
+                                        <th>Type</th>
+                                        <th>Amount</th>
+                                        <th>Location</th>
+                                        <th>Receipts</th>
+                                        <th>Reason</th>
+                                        <th>Status</th>
+                                        <th>Actions</th>
+                                        <th hidden>EmpNames</th>
+                                        <th hidden>EmpIDs</th>
+                                        <th hidden>TravelID</th>
+                                        <th hidden>StateID</th>
+                                        <th hidden>CityID</th>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                            <!-- Datatable : End -->
+                        </div>
+                    </div>
+                </div>
+                <div id="NotificationGrid-empty" style="display: none">
+                    <div class="datanotfound">
+                        <img src="" height="148" width="280" alt="Nodata Found Icon">
+                        <p class="datanotfound_title"></p> <!-- titleText -->
+                        <p class=""></p><!-- subText -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="TripView_Details" style="display: none">
+        <div class="portlet">
+            <div class="portlet-body">
+                <div class="row">
+                    <div class="col-lg-12">
+                        <div class="d-flex justify-content-between">
+                            <div class="serch_datatable exp_review_userdetail">
+                                <div class="emp_box">
+                                    @*<img src="/assets/images/avtar.png" alt="User icon" class="user_img">*@
+                                    <img src="/assets/images/avtar.png" alt="User icon" class="user_img" id="user_image">
+                                    <span><p class="emp_name" id="_Pemp_name"></p><p class="emp_name" id="_Pemp_EmailId"></p></span>
+                                </div>
+                            </div>
+                            <div class="exp_review_amount text-right">
+                                <div class="amt_word">Amount</div>
+                                <div class="amt_total">Rs. <span></span></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-12">
+                        <div class="row">
+                            <div class="col-lg-8">
+                                <div class="expensereview__heightcard">
+                                    <div class="expense_detailblock">
+                                        <h3 class="expense_title">Details</h3>
+                                        <div class="expense_bodydata">
+                                            <div class="row">
+                                                <div class="col-sm-4 col-xs-4">
+                                                    <p class="expense_head">Expense Code</p>
+                                                    <div class="expense_value" id="expenseid"></div>
+                                                </div>
+                                                <div class="col-sm-4 col-xs-4">
+                                                    <p class="expense_head">Expense Date</p>
+                                                    <div class="expense_value" id="expdate"></div>
+                                                </div>
+                                                <div class="col-sm-4 col-xs-4">
+                                                    <p class="expense_head">Location</p>
+                                                    <div class="expense_value" id="location">Ahmedabad</div>
+                                                </div>
+                                                <div class="col-sm-4 col-xs-12">
+                                                    <p class="expense_head">With Employee</p>
+                                                    <div class="expense_value" id="withemp"><span>Hardik Shankarbhai Darji</span>, <span>Arpit Mahendrabhai Patel</span></div>
+                                                </div>
+                                                <div class="col-sm-8 col-xs-12">
+                                                    <p class="expense_head">Description</p>
+                                                    <div class="expense_value" id="expdesc">Reliable and efficient public transportation services</div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- UploadBills OR Documents Block : Begin -->
+                                    <div class="expense_detailblock expense_bill_block">
+                                        <div class="d-flex align-items-center justify-content-between">
+                                            <h3 class="expense_title">Upload Bills OR Documents</h3>
+                                        </div>
+                                        <div class="expense_bodydata">
+                                            <div class="expense_bill_linenew">
+                                                <div class="expense_bill_title">
+                                                    <div class="row">
+                                                        <div class="col-sm-3 col-xs-6">
+                                                            <p class="expense_head">Expense Category</p>
+                                                        </div>
+                                                        <div class="col-sm-2 col-xs-6">
+                                                            <p class="expense_head">Amount</p>
+                                                        </div>
+                                                        <div class="col-sm-3 col-xs-6">
+                                                            <p class="expense_head">Title</p>
+                                                        </div>
+                                                        <div class="col-sm-3 col-xs-6">
+                                                            <p class="expense_head">Receipt</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div class="expense_bill_line">
+                                                    @*<div class="row">
+                                                            <div class="col-sm-3 col-xs-6">
+                                                                <p class="expense_head">Expense Category</p>
+                                                                <div class="mb-0 expense_value">Conveyance Expense</div>
+                                                            </div>
+                                                            <div class="col-sm-2 col-xs-6">
+                                                                <p class="expense_head">Amount</p>
+                                                                <div class="mb-0 expense_value" id="expcatamount"></div>
+                                                            </div>
+                                                            <div class="col-sm-4 col-xs-6">
+                                                                <p class="expense_head">Title</p>
+                                                                <div class="mb-0 expense_value" id="exptitle"></div>
+                                                            </div>
+                                                            <div class="col-sm-3 col-xs-6">
+                                                                <p class="expense_head">Receipt</p>
+                                                                <input type="hidden" id="Filepath" name="Filepath" value="" />
+                                                                <input type="hidden" id="docid" name="docid" value="1" />
+                                                                <input type="hidden" id="docid" name="downloadRecipt" value="" />
+                                                                <div class="mb-0 expense_value font-blue"><a href="javascript:;" id="downRecipt">View Receipt <img src="/assets/images/download_icon.svg" height="16" width="18" alt="download icon"></a></div>
+                                                            </div>
+                                                        </div>*@
+                                                </div>
+                                                @*<div class="expense_bill_line">
+                                                        <div class="row">
+                                                            <div class="col-sm-3 col-xs-6">
+                                                                <p class="expense_head">Expense Category</p>
+                                                                <div class="mb-0 expense_value">Conveyance Expense</div>
+                                                            </div>
+                                                            <div class="col-sm-2 col-xs-6">
+                                                                <p class="expense_head">Amount</p>
+                                                                <div class="mb-0 expense_value" id="expcatamount"></div>
+                                                            </div>
+                                                            <div class="col-sm-4 col-xs-6">
+                                                                <p class="expense_head">Title</p>
+                                                                <div class="mb-0 expense_value" id="exptitle"></div>
+                                                            </div>
+                                                            <div class="col-sm-3 col-xs-6">
+                                                                <p class="expense_head">Receipt</p>
+                                                                <input type="hidden" id="Filepath" name="Filepath" value="" />
+                                                                <input type="hidden" id="docid" name="docid" value="1" />
+                                                                <input type="hidden" id="docid" name="downloadRecipt" value="" />
+                                                                <div class="mb-0 expense_value font-blue"><a href="javascript:;" id="downRecipt">View Receipt <img src="/assets/images/download_icon.svg" height="16" width="18" alt="download icon"></a></div>
+                                                            </div>
+                                                        </div>
+                                                    </div>*@
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <!-- UploadBills OR Documents Block : End -->
+                                    <!-- Trip Detail Block : Begin -->
+                                    <div class="details">
+                                        <div class="expense_detailblock expense_bill_block">
+                                            <div class="d-flex align-items-center">
+                                                <h3 class="expense_title" style="margin-bottom: 0;">Trip Detail</h3>
+                                                <div class="exp_review_amount text-right margin-left-15">
+                                                    <div class="amt_word" id="TripDuration"></div>
+                                                    <div class="amt_total" style="display:none;">Amount Summary : Rs <span>300.00</span></div>
+                                                </div>
+                                            </div>
+                                            <div class="expense_bodydata">
+                                                <div class="expense_bill_linenew">
+                                                    <div class="expense_bill_title">
+                                                        <div class="row">
+                                                            <div class="col-sm-3 col-xs-6">
+                                                                <p class="expense_head">Client Name</p>
+                                                            </div>
+                                                            <div class="col-sm-2 col-xs-6">
+                                                                <p class="expense_head">Departure Date</p>
+                                                            </div>
+                                                            <div class="col-sm-3 col-xs-6">
+                                                                <p class="expense_head">Departure</p>
+                                                            </div>
+                                                            <div class="col-sm-3 col-xs-6">
+                                                                <p class="expense_head">Arrival</p>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <div class="expense_bill_lines">
+                                                    </div>
+                                                    @*<div class="expense_bill_line">
+                                                            <div class="row">
+                                                                <div class="col-sm-3 col-xs-6">
+                                                                    <p class="expense_head">Expense Category</p>
+                                                                    <div class="mb-0 expense_value">Conveyance Expense</div>
+                                                                </div>
+                                                                <div class="col-sm-2 col-xs-6">
+                                                                    <p class="expense_head">Amount</p>
+                                                                    <div class="mb-0 expense_value" id="expcatamount"></div>
+                                                                </div>
+                                                                <div class="col-sm-4 col-xs-6">
+                                                                    <p class="expense_head">Title</p>
+                                                                    <div class="mb-0 expense_value" id="exptitle"></div>
+                                                                </div>
+                                                                <div class="col-sm-3 col-xs-6">
+                                                                    <p class="expense_head">Receipt</p>
+                                                                    <input type="hidden" id="Filepath" name="Filepath" value="" />
+                                                                    <input type="hidden" id="docid" name="docid" value="1" />
+                                                                    <input type="hidden" id="docid" name="downloadRecipt" value="" />
+                                                                    <div class="mb-0 expense_value font-blue"><a href="javascript:;" id="downRecipt">View Receipt <img src="/assets/images/download_icon.svg" height="16" width="18" alt="download icon"></a></div>
+                                                                </div>
+                                                            </div>
+                                                        </div>*@
+
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <!-- Trip Detail Block : End -->
+
+                                </div>
+                            </div>
+                            <!-- Approvers Block : Begin -->
+                            <div class="col-lg-4">
+                                <div class="er_details appr_block">
+                                    <div class="col-lg-12">
+                                        <div class="er_details__title margin-top-10 margin-bottom-10 blue_font">Expense Status</div>
+                                    </div>
+                                    <div class="er_details__box expensereview__heightcard">
+                                        <!-- Timeline Approver Flow Design : Begin -->
+                                        <div class="custom-timeline-box">
+                                            <div class="timeline-list">
+                                                <ul class="custom-timeline">
+                                                    <li>
+                                                        <div class="timeline-badge" id="custTime_1"></div>
+                                                        <div class="timeline-panel bubble-msg-box">
+                                                            <div class="timeline-heading d-flex align-items-center justify-content-between margin-bottom-10">
+                                                                <p class="margin-0">Approver 1</p>
+                                                                <input type="hidden" id="ApprovalLevel1ID" name="ApprovalLevel1ID" value="" />
+                                                                <span class="font-weight-bold" id="app1_status">Approved</span>
+                                                            </div>
+                                                            <div class="timeline-details d-flex align-items-start">
+                                                                <div id="app1_photo" class="d-flex align-items-center me-2"></div>
+                                                                <div>
+                                                                    <span class="aprrover-name margin-left-5" id="App1_name"></span>
+                                                                    <p class="margin-left-5 margin-0" id="_approval1Reason"></p>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </li>
+                                                    <li>
+                                                        <div class="timeline-badge" id="custTime_2"></div>
+                                                        <div class="timeline-panel bubble-msg-box">
+                                                            <div class="timeline-heading d-flex align-items-center justify-content-between margin-bottom-10">
+                                                                <p class="margin-0">Approver 2</p>
+                                                                <input type="hidden" id="ApprovalLevel2ID" name="ApprovalLevel2ID" value="" />
+                                                                <span class="font-weight-bold" id="app2_status">Pending</span>
+                                                            </div>
+                                                            <div class="timeline-details d-flex">
+                                                                <div id="app2_photo" class="d-flex align-items-center me-2"></div>
+                                                                <div>
+                                                                    <span class="aprrover-name margin-left-5" id="App2_name"></span>
+                                                                    <p class="margin-left-5 margin-0" id="_approval2Reason"></p>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </li>
+                                                    <li>
+                                                        <div class="timeline-badge" id="custTime_3"></div>
+                                                        <div class="timeline-panel bubble-msg-box">
+                                                            <div class="timeline-heading d-flex align-items-center justify-content-between margin-bottom-10">
+                                                                <p class="margin-0">Approver 3</p>
+                                                                <input type="hidden" id="ApprovalLevel3ID" name="ApprovalLevel3ID" value="1" />
+                                                                <span class="font-weight-bold" id="app3_status">Declined</span>
+                                                            </div>
+                                                            <div class="timeline-details d-flex">
+                                                                <div id="app3_photo" class="d-flex align-items-center me-2"></div>
+                                                                <div>
+                                                                    <span class="aprrover-name margin-left-5" id="App3_name"></span>
+                                                                    <p class="margin-left-5 margin-0" id="_approval3Reason"></p>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </li>
+                                                    <li>
+                                                        <div class="timeline-badge" id="custTime_4"></div>
+                                                        <div class="timeline-panel bubble-msg-box">
+                                                            <div class="timeline-heading d-flex align-items-center justify-content-between margin-bottom-10">
+                                                                <p class="margin-0">Default Approver</p>
+                                                                <span class="font-weight-bold grey_font" id="app4_status"> Pending</span>
+                                                            </div>
+                                                            <div class="timeline-details d-flex">
+                                                                <img src="/assets/images/avtar.png" id="app4_photo" alt="UserImage" width="24" height="24">
+                                                                <div>
+                                                                    <span class="aprrover-name margin-left-5" id="App4_name">Account Person</span>
+                                                                    <p class="margin-left-5 margin-0" id="_approval4Reason"></p>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </li>
+                                                </ul>
+                                            </div>
+                                        </div>
+                                        <!-- Timeline Approver Flow Design : End -->
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Approvers Block : End -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Expence Request Modal : Begin -->
+    <div id="ExpRequest_modal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog w-900">
+            @*@using (Html.BeginForm("EMSEmpReqMaster", "ExpenseRequestMaster", FormMethod.Post))  //FormMethod.Post, new { @enctype = "multipart/form-data", @id = "form1" }))
+                {*@
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" id="btnclose" class="close" data-dismiss="modal">×</button>
+                    <h4 class="modal-title">Expense Request</h4>
+                </div>
+                <div class="modal-body">
+                    @*@using (Html.BeginForm("EMSEmpReqMaster", "ExpenseRequestMaster", FormMethod.Post, new { @enctype = "multipart/form-data", @id = "form1" }))
+                        {*@
+                    <fieldset>
+                        <div class="row">
+                            <input type="hidden" id="ExpenseReqType" name="ExpenseReqType" value="1" />
+                            <input type="hidden" id="locationType" name="locationType" value="1" />
+                            <input type="hidden" id="ExpenseType" name="ExpenseType" value="1" />     @*1)submit  2)draft*@
+
+                            @*<div class="form-group">
+                                    <label>Employee ID</label>
+                                    <input type="text" class="form-control input-sm" name="expenseReqID" id="expenseReqID" placeholder="Employee ID">
+                                </div>*@
+                            <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12" hidden>
+                                <div class="form-group">
+                                    <label>Employee ID</label>
+                                    <input type="text" class="form-control input-sm" name="expenseReqID" id="expenseReqID" placeholder="expenseReqID" value="0">
+
+                                </div>
+                            </div>
+                            <!-- Step 1 - Expense Details : Begin -->
+                            <div class="col-lg-4">
+                                <div class="er_details">
+                                    <div class="col-lg-12">
+                                        <div class="er_details__title margin-top-10 margin-bottom-10">Step 1 - Expense Details</div>
+                                    </div>
+                                    <div class="er_details__box er_details__heightcard">
+                                        <div class="col-lg-12">
+                                            <div class="form-group radio_box">
+                                                <label class="mt-radio mt-radio-outline">
+                                                    Expense
+                                                    <input value="False" name="Expensetype" id="Expense_data" type="radio" checked>
+                                                    <span></span>
+                                                </label>
+                                                <label class="mt-radio mt-radio-outline">
+                                                    Travel
+                                                    <input value="True" name="Expensetype" id="Travel_data" type="radio">
+                                                    <span></span>
+                                                </label>
+                                            </div>
+                                        </div>
+
+
+
+                                        <!-- Expense Select Block Data : Begin -->
+                                        <div id="Expenseselect_block">
+                                            <div class="col-lg-12">
+                                                <div class="form-group data_picker_box">
+                                                    <label>Expense date<span class="required" aria-required="true">*</span></label>
+                                                    <div class="input-group input-group-sm date date-picker" id="" data-date="@DateTime.Now" data-date-format="@_isdateformat" data-date-viewmode="years">
+                                                        <span class="input-group-btn">
+                                                            <button class="btn default" type="button">
+                                                                <i class="fa-light fa-calendar-days"></i>
+                                                            </button>
+                                                        </span>
+                                                        <input type="text" class="form-control" id="ExpDate" data-date-format="@_isdateformat" placeholder="@_isdateformat.Replace("M","MMM")" autocomplete="off">
+                                                    </div>
+
+                                                    <!--<div class="input-group input-group-sm date date-picker">
+                                                        <span class="input-group-btn">
+                                                            <button class="btn default" type="button">
+                                                                <i class="fa-light fa-calendar-days"></i>
+                                                            </button>
+                                                        </span>
+                                                        <input type="text" class="form-control" id="ExpDate" data-date-format="@_isdateformat" placeholder="@_isdateformat.Replace("M","MMM")" autocomplete="off">-->
+                                                    @*<input type="text" placeholder="Select Date" class="form-control" id="ExpDate" name="" autocomplete="off">*@
+                                                    <!--</div>-->
+                                                </div>
+                                            </div>
+                                            <div class="col-lg-12">
+                                                <div class="form-group">
+                                                    <label>Description</label>
+                                                    <textarea class="form-control" name="" id="ExpDesc" placeholder="Enter Description" maxlength="150"></textarea>
+                                                </div>
+                                            </div>
+
+                                            <div class="col-lg-12">
+                                                <div class="form-group">
+                                                    <label>With Employee</label>
+                                                    <input id="EMPwith" name="EMPwith" maxlength="15" class="form-control" placeholder="Please Enter EmpID or Name" tabindex="1">
+                                                    <input type="hidden" id="hfCustomer" />
+                                                </div>
+                                                <div class="emp_selected" id="Show_EMPwith"></div>
+                                            </div>
+                                            <div class="col-lg-12">
+                                                <div class="form-group radio_box">
+                                                    <label class="control-label">Location<span class="required" aria-required="true">*</span></label>
+                                                    <label class="mt-radio mt-radio-outline">
+                                                        HO
+                                                        <input value="False" name="Location" id="Location_Head" type="radio" checked="">
+                                                        <span></span>
+                                                    </label>
+                                                    <label class="mt-radio mt-radio-outline">
+                                                        Site Location
+                                                        <input value="True" name="Location" id="Location_Site" type="radio">
+                                                        <span></span>
+                                                    </label>
+                                                </div>
+                                            </div>
+                                            <div id="sitelocation_block" style="display: none">
+                                                <div class="col-lg-12">
+                                                    <div class="form-group">
+                                                        <label>State<span class="required" aria-required="true">*</span></label>
+                                                        <select class="form-control input-sm select2" id="State" name="State">
+                                                            <option value="0" selected>Select State</option>
+
+                                                        </select>
+                                                    </div>
+                                                </div>
+
+                                                <div class="col-lg-12">
+                                                    <div class="form-group">
+                                                        <label>City<span class="required" aria-required="true">*</span></label>
+                                                        <select class="form-control input-sm select2" id="City" name="City">
+                                                            <option value="0" disabled selected>Select City</option>
+
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <!-- Expense Select Block Data : End -->
+                                        <!-- Travel Select Block Data : Begin -->
+                                        <div id="Travelselect_block" style="display: none">
+                                            <div class="col-lg-12">
+                                                <div class="form-group">
+                                                    <label>Select Travel<span class="required" aria-required="true">*</span></label>
+                                                    <select class="form-control input-sm select2" id="TravelID">
+                                                        <option value="0">Please Select</option>
+
+                                                    </select>
+                                                    @* <input type="hidden" id="TravelID" name="TravelID" value="0" />*@
+
+                                                </div>
+                                            </div>
+                                            <div id="TripData_block" style="display: none">
+                                                <div class="col-lg-12">
+                                                    <div class="form-group data_picker_box">
+                                                        <label>Trip Start<span class="required" aria-required="true">*</span></label>
+                                                        <span class="input-group-btn">
+                                                        </span>
+                                                        <input type="text" placeholder="Select Date" class="form-control" id="TravelSdate" name="TravelSdate">
+                                                    </div>
+                                                </div>
+                                                <div class="col-lg-12">
+                                                    <div class="form-group data_picker_box">
+                                                        <label>Trip End</label>
+                                                        <span class="input-group-btn">
+                                                        </span>
+                                                        <input type="text" placeholder="Select Date" class="form-control" id="TravelEdate" name="TravelEdate">
+                                                    </div>
+                                                </div>
+                                                <div class="col-lg-12">
+                                                    <div class="form-group">
+                                                        <label>Business Purpose</label>
+                                                        <textarea class="form-control" name="" id="EMPTravelDesc" placeholder="Enter Business Purpose" maxlength="150"></textarea>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            @*<div class="col-lg-12">
+                                                    <div class="form-group">
+                                                        <label>With Employee</label>
+                                                        <select class="form-control input-sm select2" id="">
+                                                            <option value="0">Please Select</option>
+                                                            <option value="2">Arpit Patel</option>
+                                                            <option value="3">Hardik Darji</option>
+                                                            <option value="4">Dharmik Shah</option>
+                                                            <option value="4">Harin Parekh</option>
+                                                        </select>
+                                                    </div>
+                                                </div>*@
+                                            <div class="col-lg-12">
+                                                <div class="form-group">
+                                                    <label>With Employee</label>
+                                                    <input id="TravelEMPwith" name="TravelEMPwith" maxlength="15" class="form-control" placeholder="Please Enter EmpID or Name" tabindex="1">
+                                                    <input type="hidden" id="hfCustomer1" />
+                                                </div>
+                                                <div class="emp_selected" id="Show_TravelEMPwith"></div>
+                                            </div>
+                                            @*<div class="col-lg-12">
+                                                    <div class="form-group">
+                                                        <label>With Employee</label>
+                                                        <input id="EMPwith" name="EMPwith" maxlength="15" class="form-control" placeholder="Please Enter EmpID or Name" tabindex="1">
+                                                        <input type="hidden" id="hfCustomer" />
+                                                    </div>
+                                                </div>*@
+                                        </div>
+                                        <!-- Travel Select Block Data : End -->
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Step 1 - Expense Details : End -->
+                            <!-- Step 2 - Upload Bills OR Documents : Begin -->
+                            <div class="col-lg-8 padding-0">
+                                <div class="er_details">
+                                    <div class="col-lg-12">
+                                        <div class="er_details__title margin-top-10 margin-bottom-10">Step 2 - Upload Bills OR Documents</div>
+                                    </div>
+                                    <div class="er_details__box">
+                                        <div class="col-lg-12">
+                                            <div class="er_details__uploadblock">
+                                                <div class="er_upload__heightcard">
+                                                    <div class="er_upload_docbox" id="er_upload_docbox">
+                                                        <div class="er_details__boxdetail">
+                                                            <button type="button" id="Ec" class="er_details__close close">×</button>
+                                                            <div class="col-lg-6">
+                                                                <div class="form-group">
+                                                                    <label>Expense Type<span class="required" aria-required="true">*</span></label>
+                                                                    <select class="form-control input-sm TripCategory" id="TripCategory" name="TripCategory">
+                                                                        <option value="0" selected>Please Select</option>
+                                                                    </select>
+                                                                </div>
+                                                            </div>
+
+                                                            <div class="col-lg-6">
+                                                                <div class="form-group amount_box">
+                                                                    <span class="currency-symbol">₹</span>
+                                                                    <label>Amount<span class="required" aria-required="true">*</span></label>
+                                                                    <input type="number" class="form-control input-sm validation" name="ExAmount" id="ExAmount" placeholder="Enter Amount" maxlength="10">
+                                                                </div>
+                                                            </div>
+                                                            <div class="col-lg-12">
+                                                                <div class="form-group">
+                                                                    <label>Title<span class="required" aria-required="true">*</span></label>
+                                                                    <input type="text" class="form-control input-sm validation" name="" id="ExTitle" placeholder="Enter Title" maxlength="50">
+                                                                </div>
+                                                            </div>
+                                                            <div class="col-lg-12">
+                                                                <div class="fileinput fileinput-new form-group" data-provides="fileinput">
+                                                                    <label>Upload<span class="required" aria-required="true">*</span></label>
+                                                                    <div class="input-group">
+                                                                        <div class="form-control uneditable-input input-fixed input" data-trigger="fileinput">
+                                                                            <i class="fa-light fa-upload font-blue"></i>&nbsp;
+                                                                            <span class="fileinput-filename"> </span>
+                                                                        </div>
+                                                                        <span class="input-group-addon btn blue btn-file">
+                                                                            <span class="fileinput-new">Upload</span>
+                                                                            <span class="fileinput-exists">Change</span>
+                                                                            <input type="file" name="FileUpload" id="FileUpload">
+                                                                            <input type="hidden" id="Empphotoname" name="Empphotoname">
+                                                                            <input type="hidden" id="Empphotopath" name="Empphotopath">
+                                                                        </span>
+                                                                        <a href="javascript:;" class="input-group-addon btn red fileinput-exists" data-dismiss="fileinput">Remove</a>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+
+                                                        </div>
+                                                    </div>
+                                                    <div class="er_details__addmore margin-top-5">
+                                                        <a href="javascript:;" class="font-blue" id="addMore" onclick="addMore()"><i class="fa-solid fa-plus"></i> Add more</a>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div class="d-flex justify-content-end">
+                                                <span class=" font-red font-weight-bold margin-top-10 Total" id="Total">Total: ₹</span>
+
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Step 2 - Upload Bills OR Documents : End -->
+                            <!-- Approvers Block : Begin -->
+
+                            <div class="col-lg-3" hidden>
+                                <div class="er_details appr_block">
+                                    <div class="col-lg-12">
+                                        <div class="er_details__title margin-top-10 margin-bottom-10">Approvers</div>
+                                    </div>
+                                    <div class="er_details__box er_details__heightcard">
+                                        <!-- Timeline Approver Flow Design : Begin -->
+                                        <div class="custom-timeline-box">
+                                            <div class="timeline-list">
+                                                <ul class="custom-timeline">
+                                                    <li>
+                                                        <div class="timeline-badge"></div>
+                                                        <div class="timeline-panel bubble-msg-box">
+                                                            <div class="timeline-heading d-flex align-items-center justify-content-between margin-bottom-10">
+                                                                <p class="margin-0">Approver 1</p>
+                                                                @*<span class="font-weight-bold green_font">Approved</span>*@
+                                                            </div>
+                                                            <div class="timeline-details d-flex align-items-center">
+                                                                <img src="/assets/images/avtar.png" alt="UserImage" width="20" height="20">
+                                                                <span class="aprrover-name margin-left-5" id="App1_name">Alejandro Wilkinson</span>
+                                                            </div>
+                                                        </div>
+                                                    </li>
+                                                    <li>
+                                                        <div class="timeline-badge"></div>
+                                                        <div class="timeline-panel bubble-msg-box">
+                                                            <div class="timeline-heading d-flex align-items-center justify-content-between margin-bottom-10">
+                                                                <p class="margin-0">Approver 2</p>
+                                                                @*<span class="font-weight-bold">Pending</span>*@
+                                                            </div>
+                                                            <div class="timeline-details d-flex align-items-center">
+                                                                <img src="/assets/images/avtar.png" alt="UserImage" width="20" height="20">
+                                                                <span class="aprrover-name margin-left-5" id="App2_name">Alejandro Wilkinson</span>
+                                                            </div>
+                                                        </div>
+                                                    </li>
+                                                    <li>
+                                                        <div class="timeline-badge"></div>
+                                                        <div class="timeline-panel bubble-msg-box">
+                                                            <div class="timeline-heading d-flex align-items-center justify-content-between margin-bottom-10">
+                                                                <p class="margin-0">Approver 3</p>
+                                                                @*<span class="font-weight-bold red_font">Declined</span>*@
+                                                            </div>
+                                                            <div class="timeline-details d-flex align-items-center">
+                                                                <img src="/assets/images/avtar.png" alt="UserImage" width="20" height="20">
+                                                                <span class="aprrover-name margin-left-5" id="App3_name">Alejandro Wilkinson</span>
+                                                            </div>
+                                                        </div>
+                                                    </li>
+                                                    <li>
+                                                        <div class="timeline-badge"></div>
+                                                        <div class="timeline-panel bubble-msg-box">
+                                                            <div class="timeline-heading d-flex align-items-center justify-content-between margin-bottom-10">
+                                                                <p class="margin-0">Default Approver</p>
+                                                            </div>
+                                                            <div class="timeline-details d-flex">
+                                                                <img src="/assets/images/avtar.png" id="app4_photo" alt="UserImage" width="20" height="20">
+                                                                <div>
+                                                                    <span class="aprrover-name margin-left-5" id="App4_name">Alejandro Wilkinson</span>
+                                                                    @*<span class="aprrover-name margin-left-5">Account Department</span>*@
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </li>
+                                                </ul>
+                                            </div>
+                                        </div>
+                                        <!-- Timeline Approver Flow Design : End -->
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Approvers Block : End -->
+                        </div>
+                    </fieldset>
+
+                </div>
+                <div class="modal-footer">
+                    <div class="row">
+                        <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                            <input type="button" class="btn btn-sm red_font" id="btn_cancel" data-dismiss="modal" value="Cancel" />
+                            <button class="btn btn-sm font-blue" type="button" id="btnSaveDraft">Save as Draft</button>
+                            <button class="btn btn-sm blue" type="button" id="btnExprequest">Save</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            @*}*@
+        </div>
+    </div>
+}
+else
+{
+    <script>
+        Swal.fire({
+            title:
+                "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_info.svg' alt=''> Unauthorized Access",
+            html:
+                "<div class='swal_subtitle'>" +
+                "<b>Access denied. You don’t have the required permissions to view this page.</b>" +
+                "<p>Please contact your administrator if you believe this is a mistake.</p>" +
+                "</div>",
+            showCloseButton: true,
+            showCancelButton: false,
+            focusConfirm: false,
+            cancelButtonText: 'Close',
+            confirmButtonText: 'Go to Dashboard',
+            allowOutsideClick: false,
+            allowEscapeKey: false,
+            customClass: {
+                popup: 'swal_info',                     // <<-- Add class directly to popup
+                confirmButton: 'swal-confirm-button-class',
+                cancelButton: 'swal-cancel-button-class'
+            }
+        }).then(function (result) {
+            if (result.isConfirmed) {
+                window.location.href = "/Dashboard/EmployeeDashboard";
+            }
+        });
+    </script>
+}

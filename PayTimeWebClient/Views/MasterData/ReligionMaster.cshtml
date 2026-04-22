@@ -1,0 +1,400 @@
+﻿@model PayTimeWebClient.Models.Religion
+@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@{
+    ViewBag.Title = "Religion Master";
+    //Layout = "~/Views/Shared/_Layout.cshtml";
+    string _Message = ViewBag.msg;
+    string _error = ViewBag.error;
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+    int _cmpid = 0;
+    int _branchid = 0;
+    string _empid = "0";
+    if (_RoleId != 1 && _RoleId != 6805 && _RoleId != 6806)
+    {
+        _empid = HttpContext.Current.Session["EmpId"].ToString();
+    }
+    if (_RoleId == 6805)
+    {
+        _cmpid = Convert.ToInt32(HttpContext.Current.Session["ClientCompanyId"]);
+    }
+    if (_RoleId == 6806)
+    {
+        _cmpid = Convert.ToInt32(HttpContext.Current.Session["ClientCompanyId"]);
+        _branchid = Convert.ToInt32(HttpContext.Current.Session["BranchId"]);
+    }
+    string _dbName = HttpContext.Current.Session["DbName"].ToString();
+    string _webapiurl = System.Configuration.ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+
+    string isClientDBMatchFlag = HttpContext.Current.Session["IsClientDBMatch"] != null
+    ? HttpContext.Current.Session["IsClientDBMatch"].ToString()
+    : "false"; // Default to "false" if the session is null
+    Int64 _DatagridThsold = 0;
+
+    _DatagridThsold = Convert.ToInt64(HttpContext.Current.Session["DataGridThresold"]);
+}
+<link href="~/Newlayout/css/payrollstructure.css" rel="stylesheet">
+<script src="~/Scripts/timeme.js"></script>
+<script src="~/AssetsNew/js/CommonValidation.js"></script>
+<script src="~/Pages_JS/MasterData/ReligionDataGridPagination.js"></script>
+<script src="~/Scripts/Helpers/noDataHandler.js"></script>
+<script type="text/javascript">
+    var count = 0;
+    var form = "Religion Master";
+    var operation = "";
+    var roleid = '@_RoleId';
+    var loginempid = '@_empid';
+    var DataGridThreSold = '@_DatagridThsold';
+    var cmpid = '@_cmpid';
+    var branchid = '@_branchid';
+    var table = "";
+    var canDelete = '@obj.CanDelete';
+    var canEdit = '@obj.CanEdit';
+    var token = '@_tokan';
+    var webapiurl = '@_webapiurl';
+    $(document).ready(function () {
+        /*timeMeInitialize function is  a javascript library which displays a timer to display how long you are actively viewing the current webpage.*/
+        timeMeInitialize();
+        $('input[type="text"]').on('keydown', function (e) {
+            if ((e.ctrlKey || e.metaKey) && e.keyCode == 86) {
+                e.preventDefault();
+                return false;
+            }
+
+        });
+        document.oncontextmenu = function () { return false; };
+        $(document).mousedown(function (e) {
+            if (e.button == 2) {
+                return false;
+            }
+            return true;
+        });
+        $("#ReligionName").keypress(function (e) {
+            var keyCode = e.which;
+            var Responce = validateKeyPress(keyCode);
+            if (Responce == true) {
+            }
+            else {
+                e.preventDefault();
+            }
+        });
+
+        $("#ReligionName").keypress(function (e) {
+            if (this.value.length === 0 && e.which === 32) e.preventDefault();
+        });
+        $("#ReligionName").blur(function () {
+            var ReligionName = removeTags($("#ReligionName").val());
+            $("#ReligionName").val(ReligionName);
+        });
+        $(".alert").hide();
+        $("#ajax_loader").hide();
+        if ("@_Message" != "") {
+            toastr.remove();
+            toastr.success("@_Message");
+            $("#ajax_loader").hide();
+        }
+        if ('@_error' != "") {
+            toastr.remove();
+            toastr.error("@_error");
+            $("#ajax_loader").hide();
+        }
+        //$('#tblReligion').DataTable(
+        //    {
+        //        dom: 'lBfrtip',
+        //        buttons: [
+        //            {
+        //                extend: 'excelHtml5',
+        //                text: 'Excel',
+        //                titleAttr: 'Excel',
+        //                exportOptions: {
+        //                    columns: [2]
+        //                }
+        //            }
+        //        ]
+        //    });
+
+        var ObjData =
+        {
+            RoleId: roleid,
+            CompanyID: cmpid,
+            BranchID: branchid,
+            LoginEmpId: loginempid,
+            //DepartmentID: DepartmentID,
+            //DesignationID: DesignationID,
+            DataGridThreSold: DataGridThreSold
+        };
+        _urlNew = webapiurl + 'DataGridOptimize/GetReligionGridData';
+        loadReligionData(1, ObjData);
+
+        $("#AddReligion").on('click', function () {
+            count++;
+            operation = "Add Form";
+            frmClear();
+            $("#AddReligion").attr("data-toggle", "modal");
+            $("#AddReligion").attr("data-target", "#frmpopup");
+        });
+
+        $("#btnRegSubmit").click(function (event) {
+            if ($("#ReligionName").val().trim() == "") {
+                $("#ReligionName").addClass('field_error');
+                event.preventDefault();//or return false
+                return false;
+            }
+            else {
+                $("#ReligionName").removeClass('field_error');
+            }
+            $("#ajax_loader").show();
+        });
+        $("#ReligionName").keypress(function (e) {
+            $("#ReligionName").removeClass('field_error');
+        });
+        $("#tblReligion").on('click', '.editclass', function () {
+            count++;
+            operation = "Edit Form";
+            $("#ReligionName").removeClass('field_error');
+            $("#spReligionName").hide();
+            $("#ReligionId").val(table.row($(this).parent('td').parent('tr')).data()["ReligionId"]);
+            $("#ReligionName").val(table.row($(this).parent('td').parent('tr')).data()["ReligionName"]);
+            $(".editclass").attr("data-toggle", "modal");
+            $(".editclass").attr("data-target", "#frmpopup");
+        });
+        $("#tblReligion").on('click', '.deleteclass', function () {
+            var flg = 0;
+            if (confirm("Are you sure for Delete this Entry?")) {
+                $("#ReligionId").val(table.row($(this).parent('td').parent('tr')).data()["ReligionId"]);
+                $.post("/MasterData/DeleteReligion?id=" + $("#ReligionId").val(), function (response) {
+                    if (response.isRedirect) {
+                        window.location.href = response.redirectUrl;
+                    }
+                    var _response = $.parseJSON(response);
+                    if (_response == "OK") {
+                        var strid = "Col_" + $("#ReligionId").val().trim();
+                        $("#" + strid + "").closest('tr').remove();
+                        $('#tblReligion').DataTable();
+                    }
+                    else {
+                        alert("something wrong occures.");
+                    }
+                });
+            }
+
+        });
+        function frmClear() {
+            $("#ReligionId").val(0);
+            $("#ReligionName").val("");
+            $("#ReligionName").removeClass('field_error');
+            $("#ReligionName").attr("placeholder", "Enter Religion Name");
+            $("#ReligionName").attr('required', true);
+            $("#spReligionName").hide();
+        }
+        window.onload = function () {
+            timeSpentOnPage();
+        }
+        $(window).on("beforeunload", function () {
+            if (operation == "" || operation == null || operation == '') {
+                operation = "View Religion Master";
+            }
+            var url = '@_webapiurl' + '/DashBoard/AddAnalyticsUser';
+            var timeSpent = timeSpentOnPage();
+            analyticsDataUsage(url, '@_dbName', form, '@_tokan', count, operation, timeSpent)
+        })
+    });
+
+</script>
+
+<div class="page-bar">
+    @if (_RoleId == 1 || _RoleId == 6805 || _RoleId == 6806)
+    {
+        <ul class="page-breadcrumb">
+            <li>
+                @if (isClientDBMatchFlag == "True")
+                {
+                    <a href="/Admin/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+                }
+                else
+                {
+                    <a href="/Dashboard/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+                }
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> Religion</span>
+            </li>
+        </ul>
+    }
+    else
+    {
+        <ul class="page-breadcrumb">
+            <li>
+                <a href="/Dashboard/EmployeeDashboard"><i class="fa-regular fa-house"></i></a>
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> Religion</span>
+            </li>
+        </ul>
+    }
+    <div class="page-toolbar">
+
+        @if (obj.CanAdd)
+        {
+            <div class="">
+                <a href="javascript:void(0)" id="AddReligion" class="btn icon_transparent_btn tooltips" data-placement="left" data-original-title="Add Religion"><i class="fa-solid fa-plus"></i></a>
+            </div>
+        }
+    </div>
+</div>
+<!-- END PAGE BAR -->
+<!-- END PAGE HEADER-->
+@if (obj.CanView)
+{
+    <div id='ajax_loader' class="modal_bg loading" aria-hidden="true">
+        <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading" />
+    </div>
+    <div class="row">
+        <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+            <div class="portlet">
+                <div class="portlet-body">
+                    <div id="tblempty">
+                        <div class="table-responsive" id="tableResponsive">
+                            <table id="tblReligion" class="table new_datatbl table-striped table-bordered table-hover table-checkable serch_datatable order-column">
+                                <thead>
+                                    <tr>
+                                        <th hidden style="width: 10%;">Sr. No</th>
+                                        <th hidden>Religion ID</th>
+                                        <th>Religion</th>
+                                        <th hidden>CompanyID</th>
+                                        <th hidden>BranchID</th>
+                                        <th hidden>IsActive</th>
+                                        <th style="width: 10%;">Action</th>
+                                    </tr>
+                                </thead>
+                                @{int n = 1;}
+                                <tbody>
+                                    @*@foreach (var item in Model.religionList)
+                                        {
+                                        <tr>
+                                            <td>@n</td>
+                                            <td hidden>
+                                                @Html.DisplayFor(modelItem => item.ReligionId)
+                                            </td>
+                                            <td>
+                                                @Html.DisplayFor(modelitem => item.ReligionName)
+                                            </td>
+                                            <td>
+                                                @Html.DisplayFor(modelitem => item.CompanyID)
+                                            </td>
+                                            <td>
+                                                @Html.DisplayFor(modelitem => item.BranchID)
+                                            </td>
+                                            <td id="Col_@item.ReligionId">
+                                                @if (_RoleId == 1)
+                                                {
+                                                    <a class="editclass btn btn-xs seagreen_btnnew tooltips" title="Edit"><i class="fa-regular fa-pen-to-square"> </i></a>
+                                                }
+                                                else if (_RoleId == 6805 && obj.CanEdit && (item.CompanyID != 0 && item.CompanyID == _cmpid))
+                                                {
+                                                    <a class="editclass btn btn-xs seagreen_btnnew tooltips" title="Edit"><i class="fa-regular fa-pen-to-square"> </i></a>
+                                                }
+                                                else if (_RoleId == 6806 && obj.CanEdit && (item.CompanyID != 0 && item.BranchID == _branchid))
+                                                {
+                                                    <a class="editclass btn btn-xs seagreen_btnnew tooltips" title="Edit"><i class="fa-regular fa-pen-to-square"> </i></a>
+                                                }
+                                                else if (_RoleId > 1 && obj.CanEdit && _RoleId != 6805 && _RoleId != 6806)
+                                                {
+                                                    <a class="editclass btn btn-xs seagreen_btnnew tooltips" title="Edit"><i class="fa-regular fa-pen-to-square"> </i></a>
+                                                }*@
+                                    @*@if (obj.CanDelete)
+                                        {*@
+                                    @*<span>|</span><span> </span><a style="font-weight:bold; text-decoration:none;pointer-events:painted;cursor:pointer" class="deleteclass btn btn-xs red tooltips" title="Delete">
+                                            <i class="fa-regular fa-trash-can"></i>
+                                        </a>*@
+                                    @*}*@
+                                    @*</td>
+                                        </tr>
+                                            n++;
+                                        }*@
+                                </tbody>
+
+                            </table>
+                        </div>
+                    </div>
+                    <div id="NotificationGrid-empty" style="display: none">
+                        <div class="datanotfound">
+                            <img src="" height="148" width="280" alt="Nodata Found Icon">
+                            <p class="datanotfound_title"></p> <!-- titleText -->
+                            <p class=""></p><!-- subText -->
+                        </div>
+                    </div>
+
+
+                    <div id="frmpopup" class="modal fade bs-modal-sm" role="dialog" data-keyboard="false" data-backdrop="static">
+                        <div class="modal-dialog w-500">
+                            <!-- Modal content-->
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                                    <h4 class="modal-title">Religion</h4>
+                                </div>
+
+                                @using (Html.BeginForm("ReligionMaster", "MasterData"))
+                                {
+                                    <div class="modal-body">
+                                        <div class="modal-card">
+                                            @Html.ValidationSummary(false)
+
+                                            <fieldset>
+                                                <div class="row">
+                                                    <div class="col-lg-12">
+                                                        <div class="form-group">
+                                                            <label>
+                                                                @Html.HiddenFor(model => model.ReligionId)
+                                                                Religion Name <span class="required" aria-required="true"> * </span>
+                                                            </label>
+                                                            @Html.EditorFor(model => model.ReligionName, new { htmlAttributes = new { maxlength = 50, @class = "form-control input-sm" } })
+                                                            <span class="help-block" hidden id="spReligionName"></span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                            </fieldset>
+                                        </div>
+                                    </div>
+                                    <div class="modal-footer">
+                                        <div class="row">
+                                            <div class="col-lg-12 text-right">
+                                                <button type="submit" class=" btn save_btn" id="btnRegSubmit"><i class="fa-light fa-floppy-disk"></i> Save</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                }
+
+
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+}
+else
+{
+    <span style="color:red">Unauthorized Access.</span>
+}
+<script>
+    $('.overlay').fadeIn('fast').delay(5000).fadeOut('slow');
+</script>

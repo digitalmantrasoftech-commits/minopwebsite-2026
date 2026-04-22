@@ -1,0 +1,318 @@
+﻿@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@using System.Configuration;
+@{
+    ViewBag.Title = "BusinessUnit";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    string _Message = ViewBag.msg;
+    string _error = ViewBag.error;
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    int _UserId = Convert.ToInt32(HttpContext.Current.Session["UserId"]);
+    int _cmpid = Convert.ToInt32(HttpContext.Current.Session["CompanyId"]);
+
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiEMSURL = ConfigurationManager.AppSettings["WebApiEMS"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    string _accountcd = HttpContext.Current.Session["cmpcode"].ToString();
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+}
+
+<link href="/Newlayout/css/payrollstructure.css" rel="stylesheet">
+<script src="~/Scripts/Helpers/noDataHandler.js"></script>
+<script>
+
+var _BUData = [];
+
+    $(document).ready(function () {
+        GetAllBuDetails();
+        // Open Add Modal
+        $("#AddBU_btn").click(function () {
+            ResetBUModal();
+            $("#buModalTitle").text("Add BU");
+            $("#AddBU_btn_modal").modal("show");
+        });
+        // Clear Button
+        $("#btnClearBU").click(function () {
+            $("#txtBUName").val('').focus();
+        });
+        // Save Button
+        $("#SubmitBtn").click(function () {
+            SaveBU();
+        });
+    });
+
+    function GetAllBuDetails() {
+        $.ajax({
+            type: "GET",
+            headers: { 'Authorization': '@_tokan' },
+            url: '@_webapiurl' + 'Master/BUGetAll',
+            dataType: "json",
+            beforeSend: function () {
+               // $("#ajax_loaderbranch").show();
+            },
+            success: function (response) {
+                //$("#ajax_loaderbranch").hide();
+                if (response != null) {
+                    const sift = response;
+                    handleGridVisibility("tblempty", "NotificationGrid-empty", sift,
+                        {
+                            imageUrl: "emptyscreen_1.png",
+                            subText: "No entries found. Please add a record to get started."
+                        });
+                }
+                if (!response || response.length === 0) return;
+                _BUData = response;
+                if ($.fn.DataTable.isDataTable('#tblbuwise')) {
+                    $('#tblbuwise').DataTable().clear().destroy();
+                    $('#dataTables_tbl_header').remove();
+                }
+                var html = "";
+                response.forEach(function (item) {
+
+                    html += "<tr>";
+                    html += "<td>" + item.BUName + "</td>";
+                    html += "<td>";
+
+                    // Edit Button
+                    html += "<a class='editclass btn btn-xs seagreen_btnnew tooltips' " +
+                        "title='Edit' data-buid='" + item.BUId + "'>" +
+                        "<i class='fa-regular fa-pen-to-square'></i></a> ";
+
+                    // Active / Inactive Button
+                    if (item.IsActive == 1) {
+                        html += "<a class='statusclass btn blue_btnnew tooltips' " +
+                            "title='Inactive' data-buid='" + item.BUId + "' data-status='1'>" +
+                            "<i class='fa-solid fa-xmark'></i></a> ";
+                    } else {
+                        html += "<a class='statusclass btn blue_btnnew tooltips' " +
+                            "title='Active' data-buid='" + item.BUId + "' data-status='0'>" +
+                            "<i class='fa-solid fa-check'></i></a> ";
+                    }
+
+                    html += "</td>";
+                    html += "</tr>";
+                });
+
+                $("#tblbuwise").html(html);
+                $('#tblbuwise').DataTable({
+                    destroy: true,
+                    dom: _domCommon,
+                    language: _languageCommon,
+                    ordering: true,
+                    order: [],
+                    columnDefs: [
+                        { targets: [1], orderable: false }
+                    ],
+                    columns: [
+                        { title: "Business Unit" },
+                        { title: "Action" }
+                    ],
+                    initComplete: function () {
+                        const visibleTable = this.api().table().node().id;
+                        $("#buttons").append(`
+                                  <div id="export-button" class="export-button tooltips" data-placement="bottom" data-original-title="Download" data-table-id="${visibleTable}">
+                                      <img src="../Newlayout/images/download_icon.svg" alt="Download icon">
+                                  </div>
+                              `);
+                    },
+                });
+                setTimeout(function () {
+                    $("#" + "tblbuwise" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+                    $('.tooltips').tooltip();
+                }, 100);
+                $('.tooltips').tooltip();
+            },
+            error: function (jqXHR) {
+                //$("#ajax_loaderbranch").hide();
+                if (jqXHR.status == 500) {
+                    toastr.error("Internal Server Error");
+                }
+                else if (jqXHR.status == 401) {
+                    window.location.href = "/PayTime/LoginPage";
+                }
+                else {
+                    toastr.error("Something went wrong.");
+                }
+            }
+        });
+    }
+    function SaveBU() {
+        var buName = $("#txtBUName").val().trim();
+        if (buName === "") {
+            toastr.remove();
+            toastr.error("Business Unit is required.");
+            $("#txtBUName").focus();
+            return;
+        }
+        var model = {
+            BUId: parseInt($("#hdnBUId").val()),
+            BUName: buName,
+            IsActive: 1,
+            UserId: typeof _UserId !== "undefined" ? _UserId : null,
+            CompanyID: typeof _CompanyID !== "undefined" ? _CompanyID : null,
+            BranchID: typeof _BranchID !== "undefined" ? _BranchID : null
+        };
+    $("#SubmitBtn").prop("disabled", true);
+        $.ajax({
+            type: "POST",
+            headers: { 'Authorization': '@_tokan' },
+            url: '@_webapiurl' + 'Master/BUSave',
+            data: JSON.stringify(model),
+            contentType: "application/json",
+            success: function (response) {
+                $("#SubmitBtn").prop("disabled", false);
+                if (response.Status == -1) {
+                    toastr.warning("Business Unit already exists.");
+                    return;
+                }
+                if (response.Status == 1) {
+                    toastr.success("BU created successfully.");
+                }
+                if (response.Status == 2) {
+                    toastr.success("BU updated successfully.");
+                }
+                $("#AddBU_btn_modal").modal("hide");
+                GetAllBuDetails();
+            },
+            error: function () {
+                $("#SubmitBtn").prop("disabled", false);
+                toastr.error("Server error.");
+            }
+        });
+    }
+    // Edit Click
+    $(document).on("click", ".editclass", function () {
+        var buId = $(this).data("buid");
+        var data = _BUData.find(x => x.BUId == buId);
+        if (data) {
+            $("#hdnBUId").val(data.BUId);
+            $("#txtBUName").val(data.BUName);
+            $("#buModalTitle").text("Edit BU");
+            $("#AddBU_btn_modal").modal("show");
+        }
+    });
+    function ResetBUModal() {
+        $("#hdnBUId").val(0);
+        $("#txtBUName").val('');
+    }
+    $(document).on("click", ".statusclass", function () {
+        var buId = $(this).data("buid");
+        var currentStatus = $(this).data("status");
+        var newStatus = currentStatus == 1 ? 0 : 1;
+        $.ajax({
+            type: "POST",
+            headers: { 'Authorization': '@_tokan' },
+            url: '@_webapiurl' + 'Master/BUDelete',
+            data: JSON.stringify({
+                BUId: buId,
+                IsActive: newStatus,
+                UserId: typeof _UserId !== "undefined" ? _UserId : null
+            }),
+            contentType: "application/json",
+            success: function (response) {
+                if (response.Status == 1) {
+                    toastr.remove();
+                    toastr.success(response.Message);
+                    GetAllBuDetails();
+                } else {
+                    toastr.remove();
+                    toastr.error(response.Message);
+                }
+            },
+            error: function () {
+                toastr.error("Server error.");
+            }
+        });
+    });
+    function validateBUName(input) {
+        input.value = input.value
+            //.replace(/[^a-zA-Z\s]/g, '')   
+            .replace(/^\s+/g, '')       
+            .replace(/\s{2,}/g, ' '); 
+    }
+
+</script>
+
+
+<!-- Page Bar : Begin -->
+<div class="page-bar">
+    <ul class="page-breadcrumb">
+        <li>
+            <a href="/Admin/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+        </li>
+        <li>
+            <span><i class="fa-light fa-angle-right"></i> BU</span>
+        </li>
+    </ul>
+    <div class="page-toolbar">
+        <a href="javascript:;" class="btn icon_transparent_btn tooltips" id="AddBU_btn" data-placement="left" data-original-title="Add BU"><i class="fa-solid fa-plus"></i></a>
+    </div>
+</div>
+<!-- Page Bar : End -->
+<!-- Ajax Loader : Begin -->
+<div id='ajax_loader' class="modal_bg loading" aria-hidden="true">
+    <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" />
+</div>
+<!-- Ajax Loader : End -->
+<!-- Body Block : Begin -->
+<div class="row">
+    <div class="col-lg-12">
+        <div class="portlet">
+            <div class="portlet-body">
+                <div id="tblempty">
+                    <div class="table-responsive" id="tableResponsive">
+                        <table id="tblbuwise" class="new_datatbl table table-striped table-bordered table-hover table-checkable order-column">
+                        </table>
+                    </div>
+                </div>
+                <!-- NoDataFound Block : End -->
+                <div id="NotificationGrid-empty">
+                    <div class="datanotfound">
+                        <img src="" height="148" width="280" alt="Nodata Found Icon">
+                        <p class="datanotfound_title"></p> <!-- titleText -->
+                        <p class=""></p><!-- subText -->
+                    </div>
+                </div>
+                <!-- NoDataFound Block : End -->
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Body Block : End -->
+<!-- Discontinuation Modal : Begin -->
+<input type="hidden" id="hdnBUId" value="0" />
+<div id="AddBU_btn_modal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+    <div class="modal-dialog w-500">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal">&times;</button>
+                <h4 class="modal-title" id="buModalTitle">Add BU</h4>
+            </div>
+            <div class="modal-body">
+                <div class="modal-card">
+                    <div class="row">
+                        <div class="col-md-12">
+                            <div class="form-group">
+                                <label class="control-label">Business Unit <span class="required" aria-required="true">*</span></label>
+                                <input type="text" id="txtBUName" maxlength="50"  placeholder="Please Enter" class="form-control" oninput="validateBUName(this)" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <div class="row">
+                    <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                        <button type="button" class="btn clear_btn" id="btnClearBU"><i class="fa-regular fa-xmark"></i> Clear</button>
+                        <button type="button" class="btn save_btn" id="SubmitBtn"><i class="fa-regular fa-check"></i> Submit</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Discontinuation Modal : End -->

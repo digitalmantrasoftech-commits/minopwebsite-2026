@@ -1,0 +1,1872 @@
+﻿@using System.Configuration;
+@model PayTimeWebClient.Models.reqDailyInOutReport
+@using PayTimeWebClient.Models;
+@using PayTimeWebClient.Helper;
+@{
+    ViewBag.Title = "AnalyticsDashboardEMS";
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    string IsSchool = HttpContext.Current.Session["IsSchool"].ToString();
+    string IsOffice = HttpContext.Current.Session["IsOffice"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    string _webapiEMSURL = ConfigurationManager.AppSettings["WebApiEMS"].ToString();
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _companyid = string.Empty;
+    string _branchid = string.Empty;
+    int _departmentid = 0;
+    int _empid = 0;
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    //RoleRightsMapping obj = new RoleRightsMapping();
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+    string _isdateformat = HttpContext.Current.Session["IsDateFormat"].ToString();
+    if (_RoleId == 6805 || _RoleId == 6806)
+    {
+        _companyid = HttpContext.Current.Session["ClientCompanyId"].ToString();
+    }
+
+    if (_RoleId > 1 && _RoleId != 6805 && _RoleId != 6806 && _RoleId != 6000)
+    {
+        _companyid = HttpContext.Current.Session["ClientCompanyId"].ToString();
+        _branchid = HttpContext.Current.Session["BranchId"].ToString();
+        _departmentid = Convert.ToInt32(HttpContext.Current.Session["DepartmentId"].ToString());
+        _empid = Convert.ToInt32(HttpContext.Current.Session["EmpId"].ToString());
+    }
+    string _accountcd = HttpContext.Current.Session["cmpcode"].ToString();
+    int _UserId = Convert.ToInt32(HttpContext.Current.Session["UserId"]);
+    var canViewDailyInOut = selectedUserMenu.Any(r => r.OperationId == 500 && r.CanView);
+    bool hasLeaveReportAccess = selectedUserMenu.Any(r => (r.OperationId == 208 || r.OperationId == 209 || r.OperationId == 210) && r.CanView);
+    string isClientDBMatchFlag = HttpContext.Current.Session["IsClientDBMatch"] != null
+  ? HttpContext.Current.Session["IsClientDBMatch"].ToString()
+  : "false";
+    var reportOperationIds = new List<int> { 211, 212, 213, 214, 215, 216, 217, 218, 220, 221, 222 };
+    bool showCustomizedReports = selectedUserMenu.Any(r => reportOperationIds.Contains(r.OperationId) && r.CanView);
+    if (_RoleId == 6810 || _RoleId == 6000)
+    {
+        _RoleId = 1;
+    }
+}
+<script src="~/Newlayout/js/sortable.min.js"></script>
+<script>
+    var roleId1 = '@_RoleId';
+    var strselectedEmpID = "";
+    if (roleId1 == 1) {
+        cmpId1 = 0;
+    }
+</script>
+
+<style type="text/css">
+    .fixed-column {
+        width: 50px !important;
+        min-width: 50px !important;
+        right: 1px;
+        position: sticky !important;
+        background-color: #fff !important;
+        box-shadow: -2px 2px 4px 0px rgba(0, 0, 0, 0.20);
+    }
+
+    /* DateRange picker css custom code =============== */
+    .daterangepicker.dropdown-menu {
+        min-width: auto;
+        width: auto;
+        z-index: 11;
+    }
+
+    .daterangepicker .range_inputs .btn-sm {
+        padding: 5px 16px;
+        min-width: 80px;
+    }
+
+    .daterange_block .form-control {
+        padding-left: 32px;
+    }
+
+    .data_picker_box .input-group input {
+        height: 32px;
+        z-index: 999 !important;
+    }
+
+    .range_inputs {
+        display: none;
+    }
+
+    .show-calendar .range_inputs {
+        display: block;
+    }
+
+    .select2-container--bootstrap .select2-results__option--highlighted[aria-selected] {
+        background-color: #e9e9e9;
+        color: #333;
+    }
+
+    .table-responsive {
+        overflow-x: auto; /* Allow scrolling */
+        width: 100%; /* Ensure full width */
+    }
+
+    .introjs-helperLayer {
+        background-color: transparent !important;
+    }
+</style>
+<link href="~/AssetsNew/css/introjs.css" rel="stylesheet" />
+<script type="text/javascript">
+    var isDateformat = '@_isdateformat';
+    var croleid = '@_RoleId';
+    var $Branchselect = "";
+    var $select = "";
+    var branchidglobal;
+    var activeEmployeeStataus = 1;
+    var reportid = 0;  // for set grid accordingly
+    var branchidglobal;
+    var departmentGlobal;
+    var table;
+    var selectedEmpArray1 = new Array();
+    var FlagForFilter = 0;
+    var predefinedRanges = "";
+    var columnDefinitions = {};
+    var ColumnForExcel = [];
+    $(document).ready(function () {
+        $("#CompanyID").multiselect({
+            enableCaseInsensitiveFiltering: true,
+            includeSelectAllOption: false,
+            enableFiltering: true,
+            maxHeight: 300,
+            buttonWidth: '100%',
+            enableClickableOptGroups: false,
+            nonSelectedText: 'Select Company',
+            onDropdownShown: function () {
+                $("#CompanyID").next(".btn-group").find(".multiselect-container label").css("padding-left", "0px");
+                $("#CompanyID").next(".btn-group").find(".multiselect-container input[type='radio']").hide();
+            },
+            onChange: function (option, checked) {
+                $("#CompanyID").val($(option).val()); // Set selected value
+                $("#CompanyID").multiselect("refresh"); // Refresh dropdown
+
+                // Close dropdown after selection
+                $(".btn-group.open .multiselect").parent().removeClass("open");
+            }
+        });
+        $Branchselect = $("#BranchID").multiselect({
+            selectAllValue: 'multiselect-all',
+            enableCaseInsensitiveFiltering: true,
+            includeSelectAllOption: true,
+            allSelectedText: 'All Select',
+            enableFiltering: true,
+            maxHeight: 300,
+            buttonWidth: '100%',
+            enableClickableOptGroups: true,
+            nonSelectedText: 'Select Branch',
+        });
+        $select = $("#DepartmentID").multiselect({
+            selectAllValue: 'multiselect-all',
+            enableCaseInsensitiveFiltering: true,
+            includeSelectAllOption: true,
+            allSelectedText: 'All Select',
+            enableFiltering: true,
+            maxHeight: 300,
+            buttonWidth: '100%',
+            enableClickableOptGroups: true,
+            nonSelectedText: 'Select Department',
+        });
+      var companyidglobal0 = '@_companyid';
+      var branchidglobal0 = '@_branchid';
+      var departmentidglobal0 = '@_departmentid';
+      var empidGlobal0 = '@_empid';
+      var strselectedEmpID = "";
+      HasFilterStored();
+     // call for Set data in filter if exists;
+     if (croleid > 1 && croleid != 6805 && croleid != 6806) {
+         $("#CompanyID").val(companyidglobal0);
+         $('#CompanyName').val($("#CompanyIds option:selected").text());
+         $("#BranchId").val(branchidglobal0);
+         fillBranchbycompnyid(companyidglobal0, branchidglobal0);
+         $('#txt2').val(departmentidglobal0);
+         $("#DepId").val(departmentidglobal0);
+         fillDeptTable(branchidglobal0, departmentidglobal0);
+         getEmp();
+         $('#EmpID').val(empidGlobal0);
+         strselectedEmpID = empidGlobal0;
+         $("#ActiveEmployee").prop('checked', true);
+         $("#ActiveEmployee").attr("value", 1);
+     }
+        // Custom Date Range code ===========================================
+         predefinedRanges = {
+            'Today': [moment(), moment()],
+            'Yesterday': [moment().subtract(1, 'days'), moment().subtract(1, 'days')],
+            'Last 7 Days': [moment().subtract(6, 'days'), moment()],
+            'Last 15 Days': [moment().subtract(14, 'days'), moment()],
+            'Last 30 Days': [moment().subtract(29, 'days'), moment()],
+            'Current Month': [moment().startOf('month'), moment().endOf('month')],
+            'Previous Month': [moment().subtract(1, 'month').startOf('month'), moment().subtract(1, 'month').endOf('month')]
+        };
+        // Set default value to 'Current Month'
+        $('#daterange').val('Current Month');
+        $('#daterange').daterangepicker({
+            locale: { format: 'DD/MM/YYYY' },
+            opens: 'right',
+            drops: 'down',
+            ranges: predefinedRanges,
+            autoUpdateInput: false,
+            startDate: moment(),
+            endDate: moment(),
+            alwaysShowCalendars: false,
+        });
+        $('#daterange').on('apply.daterangepicker', function (ev, picker) {
+            var selectedRange = Object.keys(predefinedRanges).find(key =>
+                picker.startDate.isSame(predefinedRanges[key][0], 'day') &&
+                picker.endDate.isSame(predefinedRanges[key][1], 'day')
+            );
+            if (selectedRange) {
+                // If predefined range is selected
+                $(this).val(selectedRange);
+                $('#custom_date_input').hide();
+            } else {
+                // If a custom range is selected
+                var formattedStart = picker.startDate.format('DD/MM/YYYY');
+                var formattedEnd = picker.endDate.format('DD/MM/YYYY');
+                var customRangeText = formattedStart + ' - ' + formattedEnd;
+
+                $('#daterange').val("Custom Range"); // Show "Custom Range" in the first input
+                $('#custom_daterange').val(customRangeText);
+                $('#custom_date_input').show(); // Show the custom input
+            }
+        });
+        $("#Policy_Report").on('click', function () {
+            checkSession();
+            reportid = 1
+            //this is set for either show filter or grid directly.
+            $("#Report_Dropdown").css("display", "none");
+            if (FlagForFilter == 0) {
+                $("#Policy_Report").attr("data-toggle", "modal");
+                $("#Policy_Report").attr("data-target", "#Filterbtn_modal");
+            }
+            else {
+                HideShow();
+            }
+            $("#Rpt_Name").text('Policy Report');
+        });
+        $("#Expense_Report").on('click', function () {
+            checkSession();
+            reportid = 2
+            //this is set for either show filter or grid directly.
+            $("#Report_Dropdown").css("display", "none");
+            if (FlagForFilter == 0) {
+                $("#Expense_Report").attr("data-toggle", "modal");
+                $("#Expense_Report").attr("data-target", "#Filterbtn_modal");
+            }
+            else {
+                HideShow();
+            }
+            $("#Rpt_Name").text('Expense Report');
+        });
+        $("#Finalstatus_Report").on('click', function () {
+            checkSession();
+            reportid = 3
+            //this is set for either show filter or grid directly.
+            $("#Report_Dropdown").css("display", "none");
+            if (FlagForFilter == 0) {
+                $("#Expense_Report").attr("data-toggle", "modal");
+                $("#Expense_Report").attr("data-target", "#Filterbtn_modal");
+            }
+            else {
+                HideShow();
+            }
+            $("#Rpt_Name").text('Final Status Report');
+        });
+        $('#CompanyID').change(function () {
+            var companyIds;
+            companyIds = ""; // Reset the global variable
+            $('#CompanyID :selected').each(function () {
+                if (companyIds === "") {
+                    companyIds = $(this).val();
+                } else {
+                    companyIds += "," + $(this).val();
+                }
+            });
+
+            var s = $('#CompanyID').val();
+            if (s === "" || s === null) {
+                // location.reload();
+            } else {
+                $('#CompanyName').val($("#CompanyID option:selected").map(function () {
+                    return $(this).text();
+                }).get().join(", "));
+                fillBranchbycompnyid(s, "");
+            }
+        });
+        $('#BranchID').change(function () {
+            clearbrn();
+            $("#spvalidation").hide();
+            var s = $('#BranchID').val();
+            branchidglobal = s;
+            $('#BranchName').val($('#BranchID :selected').text());
+            fillDeptTable(s, "");
+        });
+        $("#btnclearall").on('click', function () {
+            event.preventDefault();
+            $("#CompanyID").val("").change();
+            $("#BranchID").val("");
+            branchidglobal = "";
+            selectedEmpArray = "";
+            departmentGlobal = "";
+            activeEmployeeStataus = 0;
+            $("#CompanyID").multiselect('refresh');
+            $("#BranchID").multiselect("deselectAll", false).multiselect("refresh");
+            $("#DepartmentID").multiselect("deselectAll", false).multiselect("refresh");
+            $("#DepartmentID").empty().multiselect("rebuild");
+            $("#BranchID").empty().multiselect("rebuild");
+            $('#tblemp').empty();
+            $("#ActiveEmployee").prop("checked", false);
+            var companyid = $("#CompanyID").val();
+            var branchid = $("#BranchID").val();
+        })
+        $("#ActiveEmployee").change(function () {
+            if (this.checked) {
+                $("#ActiveEmployee").attr("value", 1);
+                activeEmployeeStataus = 1;
+                getEmp();
+            }
+            else {
+                $("#ActiveEmployee").attr("value", 0);
+                activeEmployeeStataus = 0;
+                getEmp();
+            }
+        })
+        $("#btn_save").on('click', function (e) {
+            e.preventDefault();
+            ClearDataTable();
+            HideShow();
+            SelectedEmp();
+            if (validation(e)) {
+                var bid = $("#BranchID").val();
+                var branchidToSave = (typeof branchidglobal !== 'undefined') ? branchidglobal : bid;
+                let empIdsString = [...new Set(selectedEmpArray)];
+                sessionStorage.setItem("selectedCompany_${'@_UserId'}`", $("#CompanyID").val());
+                sessionStorage.setItem("selectedBranch", branchidToSave);
+                sessionStorage.setItem("selectedDepartment", departmentGlobal);
+                sessionStorage.setItem("selectEmployee", empIdsString)
+                sessionStorage.setItem("isActiveEmployeeChecked", activeEmployeeStataus);
+                Swal.fire({
+                    title: "<img class='margin-right-5' src='/assets/images/icons/swal_icon/icon_info.svg' alt=''>Info",
+                    html: '<div class="swal_subtitle"><b>Do you want to save the filter data?</b></div>',
+                    closeOnConfirm: true,
+                    showCloseButton: true,
+                    showCancelButton: true,
+                    focusConfirm: false,
+                    cancelButtonText: 'No',
+                    confirmButtonText: 'Yes,Save it!',
+                    allowOutsideClick: false,
+                    allowEscapeKey: false,
+                    customClass: {
+                        confirmButton: 'swal-confirm-button-class',
+                        cancelButton: 'swal-cancel-button-class'
+                    }
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        UpaDateFilter();
+                    } else {
+                        Swal.close();
+                    }
+                });
+
+                $('img[src="/assets/images/icons/swal_icon/icon_info.svg"]').parent().parent().parent().addClass('swal_info');
+                $("#Filterbtn_modal").modal("hide");
+            }
+        });
+        $(document).on("change", ".ClsChkEmp", function () {
+            SelectedEmp();
+        });
+        $("#Filter_Data").on('click', function () {
+            ClearDataTable();
+            fillAllTable();
+        });
+        $("#Clear_Data").on("click", function () {
+            const picker = $('#daterange').data('daterangepicker');
+            const currentMonthRange = predefinedRanges['Current Month'];
+            $("#daterange").val("Current Month");
+            picker.setStartDate(currentMonthRange[0]);
+            picker.setEndDate(currentMonthRange[1]);
+            picker.callback(currentMonthRange[0], currentMonthRange[1], 'Current Month');
+            picker.hide();
+            $("#custom_daterange").val("");
+            $("#custom_date_input").hide();
+        });
+        columnDefinitions = {
+            1: [
+                { data: "EmpName" },
+                { data: "EmpCode" },
+                { data: "PolicyName" },
+
+                {
+                    data: "PolicyType",
+                    render: function (data) {
+                        if (data == 1) return "Expense";
+                        if (data == 2) return "Travel";
+                        return "";
+                    }
+                },
+                { data: "ExpePolicyReqCode" },
+                { data: "Description" },
+                {
+                    data: "EffectiveDate",
+                    render: function (data) {
+                        return data ? data.split("T")[0] : "";
+                    }
+                }
+            ],
+            2: [
+                { data: "EmpName" },
+                { data: "ExpeReqCode" },
+                { data: "ExpenseDate" },
+                { data: "Description" },
+                {
+                    data: "ExpenseRequestType",
+                    render: function (d) {
+                        return d == 1 ? "Expense" : "Travel";
+                    }
+                },
+                { data: "ExpenseAmount" },
+                {
+                    data: "Status",
+                    render: function (value) {
+                        const statusMap = {
+                            11111: { text: "Drafted", class: "gray_font" },
+                            11112: { text: "Submitted", class: "orange_font" },
+                            11113: { text: "Approved", class: "green_font" },
+                            11114: { text: "On Hold", class: "orange_font" },
+                            11115: { text: "Rejected", class: "red_font" }
+                        };
+                        const status = statusMap[value];
+                        if (!status) return "-";
+                        return `<span class="${status.class}">${status.text}</span>`;
+                    }
+                },
+            ],
+            3: [
+                { data: "BranchName" },
+                { data: "DepartmentName" },
+                { data: "EmpCode" },
+                { data: "empname" },
+                { data: "ExpenseDate" },
+                { data: "ExpenseType" },
+                { data: "TotalExpenseAmount" },
+                {
+                    data: "Approval4StatusId",
+                    render: function (value) {
+
+                        const statusMap = {
+                            11111: { text: "Drafted", class: "fixed-column-1" },
+                            11112: { text: "Submitted", class: "blue_font fixed-column-1" },
+                            11113: { text: "Settled", class: "green_font fixed-column-1" },
+                            11114: { text: "On Hold", class: "orange_font fixed-column-1" },
+                            11115: { text: "Declined", class: "red_font fixed-column-1" },
+                            11116: { text: "Re-Submitted", class: "purple_font fixed-column-1" },
+                            11117: { text: "Rejected", class: "red_font fixed-column-1" },
+                            11118: { text: "Pending", class: "fixed-column-1" }
+                        };
+                        const status = statusMap[value];
+                        if (!status) return "-";
+
+                        return `<span class="${status.class}">${status.text}</span>`;
+                    }
+                }
+            ]
+        }
+        ColumnForExcel = [
+            { id: 1, Excel: 'Policy Report' },
+            { id: 2, Excel: 'Expense Report' }
+        ];
+        //$('.export-btn').on('click', function () {
+        //    var type = $(this).data('type');
+        //    if (type === 'pdf') {
+        //        table.button('.buttons-pdf').trigger();
+        //    } else if (type === 'excel') {
+        //        table.button('.buttons-excel').trigger();
+        //    }
+        //});
+
+        $('.export-btn').on('click', function () {
+            var report = ColumnForExcel.find(item => item.id == reportid);
+            var reportName1 = report ? report.Excel : "Report";
+            var fileName = `${reportName1} - ${getFileSafeDateTime()}`;
+            var reportName = `${reportName1} - ${getFormattedDateTime()}`;
+            var type = $(this).data('type');
+            const tableId = $('table:visible').attr('id');
+            const now = new Date();
+            const formattedDateTime = now.toLocaleString();
+
+            if (type === 'pdf') {
+                const table = $('#' + tableId).DataTable();
+                const originalPageLength = table.page.len();
+
+                table.page.len(-1).draw();
+                setTimeout(function () {
+                    const doc = new jspdf.jsPDF('landscape', 'pt', 'a3');
+                    doc.autoTable({
+                        html: `#${tableId}`,
+                        theme: 'grid',
+                        margin: { top: 70 },
+                        headStyles: {
+                            fillColor: [41, 80, 151],
+                            textColor: [255, 255, 255],
+                            fontStyle: 'bold'
+                        },
+                        didDrawPage: function (data) {
+                            doc.setFontSize(14);
+                            doc.setTextColor(40);
+                            doc.text(fileName + ": " + formattedDateTime, data.settings.margin.left, 50);
+                        }
+
+                    });
+                    doc.save(fileName + '.pdf');
+
+                    table.page.len(originalPageLength).draw();
+                }, 100);
+            } else if (type === 'excel') {
+
+                exportTableToExcelFile(fileName, reportName)
+
+            }
+        });
+
+        $("#modal_recall").click(function () {
+            checkSession();
+           // strselectedEmpID = "";
+            var storedCompanyID = parseInt(sessionStorage.getItem("selectedCompany_${'@_UserId'}`"), 10);
+            var storedBranchID = sessionStorage.getItem("selectedBranch");
+            var storedDeptID = sessionStorage.getItem("selectedDepartment");
+            var storedEmpid = sessionStorage.getItem("selectEmployee");
+            var storedIsActive = sessionStorage.getItem("isActiveEmployeeChecked");
+            var trimmedDeptId = storedDeptID ? storedDeptID.trim() : "";
+            $("#txt2").val(trimmedDeptId);
+            if (storedCompanyID) {
+                    $("#CompanyID").val(storedCompanyID).trigger("change");
+                     $("#CompanyID").multiselect('refresh');
+                     fillBranchbycompnyid(storedCompanyID, storedBranchID);
+                     fillDeptTable(storedBranchID, trimmedDeptId);
+                       setTimeout(function () {
+                            getEmp(); // Fetch employees
+
+                            var checkInterval = setInterval(function () {
+                                var cleanedEmpid = storedEmpid
+                                    .replace(/[\[\]"]+/g, '')
+                                    .trim();
+                                var storedEmpArray = cleanedEmpid ? cleanedEmpid.split(',') : [];
+                                selectedEmpArray = storedEmpArray;
+
+                                if ($("#tblemp .ClsChkEmp").length > 0) {
+                                    $("#tblemp .ClsChkEmp").each(function () {
+
+                                        var empId = $(this).attr("id");
+                                        if (storedEmpArray.includes(empId)) {
+                                            $(this).prop("checked", true);
+                                        }
+                                    });
+                                    SelectedEmp();
+                                    clearInterval(checkInterval);
+                                } else {
+                                    console.log("Waiting for Employee table to load...");
+                                }
+                            }, 500);
+
+                        }, 500);
+                $('#ActiveEmployee').prop("checked", storedIsActive == 1);
+                $("#Filterbtn_modal").modal("show");
+            } else {
+                $("#Filterbtn_modal").modal("show");
+            }
+        });
+
+        function setupToggle(toggleId, contentId, title) {
+            const toggleElement = document.getElementById(toggleId);
+            const contentElement = document.getElementById(contentId);
+
+            if (toggleElement && contentElement) {
+                toggleElement.addEventListener("click", function () {
+                    const isHidden = contentElement.style.display === "none" || contentElement.style.display === "";
+                    contentElement.style.display = isHidden ? "block" : "none";
+                    var chevronIcon = this.querySelector('.fa-chevron-up, .fa-chevron-down');
+                    if (chevronIcon) {
+                        chevronIcon.classList.toggle('fa-chevron-up', isHidden);
+                        chevronIcon.classList.toggle('fa-chevron-down', !isHidden);
+                    }
+                });
+            }
+        }
+        // Call for each toggle section
+        setupToggle("leaveReportsToggle1", "EMSReportContent1", "EMS Reports");
+    });
+    function ClearDataTable() {
+        if ($.fn.DataTable.isDataTable('#EMS_tbl')) {
+            $('#EMS_tbl').DataTable().clear().destroy();
+            $("#dataTables_tbl_header").remove()
+        }
+        if ($.fn.DataTable.isDataTable('#EMS_tbl1')) {
+            $('#EMS_tbl1').DataTable().clear().destroy();
+            $("#dataTables_tbl_header").remove()
+        }
+        if ($.fn.DataTable.isDataTable('#EMS_tbl2')) {
+            $('#EMS_tbl2').DataTable().clear().destroy();
+            $("#dataTables_tbl_header").remove()
+        }
+    }
+   function fillBranchbycompnyid(companyid, selectedBranch) {
+        $('#BranchID').empty();
+        var empid = '@_empid';
+        var url;
+        if (croleid == 1 || croleid == 6805 || croleid == 6806) {
+            url = "/MasterData/GetBranchbycomapnyid?CompanyID=" + companyid;
+        } else {
+            url = "/MasterData/GetBranchlist?CompanyID=" + companyid + "&Empid=" + empid;
+        }
+        $.ajax(
+         {
+             type: "GET",
+             url: url,
+             contentType: "application/json; charset=utf-8",
+             dataType: "json",
+             beforeSend: function () {
+                 $("#ajax_loader").show();
+             },
+             success: function (data) {
+                 $('#BranchID').empty();
+                 $("#ajax_loader").hide();
+                 var markup = '';
+                 for (var x = 0; x < data.length; x++) {
+                     if (selectedBranch.length != 0) {
+                         var re = new RegExp("(^|,)" + data[x].BranchId + "($|,)");
+                         if (re.test(selectedBranch) == true) {
+                             markup += '<option selected="selected" value="' + data[x].BranchId + '" >' + data[x].BranchName + '</option>';
+                         }
+                         else {
+                             markup += "<option value=" + data[x].BranchId + ">" + data[x].BranchName + "</option>";
+                         }
+                     }
+                     else {
+                         markup += "<option value=" + data[x].BranchId + ">" + data[x].BranchName + "</option>";
+                     }
+                 }
+                 $('#BranchID').append(markup);
+                 $Branchselect.multiselect('rebuild');
+                 $(document.body).on('change', '#BranchID', function () {
+                     $("#spvalidation").hide();
+                     var branid = $('#BranchID option:selected');
+                     var BranchArray = [];
+                     $(branid).each(function (index, branid) {
+                         BranchArray.push([$(this).val()]);
+                     });
+                     if (BranchArray == "") {
+                         $("#txt3").val(0);
+                     }
+                     else {
+                         $("#txt3").val(BranchArray);
+                         $("#spValidation").hide();
+                     }
+                     var Arrbranch = $("#txt3").val();
+                     BranchIdlst = Arrbranch;
+                     $("#BranchId").val(BranchIdlst);
+                 });
+
+             },
+             error: function (jqXHR, ajaxOptions, thrownError) {
+                 $('.loading').hide();
+
+                 if (jqXHR.status == 500) { //InternalServerError = 500,
+                     toastr.error("InternalServerError");
+                 } else if (jqXHR.status == 400) { //BadRequest = 400,
+                     toastr.error("BadRequest");
+                 } else if (jqXHR.status == 401) {
+                     window.location.href = "/PayTime/LoginPage";
+                 }
+             },
+         });
+    }
+    function checkSession() {
+        $.ajax({
+            type: "GET",
+            async: false,
+            url: "/ESS/checkSession",
+            contentType: "application/json; charset=utf-8",
+            success: function (data) {
+
+                if (data.isRedirect) {
+                    window.location.href = data.redirectUrl;
+                }
+            },
+            error: function (data) {
+                window.location.href = data;
+            }
+        });
+    }
+    function clearbrn() {
+
+
+        $("#DeptIds option:selected").prop("selected", false);
+        $("#DeptIds").multiselect('refresh');
+        $("#DeptIds").empty();
+        $("#DeptIds").multiselect('disable');
+        //BranchIds
+        $("#txt2").val(0);
+        $("#empdiv").hide();
+        $('#tblemp').empty();
+        StrselectedDep = "";
+        selectedBranch = "";
+        selectedFromDate = "";
+        selectedToDate = "";
+        strselectedEmpID = "";
+        $("#EmpID").val("");
+        $("#DepId").val("");
+        strIsFilo = "";
+        $('#IsFilo').prop("checked", false)
+        $("#IsFilo").attr("value", 0);
+        $("#ActiveEmployee").prop("checked", false)
+        $("#ActiveEmployee").attr("value", 0);
+        SelectedCompanyName = "";
+        //$('#CompanyName').val("");
+        $("#filterpara").html("");
+        selectedEmpArray = [];
+    }
+    function fillDeptTable(BranchId, selectedDept) {
+        $("#DepartmentID").empty();
+        if ($.isArray(BranchId)) {
+            var branchid = BranchId.join();
+            tempbranch = BranchId.join();
+        }
+        else {
+            var branchid = BranchId;
+            tempbranch = BranchId;
+        }
+        var obj = {
+            BranchId: branchid
+        };
+        $.ajax({
+            type: "GET",
+            url: "/MasterData/GetDeptbyBranchstrfltr",
+            data: obj,
+            contentType: "application/json; charset=utf-8",
+            datatype: "json",
+            async: "false",
+            success: function (response) {
+
+                if (response != null) {
+                    for (var i = 0; i < response.length; i++) {
+                        if (selectedDept.length != 0 && selectedDept != null) {
+                            var re = new RegExp("(^|,)" + response[i].Value + "($|,)");
+                            if (re.test(selectedDept) == true) {
+                                $('#DepartmentID').append('<option value=" ' + response[i].Value + '" selected>' + response[i].Text + '</option>');
+                            }
+                            else {
+                                $('#DepartmentID').append('<option value=" ' + response[i].Value + ' ">' + response[i].Text + '</option>');
+                            }
+                        }
+                        else {
+                            $('#DepartmentID').append('<option value=" ' + response[i].Value + ' ">' + response[i].Text + '</option>');
+                        }
+                    }
+                    $select.multiselect('rebuild');
+                    $(document.body).on('change', '#DepartmentID', function () {
+
+                        $("#spvalidation").hide();
+                        var deptid = $('#DepartmentID option:selected');
+                        var DeptArray = [];
+                        $(deptid).each(function (index, deptid) {
+                            DeptArray.push([$(this).val()]);
+                        });
+                        if (DeptArray == "") {
+                            $("#txt2").val(0);
+                        }
+                        else {
+                            $("#txt2").val(DeptArray);
+                            $("#spValidation").hide();
+                        }
+                        var ArrDept = $("#txt2").val();
+                        DeptIdlst = ArrDept;
+                        $("#DepId").val(DeptIdlst);
+                        $("#ActiveEmployee").prop('checked', true);
+                        $("#ActiveEmployee").attr("value", 1);
+                        getEmp();
+                    });
+                }
+                $(".loading").hide();
+            },
+            beforeSend: function () {
+                $(".loading").show();
+            },
+            error: function () {
+                $(".loading").hide();
+            }
+        });
+    }
+    function getEmp() {
+
+
+    $("#empdiv").show();
+    $("#lblemp").show();
+    $("#tblemp").empty();
+     /*  var bID = $("#BranchID").val();*/
+     var bID = tempbranch;
+    var dep = $("#txt2").val();
+     var Dep = dep.replace(/\s/g, '');
+     departmentGlobal = Dep;
+    var isActiveEmployee = $("#ActiveEmployee").val();
+    /*  if (strselectedEmpID != "" && selectedBranch != "") {*/
+    if (strselectedEmpID != "") {
+        //bID = selectedBranch;
+       // bID = bID.join();
+    }
+    else {
+        bID = bID;
+    }
+    //var urls = "/MasterData/GetEmpByBranchDept?departmentid=" + Dep + "&branchid=" + bID + "&isActiveEmployee=" + isActiveEmployee;
+    var urls = "/MasterData/GetEmpByBranchDept";
+    var method = "GET";
+    var ajaxData = {
+        departmentid: Dep,
+        branchid: bID,
+        isActiveEmployee: isActiveEmployee
+    };
+    if (croleid > 1) {
+        urls = "/Transactions/GetEmpByDept";
+        method = "POST";
+        ajaxData = JSON.stringify({ empArr: Dep + ";" + bID });
+    }
+    $.ajax({
+        type: method,
+        url: urls,
+        contentType: "application/json; charset=utf-8",
+        datatype: "json",
+        data: ajaxData,
+        async: true,
+        beforeSend: function () {
+            $("#ajax_loader").show();
+        },
+        success: function (response) {
+            if (response.isRedirect) {
+                window.location.href = response.redirectUrl;
+            }
+            var table = "";
+            if (response != null) {
+                for (var i = 0; i < response.length; i++) {
+                    var tbl = "<tr class='odd gradeX'>";
+                    tbl = tbl + "<td id='eid' hidden>" + response[i].EmpId;
+                    tbl = tbl + "</td>";
+                    tbl = tbl + "<td id='ecode'>" + response[i].Empcode;
+                    tbl = tbl + "</td>";
+                    tbl = tbl + "<td id='enm'>" + response[i].EmpName;
+                    tbl = tbl + "</td>";
+                    tbl = tbl + "<td id='epid'>" + response[i].EmpPunchID;
+                    tbl = tbl + "</td>";
+                    if (strselectedEmpID.length != 0) {
+                        var re = new RegExp("(^|,)" + response[i].EmpId + "($|,)");
+                        if (re.test(strselectedEmpID) == true) {
+                            tbl = tbl + "<td id=''><input type='checkbox' onchange='checkedDept(this)' class='ClsChkEmp' id='" + response[i].EmpId + "' checked/>";
+                        }
+                        else {
+                            tbl = tbl + "<td id=''><input type='checkbox' onchange='checkedDept(this)' class='ClsChkEmp' id='" + response[i].EmpId + "'/>";
+                        }
+                    }
+                    else {
+                        tbl = tbl + "<td id=''><input type='checkbox' onchange='checkedDept(this)' class='ClsChkEmp' id='" + response[i].EmpId + "'/>";
+                    }
+                    tbl = tbl + "</td>";
+                    tbl = tbl + "</tr>";
+                    table += tbl;
+                }
+            }
+            $("#tblemp").destroy;
+            $('#tblemp').append(table);
+            if ($("#tableResponsiveModel").prev().attr('id') != undefined) {
+                $(".divEmp #dataTables_tbl_header").remove();
+            }
+            $('#tblemp').dataTable({
+                "columnDefs": [
+                                    {
+                                        "targets": '@IsSchool' == "1" ? [0, 1] : [0],
+                                        "visible": false,
+                                        "searchable": false,
+                                    }
+                ],
+                "destroy": true,
+                "bInfo": true,
+                "bPaginate": false,
+                "bLengthChange": false,
+                dom: _domCommon,
+                language: _languageCommon,
+                "columns": [
+                    { "title": "Employee ID" },
+                    { "title": "Code" },
+                    { "title": "Name", "orderable": true },
+                    { "title": "Punch ID" },
+                    { "title": "<input type='checkbox' class='ClsChkAllDept' onchange='AllCheckedEmp(this)' />" }
+                ],
+                "order": [[2, 'asc']]
+            });
+            setTimeout(function () {
+                $("#" + "tblemp" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsiveModel"));
+                $('.tooltips').tooltip();
+            }, 100);
+            $("#ajax_loader").hide();
+        },
+        complete: function () {
+            $("#ajax_loader").hide();  // Ensure loader is hidden in all cases
+        },
+        error: function () {
+            $("#ajax_loader").hide();
+        }
+    });
+    }
+    function goBack() {
+        location.reload();
+    }
+    function AllCheckedEmp(ths) {
+        $(".ClsChkEmp").prop('checked', $(ths).prop('checked'));
+        SelectedEmp();
+    }
+    var selectedEmpArray = [];
+    function SelectedEmp() {
+        selectedEmpArray = [];
+        $("#tblemp .ClsChkEmp").each(function () {
+            if ($(this).is(':checked') == true) {
+                selectedEmpArray.push($(this).attr("id"));
+            }
+        });
+        $("#EmpID").val(selectedEmpArray);
+    }
+    function checkedDept(ths) {
+        $("#spvalidation").hide();
+    }
+    function HideShow() {
+        $("#Reports_ui_blocks").css("display", "none");
+        $("#DataTable_Blocks").css("display", "block");
+        $("#no_datas").css("display", "block");
+        $("#EMS_tbl").css("display", "none");
+        $("#EMS_tbl1").css("display", "none");
+        $("#EMS_tbl2").css("display", "none");
+        $("#Backbtn").css("display", "block");
+        $("#DownloadExcel").css("display", "none");
+    }
+    function UpaDateFilter() {
+        let branchidString;
+        if (!branchidglobal || branchidglobal.length === 0) {
+            branchidglobal = $("#BranchID").val();
+        }
+        let SelectedEmployees = [...new Set(selectedEmpArray)].join(',');
+        if (branchidglobal != "" && branchidglobal != null) {
+             branchidString = branchidglobal.join(",");
+        }
+        $.ajax({
+            url: '@_webapiurl' + "/Report/UpdateFilterems" ,
+            type: "POST",
+            contentType: "application/json",
+            beforeSend: function (xhr) {
+                xhr.setRequestHeader("Authorization", '@_tokan');
+            },
+            data: JSON.stringify({
+                ActiveEmployeeChecked: activeEmployeeStataus,
+                selectEmployee: SelectedEmployees,
+                selectedBranch: branchidString,
+                selectedCompany: $("#CompanyID").val(),
+                selectedDepartment: departmentGlobal
+            }),
+            success: function (response) {
+                console.log("Data saved successfully:", response);
+
+            },
+            error: function (error) {
+                console.error("Error saving data:", error);
+            }
+        });
+    }
+    function validation(e) {
+        var bid = $("#BranchID").val();
+        if ((bid == "") || (bid == null)) {
+            $("#DepartmentID").prop("disabled", true);
+        }
+        else {
+            $("#DepartmentID").prop("disabled", false);
+        }
+        if ($("#CompanyID").val() == null || $("#CompanyID").val() == "") {
+            toastr.error("Please select Company!");
+            e.preventDefault();
+            return false;
+        }
+        if ((bid == "") || (bid == null)) {
+            toastr.error("Please select Branch!");
+            e.preventDefault();
+            return false;
+        }
+        if (departmentGlobal == null || departmentGlobal == "") {
+            toastr.error("Please select Department!");
+            e.preventDefault();
+            return false;
+        }
+        if (selectedEmpArray.length == 0) {
+            toastr.error("Please select Employee!");
+            e.preventDefault();
+            return false;
+        }
+        return true;
+    }
+    function HasFilterStored() {
+    $.ajax({
+        type: "POST",
+        url: '@_webapiurl' + "/Report/HasFilterStoredems" ,
+        contentType: "application/json; charset=utf-8",
+        dataType: "json",
+        beforeSend: function (xhr) {
+            xhr.setRequestHeader("Authorization", '@_tokan');
+        },
+        success: function (data) {
+            let storedCompany = sessionStorage.getItem("selectedCompany_${'@_UserId'}`");
+            if (data != null && data.length > 0) {
+                $("#modal_recall").addClass('active');
+                FlagForFilter = 1;
+                let empIdArray = data[0].EmpId ? data[0].EmpId.split(",").map(id => id.trim()) : [];
+                sessionStorage.setItem("selectedCompany_${'@_UserId'}`", data[0].CompanyId);
+                sessionStorage.setItem("selectedBranch", data[0].BranchId);
+                sessionStorage.setItem("selectedDepartment", data[0].DepartmentId);
+                sessionStorage.setItem("selectEmployee", JSON.stringify(empIdArray))
+                sessionStorage.setItem("isActiveEmployeeChecked", data[0].IsActive);
+            }
+            else if (storedCompany) {
+                FlagForFilter = 1;
+            }
+            else {
+                FlagForFilter = 0;
+            }
+        },
+        error: function () {
+            console.log("Error in Filter Get");
+        }
+    });
+}
+    function fillAllTable() {
+    checkSession();
+    $("#ajax_loader").show();
+
+    let Dates = FetchDates();
+    var storedCompanyID = sessionStorage.getItem("selectedCompany_" + '@_UserId');
+    var storedEmpid1 = sessionStorage.getItem("selectEmployee");
+    var storedBranchid = sessionStorage.getItem("selectedBranch");
+    var storedDepartmentId = sessionStorage.getItem("selectedDepartment");
+    var urlCommon;
+    var dataCommon;
+    var storedEmpid = storedEmpid1
+        ?.replace(/[\[\]"]+/g, '')
+        .trim();
+    $("#CompanyID").val(storedCompanyID);
+
+
+    if (reportid == 1) {
+        urlCommon = '@_webapiEMSURL' + "CommanMaster/GetReportspolicy";
+        dataCommon = {
+            FromDate: Dates.fromDate,
+            ToDate: Dates.toDate,
+            EmpID: storedEmpid,
+            CompanyID: $("#CompanyID").val(),
+            RptID: reportid
+        };
+    }
+
+    else if (reportid == 2) {
+        urlCommon = '@_webapiEMSURL' + "CommanMaster/GetReportsExpense";
+        dataCommon = {
+            FromDate: Dates.fromDate,
+            ToDate: Dates.toDate,
+            EmpID: storedEmpid,
+            CompanyID: $("#CompanyID").val(),
+            RptID: reportid
+        };
+    }
+    else if (reportid == 3) {
+        urlCommon = '@_webapiEMSURL' + "CommanMaster/GetReportsFinalStatus";
+        dataCommon = {
+            FromDate: Dates.fromDate,
+            ToDate: Dates.toDate,
+            EmpID: storedEmpid,
+            CompanyID: $("#CompanyID").val(),
+            RptID: reportid
+        };
+    }
+
+    $.ajax({
+        type: "POST",
+        url: urlCommon,
+        data: JSON.stringify(dataCommon),
+        headers: { 'Authorization': '@_tokan' },
+        dataType: "json",
+        contentType: "application/json; charset=utf-8",
+
+        success: function (response) {
+
+            if (Array.isArray(response) && response.length > 0) {
+
+                $("#DownloadExcel").show();
+                $("#Reports_ui_blocks").hide();
+                $("#no_datas").hide();
+                $("#tableResponsive").show();
+                
+                if (reportid == 1) $("#EMS_tbl").show();
+                if (reportid == 2) $("#EMS_tbl1").show();
+                if (reportid == 3) $("#EMS_tbl2").show();
+
+                columns = columnDefinitions[reportid] || [];
+                initializeDataTable(response, columns);
+                $("#no_datas").attr("style", "display: none !important;");
+                $("#Filterbtn_modal").modal("hide");
+                $("#ajax_loader").hide();
+            }
+            else {
+
+                $("#DownloadExcel").hide();
+                toastr.success("No data available to display.");
+
+                $("#EMS_tbl").hide();
+                $("#EMS_tbl1").hide();
+                $("#EMS_tbl2").hide();               
+                $("#tableResponsive").hide();
+                $("#no_datas").show();
+                $("#ajax_loader").hide();
+            }
+        },
+
+        error: function (xhr, status, error) {
+            $("#Filterbtn_modal").modal("hide");
+            console.log("Error:", error);
+            $("#ajax_loader").hide();
+        }
+    });
+
+}
+
+    function FetchDates() {
+        let selectedText = $("#daterange").val();
+        if (predefinedRanges.hasOwnProperty(selectedText)) {
+            let fromDate = predefinedRanges[selectedText][0].format("YYYY-MM-DD");
+            let toDate = predefinedRanges[selectedText][1].format("YYYY-MM-DD");
+
+            console.log("Predefined Range - From Date:", fromDate, "To Date:", toDate);
+            return { fromDate, toDate };
+        } else {
+
+            let customRangeText = $("#custom_daterange").val();
+
+            if (customRangeText) {
+                let dates = customRangeText.split(" - ");
+                let fromDate = moment(dates[0], "DD/MM/YYYY").format("YYYY-MM-DD");
+                let toDate = moment(dates[1], "DD/MM/YYYY").format("YYYY-MM-DD");
+
+                console.log("Custom Range - From Date:", fromDate, "To Date:", toDate);
+                return { fromDate, toDate };
+            } else {
+                console.log("No valid date range selected.");
+                return null;
+            }
+        }
+    }
+    function initializeDataTable(data, columns) {
+        var report = ColumnForExcel.find(item => item.id == reportid);
+        var reportName1 = report ? report.Excel : "Report";
+        var reportName = `${reportName1} - ${getFormattedDateTime()}`;
+        var fileName = `${reportName1} - ${getFileSafeDateTime()}`;
+        $("#PdfDownload").css("display", "block");
+        if (reportid == 1) {
+            table = $('#EMS_tbl').DataTable({
+                data: data,
+                //"dom": 'lfrtip',
+                dom: _domCommon,
+                language: _languageCommon,
+                "bDestroy": true,
+                "deferRender": true,
+                "colReorder": true,
+                "colReorder": {
+                    fixedColumnsLeft: 1
+                },
+                "order": [],
+                "ordering": true,
+                "buttons": [
+                    {
+                        extend: 'excelHtml5',
+                        text: 'Excel',
+                        titleAttr: 'Excel',
+                        className: 'buttons-excel',
+                        title: reportName,
+                        filename: fileName,
+                        exportOptions: {
+                            columns: ':visible'
+                        },
+                        customize: function (xlsx) {
+                            var sheet = xlsx.xl.worksheets['sheet1.xml'];
+                            var rows = $('row', sheet);
+                            var maxRows = 65000;
+                            if (rows.length > maxRows) {
+                                var sheets = Math.ceil(rows.length / maxRows);
+
+                                for (var i = 1; i < sheets; i++) {
+                                    var newSheetName = `Sheet${i + 1}`;
+                                    var newSheet = $.parseXML(sheet.xml);
+
+                                    $(newSheet).find('row:gt(' + (maxRows - 1) + ')').remove();
+                                    xlsx.xl.worksheets[newSheetName + '.xml'] = newSheet;
+                                    xlsx.xl.worksheets.sheets.append('<sheet name="' + newSheetName + '" sheetId="' + (i + 1) + '" r:id="rId' + (i + 1) + '"/>');
+                                }
+                            }
+                        }
+                    },
+                    {
+                        extend: 'pdfHtml5',
+                        text: 'PDF',
+                        title: reportName,
+                        filename: fileName,
+                        titleAttr: 'PDF',
+                        className: 'buttons-pdf',
+                        orientation: 'landscape',
+                        exportOptions: {
+                            columns: ':visible' // Only export visible columns
+                        },
+                        customize: function (doc) {
+                            doc.pageSize = 'A2';
+                            doc.content[0].alignment = 'left';
+                            doc.content[0].margin = [0, 0, 0, 10];
+                            doc.content[0].text = [{ text: reportName, alignment: 'left' }];
+                        }
+                    }
+                ],
+                "columns": columns,
+            });
+            setTimeout(function () {
+                $("#" + "EMS_tbl" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+                $('.tooltips').tooltip();
+            }, 100);
+        }
+        else if (reportid == 2) {
+            table = $('#EMS_tbl1').DataTable({
+                data: data,
+                //"dom": 'lfrtip',
+                dom: _domCommon,
+                language: _languageCommon,
+                "bDestroy": true,
+                "deferRender": true,
+                "colReorder": true,
+                "colReorder": {
+                    fixedColumnsLeft: 1
+                },
+                "order": [],
+                "ordering": true,
+                "buttons": [
+                    {
+                        extend: 'excelHtml5',
+                        text: 'Excel',
+                        titleAttr: 'Excel',
+                        className: 'buttons-excel',
+                        title: reportName,
+                        filename: fileName,
+                        exportOptions: {
+                            columns: ':visible'
+                        },
+                        customize: function (xlsx) {
+                            var sheet = xlsx.xl.worksheets['sheet1.xml'];
+                            var rows = $('row', sheet);
+                            var maxRows = 65000;
+                            if (rows.length > maxRows) {
+                                var sheets = Math.ceil(rows.length / maxRows);
+                                for (var i = 1; i < sheets; i++) {
+                                    var newSheetName = `Sheet${i + 1}`;
+                                    var newSheet = $.parseXML(sheet.xml);
+                                    $(newSheet).find('row:gt(' + (maxRows - 1) + ')').remove();
+                                    xlsx.xl.worksheets[newSheetName + '.xml'] = newSheet;
+                                    xlsx.xl.worksheets.sheets.append('<sheet name="' + newSheetName + '" sheetId="' + (i + 1) + '" r:id="rId' + (i + 1) + '"/>');
+                                }
+                            }
+                        }
+                    },
+                    {
+                        extend: 'pdfHtml5',
+                        text: 'PDF',
+                        title: reportName,
+                        filename: fileName,
+                        titleAttr: 'PDF',
+                        className: 'buttons-pdf',
+                        orientation: 'landscape',
+                        exportOptions: {
+                            columns: ':visible' // Only export visible columns
+                        },
+                        customize: function (doc) {
+                            doc.pageSize = 'A2';
+                            doc.content[0].alignment = 'left';
+                            doc.content[0].margin = [0, 0, 0, 10];
+                            doc.content[0].text = [{ text: reportName, alignment: 'left' }];
+                        }
+                    }
+                ],
+                "columns": columns,
+            });
+            setTimeout(function () {
+                $("#" + "EMS_tbl1" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+                $('.tooltips').tooltip();
+            }, 100);
+        }
+        else if (reportid == 3) {
+            table = $('#EMS_tbl2').DataTable({
+                data: data,
+                //"dom": 'lfrtip',
+                dom: _domCommon,
+                language: _languageCommon,
+                "bDestroy": true,
+                "deferRender": true,
+                "colReorder": true,
+                "colReorder": {
+                    fixedColumnsLeft: 1
+                },
+                "order": [],
+                "ordering": true,
+                "buttons": [
+                    {
+                        extend: 'excelHtml5',
+                        text: 'Excel',
+                        titleAttr: 'Excel',
+                        className: 'buttons-excel',
+                        title: reportName,
+                        filename: fileName,
+                        exportOptions: {
+                            columns: ':visible'
+                        },
+                        customize: function (xlsx) {
+                            var sheet = xlsx.xl.worksheets['sheet1.xml'];
+                            var rows = $('row', sheet);
+                            var maxRows = 65000;
+                            if (rows.length > maxRows) {
+                                var sheets = Math.ceil(rows.length / maxRows);
+                                for (var i = 1; i < sheets; i++) {
+                                    var newSheetName = `Sheet${i + 1}`;
+                                    var newSheet = $.parseXML(sheet.xml);
+                                    $(newSheet).find('row:gt(' + (maxRows - 1) + ')').remove();
+                                    xlsx.xl.worksheets[newSheetName + '.xml'] = newSheet;
+                                    xlsx.xl.worksheets.sheets.append('<sheet name="' + newSheetName + '" sheetId="' + (i + 1) + '" r:id="rId' + (i + 1) + '"/>');
+                                }
+                            }
+                        }
+                    },
+                    {
+                        extend: 'pdfHtml5',
+                        text: 'PDF',
+                        title: reportName,
+                        filename: fileName,
+                        titleAttr: 'PDF',
+                        className: 'buttons-pdf',
+                        orientation: 'landscape',
+                        exportOptions: {
+                            columns: ':visible' // Only export visible columns
+                        },
+                        customize: function (doc) {
+                            doc.pageSize = 'A2';
+                            doc.content[0].alignment = 'left';
+                            doc.content[0].margin = [0, 0, 0, 10];
+                            doc.content[0].text = [{ text: reportName, alignment: 'left' }];
+                        }
+                    }
+                ],
+                "columns": columns,
+            });
+            setTimeout(function () {
+                $("#" + "EMS_tbl2" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+                $('.tooltips').tooltip();
+            }, 100);
+        }
+    }
+    function getFileSafeDateTime() {
+        var now = new Date();
+        var year = now.getFullYear();
+        var month = String(now.getMonth() + 1).padStart(2, '0');
+        var day = String(now.getDate()).padStart(2, '0');
+        var hours = String(now.getHours()).padStart(2, '0');
+        var minutes = String(now.getMinutes()).padStart(2, '0');
+        var seconds = String(now.getSeconds()).padStart(2, '0');
+        return `${year}${month}${day}`;
+    }
+    function getFormattedDateTime() {
+        var now = new Date();
+        var year = now.getFullYear();
+        var month = String(now.getMonth() + 1).padStart(2, '0');
+        var day = String(now.getDate()).padStart(2, '0');
+        var hours = String(now.getHours()).padStart(2, '0');
+        var minutes = String(now.getMinutes()).padStart(2, '0');
+        var seconds = String(now.getSeconds()).padStart(2, '0');
+        return `${year}/${month}/${day} - ${hours}:${minutes}:${seconds}`;
+    }
+</script>
+<div class="page-bar" id="Backbtn" style="display:none">
+
+    @if (_RoleId == 1 || _RoleId == 6805 || _RoleId == 6806 || _RoleId == 6000)
+    {
+        <ul class="page-breadcrumb">
+            <li>
+                <a href="@(isClientDBMatchFlag == "True" ? "/Admin/AdminDashboard" : "/Dashboard/AdminDashboard")"><i class="fa-regular fa-house"></i></a>
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i>EMS Reports</span>
+            </li>
+        </ul>
+    }
+    else
+    {
+        <ul class="page-breadcrumb">
+            <li>
+                <a href="/Dashboard/EmployeeDashboard"><i class="fa-regular fa-house"></i></a>
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i>EMS Reports</span>
+            </li>
+        </ul>
+    }
+    <div>
+        <div class="report_title">
+            <p id="Rpt_Name"></p>
+        </div>
+
+        <div class="page-toolbar">
+            <a href="javascript:;" onclick="goBack()" class="btn icon_transparent_btn Filterbtn margin-right-5 tooltips" data-placement="left" data-original-title="Back To Report Dashboard" data-toggle="tooltip"><i class="fa-regular fa-arrow-left"></i></a>
+        </div>
+    </div>
+</div>
+<!-- Report Block Design : Begin -->
+<div class="row report_new" id="Reports_ui_blocks">
+    <div class="col-md-12 margin-bottom-5">
+        <p class="dashboard-sub-title" id="leaveReportsToggle1" style="cursor: pointer;">
+            <span class="padding-right-10">EMS Reports <i class="fa-light fa-chevron-up"></i></span>
+        </p>
+        <div class="row" id="EMSReportContent1">
+
+            <div class="col-lg-4 col-sm-6 col-xs-12">
+                <a href="javascript:;" class="local_report_icon" id="Policy_Report">
+                    <div class="report_block">
+                        <img src="~/assets/images/icons/reports/ir_emspolicysummary.svg" alt="icon OKR report" />
+                        <div class="report_title">
+                            <p>Policy Summary Report</p>
+                            <div class="report_subtitle">A detailed overview of company policies.</div>
+                        </div>
+                    </div>
+                </a>
+            </div>
+            <div class="col-lg-4 col-sm-6 col-xs-12">
+                <a href="javascript:;" class="local_report_icon" id="Expense_Report">
+                    <div class="report_block">
+                        <img src="~/assets/images/icons/reports/ir_expensesummary.svg" alt="icon OKR Department wise Report" />
+                        <div class="report_title">
+                            <p>Expense Summary Report</p>
+                            <div class="report_subtitle">Breakdown of expenses by category, employee, and time period.</div>
+                        </div>
+                    </div>
+                </a>
+            </div>
+            <div class="col-lg-4 col-sm-6 col-xs-12">
+                <a href="javascript:;" class="local_report_icon" id="Finalstatus_Report">
+                    <div class="report_block">
+                        <img src="~/assets/images/icons/reports/ir_finalapproval.svg" alt="icon OKR Department wise Report" />
+                        <div class="report_title">
+                            <p>Final Approval Status Report</p>
+                            <div class="report_subtitle">Details on final approval and submission status.</div>
+                        </div>
+                    </div>
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Report Block Design : End -->
+
+<!-- Drag & Drop for Report Cards -->
+<script>
+    (function () {
+        var ANALYTICS_USER_ID = '@_UserId';
+        var SECTION_KEY = 'analyticsEMSSectionOrder_' + ANALYTICS_USER_ID;
+        var CARD_KEY_PREFIX = 'analyticsEMSCardOrder_' + ANALYTICS_USER_ID + '_';
+
+        var cardContainerIds = ['EMSReportContent1'];
+
+        function addCardDragHandles(containerId) {
+            $('#' + containerId + ' > div').each(function () {
+                var $block = $(this).find('.report_block').first();
+                if ($block.length && !$block.find('.drag-handle-report').length) {
+                    $block.prepend('<span class="drag-handle-report tooltips" data-placement="top" data-original-title="Drag to reorder"><i class="fa-light fa-grip-dots-vertical"></i></span>');
+                }
+            });
+        }
+
+        function addSectionDragHandles() {
+            $('#Reports_ui_blocks > .col-md-12').each(function () {
+                var $title = $(this).find('.dashboard-sub-title').first();
+                if ($title.length && !$title.find('.drag-handle-section').length) {
+                    $title.prepend('<span class="drag-handle-section tooltips" data-placement="top" data-original-title="Drag section"><i class="fa-light fa-grip-dots-vertical"></i></span>');
+                }
+            });
+        }
+
+        function getOrder(containerId) {
+            var order = [];
+            $('#' + containerId + ' > div').each(function () {
+                var id = $(this).find('a.local_report_icon').attr('id') || $(this).index().toString();
+                order.push(id);
+            });
+            return order;
+        }
+
+        function getSectionOrder() {
+            var order = [];
+            $('#Reports_ui_blocks > .col-md-12').each(function () {
+                var $toggle = $(this).find('[id^="leaveReportsToggle"]');
+                if ($toggle.length) {
+                    order.push($toggle.attr('id'));
+                }
+            });
+            return order;
+        }
+
+        function saveCardOrder(containerId) {
+            try {
+                localStorage.setItem(CARD_KEY_PREFIX + containerId, JSON.stringify(getOrder(containerId)));
+            } catch (e) { }
+        }
+
+        function saveSectionOrder() {
+            try {
+                localStorage.setItem(SECTION_KEY, JSON.stringify(getSectionOrder()));
+            } catch (e) { }
+        }
+
+        function restoreCardOrder(containerId) {
+            try {
+                var saved = localStorage.getItem(CARD_KEY_PREFIX + containerId);
+                if (!saved) return;
+                var order = JSON.parse(saved);
+                if (!Array.isArray(order) || order.length === 0) return;
+
+                var $container = $('#' + containerId);
+                var idMap = {};
+
+                $container.children('div').each(function () {
+                    var linkId = $(this).find('a.local_report_icon').attr('id');
+                    if (linkId) {
+                        idMap[linkId] = $(this);
+                    }
+                });
+
+                for (var i = 0; i < order.length; i++) {
+                    if (idMap[order[i]]) {
+                        $container.append(idMap[order[i]]);
+                        delete idMap[order[i]];
+                    }
+                }
+                for (var key in idMap) {
+                    $container.append(idMap[key]);
+                }
+            } catch (e) { }
+        }
+
+        function restoreSectionOrder() {
+            try {
+                var saved = localStorage.getItem(SECTION_KEY);
+                if (!saved) return;
+                var order = JSON.parse(saved);
+                if (!Array.isArray(order) || order.length === 0) return;
+
+                var $container = $('#Reports_ui_blocks');
+                var idMap = {};
+
+                $container.children('.col-md-12').each(function () {
+                    var $toggle = $(this).find('[id^="leaveReportsToggle"]');
+                    if ($toggle.length) {
+                        idMap[$toggle.attr('id')] = $(this);
+                    }
+                });
+
+                for (var i = 0; i < order.length; i++) {
+                    if (idMap[order[i]]) {
+                        $container.append(idMap[order[i]]);
+                        delete idMap[order[i]];
+                    }
+                }
+                for (var key in idMap) {
+                    $container.append(idMap[key]);
+                }
+            } catch (e) { }
+        }
+
+        // Restore order IMMEDIATELY to prevent position flash
+        restoreSectionOrder();
+        for (var k = 0; k < cardContainerIds.length; k++) {
+            restoreCardOrder(cardContainerIds[k]);
+        }
+
+        function initAnalyticsSortable() {
+            var sectionEl = document.getElementById('Reports_ui_blocks');
+            if (!sectionEl) return;
+
+            addSectionDragHandles();
+            $('.drag-handle-section.tooltips').tooltip({ container: 'body', trigger: 'hover' });
+
+            Sortable.create(sectionEl, {
+                handle: '.drag-handle-section',
+                animation: 250,
+                ghostClass: 'section-sortable-ghost',
+                chosenClass: 'section-sortable-chosen',
+                draggable: '.col-md-12',
+                easing: 'cubic-bezier(0.25, 1, 0.5, 1)',
+                onEnd: function () {
+                    saveSectionOrder();
+                }
+            });
+
+            // Init card-level drag within each section
+            for (var i = 0; i < cardContainerIds.length; i++) {
+                var cId = cardContainerIds[i];
+                var el = document.getElementById(cId);
+                if (!el) continue;
+
+                addCardDragHandles(cId);
+                $('#' + cId + ' .drag-handle-report.tooltips').tooltip({ container: 'body', trigger: 'hover' });
+
+                (function (containerId) {
+                    Sortable.create(document.getElementById(containerId), {
+                        handle: '.drag-handle-report',
+                        animation: 250,
+                        ghostClass: 'sortable-ghost',
+                        chosenClass: 'sortable-chosen',
+                        dragClass: 'sortable-drag',
+                        easing: 'cubic-bezier(0.25, 1, 0.5, 1)',
+                        onEnd: function () {
+                            saveCardOrder(containerId);
+                        }
+                    });
+                })(cId);
+            }
+        }
+
+        // Only delay Sortable init + drag handles, NOT the order restore
+        setTimeout(function () {
+            initAnalyticsSortable();
+        }, 1000);
+    })();
+</script>
+
+<div id='ajax_loader' class="modal_bg loading" aria-hidden="true">
+    <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading" />
+</div>
+<div id="DataTable_Blocks" style="display:none">
+    <!-- Topbar Filter Design : Begin -->
+    <div class="filter_block" id="Filter_Block">
+        <div class="d-flex align-items-center flex-wrap">
+            <div class="d-flex align-items-center filter_applied Filterbtn" id="modal_recall">
+                <span class="margin-right-5">
+                    <i class="fa-light fa-calendar-days"></i>
+                </span>
+                <span>Applied Filter</span>
+            </div>
+            <div class="daterange_block data_picker_box">
+                <div class="input-group">
+                    <span class="input-group-btn margin-right-5">
+                        <button class="btn default" type="button">
+                            <i class="fa-light fa-calendar-days"></i>
+                        </button>
+                    </span>
+                    <input type="text" id="daterange" class="form-control">
+                </div>
+            </div>
+            <!-- Hidden Custom Date Input (Initially Hidden) -->
+            <div id="custom_date_input" style="display: none; margin-right:8px;">
+                <input type="text" id="custom_daterange" class="form-control" placeholder="Select custom range">
+            </div>
+            <div>
+                <a href="javascript:;" class="btn blue_btnnew tooltips" data-placement="top" data-original-title="View Report" data-toggle="tooltip" id="Filter_Data"><i class="fa-light fa-memo-circle-check" style="font-size: 17px; position: relative; left: 2px; top: 2px; "></i></a>
+                <a href="javascript:;" class="btn red_btnnew tooltips" data-placement="top" data-original-title="Clear Filter" data-toggle="tooltip" id="Clear_Data"><i class="fa-light fa-eraser"></i></a>
+            </div>
+        </div>
+
+        <div class="reportdownload_block" id="DownloadExcel">
+            <ul class="margin-0">
+                <li class="dropdown dropdown-user">
+                    <a href="javascript:;" class="dropdown-toggle" data-toggle="dropdown">
+                        Download As <i class="fa-light fa-angle-down"></i>
+                    </a>
+                    <ul class="dropdown-menu">
+                        <li>
+                            <a href="javascript:;" class="export-btn" data-type="excel">
+                                <img src="~/assets/images/icons/reports/ir_dw_excel.svg" alt="Excel Icon" width="22"> Excel
+                            </a>
+                        </li>
+                        <li>
+                            <a href="javascript:;" class="export-btn" data-type="pdf" id="PdfDownload">
+                                <img src="~/assets/images/icons/reports/ir_dw_pdf.svg" alt="PDF Icon" width="22"> PDF
+                            </a>
+                        </li>
+                    </ul>
+                </li>
+            </ul>
+        </div>
+    </div>
+    <!-- Topbar Filter Design : End -->
+    <!-- Datatable Block : Begin -->
+    <div class="portlet" style="margin-bottom: 8px;">
+        <div class="portlet-body">
+            <div class="reportblock_table">
+                <div class="table-responsive report_tbl" id="tableResponsive" style="display: none">
+                    <table id="EMS_tbl" class="table new_datatbl table-striped table-bordered table-hover table-checkable order-column">
+                        <thead>
+                            <tr>
+                                <th style="min-width: 80px;">Name</th>
+                                <th style="min-width: 80px;">Code</th>
+                                <th style="min-width: 120px;">Policy Name</th>
+                                <th style="min-width: 80px;">Policy Type</th>
+                                <th style="min-width: 80px;">Policy Code</th>
+                                <th style="min-width: 200px;">Description</th>
+                                <th style="min-width: 120px;">Effective Date</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                    <table id="EMS_tbl1" class="table new_datatbl table-striped table-bordered table-hover table-checkable order-column">
+                        <thead>
+                            <tr>
+                                <th style="min-width: 120px;">Emp Name</th>
+                                <th style="min-width: 80px;">Expense Request Code</th>
+                                <th style="min-width: 80px;">Expense Date</th>
+                                <th style="min-width: 120px;">Description</th>
+                                <th style="min-width: 80px;">Request Type</th>
+                                <th style="min-width: 80px;">Expense Amount</th>
+                                <th style="min-width: 80px;">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                    <table id="EMS_tbl2" class="table new_datatbl table-striped table-bordered table-hover table-checkable order-column">
+                        <thead>
+                            <tr>
+                                <th style="min-width: 80px;">Branch Name</th>
+                                <th style="min-width: 80px;">Department Name</th>
+                                <th style="min-width: 80px;">Employee Code</th>
+                                <th style="min-width: 120px;">Employee Name</th>
+                                <th style="min-width: 80px;">Expense Date</th>
+                                <th style="min-width: 80px;">Expense Type</th>
+                                <th style="min-width: 150px;">Total Expense Amount</th>
+                                <th style="min-width: 80px;">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        <div class="no_recoed nodata_block d-flex align-items-center justify-content-center h-460" id="no_datas" style="display:none;">
+            <div class="datanotfound">
+                <img src="~/assets/images/emptyscreen_3.png" height="148" width="280" alt="No Data Icon" />
+                <p class="datanotfound_title">No data found</p>
+                <p>No matching records found for the selected filters</p>
+            </div>
+        </div>
+    </div>
+    <!-- Datatable Block : End -->
+</div>
+<!-- Filter Modal : Begin -->
+<div id="Filterbtn_modal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+    <div class="modal-dialog w-500">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal">&times;</button>
+                <h4 class="modal-title">Filter</h4>
+            </div>
+            <div class="modal-body">
+                <div class="modal-card">
+                    <fieldset>
+                        <div class="row">
+                            <div class="col-md-12">
+                                <span class="help-block" style="color:red;" hidden id="spvalidation"></span>
+                            </div>
+                            <div class="col-sm-12 col-xs-12">
+                                <div class="form-group newmultiselect">
+                                    <label class="control-label">Company<span class="required" aria-required="true"> * </span></label>
+                                    @if (ViewBag.Companyslist != null)
+                                    {
+                                        @Html.DropDownList("CompanyID", new SelectList(ViewBag.Companyslist, "CompanyID", "CompanyName"), "Select Company", new { @class = "form-control input-sm" })
+                                    }
+                                    else
+                                    {
+                                        @Html.DropDownList("CompanyID", new SelectList(new[] { "" }), new { @class = "form-control input-sm" })
+                                    }
+                                </div>
+                            </div>
+                            <div class="col-sm-12 col-xs-12">
+                                <div class="form-group newmultiselect">
+                                    <label class="control-label">Branch<span class="required" aria-required="true"> * </span></label>
+                                    <input type="text" id="txt3" value="0" hidden />
+                                    <select id="BranchID" class="mt-multiselect btn blue btn-outline" multiple="multiple" data-width="100%">
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-md-6" hidden>
+                                <div class="form-group">
+                                    <label class="control-label">Report Type</label>
+                                    @Html.HiddenFor(x => x.ReportName);
+                                    @Html.HiddenFor(x => x.RptID);
+                                    @Html.HiddenFor(x => x.crptid);
+                                    @Html.HiddenFor(x => x.SeqNo);
+                                </div>
+                            </div>
+                            <div class="col-sm-12 col-xs-12">
+                                <div class="form-group newmultiselect">
+
+                                    <label class="control-label">Department<span class="required" aria-required="true"> * </span></label>
+                                    <input type="text" id="txt2" value="0" hidden />
+                                    <select id="DepartmentID" class="mt-multiselect btn blue btn-outline" multiple="multiple" data-width="100%">
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-sm-6">
+                                <label class="mt-checkbox mt-checkbox-single mt-checkbox-outline margin-bottom-0">
+                                    <input type="checkbox" class="checkboxes" id="ActiveEmployee" name="ActiveEmployee" value="1" />Active Employee <i class='fa-regular fa-circle-info tooltips' data-placement='top' title='Show only active employee' style='color: #295097;'></i>
+                                    <span></span>
+                                </label>
+                            </div>
+                        </div>
+                    </fieldset>
+                </div>
+                <div class="row">
+                    <div class="col-md-12" id="empdiv">
+                        <label class="control-label" id="lblemp" style="position: absolute; top: 8px;" hidden>Employee<span class="required" aria-required="true"> * </span></label>
+                        @Html.HiddenFor(model => model.EmpID)
+                        @Html.HiddenFor(model => model.DepId)
+                        @Html.HiddenFor(model => model.BranchId)
+                        @Html.HiddenFor(model => model.CompanyName)
+                        @Html.HiddenFor(model => model.BranchName)
+                        @Html.HiddenFor(model => model.CompanyID)
+                        <div class="table-scroll-1 divEmp">
+                            <div id="tableResponsiveModel">
+                                <table id="tblemp" class="table new_datatbl table-striped table-bordered table-hover order-column">
+                                </table>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <div class="row">
+                    <div class="col-xs-4 text-left">
+                        <a href="javascript:;" class="btn font-dark" id="btnclearall">Clear All</a>
+                    </div>
+                    <div class="col-xs-8 text-right">
+                        <button type="button" class="btn cancel_btn" data-dismiss="modal"><i class="fa fa-close"></i> Cancel</button>
+                        <button type="button" class="btn save_btn" id="btn_save"><i class="fa-light fa-floppy-disk"></i> Save</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Filter Modal : End -->

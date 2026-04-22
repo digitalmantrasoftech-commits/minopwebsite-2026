@@ -1,0 +1,135 @@
+<link href="~/Newlayout/productseperation/css/userproductlist.css" rel="stylesheet" />
+
+<div class="product-access-section">
+    <div class="product-access-card">
+        <div class="product-access-header">
+            <div>
+                <div class="product-access-title">
+                    <i class="fa-regular fa-grid-2"></i> Available Products
+                </div>
+                <p style="margin: 5px 0 0 0; color: #666; font-size: 13px;">
+                    Products and modules you have access to
+                </p>
+            </div>
+        </div>
+
+        <div class="product-grid" id="userProductsList">
+            <!-- Products will be loaded here via JavaScript -->
+            <div style="text-align: center; padding: 20px; grid-column: 1 / -1;">
+                <i class="fa-regular fa-spinner fa-spin"></i> Loading products...
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+$(document).ready(function() {
+    loadUserProducts();
+
+    function loadUserProducts()
+    {
+        $.ajax({
+            url: '/Product/GetAvailableProducts',
+            type: 'GET',
+            success: function(response) {
+                if (response.success && response.data && response.data.length > 0) {
+                    renderUserProducts(response.data);
+                } else {
+                    showNoProducts();
+                }
+            },
+            error: function() {
+                $('#userProductsList').html(
+                    '<div class="no-products-message" style="grid-column: 1 / -1;">' +
+                    '<i class="fa-regular fa-exclamation-triangle"></i>' +
+                    '<p>Error loading products. Please try again.</p>' +
+                    '</div>'
+                );
+            }
+        });
+    }
+
+    // HTML escape function to prevent XSS
+    function escapeHtml(text) {
+        if (!text) return '';
+        var div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    function renderUserProducts(products) {
+        var html = '';
+        // Get current product ID from session (manual - no ProductHelper needed)
+        var currentProductId = @(HttpContext.Current.Session["SelectedProductId"] != null ? HttpContext.Current.Session["SelectedProductId"].ToString() : "1");
+        products.forEach(function(product) {
+            var isActive = currentProductId === product.ProductId ? 'active' : '';
+            var mainBadge = product.IsMainProduct ? '<span class="product-main-badge">MAIN</span>' : '';
+
+            html += '<div class="product-card ' + isActive + '" data-product-id="' + product.ProductId + '">';
+            html += '  <div class="product-icon">';
+            html += '    <i class="' + escapeHtml(product.IconClass || 'fa-regular fa-cube') + '"></i>';
+            html += '  </div>';
+            html += '  <div class="product-details">';
+            html += '    <div class="product-name">' + escapeHtml(product.ProductName) + mainBadge + '</div>';
+            html += '    <div class="product-description">' + escapeHtml(product.Description || 'No description') + '</div>';
+            html += '  </div>';
+            html += '  <div>';
+            html += '    <span class="product-status-badge">';
+            html += '      <i class="fa-solid fa-check"></i>';
+            html += '    </span>';
+            html += '  </div>';
+            html += '</div>';
+        });
+
+        $('#userProductsList').html(html);
+
+        // Add click handlers
+        $('.product-card').on('click', function() {
+            var productId = $(this).data('product-id');
+            if (productId !== currentProductId) {
+                if (confirm('Do you want to switch to this product?')) {
+                    switchToProduct(productId);
+                }
+            }
+        });
+    }
+
+    function showNoProducts() {       
+        $('#userProductsList').html(
+            '<div class="no-products-message" style="grid-column: 1 / -1;">' +
+            '<i class="fa-regular fa-cube"></i>' +
+            '<p>No products available</p>' +
+            '<p style="font-size: 12px; margin-top: 5px;">Contact your administrator for access.</p>' +
+            '</div>'
+        );
+    }
+
+    function switchToProduct(productId) {   
+        $.ajax({
+            url: '/Product/SwitchProduct',
+            type: 'POST',
+            data: { productId: productId },
+            beforeSend: function() {
+                toastr.info('Switching product...');
+            },
+            success: function(response) {
+                if (response.success) {
+                    toastr.success(response.message);
+                    if (response.redirectUrl) {
+                        setTimeout(function() {
+                            window.location.href = response.redirectUrl;
+                        }, 500);
+                    } else {
+                        location.reload();
+                    }
+                } else {
+                    toastr.error(response.message || 'Failed to switch product');
+                }
+            },
+            error: function() {
+                toastr.error('Error switching product');
+            }
+        });
+    }
+});
+</script>

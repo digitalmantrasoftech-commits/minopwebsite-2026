@@ -1,0 +1,676 @@
+﻿@model PayTimeWebClient.Models.EmailConfiguration
+@using PayTimeWebClient.Helper;
+@using PayTimeWebClient.Models;
+@using System.Configuration;
+@{
+    string _Message = ViewBag.msg;
+    string _error = ViewBag.error;
+    ViewBag.Title = "EmailConfiguration";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    int _RoleId = Convert.ToInt32(HttpContext.Current.Session["RoleId"]);
+    MasterDataRestClient objusedetails = new MasterDataRestClient();
+    AlertDataRestClient objAlertDetails = new AlertDataRestClient();
+    var selectedUserMenu = objusedetails.RoleRightsGetAll(_RoleId).Where(y => y.IsActive == true);
+    string action = ViewContext.RouteData.GetRequiredString("action");
+    string Controller = ViewContext.RouteData.GetRequiredString("Controller");
+    string actionurl = "/" + Controller + "/" + action;
+    RoleRightsMapping obj = new RoleRightsMapping();
+    obj.RoleMenuData = selectedUserMenu.Where(m => m.ActionUrl == actionurl);
+    foreach (RoleRightsMapping item in obj.RoleMenuData)
+    {
+        obj = item;
+    }
+    string _dbName = HttpContext.Current.Session["DbName"].ToString();
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+
+    string isClientDBMatchFlag = HttpContext.Current.Session["IsClientDBMatch"] != null
+   ? HttpContext.Current.Session["IsClientDBMatch"].ToString()
+   : "false"; // Default to "false" if the session is null
+}
+<script src="~/Scripts/timeme.js"></script>
+<script src="~/AssetsNew/js/CommonValidation.js"></script>
+<script type="text/javascript">
+    var count = 0;
+    var form = "Email smtp Configuration";
+    var operation = "";
+    $(document).ready(function () {
+        /*timeMeInitialize function is  a javascript library which displays a timer to display how long you are actively viewing the current webpage.*/
+        timeMeInitialize();
+        $(".alert").hide();
+        if ("@_Message" != "") {
+            toastr.remove();
+            toastr.success("@_Message");
+        }
+        if ('@_error' != "") {
+            toastr.remove();
+            toastr.error("@_error");
+        }
+        $('#tblEmailConfiguration').DataTable({
+            dom: _domCommon,
+            language: _languageCommon,
+        });
+        setTimeout(function () {
+            $("#" + "tblEmailConfiguration" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+            $('.tooltips').tooltip();
+        }, 100);
+
+        $('#btnConfigSubmit').attr('disabled', 'disabled')
+
+        $("#txtSMTPPORT").keypress(function (e) {
+            if (e.which != 8 && e.which != 0 && (e.which < 48 || e.which > 57)) {
+                return false;
+            }
+            else {
+                return true;
+            }
+        });
+        $('#btnTestConnection').click(function () {
+
+            if ($("#CompanyID").val() == "") {
+                $("#CompanyID").addClass('field_error');
+                $("#CompanyID").focus();
+                event.preventDefault();
+                return false;
+            }
+            else {
+                $("#CompanyID").removeClass('field_error');
+            }
+
+
+            if ($("#spIsChecked").is(":visible")) {
+                $("#CompanyID").addClass('field_error');
+                $("#CompanyID").focus();
+                event.preventDefault();
+                return false;
+            }
+            else {
+                $("#CompanyID").removeClass('field_error');
+            }
+
+
+            if ($("#DomainId").val() == "") {
+                $("#DomainId").addClass('field_error');
+                $("#DomainId").focus();
+                event.preventDefault();
+                return false;
+            }
+            else {
+                $("#DomainId").removeClass('field_error');
+            }
+
+
+
+            if ($("#txtCredentialEmailID").val() == "") {
+                $("#txtCredentialEmailID").addClass('field_error');
+                $("#txtCredentialEmailID").focus();
+                event.preventDefault();
+                return false;
+            }
+            else {
+                $("#txtCredentialEmailID").removeClass('field_error');
+            }
+
+            if ($("#txtCredentialEmailIDPassword").val() == "") {
+                $("#txtCredentialEmailIDPassword").addClass('field_error');
+                $("#txtCredentialEmailIDPassword").focus();
+                event.preventDefault();
+                return false;
+            }
+            else {
+                $("#txtCredentialEmailIDPassword").removeClass('field_error');
+            }
+
+            if ($("#EmailTypeID").val() == "") {
+                $("#EmailTypeID").addClass('field_error');
+                $("#EmailTypeID").focus();
+                event.preventDefault();
+                return false;
+            }
+            else {
+                $("#EmailTypeID").removeClass('field_error');
+            }
+            var SMTPHost = $('#txtSMTPIP').val();
+            var SMTPPort = $('#txtSMTPPORT').val();
+            var CredentialEmailId = $('#txtCredentialEmailID').val();
+            var CredentialPassword = $('#txtCredentialEmailIDPassword').val();
+            $.ajax(
+             {
+                 type: "GET",
+                 url: "/Alert/SendTestConnectionMail",
+                 data: { SMTPHost: SMTPHost, SMTPPort: SMTPPort, CredentialEmailId: CredentialEmailId, CredentialPassword: CredentialPassword },
+                 contentType: "application/json; charset=utf-8",
+                 dataType: "json",
+                 beforeSend: function () {
+                     $("#ajax_loader").show();
+                 },
+                 success: function (data) {
+                     if (data.isRedirect) {
+                         window.location.href = data.redirectUrl;
+                     }
+                     toastr.remove();
+                     toastr.error(data.message);
+                     if (data.Emaildomaindetaillist) {
+                         $('#btnConfigSubmit').removeAttr('disabled');
+                     }
+                     $("#ajax_loader").hide();
+                 },
+                 error: function (jqXHR, ajaxOptions, thrownError) {
+                     if (jqXHR.status == 500) { //InternalServerError = 500,
+                         toastr.error("InternalServerError");
+                     } else if (jqXHR.status == 400) { //BadRequest = 400,
+                         toastr.error("BadRequest");
+                     } else if (jqXHR.status == 401) {
+                         window.location.href = "/PayTime/LoginPage";
+                     }
+                 }
+             });
+        });
+
+        $("#btnAddSmtp").click(function () {
+            frmClear();
+            $("#btnAddSmtp").attr("data-toggle", "modal");
+            $("#btnAddSmtp").attr("data-target", "#frmpopup");
+        });
+        $('#DomainId').change(function () {
+            var s = $('#DomainId').val();
+            fillSMTPDetails(s, "");
+        });
+
+        function fillSMTPDetails(DomainId) {
+            $('#SMTPServer').empty();
+            $.ajax(
+             {
+                 type: "GET",
+                 url: "/Alert/GetSMTPDetails",
+                 data: { DomainId: DomainId },
+                 contentType: "application/json; charset=utf-8",
+                 dataType: "json",
+                 beforeSend: function () {
+                 },
+                 success: function (data) {
+                     if (data.isRedirect) {
+                         window.location.href = data.redirectUrl;
+                     }
+                     if (data.SmtpPort == 0) {
+                         $('#txtSMTPIP').attr("readonly", false)
+                         $('#txtSMTPPORT').attr("readonly", false)
+                     }
+                     else {
+                         $('#txtSMTPIP').attr("readonly", true)
+                         $('#txtSMTPPORT').attr("readonly", true)
+                     }
+                     $('#txtSMTPIP').val(data.SmtpIp);
+                     $('#txtSMTPPORT').val(data.SmtpPort);
+                 },
+                 error: function (jqXHR, ajaxOptions, thrownError) {
+                     if (jqXHR.status == 500) { //InternalServerError = 500,
+                         toastr.error("InternalServerError");
+                     } else if (jqXHR.status == 400) { //BadRequest = 400,
+                         toastr.error("BadRequest");
+                     } else if (jqXHR.status == 401) {
+                         window.location.href = "/PayTime/LoginPage";
+                     }
+                 }
+             });
+        };
+
+        $('#CompanyID').change(function () {
+            var s = $('#CompanyID').val();
+            CheckIsConfigured(s, "");
+        });
+
+        function CheckIsConfigured(CompanyId) {
+            $.ajax(
+             {
+                 type: "GET",
+                 url: "/Alert/CheckIsConfigured",
+                 data: { CompanyId: CompanyId },
+                 contentType: "application/json; charset=utf-8",
+                 dataType: "json",
+                 beforeSend: function () {
+                 },
+                 success: function (data) {
+                     if (data.isRedirect) {
+                         window.location.href = data.redirectUrl;
+                     }
+                     if (data.Isconfigured == true) {
+                         toastr.remove();
+                         toastr.error("Company's SMTP is already configured.");
+                         $("#CompanyID").addClass('field_error');
+                         $("#CompanyID").focus();
+                         event.preventDefault();
+                         return false;
+                     }
+                     else {
+                         $('#spIsChecked').hide()
+                         $("#CompanyID").removeClass('field_error');
+                     }
+                 },
+                 error: function (jqXHR, ajaxOptions, thrownError) {
+                     if (jqXHR.status == 500) { //InternalServerError = 500,
+                         toastr.error("InternalServerError");
+                     } else if (jqXHR.status == 400) { //BadRequest = 400,
+                         toastr.error("BadRequest");
+                     } else if (jqXHR.status == 401) {
+                         window.location.href = "/PayTime/LoginPage";
+                     }
+                 }
+             });
+        }
+
+        $("#tblEmailConfiguration").on('click', '.editclass', function () {
+            $('#spIsChecked').hide();
+            $("#CompanyID").removeClass('field_error');
+            $('#CompanyID').val($(this).parent('td').parent('tr').children(1)[3].innerText);
+            $('#DomainId').val($(this).parent('td').parent('tr').children(1)[2].innerText);
+            if ($(this).parent('td').parent('tr').children(1)[16].innerText == "Other") {
+                $('#txtSMTPIP').attr("readonly", false)
+                $('#txtSMTPPORT').attr("readonly", false)
+            }
+            else {
+                $('#txtSMTPIP').attr("readonly", true)
+                $('#txtSMTPPORT').attr("readonly", true)
+            }
+            $('#txtSMTPIP').val($(this).parent('td').parent('tr').children(1)[5].innerText);
+            $('#txtSMTPPORT').val($(this).parent('td').parent('tr').children(1)[6].innerText);
+            //fillSMTPDetails($(this).parent('td').parent('tr').children(1)[2].innerText);
+            $('#EmailTypeID').val($(this).parent('td').parent('tr').children(1)[14].innerText);
+            $('#txtCredentialEmailID').val($(this).parent('td').parent('tr').children(1)[12].innerText)
+            $('#txtCredentialEmailIDPassword').val($(this).parent('td').parent('tr').children(1)[13].innerText);
+            $('#EmailConfigId').val($(this).parent('td').parent('tr').children(1)[1].innerText);
+            $(".editclass").attr("data-toggle", "modal");
+            $(".editclass").attr("data-target", "#frmpopup");
+        });
+
+        function frmClear() {
+            $("#DomainId").val("");
+            $("#txtSMTPIP").val("");
+            $("#txtSMTPIP").attr("placeholder", "Enter SMTP IP");
+            $("#txtSMTPPORT").val("");
+            $("#txtSMTPPORT").attr("placeholder", "Enter SMTP PORT");
+            $("#EmailTypeID").val("");
+            $("#EmailTypeID").attr("placeholder", "Enter Email Type");
+            $('#txtCredentialEmailID').val("")
+            $('#txtCredentialEmailIDPassword').val("");
+            $("#DomainId").removeClass('field_error');
+            $("#txtCredentialEmailID").removeClass('field_error');
+            $("#txtCredentialEmailIDPassword").removeClass('field_error');
+            $("#EmailTypeID").removeClass('field_error');
+            $("#spCredentialEmailID").hide();
+            $('#btnConfigSubmit').attr('disabled', 'disabled')
+            $('#spIsChecked').hide();
+            $("#CompanyID").val("");
+            $("#CompanyID").removeClass('field_error');
+        }
+
+        $("#btnConfigSubmit").click(function (event) {
+
+            if ($("#CompanyID").val() == "") {
+                toastr.remove();
+                toastr.error("Please select company.");
+                $("#CompanyID").addClass('field_error');
+                $("#CompanyID").focus();
+                event.preventDefault();
+                return false;
+            }
+            else {
+                $("#CompanyID").removeClass('field_error');
+            }
+
+
+            if ($("#spIsChecked").is(":visible")) {
+                $("#CompanyID").addClass('field_error');
+                $("#CompanyID").focus();
+                event.preventDefault();
+                return false;
+            }
+            else {
+                $("#CompanyID").removeClass('field_error');
+            }
+
+            if ($("#DomainId").val() == "") {
+                toastr.remove();
+                toastr.error("Please select  domain.");
+                $("#DomainId").addClass('field_error');
+                $("#DomainId").focus();
+                event.preventDefault();
+                return false;
+            }
+            else {
+                $("#DomainId").removeClass('field_error');
+            }
+
+            if ($("#txtCredentialEmailID").val() == "") {
+                toastr.remove();
+                toastr.error("Please enter credential email id.");
+                $("#txtCredentialEmailID").addClass('field_error');
+                $("#txtCredentialEmailID").focus();
+                event.preventDefault();
+                return false;
+            }
+            else {
+                $("#txtCredentialEmailID").removeClass('field_error');
+            }
+
+            if ($("#txtCredentialEmailIDPassword").val() == "") {
+                toastr.remove();
+                toastr.error("Please credential emailid password.");
+                $("#txtCredentialEmailIDPassword").addClass('field_error');
+                $("#txtCredentialEmailIDPassword").focus();
+                event.preventDefault();
+                return false;
+            }
+            else {
+                $("#txtCredentialEmailIDPassword").removeClass('field_error');
+            }
+
+            if ($("#EmailTypeID").val() == "") {
+                toastr.remove();
+                toastr.error("Please select email type.");
+                $("#EmailTypeID").addClass('field_error');
+                $("#EmailTypeID").focus();
+                event.preventDefault();
+                return false;
+            }
+            else {
+                $("#EmailTypeID").removeClass('field_error');
+            }
+        });
+
+        $("#txtCredentialEmailID").change(function () {
+            var EmailMsg = "";
+            EmailMsg = ValidateEmailid($("#txtCredentialEmailID").val());
+            if (EmailMsg != "success") {
+                toastr.remove();
+                toastr.error(EmailMsg);
+                $("#txtCredentialEmailID").val("");
+                $("#txtCredentialEmailID").focus();
+                $("#txtCredentialEmailID").addClass('field_error');
+                return false;
+            }
+            else {
+                $("#spCredentialEmailID").hide();
+            }
+            //var filter = new RegExp(/^[_A-Za-z0-9-]+(\.[_A-Za-z0-9-]+)*@@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*(\.[A-Za-z]{2,4})$/);
+            //if (!filter.test($("#txtCredentialEmailID").val())) {
+            //    toastr.remove();
+            //    toastr.error("Please Enter Valid Email ID.");
+            //    //$("#spCredentialEmailID").html("Please Enter Valid Email ID.").show();
+            //    return false;
+            //}
+            //else {
+            //    $("#spCredentialEmailID").hide();
+            //}
+        });
+        window.onload = function () {
+            timeSpentOnPage();
+        }
+        $(window).on("beforeunload", function () {
+            if (operation == "" || operation == null || operation == '') {
+                operation = "View Email smtp Configuration";
+            }
+            var url = '@_webapiurl' + '/DashBoard/AddAnalyticsUser';
+            var timeSpent = timeSpentOnPage();
+            analyticsDataUsage(url, '@_dbName', form, '@_tokan', count, operation, timeSpent)
+        })
+
+        $("#btnInfo").click(function () {
+            $("#filter_open_div").toggle();
+        });
+    });
+</script>
+<div class="page-bar">
+    @if (_RoleId == 1 || _RoleId == 6805 || _RoleId == 6806)
+    {
+        <ul class="page-breadcrumb">
+            <li>
+                <a href="@(isClientDBMatchFlag == "True" ? "/Admin/AdminDashboard" : "/Dashboard/AdminDashboard")"><i class="fa-regular fa-house"></i></a>
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> Email Smtp Configuration</span>
+            </li>
+        </ul>
+    }
+    else
+    {
+        <ul class="page-breadcrumb">
+            <li>
+                <a href="/Dashboard/EmployeeDashboard"><i class="fa-regular fa-house"></i></a>
+            </li>
+            <li>
+                <span><i class="fa-light fa-angle-right"></i> EmailSmtpConfiguration</span>
+            </li>
+        </ul>
+    }
+    <div class="page-toolbar">
+        @if (obj.CanAdd)
+        {
+            <div class="text-right">
+                <a href="javascript:void(0)" id="btnInfo" class="btn icon_transparent_btn tooltips" data-placement="left" data-original-title="Email Configuration Note"><i class="fa-light fa-memo-circle-info"></i></a>
+                <a href="javascript:void(0)" id="btnAddSmtp" class="btn icon_transparent_btn tooltips" data-placement="left" data-original-title="Add Smtp"><i class="fa-solid fa-plus"></i></a>
+            </div>
+        }
+    </div>
+</div>
+
+@if (obj.CanView)
+{
+    <div id='ajax_loader' class="modal_bg loading" aria-hidden="true">
+        <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" alt="loading" title="loading" />
+    </div>
+
+    <div class="portlet margin-bottom-10" id="filter_open_div" style="display:none">
+        <div class="portlet-body">
+            <div class="row">
+                <div class="col-lg-12">
+                    <div class="smtp_data">
+                        <p class="">
+                            <b> Note : </b>
+                            Enable allow less Secure apps in your account to allow mail send from your account :
+                            <div class="email_note">
+                                <a href="https://help.yahoo.com/kb/SLN27791.html" target="_blank" class="yahoo"><i class="fa-brands fa-yahoo"></i> - Yahoo</a>
+                                <a href="https://support.google.com/accounts/answer/6010255?hl=en" target="_blank" class="gmail"><i class="fa-brands fa-google-plus-g"></i> - Gmail</a>
+                            </div>
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="portlet">
+        <div class="portlet-body">
+            <div class="row">
+                <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12">
+                    @if (ViewBag.Emailconfigurationlist.Count > 0)
+                    {
+                        <div class="table-responsive" id="tableResponsive">
+                            <table id="tblEmailConfiguration" class="new_datatbl table table-striped table-bordered table-hover table-checkable order-column ">
+                                <thead>
+                                    <tr>
+                                        <th>No</th>
+                                        <th hidden>Email Config Id</th>
+                                        <th hidden>Domain Id</th>
+                                        <th hidden>Company ID</th>
+                                        <th>Company Name</th>
+                                        <th>SMTP IP</th>
+                                        <th>SMTP Port</th>
+                                        <th hidden>From Email ID</th>
+                                        <th hidden>From Name</th>
+                                        <th>Sender Email ID</th>
+                                        <th>Sender Name</th>
+                                        <th>Daily Subject</th>
+                                        <th>Credential Email ID</th>
+                                        <th hidden>Credential Email ID Password</th>
+                                        <th hidden>Email Type Id</th>
+                                        <th>Email Type</th>
+                                        <th hidden>Email Domain Name</th>
+                                        <th>Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @{
+                                        int n = 1;
+                                    }
+                                    @if (ViewBag.Emailconfigurationlist != null)
+                                    {
+                                        foreach (var i in ViewBag.Emailconfigurationlist)
+                                        {
+                                            <tr class="odd gradeX">
+                                                <td id="sr">@n</td>
+                                                <td id="hdnEmailConfigId" hidden>@i.EmailConfigId</td>
+                                                <td id="hdnDomainId" hidden>@i.DomainId</td>
+                                                <td id="hdnCompanyID" hidden>@i.CompanyID</td>
+                                                <td id="CompanyName">@i.CompanyName</td>
+                                                <td id="SMTPIP"> @i.SMTPIP </td>
+                                                <td id="SMTPPORT">@i.SMTPPORT</td>
+                                                <td id="FromEmailID" hidden>@i.FromEmailID</td>
+                                                <td id="FromName" hidden>@i.FromName</td>
+                                                <td id="SenderEmailID">@i.SenderEmailID</td>
+                                                <td id="SenderName">@i.SenderName</td>
+                                                <td id="DailySubject">@i.DailySubject</td>
+                                                <td id="CredentialEmailID">@i.CredentialEmailID</td>
+                                                <td id="CredentialEmailIDPassword" hidden>@i.CredentialEmailIDPassword</td>
+                                                <td id="hdnEmailTypeId" hidden>@i.EmailTypeId</td>
+                                                <td id="EmailType">@i.EmailType</td>
+                                                <td id="EmailDomainName" hidden>@i.EmailDomainName</td>
+                                                <td id="Col_@i.EmailConfigId">
+
+                                                    @if (obj.CanEdit)
+                                                    {
+                                                        <a class="editclass btn blue_btnnew tooltips" title="Edit"><i class="fa-regular fa-pen-to-square"> </i></a>
+                                                    }
+                                                    @if (obj.CanDelete)
+                                                    {
+                                                        <span>|</span><span> </span><a class="deleteclass btn red_btnnew tooltips" title="Delete"><i class="fa-regular fa-trash-can"></i></a>
+                                                    }
+                                                </td>
+                                            </tr>
+                                            n++;
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <tr colspan="8" class="odd gradeX">No Data Available</tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    else
+                    {
+                        <div id="NotificationGrid-empty">
+                            <div class="datanotfound">
+                                <img src="~/assets/images/emptyscreen_1.png" height="148" width="280" alt="Nodata Found Icon">
+                                <p class="datanotfound_title">No data found</p> <!-- titleText -->
+                                <p class="">No entries found. Please add a record to get started.</p><!-- subText -->
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="frmpopup" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+        <div class="modal-dialog">
+            <!-- Modal content-->
+            <div class="modal-content">
+                <div class="modal-header">
+                    <button type="button" class="close" data-dismiss="modal">&times;</button>
+                    <h4 class="modal-title">Email Smtp Configuration</h4>
+                </div>
+
+                @using (Html.BeginForm("EmailSmtpConfiguration", "Alert"))
+                {
+                    <div class="modal-body">
+                        <div class="modal-card">
+                            <fieldset>
+                                <div class="row">
+                                    <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                        <div class="form-group">
+                                            <label class="control-label">
+                                                @*@Html.HiddenFor(model => model.CompanyName, new { htmlAttributes = new { id = "hdnCompanyName",}})*@
+                                                Company <span class="required" aria-required="true"> * </span>
+                                            </label>
+                                            @Html.DropDownList("CompanyID", new SelectList(ViewBag.Companylist, "CompanyID", "CompanyName"), "Select Company", new { @class = "form-control input-sm" })
+                                            @*<label id="lblIsChecked" style="color:red;visibility : hidden">Company's SMTP is already Configured.</label>*@
+                                            <span class="help-block error_help_block" hidden id="spIsChecked"></span>
+                                        </div>
+                                    </div>
+                                    <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                        <div class="form-group">
+                                            <label class="control-label">
+                                                @Html.HiddenFor(model => model.EmailConfigId)
+                                                Email <span class="required" aria-required="true"> * </span>
+                                            </label>
+                                            @Html.DropDownList("DomainId", new SelectList(ViewBag.Emaildomaindetaillist, "DomainId", "DomainName"), "Select Domain", new { @class = "form-control input-sm" })
+                                        </div>
+                                    </div>
+                                    <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                        <div class="form-group">
+                                            <label class="control-label">
+                                                SMTP IP
+                                            </label>
+                                            @Html.EditorFor(model => model.SMTPIP, new { htmlAttributes = new { id = "txtSMTPIP", @class = "form-control input-sm", @readonly = "readonly" } })
+                                        </div>
+                                    </div>
+                                    <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                        <div class="form-group">
+                                            <label class="control-label">
+                                                SMTP PORT
+                                            </label>
+                                            @Html.EditorFor(model => model.SMTPPORT, new { htmlAttributes = new { id = "txtSMTPPORT", @class = "form-control input-sm", @readonly = "readonly", @min = "0" } })
+                                        </div>
+                                    </div>
+                                    <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                        <div class="form-group">
+                                            <label class="control-label">
+                                                Credential EmailID <span class="required" aria-required="true"> * </span>
+                                            </label>
+                                            @Html.EditorFor(model => model.CredentialEmailID, new { htmlAttributes = new { @class = "form-control input-sm", id = "txtCredentialEmailID" } })
+                                            <span class="help-block error_help_block" hidden id="spCredentialEmailID"></span>
+                                        </div>
+                                    </div>
+                                    <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                        <div class="form-group">
+                                            <label class="control-label">
+                                                Credential EmailID Password <span class="required" aria-required="true"> * </span>
+                                            </label>
+                                            @Html.PasswordFor(model => model.CredentialEmailIDPassword, new { @class = "form-control input-sm", id = "txtCredentialEmailIDPassword", maxlength = 30 })
+                                        </div>
+                                    </div>
+                                    <div class="col-lg-6 col-md-6 col-sm-12 col-xs-12">
+                                        <div class="form-group">
+                                            <label class="control-label">
+                                                Email <span class="required" aria-required="true"> * </span>
+                                            </label>
+                                            @Html.DropDownList("EmailTypeID", new SelectList(ViewBag.EmailTypeList, "EmailTypeID", "EmailTypeName"), "Select Email Type", new { @class = "form-control input-sm" })
+                                        </div>
+                                    </div>
+                                </div>
+                            </fieldset>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <div class="row">
+                            <div class="col-lg-12 col-md-12 col-sm-12 col-xs-12 text-right">
+                                <button type="button" class="btn icon_addbtn" id="btnTestConnection"> <i class="fa-regular fa-envelope"></i> Test Connection</button>
+                                <button type="submit" class="btn save_btn" id="btnConfigSubmit"> <i class="fa-light fa-floppy-disk"></i> Save</button>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+}
+else
+{
+    <span style="color:red">Unauthorized Access.</span>
+}
+
+<script>
+    $('.overlay').fadeIn('fast').delay(5000).fadeOut('slow');
+</script>

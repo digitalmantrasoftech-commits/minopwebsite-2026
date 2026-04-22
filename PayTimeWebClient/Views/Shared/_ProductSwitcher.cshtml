@@ -1,0 +1,170 @@
+@{
+    // Get current product from session
+    var currentProductName = HttpContext.Current.Session["SelectedProductName"] != null
+        ? HttpContext.Current.Session["SelectedProductName"].ToString()
+        : "Time & Attendance";
+    var currentProductCode = HttpContext.Current.Session["SelectedProductCode"] != null
+        ? HttpContext.Current.Session["SelectedProductCode"].ToString()
+        : "TNA";
+    var currentProductId = HttpContext.Current.Session["SelectedProductId"] != null
+        ? Convert.ToInt32(HttpContext.Current.Session["SelectedProductId"])
+        : 1;
+}
+
+<link href="~/Newlayout/productseperation/css/productswitcher.css" rel="stylesheet" />
+
+<div class="product-switcher-dropdown" id="productSwitcher">
+    <button type="button" class="product-switcher-btn" id="productSwitcherBtn">
+        <i class="fa-regular fa-grid-2"></i>
+        <span id="currentProductDisplay">@currentProductName</span>
+        <i class="fa-light fa-angle-down"></i>
+    </button>
+
+    <div class="product-switcher-menu" id="productSwitcherMenu">
+        <div class="product-switcher-header">
+            Switch Product
+        </div>
+        <div id="productList">
+            <!-- Products will be loaded here via JavaScript -->
+        </div>
+    </div>
+</div>
+
+<script>
+$(document).ready(function () {
+    var currentProductId = @currentProductId;  // Get from server-side session
+
+    // Toggle dropdown
+    $('#productSwitcherBtn').on('click', function (e) {
+        e.stopPropagation();
+        $('#productSwitcherMenu').toggleClass('show');
+        loadAvailableProducts();
+    });
+
+    // Close dropdown when clicking outside
+    $(document).on('click', function (e) {
+        if (!$(e.target).closest('.product-switcher-dropdown').length) {
+            $('#productSwitcherMenu').removeClass('show');
+        }
+    });
+
+    // HTML escape function to prevent XSS
+    function escapeHtml(text) {
+        if (!text) return '';
+        var div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    // Load available products
+    function loadAvailableProducts() {
+        $.ajax({
+            url: '/Product/GetAvailableProducts',
+            type: 'GET',
+            success: function (response) {
+                if (response.success) {
+                    renderProducts(response.data);
+                } else {
+                    toastr.error(response.message || 'Failed to load products');
+                }
+            },
+            error: function (xhr, status, error) {
+                toastr.error('Error loading products');
+            }
+        });
+    }
+
+    // Get current product
+    function getCurrentProduct() {
+
+        $.ajax({
+            url: '/Product/GetCurrentProduct',
+            type: 'GET',
+            success: function (response) {                
+                if (response.success && response.data) {
+                    currentProductId = response.data.productId;
+                    $('#currentProductDisplay').text(response.data.productName);
+                }
+            }
+        });
+    }
+
+    // Render products in dropdown
+    function renderProducts(products) {
+        var html = '';
+
+        products.forEach(function (product) {
+            var isActive = currentProductId === product.ProductId ? 'active' : '';
+            var badge = product.IsMainProduct ? '<span class="product-item-badge">MAIN</span>' : '';
+
+            html += '<div class="product-item ' + isActive + '" data-product-id="' + product.ProductId + '">';
+            html += '    <i class="' + escapeHtml(product.IconClass || 'fa-regular fa-cube') + '"></i>';
+            html += '    <div class="product-item-content">';
+            html += '        <div class="product-item-name">' + escapeHtml(product.ProductName) + '</div>';
+            html += '        <div class="product-item-desc">' + escapeHtml(product.Description || '') + '</div>';
+            html += '    </div>';
+            html += badge;
+            html += '</div>';
+        });
+
+        $('#productList').html(html);
+
+        // Add click handlers
+        $('.product-item').on('click', function () {
+            var productId = $(this).data('product-id');
+            if (productId !== currentProductId) {
+                switchProduct(productId);
+            }
+        });
+    }
+
+    // Switch product
+    function switchProduct(productId) {
+        $.ajax({
+            url: '/Product/SwitchProduct',
+            type: 'POST',
+            data: { productId: productId },
+            beforeSend: function () {
+                $('#productSwitcherMenu').removeClass('show');
+                // Show loading indicator
+                //toastr.info('Switching product...');
+            },
+            success: function (response) {
+                if (response.success) {
+                    toastr.success(response.message);
+
+                    // Update current product display
+                    $('#currentProductDisplay').text(response.productName);
+                    currentProductId = productId;
+
+                    // Redirect to product dashboard
+                    if (response.redirectUrl) {
+                        setTimeout(function () {
+                            // Open sub-products in new tab, keep main product in same tab
+                            if (productId !== 1) {  // If not Time & Attendance (main product)
+                                window.open(response.redirectUrl, '_blank');
+                            } else {
+                                window.location.href = response.redirectUrl;
+                            }
+                        }, 500);
+                    } else {
+                        location.reload();
+                    }
+                } else {
+                    toastr.error(response.message || 'Failed to switch product');
+                    if (response.redirectUrl) {
+                        window.location.href = response.redirectUrl;
+                    }
+                }
+            },
+            error: function ()
+            {
+                toastr.error('Error switching product');
+            }
+        });
+    }
+
+    // Initialize
+    getCurrentProduct();
+});
+</script>

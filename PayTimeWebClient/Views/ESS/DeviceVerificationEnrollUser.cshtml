@@ -1,0 +1,371 @@
+﻿@using System.Configuration;
+@{
+    ViewBag.Title = "DeviceVerificationEnrollUser";
+    Layout = "~/Views/Shared/_Layout.cshtml";
+    string _webapiurl = ConfigurationManager.AppSettings["webapipaytime"].ToString();
+    string _tokan = HttpContext.Current.Session["tokan"].ToString();
+}
+
+<script>
+    const token = '@_tokan';
+    $(document).ready(function () {
+
+        // ========================== Enroll User Device Table Code ==========================
+        // Create search inputs in footer
+        $("#tbldvenrolluser tfoot th").each(function () {
+            var title = $(this).text();
+            $(this).html('<input type="text" class="search_input" placeholder="Search" /><i class="clm-search" id=""></i>');
+        });
+
+        // DataTable initialisation
+        var table = $("#tbldvenrolluser").DataTable({
+            dom: _domCommon,
+            language: _languageCommon,
+            ordering: false,
+        });
+        setTimeout(function () {
+            $("#" + "tbldvenrolluser" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+            $('.tooltips').tooltip();
+        }, 100);
+
+        // Apply the column Search
+        $("#tbldvenrolluser thead").on("keyup", "input", function () {
+            table.column($(this).parent().index())
+                .search(this.value)
+                .draw();
+        });
+
+
+        // ========================== Device info Table Code ==========================
+        // Create search inputs in footer
+        $("#tbldeviceinfo tfoot th").each(function () {
+            var title = $(this).text();
+            $(this).html('<input type="text" class="search_input" placeholder="Search" /><i class="clm-search" id=""></i>');
+        });
+
+        $.ajax({
+            url: webapiuri + "DeviceManagement/DeviceVerificationEnrolluser",
+            type: 'POST',
+            headers: { 'Authorization': token },
+            data: JSON.stringify({ KVDeviceUniqueId: "0", IsFlage: 0 }),
+            contentType: "application/json; charset=utf-8",
+            success: function (res) {            
+                if (!res || res.length === 0) {
+                    $("#device-empty").show();
+                    $("#tableResponsive").hide();
+                    $("#dataTables_tbl_header").hide();
+                } else {
+                    $("#device-empty").hide();
+                    $("#tableResponsive").show();
+                    $("#dataTables_tbl_header").show();
+                    DatatableBind(res);
+                }
+            },
+            error: function (xhr, status, error) {
+                console.error("AJAX error:", status, error);
+                console.error("Response text:", xhr.responseText);                                                                                    
+                console.error("Status code:", xhr.status);
+            }
+        });
+
+        $.ajax({
+            url: webapiuri + "DeviceManagement/GetAllDevices",
+            type: 'GET',
+            headers: { 'Authorization': token },
+            success: function (res) {                
+                var $ddl = $("#filterDevice");
+                //$ddl.empty(); 
+                $ddl.append('<option value="0">All</option>'); 
+
+                $.each(res, function (i, device) {
+                    $ddl.append('<option value="' + device.DeviceSrNo + '">' + device.DeviceName + ' (' + device.DeviceSrNo + ')</option>');
+                });
+
+                $ddl.select2();
+            },
+            error: function (xhr, status, error) {
+                console.error("Error loading devices:", xhr.responseText);
+            }
+        });       
+     
+        // Apply the column Search
+        $("#tbldeviceinfo thead").on("keyup", "input", function () {
+            table.column($(this).parent().index())
+                .search(this.value)
+                .draw();
+        });
+
+        $("#btnSubmit").click(function () {            
+            var deviceSrNo = $("#filterDevice").val(); 
+
+            if (deviceSrNo == "0") {
+                deviceSrNo = "0";
+            }
+
+            $.ajax({
+                url: webapiuri + "DeviceManagement/DeviceVerificationEnrolluser", 
+                type: "POST",
+                headers: { "Authorization": token },
+                data: JSON.stringify({ KVDeviceUniqueId: deviceSrNo, IsFlage: 0 }),
+                contentType: "application/json; charset=utf-8",
+                success: function (res) {
+                    if (!res || res.length === 0) {
+                        $("#device-empty").show();
+                        $("#tableResponsive").hide();
+                        $("#dataTables_tbl_header").hide();
+                    } else {
+                        $("#device-empty").hide();
+                        $("#tableResponsive").show();
+                        $("#dataTables_tbl_header").show();
+                        DatatableBind(res);
+                    }
+                },
+                error: function (xhr, status, error) {
+                    console.error("Error during search:", xhr.responseText);
+                }
+            });
+        });
+
+        // Filter Add - JS and HTML Code =========>
+        $("#Filter_search").click(function () {
+            const wrapper = $(".filter_portlet_wrapper");
+            wrapper.toggleClass("full-width");
+
+            var screenWidth = $(window).width();
+            if (screenWidth >= 300 && screenWidth <= 600) {
+                $('.filter_portlet_tbl').toggle();
+                $('.filter_portlet_wrapper .filter_boxModal').css('width', '100%');
+            }
+        });
+
+        // Close filter panel on close button click
+        $(".filterclose_btn").click(function () {
+            const wrapper = $(".filter_portlet_wrapper");
+            wrapper.addClass("full-width");
+
+            var screenWidth = $(window).width();
+            if (screenWidth >= 300 && screenWidth <= 600) {
+                $(".filter_portlet_tbl").css("display", "block");
+            }
+        });
+     
+        // Filter Click Open Modal Code =========================
+        //$(".devicecount").on('click', function () {
+        //    $(".devicecount").attr("data-toggle", "modal");
+        //    $(".devicecount").attr("data-target", "#devicecount_modal");
+        //});
+        $(document).on('click', '.devicecount', function () {            
+            var deviceName = $(this).data("name"); 
+            window.selectedExcelFileNameDevice = deviceName;
+            $.ajax({
+                url: webapiuri + "DeviceManagement/GetDeviceInfo",
+                type: "POST",
+                headers: { "Authorization": token },
+                data: JSON.stringify({ KVDeviceUniqueId: deviceName, IsFlage: 1 }),
+                contentType: "application/json; charset=utf-8",
+                success: function (res) {
+                    var formattedData = res.map(function (item) {
+                        return {
+                            DeviceName: item["Device Name"],
+                            EmpPunchId: item["emppunchid"],
+                            EmpName: item["Empname"],
+                            Company: item["Company"],
+                            Branch: item["Branch"]
+                        };
+                    });
+                    var table1 = $("#tbldeviceinfo").DataTable({
+                        dom: _domCommon,
+                        language: _languageCommon,
+                        ordering: false,
+                        data: formattedData,
+                        destroy: true,
+                        columns: [
+                            { title: "Device Name", data: "DeviceName" },
+                            { title: "Punch Id", data: "EmpPunchId" },
+                            { title: "Employee Name", data: "EmpName" },
+                            { title: "Company", data: "Company" },
+                            { title: "Branch", data: "Branch" }
+                        ],
+                        initComplete: function () {
+                            const visibleTable = "tbldeviceinfo";
+                            const waitForButtons = setInterval(() => {
+
+                                const $buttons = $('#tbldeviceinfo_wrapper').find('#buttons');
+                                if ($buttons.length) {
+                                    clearInterval(waitForButtons);
+                                    $buttons.append(
+                                        `<div id="export-button" class="export-button tooltips" data-placement="bottom" data-original-title="Download" data-table-id="${visibleTable}">
+                                             <img src="../Newlayout/images/download_icon.svg" alt="Download icon">
+                                         </div>`
+                                    );
+                                    $('[data-original-title]').tooltip();
+                                }
+                            }, 100);
+                        },
+                    });
+                    setTimeout(function () {
+                        $("#" + "tbldeviceinfo" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsivedeviceinfo"));
+                        $('.tooltips').tooltip();
+                    }, 100);
+                },
+                error: function (xhr) {
+                    console.error("Error:", xhr.responseText);
+                }
+            });
+            $("#devicecount_modal").modal("show");
+        });
+
+        $("#closeModal").click(function () {
+            $("#devicecount_modal #dataTables_tbl_header").remove();
+        });
+    });
+    function DatatableBind(data) {       
+        var formattedData = data.map(function (item) {
+            return {
+                DeviceName: item["Device Name"] || "",
+                TotalNotRegisteredEmpPhoto: item["Total Not Registered Emp Photo"] || 0
+            };
+        });
+        if ($.fn.DataTable.isDataTable("#tbldvenrolluser")) {
+            $("#tbldvenrolluser").DataTable().clear().destroy();
+        }
+        $("#dataTables_tbl_header").remove();
+        var table = $("#tbldvenrolluser").DataTable({
+            dom: _domCommon,
+            language: _languageCommon,
+            ordering: false,
+            deferRender: true,
+            data: formattedData,
+            destroy: true,
+            columns: [
+                { title: "Device Name", data: "DeviceName" },
+                {
+                    title: "Device Count", data: "TotalNotRegisteredEmpPhoto",
+                    render: function (data, type, row) {
+                        return '<a href="javascript:void(0);" class="devicecount" data-name="'+ row.DeviceName + '">' + data + '</a>';
+                    }
+                }
+            ],
+            initComplete: function () {
+                const visibleTable = $('table:visible').attr('id');
+                $("#buttons").append(`
+                  <div id="export-button" class="export-button tooltips" data-placement="bottom" data-original-title="Download" data-table-id="${visibleTable}">
+                      <img src="../Newlayout/images/download_icon.svg" alt="Download icon">
+                  </div>
+              `);
+            },
+        });
+        setTimeout(function () {
+            $("#" + "tbldvenrolluser" + "_wrapper #dataTables_tbl_header").insertBefore($("#tableResponsive"));
+            $('.tooltips').tooltip();
+        }, 100);
+    }
+</script>
+
+<!-- Page Bar : Begin -->
+<div class="page-bar">
+    <ul class="page-breadcrumb">
+        <li>
+            <a href="/Admin/AdminDashboard"><i class="fa-regular fa-house"></i></a>
+        </li>
+        <li>
+            <span><i class="fa-light fa-angle-right"></i> Advance Salary Request</span>
+        </li>
+    </ul>
+    <div class="page-toolbar">
+        <div class="text-right">
+            <a href="javascript:;" class="btn icon_transparent_btn tooltips" id="Filter_search" data-placement="left" data-original-title="Filter" data-toggle="tooltip"><i class="fa-light fa-filter"></i></a>
+        </div>
+    </div>
+</div>
+<!-- Page Bar : End -->
+<!-- Ajax Loader : Begin -->
+<div id='ajax_loader' class="modal_bg loading" aria-hidden="true">
+    <img src="~/LandingAssets/images/loading.gif" style="cursor: auto; width:80px;" />
+</div>
+<!-- Ajax Loader : End -->
+
+<div class="filter_portlet_wrapper full-width">
+    <!-- Datatable Block : Begin -->
+    <div class="portlet filter_portlet_tbl">
+        <div class="portlet-body">
+            <div class="table-responsive" id="tableResponsive">
+                <table id="tbldvenrolluser" class="new_datatbl table table-striped table-bordered table-hover table-checkable order-column">
+                    <thead>
+                        <tr>
+                            <th>Device Name</th>
+                            <th>Device Count</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    </tbody>
+                </table>
+            </div>
+            <div id="device-empty" style="display:none;">
+                <div class="empty_block no_record datanotfound">
+                    <img src="~/assets/images/emptyscreen_3.png" height="122" width="230" alt="No Records Found">
+                    <p class="datanotfound_title">No records Found.</p>
+                    <p>No matching records found for the selected filters.</p>
+                </div>
+            </div>            
+        </div>
+    </div>
+    <!-- Datatable Block : End -->
+    <!-- Filter Block : Begin -->
+    <div class="portlet filter_boxModal">
+        <div class="filterbox_header">
+            <div class="d-flex align-items-center justify-content-between">
+                <h4 class="filter-title">Filters</h4>
+                <button type="button" class="filterclose_btn"><i class="fa-light fa-xmark"></i></button>
+            </div>
+        </div>
+        <div class="filterbox_body">
+            <div class="col-lg-12">
+                <div class="form-group">
+                    <label>Devices</label>
+                    <select class="form-control input-sm select2" id="filterDevice" style="width:100%;">                       
+                    </select>
+                </div>
+            </div>
+        </div>
+        <div class="filterbox_footer">
+            <div class="text-right">
+                <button type="submit" id="clear_operation" class="clear_btn tooltips" data-placement="top" data-original-title="Clear Filters"><i class="fa-regular fa-eraser"></i></button>
+                <button type="submit" id="btnSubmit" class="icon_btn margin-left-5 tooltips" data-placement="top" data-original-title="Search Filters"><i class="fa-solid fa-magnifying-glass"></i></button>
+            </div>
+        </div>
+    </div>
+    <!-- Filter Block : End -->
+</div>
+
+<!-- Device info Modal : Begin -->
+<div id="devicecount_modal" class="modal fade" role="dialog" data-keyboard="false" data-backdrop="static">
+    <div class="modal-dialog w-900">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal" id="closeModal">&times;</button>
+                <h4 class="modal-title">Devices Info</h4>
+            </div>
+            <div class="modal-body nomodalfooter">
+                <fieldset>
+                    <div class="admin_tbl table-responsive" id="tableResponsivedeviceinfo">
+                        <table id="tbldeviceinfo" class="new_datatbl table table-striped table-bordered table-hover table-checkable order-column">
+                            <thead>
+                                <tr>
+                                    <th style="min-width: 100px">Employee Id</th>
+                                    <th>Employee Name</th>
+                                    <th>Company</th>
+                                    <th>Branch</th>
+                                    <th style="min-width: 100px">Device</th>
+                                </tr>
+                            </thead>
+                            <tbody>                                
+                            </tbody>
+                        </table>
+                    </div>
+                </fieldset>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Device info Modal : End -->
