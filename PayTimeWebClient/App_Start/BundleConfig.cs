@@ -40,8 +40,7 @@ namespace PayTimeWebClient
                 "~/assets/layouts/layout/css/custom.css",
                 "~/assets/css/minop-saas-redesign.css",
                 "~/assets/css/minop-admin-dashboard-redesign.css",
-                "~/assets/css/minop-dashboard-unicorn.css",
-                "~/Newlayout/css/minop-dashboard-v3.css"
+                "~/assets/css/minop-dashboard-unicorn.css"
             ));
             bundles.Add(new StyleBundle("~/bundles/landing_common_css").Include(
                 "~/AssetsNew/css/bootstrap.css",
@@ -99,8 +98,7 @@ namespace PayTimeWebClient
                 "~/assets/plugins/jquery.blockui.min.js",
                 "~/assets/plugins/bootstrap-switch/js/bootstrap-switch.min.js",
                 "~/assets/plugins/bootstrap-fileinput/bootstrap-fileinput.js",
-                "~/Newlayout/js/sweet_alert_payroll.js",
-                "~/Newlayout/js/minop-dashboard-v3.js"
+                "~/Newlayout/js/sweet_alert_payroll.js"
 
             ));
             bundles.Add(new ScriptBundle("~/bundles/bootstrap").Include(
