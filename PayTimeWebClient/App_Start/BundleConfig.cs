@@ -98,7 +98,8 @@ namespace PayTimeWebClient
                 "~/assets/plugins/jquery.blockui.min.js",
                 "~/assets/plugins/bootstrap-switch/js/bootstrap-switch.min.js",
                 "~/assets/plugins/bootstrap-fileinput/bootstrap-fileinput.js",
-                "~/Newlayout/js/sweet_alert_payroll.js"
+                "~/Newlayout/js/sweet_alert_payroll.js",
+                "~/Newlayout/js/minop-dashboard-v3.js"
 
             ));
             bundles.Add(new ScriptBundle("~/bundles/bootstrap").Include(
