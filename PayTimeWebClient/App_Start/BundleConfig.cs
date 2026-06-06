@@ -40,7 +40,8 @@ namespace PayTimeWebClient
                 "~/assets/layouts/layout/css/custom.css",
                 "~/assets/css/minop-saas-redesign.css",
                 "~/assets/css/minop-admin-dashboard-redesign.css",
-                "~/assets/css/minop-dashboard-unicorn.css"
+                "~/assets/css/minop-dashboard-unicorn.css",
+                "~/Newlayout/css/minop-dashboard-v3.css"
             ));
             bundles.Add(new StyleBundle("~/bundles/landing_common_css").Include(
                 "~/AssetsNew/css/bootstrap.css",
