@@ -27,3 +27,13 @@ Open `docs/ui-preview.html` through a static server at the repository root. It u
 Passed: source invariants for all changed Razor files, no backend/JavaScript/configuration edits, project XML parsing, theme asset existence, and git whitespace checks.
 
 Not run: browser rendering (Playwright's browser download failed), .NET Framework 4.8 build, or authenticated IIS runtime checks. This environment has no .NET Framework runtime. Before merging, verify admin, employee, school, developer, device-admin and partner layouts at 1440, 1024, 768 and 390 pixels. Check menu open/close, long toolbar labels, Select2, validation, grid selection/paging, modal controls and attendance widget loading with actual data. Verify a Release publish contains all three theme stylesheets.
+
+## Workforce insights extension
+
+Added a frontend-only insights panel inside the existing `Activity-1` widget. It inherits that widget's authorization and visibility. Existing IDs and view code remain unchanged; new markup uses data attributes.
+
+`MinopInsights.js` observes the existing jQuery `GetActivityMonitorCounts` responses for reqid 1, 6, 3 and 4. It issues no requests and never reads credentials. The visual check-in share is checked in / (checked in + not checked in), explicitly labeled as a share of reported counts, not productivity. Late arrivals and early departures remain separate because employees may overlap. Review actions trigger the existing employee-list controls.
+
+The original request sequence starts each refresh with reqid 1. The adapter resets its state for that request and tracks exact request objects and company/branch scope, rejecting stale responses. Missing, invalid or failed counts display as unavailable; zero totals have no percentage. No historical trends or comparisons are generated from current-only counts.
+
+Validation: `node tests/minop-insights.test.cjs`, JS syntax and whitespace checks passed. Existing dashboard Razor bytes are identical after removing the new markup and script tag; all original IDs match. No backend or configuration source changed. Browser and authenticated IIS checks remain pending. The new project Content entry publishes only the frontend JS asset. The statement above about no JavaScript changes applies to the first refinement; this extension adds a separate JS file without modifying existing JavaScript.
