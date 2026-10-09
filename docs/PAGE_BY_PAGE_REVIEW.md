@@ -8,11 +8,11 @@ Source: `Views/PayTime/LoginPage.cshtml`.
 Styles: `app_assets/css/Login_Custom.css`.
 Preview: `docs/login-preview.html` (self-contained, no network or authentication requests).
 
-A navy introduction panel, restored product illustration, calmer account selector, consistent inputs, clearer focus indicators and a simpler sign-in card replace the previous visual treatment. Four display strings changed. Existing IDs, forms, Razor branches, login/registration/OTP scripts and backend files are untouched. The CSS-generated percentages previously shown in the decorative illustration are suppressed; they did not represent live data.
+A full-page split layout pairs an edge-to-edge workplace photo with an uncluttered sign-in panel. Desktop uses the full viewport; mobile stacks the photo and form. The photo is AI-generated. Product branding, typography, account selection, inputs and focus indicators have been refined.
 
-The preview supports employee/admin selection, password visibility and explanatory responses for login, recovery and registration. It is a design mockup, not the authenticated Razor runtime; global marketing navigation is omitted. Inputs accept sample values only for visual review and are never submitted.
+Existing IDs, forms, Razor branches, login/registration/OTP scripts and backend files are preserved. The latest update adds only presentation classes, a brand link and scoped CSS. The preview supports employee/admin selection and password visibility locally; no authentication requests are sent.
 
-Validation: Login source is byte-identical to its previous version except four explicit display-text replacements; original scripts, IDs, form actions and logic therefore match. Preview JavaScript syntax and whitespace checks passed. Browser rendering and IIS authentication checks remain pending.
+Validation: original IDs and embedded scripts match the preceding revision. Preview JavaScript syntax and whitespace checks passed. Browser rendering and IIS authentication checks remain pending.
 
 ## Remaining sequence
 
