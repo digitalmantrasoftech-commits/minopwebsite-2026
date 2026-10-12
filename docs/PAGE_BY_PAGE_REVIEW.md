@@ -24,9 +24,16 @@ Refined widget cards, six responsive attendance tiles, check-in insights, labele
 
 All original IDs and embedded scripts match the prior revision. Backend and existing JS files are unchanged. Project XML and whitespace checks passed. Preview uses sample data and local controls; its simplified chart and shell are illustrative. Browser rendering, actual chart sizing, filter behavior and authenticated IIS testing remain pending. Other admin routes remain queued for separate review.
 
+## Page 3: Employee Dashboard
+
+Source: `Views/Dashboard/EmployeeDashboard.cshtml`.
+Styles: `assets/css/minop-employee-page.css`.
+Preview: `docs/employee-dashboard-preview.html` (sample values; no attendance submissions).
+
+Compact Nexlink-style cards, clearer attendance times, responsive request tabs, leave balance tracks and calendar controls. Existing sortable columns, visibility, authorization, check-in/out behavior and plugins remain intact. The view differs only by two classes and one stylesheet link; original IDs/scripts match exactly. The stylesheet is included in the publish manifest. JS syntax, XML and whitespace checks passed; authenticated browser checks remain pending. Preview shell and sample calendar illustrate the design and do not run the original calendar plugin.
+
 ## Remaining sequence
 
-2. Employee dashboard
 3. Employee directory and employee master
 4. Onboarding and employee details
 5. Attendance and correction
