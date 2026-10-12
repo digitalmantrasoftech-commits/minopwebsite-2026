@@ -39,3 +39,7 @@ This is shared theme coverage, not completed visual QA of every application page
 - `PayTimeWebClient/Views/Error/Unauthorized.cshtml`
 - `PayTimeWebClient/Views/School/Index.cshtml`
 - `PayTimeWebClient/Views/ESS/ResetPassword.cshtml`
+
+## Compact Admin Dashboard revision
+
+Inspected the rendered Nexlink demo in a browser. Admin Dashboard now uses a two-column top composition, six compact count cards, a narrow check-in/review panel, and an admin-only 78px navigation rail. Existing chart engines and widget order/visibility remain. The view adds only a wrapper; original IDs and script blocks match exactly. The preview illustrates this layout using sample data; authenticated Minop rendering is still pending. Other pages have not received this structural revision.
