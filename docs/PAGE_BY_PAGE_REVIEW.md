@@ -14,9 +14,18 @@ Existing IDs, forms, Razor branches, login/registration/OTP scripts and backend 
 
 Validation: original IDs and embedded scripts match the preceding revision. Preview JavaScript syntax and whitespace checks passed. Browser rendering and IIS authentication checks remain pending.
 
+## Page 2: Admin Dashboard
+
+Source: `Views/Dashboard/Admindashboard.cshtml` (the Dashboard route).
+Styles: `assets/css/minop-admin-page.css`, loaded after the existing view styles and included in the publish manifest.
+Preview: `docs/admin-dashboard-preview.html`.
+
+Refined widget cards, six responsive attendance tiles, check-in insights, labeled Customize/Filters controls, readable widget headings and filter stacking. Existing widget visibility, sorting, charts, request handlers and permissions are preserved. No historical analytics were added; existing current-count insights remain in place.
+
+All original IDs and embedded scripts match the prior revision. Backend and existing JS files are unchanged. Project XML and whitespace checks passed. Preview uses sample data and local controls; its simplified chart and shell are illustrative. Browser rendering, actual chart sizing, filter behavior and authenticated IIS testing remain pending. Other admin routes remain queued for separate review.
+
 ## Remaining sequence
 
-1. Admin dashboard (existing design and analytics require individual visual review)
 2. Employee dashboard
 3. Employee directory and employee master
 4. Onboarding and employee details
